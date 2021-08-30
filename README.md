@@ -1,5 +1,11 @@
 # FPC Source code repository
 
+## Work in Progress
+
+This repository is not in use, we are currently working on an upgrade to FreePascal 3.2.2 (3.3.1) but it is not ready for use yet.
+
+Please continue to use the current [FPC](https://github.com/ultibohub/FPC) repository until this update is released.
+
 ## Synopsis
 This repository contains the sources of the [Free Pascal](https://www.freepascal.org/) compiler distribution.
 
