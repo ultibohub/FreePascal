@@ -1,6 +1,6 @@
 # FPC Source code repository
 
-## Work in Progress
+## Ultibo Edition (Work in Progress)
 
 This repository is not in use, we are currently working on an upgrade to FreePascal 3.2.2 (3.3.1) but it is not ready for use yet.
 
