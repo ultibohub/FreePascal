@@ -53,6 +53,7 @@ begin
     P.SourcePath.Add('src/jsonrpc');
     P.SourcePath.Add('src/hpack');
     P.SourcePath.Add('src/restbridge');
+    P.SourcePath.Add('src/websocket');
     T:=P.Targets.addUnit('fpmimetypes.pp');
 
     T:=P.Targets.AddUnit('httpdefs.pp');
@@ -427,7 +428,43 @@ begin
       AddUnit('sqldbrestbridge');
       AddUnit('sqldbrestconst');
       end;
+    T:=P.Targets.AddUnit('fpwebsocket.pp');
+    T.Resourcestrings:=True;
+    T:=P.Targets.AddUnit('fpcustwsserver.pp');
+    With T.Dependencies do  
+      begin
+      AddUnit('fpwebsocket');
+      end;
+    T:=P.Targets.AddUnit('fpwebsocketserver.pp');
+    With T.Dependencies do  
+      begin
+      AddUnit('fpwebsocket');
+      AddUnit('fpcustwsserver');
+      end;
+    T:=P.Targets.AddUnit('fpwebsocketclient.pp');
+    With T.Dependencies do  
+      begin
+      AddUnit('fpwebsocket');
+      end;
+    T:=P.Targets.AddUnit('wsupgrader.pp');
+    With T.Dependencies do  
+      begin
+      AddUnit('fpwebsocket');
+      AddUnit('fpcustwsserver');
+      end;
     end;
+    T:=P.Targets.AddUnit('fphttpclientpool.pas');
+    T.Resourcestrings:=True;
+    With T.Dependencies do  
+      begin
+      AddUnit('fphttpclient');
+      end;
+    T:=P.Targets.AddUnit('fphttpclientasyncpool.pas');
+    With T.Dependencies do  
+      begin
+      AddUnit('fphttpclient');
+      AddUnit('fphttpclientpool');
+      end;
 end;
     
 {$ifndef ALLPACKAGES}

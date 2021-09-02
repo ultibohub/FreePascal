@@ -19,7 +19,7 @@ unit fphttpclient;
 interface
 
 uses
-  Classes, SysUtils, ssockets, httpdefs, uriparser, base64, sslsockets;
+  Classes, SysUtils, ssockets, httpdefs, uriparser, base64, sslsockets, DateUtils;
 
 Const
   // Socket Read buffer size
@@ -71,8 +71,10 @@ Type
     FRequestContentLength : Int64;
     FAllowRedirect: Boolean;
     FKeepConnection: Boolean;
+    FKeepConnectionReconnectLimit: Integer;
     FMaxChunkSize: SizeUInt;
     FMaxRedirects: Byte;
+    FOnIdle: TNotifyEvent;
     FOnDataReceived: TDataEvent;
     FOnDataSent: TDataEvent;
     FOnHeaders: TNotifyEvent;
@@ -131,6 +133,10 @@ Type
     Function ProxyActive : Boolean;
     // Override this if you want to create a custom instance of proxy.
     Function CreateProxyData : TProxyData;
+    // Called before data is read.
+    Procedure DoBeforeDataRead; virtual;
+    // Called when the client is waiting for the server.
+    Procedure DoOnIdle;
     // Called whenever data is read.
     Procedure DoDataRead; virtual;
     // Called whenever data is written.
@@ -335,6 +341,8 @@ Type
     Property Connected: Boolean read IsConnected;
     // Keep-Alive support. Setting to true will set HTTPVersion to 1.1
     Property KeepConnection: Boolean Read FKeepConnection Write SetKeepConnection;
+    // Maximum reconnect attempts during one request. -1=unlimited, 0=don't try to reconnect
+    Property KeepConnectionReconnectLimit: Integer Read FKeepConnectionReconnectLimit Write FKeepConnectionReconnectLimit;
     // SSL certificate validation.
     Property VerifySSLCertificate : Boolean Read FVerifySSLCertificate Write FVerifySSLCertificate;
     // Called On redirect. Dest URL can be edited.
@@ -345,6 +353,8 @@ Type
     Property OnPassword : TPasswordEvent Read FOnPassword Write FOnPassword;
     // Called whenever data is read from the connection.
     Property OnDataReceived : TDataEvent Read FOnDataReceived Write FOnDataReceived;
+    // Called when the client is waiting for the server
+    Property OnIdle : TNotifyEvent Read FOnIdle Write FOnIdle;
     // Called whenever data is written to the connection.
     Property OnDataSent : TDataEvent Read FOnDataSent Write FOnDataSent;
     // Called when headers have been processed.
@@ -380,6 +390,7 @@ Type
     Property OnPassword;
     Property OnDataReceived;
     Property OnDataSent;
+    Property OnIdle;
     Property OnHeaders;
     Property OnGetSocketHandler;
     Property Proxy;
@@ -689,6 +700,26 @@ begin
   FreeAndNil(FSocket);
 end;
 
+procedure TFPCustomHTTPClient.DoBeforeDataRead;
+var
+  BreakUTC: TDateTime;
+begin
+  // Use CanRead to keep the client responsive in case the server needs a lot of time to respond.
+  // The request can be terminated in OnIdle - therefore it makes sense only if FOnIdle is set
+  If not Assigned(FOnIdle) Then
+    Exit;
+  if IOTimeout>0 then
+    BreakUTC := IncMilliSecond(NowUTC, IOTimeout);
+  while not Terminated and not FSocket.CanRead(10) and (FSocket.LastError=0) do
+    begin
+    DoOnIdle;
+    if (IOTimeout>0) and (CompareDateTime(NowUTC, BreakUTC)>0) then // we exceeded the timeout -> read error
+      Raise EHTTPClientSocketRead.Create(SErrReadingSocket);
+    end;
+  if FSocket.LastError<>0 then
+    Raise EHTTPClientSocketRead.Create(SErrReadingSocket);
+end;
+
 function TFPCustomHTTPClient.AllowHeader(var AHeader: String): Boolean;
 
 begin
@@ -780,6 +811,7 @@ function TFPCustomHTTPClient.ReadString(out S: String): Boolean;
     R : Integer;
 
   begin
+    DoBeforeDataRead;
     if Terminated then
       Exit(False);
     SetLength(FBuffer,ReadBufLen);
@@ -1121,6 +1153,9 @@ Function TFPCustomHTTPClient.ReadResponse(Stream: TStream;
   Function Transfer(LB : Integer) : Integer;
 
   begin
+    DoBeforeDataRead;
+    if Terminated then
+      Exit(0);
     Result:=FSocket.Read(FBuffer[1],LB);
     If Result<0 then
       Raise EHTTPClientSocketRead.Create(SErrReadingSocket);
@@ -1152,6 +1187,7 @@ Function TFPCustomHTTPClient.ReadResponse(Stream: TStream;
 
     begin
       Result:=False;
+      DoBeforeDataRead;
       If Terminated then
         exit;
       SetLength(FBuffer,ReadBuflen);
@@ -1356,18 +1392,25 @@ begin
   End;
 end;
 
+procedure TFPCustomHTTPClient.DoOnIdle;
+begin
+  If Assigned(FOnIdle) Then
+    FOnIdle(Self);
+end;
+
 Procedure TFPCustomHTTPClient.DoKeepConnectionRequest(const AURI: TURI;
   const AMethod: string; AStream: TStream;
   const AAllowedResponseCodes: array of Integer;
   AHeadersOnly, AIsHttps: Boolean);
 Var
-  T: Boolean;
+  SkipReconnect: Boolean;
   CHost: string;
   CPort: Word;
-
+  ACount: Integer;
 begin
   ExtractHostPort(AURI, CHost, CPort);
-  T := False;
+  SkipReconnect := False;
+  ACount := 0;
   Repeat
     If Not IsConnected Then
       ConnectToServer(CHost,CPort,AIsHttps);
@@ -1378,23 +1421,32 @@ begin
         SendRequest(AMethod,AURI);
         if Terminated then
           break;
-        T := ReadResponse(AStream,AAllowedResponseCodes,AHeadersOnly);
+        SkipReconnect := ReadResponse(AStream,AAllowedResponseCodes,AHeadersOnly);
       except
         on E: EHTTPClientSocket do
         begin
-          // failed socket operations raise exceptions - e.g. if ReadString() fails
-          // try to reconnect also in this case
-          T:=False;
+          if ((FKeepConnectionReconnectLimit>=0) and (aCount>=KeepConnectionReconnectLimit)) then
+            raise // reconnect limit is reached -> reraise
+          else
+            begin
+            // failed socket operations raise exceptions - e.g. if ReadString() fails
+            // this can be due to a closed keep-alive connection by the server
+            // -> try to reconnect
+            SkipReconnect:=False;
+            end;
         end;
       end;
-      If Not T and Not Terminated Then
+      if (FKeepConnectionReconnectLimit>=0) and (ACount>=KeepConnectionReconnectLimit) then
+        break; // reconnect limit is reached -> exit
+      If Not SkipReconnect and Not Terminated Then
         ReconnectToServer(CHost,CPort,AIsHttps);
+      Inc(ACount);
     Finally
       // On terminate, we close the request
       If HasConnectionClose or Terminated Then
         DisconnectFromServer;
     End;
-  Until T or Terminated;
+  Until SkipReconnect or Terminated;
 end;
 
 Procedure TFPCustomHTTPClient.DoMethod(Const AMethod, AURL: String;
@@ -1425,6 +1477,7 @@ begin
   // Infinite timeout on most platforms
   FIOTimeout:=0;
   FConnectTimeout:=3000;
+  FKeepConnectionReconnectLimit:=1;
   FRequestHeaders:=TStringList.Create;
   FRequestHeaders.NameValueSeparator:=':';
   FResponseHeaders:=TStringList.Create;

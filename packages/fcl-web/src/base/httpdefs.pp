@@ -444,17 +444,19 @@ type
   { TRequest }
 
   TRequest = class(THttpHeader)
+  Private
+    class var _RequestCount : {$IFDEF CPU64}QWord{$ELSE}Cardinal{$ENDIF};
   private
     FCommand: String;
     FCommandLine: String;
     FHandleGetOnPost: Boolean;
     FOnUnknownEncoding: TOnUnknownEncodingEvent;
     FFiles : TUploadedFiles;
+    FRequestID: String;
     FReturnedPathInfo : String;
     FLocalPathPrefix : string;
     FContentRead : Boolean;
     FRouteParams : TStrings;
-
     FStreamingContentType: TStreamingContentType;
     FMimeItems: TMimeItems;
     FKeepFullContents: Boolean;
@@ -466,6 +468,7 @@ type
     function GetRP(AParam : String): String;
     procedure SetRP(AParam : String; AValue: String);
   Protected
+    procedure AllocateRequestID; virtual;
     Function AllowReadContent : Boolean; virtual;
     Function CreateUploadedFiles : TUploadedFiles; virtual;
     Function CreateMimeItems : TMimeItems; virtual;
@@ -497,11 +500,16 @@ type
     procedure ProcessStreamingSetContent(const State: TContentStreamingState; const Buf; const Size: Integer); virtual;
     procedure HandleStreamingUnknownEncoding(const State: TContentStreamingState; const Buf; const Size: Integer);
     Property ContentRead : Boolean Read FContentRead Write FContentRead;
+  Public
+    Type
+      TConnectionIDAllocator = Procedure(out aID : String) of object;
+    class var IDAllocator : TConnectionIDAllocator;
   public
     Class Var DefaultRequestUploadDir : String;
     constructor Create; override;
     destructor destroy; override;
     Function GetNextPathInfo : String;
+    Property RequestID : String Read FRequestID;
     Property RouteParams[AParam : String] : String Read GetRP Write SetRP;
     Property ReturnedPathInfo : String Read FReturnedPathInfo Write FReturnedPathInfo;
     Property LocalPathPrefix : string Read GetLocalPathPrefix;
@@ -1732,13 +1740,14 @@ end;
 
 
 function THTTPHeader.GetFieldByName(const AName: String): String;
+
 var
-  i: Integer;
+  H : THeader;
 
 begin
-  I:=GetFieldNameIndex(AName);
-  If (I<>0) then
-    Result:=self.GetFieldValue(i)
+  H:=HeaderType(aName);
+    If (h<>hhUnknown) then
+    Result:=GetHeader(h)
   else
     Result:=GetCustomHeader(AName);
 end;
@@ -1819,13 +1828,14 @@ begin
 end;
 
 procedure THTTPHeader.SetFieldByName(const AName, AValue: String);
+
 var
-  i: Integer;
+  H : THeader;
 
 begin
-  I:=GetFieldNameIndex(AName);
-  If (I<>0) then
-    SetFieldValue(i,AValue)
+  H:=HeaderType(aName);
+  If (h<>hhUnknown) then
+    SetHeader(H,aValue)
   else
     SetCustomHeader(AName,AValue);
 end;
@@ -2059,6 +2069,7 @@ begin
   FFiles:=CreateUploadedFiles;
   FFiles.FRequest:=Self;
   FLocalPathPrefix:='-';
+  AllocateRequestID;
 end;
 
 function TRequest.CreateUploadedFiles: TUploadedFiles;
@@ -2132,6 +2143,7 @@ begin
   FCommandLine := line;
   i := Pos(' ', line);
   FCommand := UpperCase(Copy(line, 1, i - 1));
+  Method:=FCommand;
   URI := Copy(line, i + 1, Length(line));
 
   // Extract HTTP version
@@ -2193,6 +2205,18 @@ begin
     FRouteParams:=TStringList.Create;
   if (AValue<>'') and Assigned(FRouteParams) then
     FRouteParams.Values[AParam]:=AValue;
+end;
+
+procedure TRequest.AllocateRequestID;
+begin
+  if Assigned(IDAllocator) then
+    IDAllocator(FRequestID);
+  if FRequestID='' then
+{$IFDEF CPU64}
+    FRequestID:=IntToStr(InterlockedIncrement64(_RequestCount));
+{$ELSE}
+    FRequestID:=IntToStr(InterlockedIncrement(_RequestCount));
+{$ENDIF}
 end;
 
 function TRequest.AllowReadContent: Boolean;
