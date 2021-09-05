@@ -24,8 +24,15 @@ uses
 
 Const
    SEmptyLabel = '';
+   MinAsyncVersion = ecma2021;
+   MinAwaitVersion = ecma2021;
+   MinYieldVersion = ecma2021;
+   minLetVersion = ecma2021;
+   MinDebuggerVersion = ecma2021;
+   MinImportVersion = ecma2021;
 
 Type
+  TECMAVersion = jsScanner.TECMAVersion;
 
   { TJSParser }
 
@@ -46,11 +53,17 @@ Type
     FLabelSets,
     FCurrentLabelSet:TJSLabelSet;
     FLabels : TJSLabel;
+    // these check that current token is identifier with specific value:
+    // as, from, get, of, set, target
+    function  IdentifierIsLiteral(aValue : String) : Boolean;
+    Procedure CheckIdentifierLiteral(aValue : String);
+    function ConsumeIdentifierLiteral(aValue: String): TJSToken;
     function CheckSemiColonInsert(aToken: TJSToken; Consume: Boolean): Boolean;
     function EnterLabel(ALabelName: String): TJSLabel;
     procedure Expect(aToken: TJSToken);
     procedure Consume(aToken: TJSToken; AllowSemicolonInsert : Boolean = False);
     procedure FreeCurrentLabelSet;
+    function GetVersion: TECMAVersion;
     procedure LeaveLabel;
     function LookupLabel(ALabelName: String; Kind: TJSToken): TJSLabel;
     function ParseAdditiveExpression: TJSElement;
@@ -75,6 +88,7 @@ Type
     function ParseFunctionBody: TJSFunctionBody;
     function ParseIdentifier: String;
     function ParseIfStatement: TJSElement;
+    function ParseImportStatement: TJSElement;
     function ParseIterationStatement: TJSElement;
     function ParseLabeledStatement: TJSElement;
     function ParseLeftHandSideExpression: TJSElement;
@@ -98,9 +112,10 @@ Type
     function ParseThrowStatement: TJSElement;
     function ParseTryStatement: TJSElement;
     function ParseUnaryExpression: TJSElement;
-    function ParseVariableDeclaration: TJSElement;
-    function ParseVariableDeclarationList: TJSElement;
-    function ParseVariableStatement: TJSElement;
+    function ParseDebuggerStatement: TJSElement;
+    function ParseVariableDeclaration(aVarType : TJSVarType = vtVar): TJSElement;
+    function ParseVariableDeclarationList(aVarType : TJSVarType = vtVar): TJSElement;
+    function ParseVariableStatement(aVarType : TJSVarType = vtVar): TJSElement;
     function ParseWithStatement: TJSElement;
   Protected
     Procedure CheckParser;
@@ -117,7 +132,8 @@ Type
     Property NoIn : Boolean Read FNoIn Write FNoIn;
     Property IsLHS : Boolean Read FIsLHS Write FIsLHS;
   Public
-    Constructor Create(AInput: TStream);
+    Constructor Create(AInput: TStream; aVersion : TECMAVersion = ecma5);
+    // Scanner has version
     Constructor Create(AScanner : TJSScanner);
     Destructor Destroy; override;
     Function Parse : TJSElement;
@@ -127,6 +143,7 @@ Type
     Function GetNextToken : TJSToken;
     Function PeekNextToken : TJSToken;
     Function IsEndOfLine : Boolean;
+    Property ECMAVersion : TECMAVersion Read GetVersion;
   end;
 
 implementation
@@ -159,6 +176,8 @@ Resourcestring
   SErrInvalidnumber          = 'Invalid numerical value: %s';
   SErrInvalidRegularExpression = 'Invalid regular expression: %s';
   SErrFunctionNotAllowedHere = 'function keyword not allowed here';
+  SErrExpectedButFound       = 'Unexpected token. Expected "%s" but found "%s"';
+  SErrExpectedMulOrCurlyBrace = 'Unexpected token: Expected * or {, got: %s';
 
 { TJSScanner }
 
@@ -349,11 +368,11 @@ begin
   Error(Format(Fmt,Args));
 end;
 
-Constructor TJSParser.Create(AInput: TStream);
+Constructor TJSParser.Create(AInput: TStream; aVersion : TECMAVersion = ecma5);
 begin
   FInput:=AInput;
   FCurrent:=TJSUnknown;
-  FScanner:=TJSScanner.Create(FInput);
+  FScanner:=TJSScanner.Create(FInput,aVersion);
   FFreeScanner:=True;
 end;
 
@@ -380,6 +399,23 @@ begin
   If Not CheckSemiColonInsert(AToken,False) then
     if (CurrentToken<>aToken) then
       Error(SerrTokenMismatch,[CurrenttokenString,TokenInfos[aToken]]);
+end;
+
+function TJSParser.IdentifierIsLiteral(aValue: String): Boolean;
+begin
+  Result:=(CurrentToken=tjsIdentifier) and (CurrentTokenString=aValue);
+end;
+
+procedure TJSParser.CheckIdentifierLiteral(aValue: String);
+begin
+  if Not IdentifierIsLiteral(aValue) then
+    Error(SErrExpectedButFound,[aValue,CurrentTokenString]);
+end;
+
+Function TJSParser.ConsumeIdentifierLiteral(aValue: String) : TJSToken;
+begin
+  CheckidentifierLiteral(aValue);
+  Result:=GetNextToken;
 end;
 
 function TJSParser.CheckSemiColonInsert(aToken : TJSToken; Consume : Boolean) : Boolean;
@@ -711,11 +747,21 @@ function TJSParser.ParsePrimaryExpression: TJSElement;
 
 Var
   R : TJSPrimaryExpressionIdent;
+  AYS : TJSUnaryExpression;
 
 begin
   {$ifdef debugparser}  Writeln('ParsePrimaryExpression');{$endif debugparser}
+  AYS:=Nil;
   Result:=Nil;
   try
+    if (CurrentToken in [tjsYield,tjsAwait]) then
+      begin
+      if CurrentToken=tjsYield then
+        AYS:=TJSUnaryExpression(CreateElement(TJSYieldExpression))
+      else
+        AYS:=TJSUnaryExpression(CreateElement(TJSAwaitExpression));
+      GetNextToken;
+      end;
     Case CurrentToken of
       tjsThis :
         begin
@@ -740,6 +786,11 @@ begin
     else
       Result:=ParseLiteral;
     end; // Case;
+    if (AYS<>Nil) then
+      begin
+      AYS.A:=Result;
+      Result:=AYS;
+      end;
   except
     FreeAndNil(Result);
     Raise;
@@ -879,8 +930,16 @@ begin
        tjsBraceOpen:
          begin
          C:=TJSCallExpression(CreateElement(TJSCallExpression));
-         C.Expr:=Result;
-         Result:=C;
+         if (Result is TJSUnaryExpression) and (TJSUnaryExpression(Result).PrefixOperatorToken in [tjsAwait,tjsYield]) then
+           begin
+           C.Expr:=TJSUnaryExpression(Result).A;
+           TJSUnaryExpression(Result).A:=C;
+           end
+         else
+           begin
+           C.Expr:=Result;
+           Result:=C;
+           end;
          C.Args:=ParseArguments;
          end;
       else
@@ -960,6 +1019,17 @@ begin
     Raise;
   end;
   {$ifdef debugparser} Writeln('Exit ParseUnaryExpression');{$endif debugparser}
+end;
+
+function TJSParser.ParseDebuggerStatement: TJSElement;
+
+begin
+  Result:=CreateElement(TJSDebuggerStatement);
+  try
+    Consume(tjsDebugger);
+  except
+    FreeAndNil(Result);
+  end;
 end;
 
 function TJSParser.ParseMultiplicativeExpression: TJSElement;
@@ -1329,16 +1399,17 @@ begin
   {$ifdef debugparser}  Writeln('Exit ParseAssignmentExpression');{$endif debugparser}
 end;
 
-function TJSParser.ParseVariableDeclaration: TJSElement;
+function TJSParser.ParseVariableDeclaration(aVarType : TJSVarType = vtVar): TJSElement;
 
 Var
   V : TJSVarDeclaration;
 
 begin
   {$ifdef debugparser}  Writeln('ParseVariableDeclaration');{$endif debugparser}
-  V:=TJSVarDeclaration(CreateElement(TJSVarDeclaration));;
+  V:=TJSVarDeclaration(CreateElement(TJSVarDeclaration));
   try
     V.Name:=CurrenttokenString;
+    V.VarType:=aVarType;
     Consume(tjsIdentifier);
     if (CurrentToken=tjsAssign) then
       begin
@@ -1354,7 +1425,7 @@ begin
   {$ifdef debugparser}  Writeln('Exit ParseVariableDeclaration');{$endif debugparser}
 end;
 
-function TJSParser.ParseVariableDeclarationList: TJSElement;
+function TJSParser.ParseVariableDeclarationList(aVarType : TJSVarType = vtVar): TJSElement;
 
 Var
   E,N : TJSElement;
@@ -1362,7 +1433,7 @@ Var
 
 begin
   {$ifdef debugparser}  Writeln('ParseVariableDeclarationList entry');{$endif debugparser}
-  E:=ParseVariableDeclaration;
+  E:=ParseVariableDeclaration(aVarType);
   If (CurrentToken<>tjsComma) then
     Result:=E
   else
@@ -1382,7 +1453,10 @@ begin
   {$ifdef debugparser}  Writeln('ParseVariableDeclarationList exit');{$endif debugparser}
 end;
 
-function TJSParser.ParseVariableStatement : TJSElement;
+function TJSParser.ParseVariableStatement(aVarType : TJSVarType = vtVar): TJSElement;
+
+Const
+   InitialTokens : Array[TJSVarType] of TJSToken = (tjsVar,tjsLet,tjsConst);
 
 Var
   V : TJSVariableStatement;
@@ -1390,11 +1464,12 @@ Var
 begin
   {$ifdef debugparser}  Writeln('ParseVariableStatement entry');{$endif debugparser}
   Result:=Nil;
-  Consume(tjsVar);
-  Result:=ParseVariableDeclarationList;
+  Consume(InitialTokens[aVarType]);
+  Result:=ParseVariableDeclarationList(aVarType);
   try
     Consume(tjsSemicolon,true);
     V:=TJSVariableStatement(CreateElement(TJSVariableStatement));
+    V.varType:=aVarType;
     V.A:=Result;
     Result:=V;
   except
@@ -1561,6 +1636,81 @@ begin
   end;
   except
     FreeAndNil(N);
+    FreeAndNil(Result);
+    Raise;
+  end;
+end;
+
+function TJSParser.ParseImportStatement: TJSElement;
+
+Var
+  Imp : TJSImportStatement;
+  aName,aAlias : String;
+  aExpectMore : Boolean;
+begin
+  aExpectMore:=True;
+  Consume(tjsImport);
+  Imp:=TJSImportStatement(CreateElement(TJSImportStatement));
+  try
+    Result:=Imp;
+    // Just module name
+    if CurrentToken = tjsString then
+      begin
+      Imp.ModuleName:=CurrentTokenString;
+      GetNextToken;
+      Exit;
+      end;
+    // ImportedDefaultBinding
+    if CurrentToken = tjsIdentifier then
+      begin
+      Imp.DefaultBinding:=CurrentTokenString;
+      aExpectMore:=GetNextToken=tjsCOMMA;
+      if aExpectMore then
+        GetNextToken;
+      end;
+    Case CurrentToken of
+      tjsMUL : // NameSpaceImport
+        begin
+        Consume(tjsMul);
+        ConsumeIdentifierLiteral('as');
+        Expect(tjsIdentifier);
+        Imp.NameSpaceImport:=CurrentTokenString;
+        Consume(tjsIdentifier);
+        end;
+      tjsCurlyBraceOpen:
+        begin
+        Consume(tjsCurlyBraceOpen);
+        Repeat
+          Expect(tjsIdentifier);
+          aName:=CurrentTokenString;
+          aAlias:='';
+          Consume(tjsIdentifier);
+          if IdentifierIsLiteral('as') then
+            begin
+            Consume(tjsIdentifier);
+            Expect(tjsIdentifier);
+            aAlias:=CurrentTokenString;
+            Consume(tjsIdentifier);
+            end;
+          With Imp.NamedImports.AddElement do
+            begin
+            Name:=aName;
+            Alias:=aAlias;
+            end;
+          if CurrentToken=tjsComma then
+            GetNextToken;
+        Until (CurrentToken=tjsCurlyBraceClose);
+        Consume(tjsCurlyBraceClose);
+        end
+    else
+      if aExpectMore then
+        Error(SErrExpectedMulOrCurlyBrace,[CurrentTokenString]);
+    end;
+    ConsumeIdentifierLiteral('from');
+    Expect(tjsString);
+    Imp.ModuleName:=CurrentTokenString;
+    Consume(tjsString);
+  except
     FreeAndNil(Result);
     Raise;
   end;
@@ -1931,6 +2081,11 @@ begin
     end;
 end;
 
+function TJSParser.GetVersion: TECMAVersion;
+begin
+  Result:=FSCanner.ECMAVersion;
+end;
+
 function TJSParser.ParseExpressionStatement : TJSElement;
 
 Var
@@ -1978,8 +2133,12 @@ begin
   Case CurrentToken of
     tjsCurlyBraceOpen :
       Result:=ParseBlock;
+    tjsLet:
+      Result:=ParseVariableStatement(vtLet);
+    tjsConst:
+      Result:=ParseVariableStatement(vtConst);
     tjsVar:
-      Result:=ParseVariableStatement;
+      Result:=ParseVariableStatement(vtVar);
     tjsSemicolon:
       Result:=ParseEmptyStatement;
     tjsIf:
@@ -1988,12 +2147,16 @@ begin
       Result:=ParseIterationStatement;
     tjsContinue:
       Result:=ParseContinueStatement;
+    tjsImport:
+      Result:=ParseImportStatement;
     tjsBreak:
       Result:=ParseBreakStatement;
     tjsReturn:
       Result:=ParseReturnStatement;
     tjsWith:
       Result:=ParseWithStatement;
+    tjsDebugger:
+      Result:=ParseDebuggerStatement;
     tjsSwitch:
       Result:=ParseSwitchStatement;
     tjsThrow:
@@ -2006,6 +2169,8 @@ begin
         Result:=ParseFunctionStatement;
       Error(SErrFunctionNotAllowedHere);
       end;
+    tjsAwait,
+    tjsYield,
     tjsIdentifier:
       If (PeekNextToken=tjsColon) then
         Result:=ParseLabeledStatement
@@ -2021,8 +2186,9 @@ function TJSParser.ParseSourceElements : TJSSourceElements;
 
 Const
   StatementTokens = [tjsNULL, tjsTRUE, tjsFALSE,
-      tjsTHIS, tjsIdentifier,jstoken.tjsSTRING,tjsNUMBER,
+      tjsAWait, tjsTHIS, tjsIdentifier,jstoken.tjsSTRING,tjsNUMBER,
       tjsBraceOpen,tjsCurlyBraceOpen,tjsSquaredBraceOpen,
+      tjsLet, tjsConst, tjsDebugger, tjsImport,
       tjsNew,tjsDelete,tjsVoid,tjsTypeOf,
       tjsPlusPlus,tjsMinusMinus,
       tjsPlus,tjsMinus,tjsNot,tjsNE,tjsSNE,tjsSemicolon,
@@ -2034,21 +2200,27 @@ Var
   E : TJSElement;
   Done : Boolean;
   VS : TJSElementNodes;
+  aSync : Boolean;
 begin
   {$ifdef debugparser} Writeln('>>> Entering source elements');{$endif}
   Result:=TJSSourceElements(CreateElement(TJSSourceElements));
   try
     Done:=False;
+    aSync:=False;
     VS:=FCurrentVars;
     Try
       FCurrentVars:=Result.Vars;
       Repeat
         {$ifdef debugparser} Writeln('Sourceelements start:',GetEnumName(TypeInfo(TJSToken),Ord(CurrentToken)), ' As string: ',CurrentTokenString);{$endif debugparser}
+        aSync:= (ECMAVersion>=MinAsyncVersion) and (CurrentToken=tjsIdentifier) and (CurrentTokenString='async');
+        if aSync then
+          GetNextToken;
         If (CurrentToken=jstoken.tjsFunction) then
           begin
           If (PeekNextToken<>tjsBraceOpen) then
             begin
             F:=Self.ParseFunctionDeclaration;
+            F.AFunction.IsAsync:=aSync;
             Result.Functions.AddNode.Node:=F;
             end
           else
