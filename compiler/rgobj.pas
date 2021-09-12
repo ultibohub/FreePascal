@@ -95,7 +95,7 @@ unit rgobj;
       Treginfoflag=(
         ri_coalesced,       { the register is coalesced with other register }
         ri_selected,        { the register is put to selectstack }
-        ri_spill_read,      { the register contains a value loaded from a spilled register }
+        ri_spill_helper,    { the register contains a value of a previously spilled register }
         ri_has_initial_loc  { the register has the initial memory location (e.g. a parameter in the stack) }
       );
       Treginfoflagset=set of Treginfoflag;
@@ -297,6 +297,8 @@ unit rgobj;
         procedure set_live_end(reg : tsuperregister;t : tai);
         function get_live_end(reg : tsuperregister) : tai;
         procedure alloc_spillinfo(max_reg: Tsuperregister);
+        { Remove p from the list and set p to the next element in the list }
+        procedure remove_ai(list:TAsmList; var p:Tai);
 {$ifdef DEBUG_SPILLCOALESCE}
         procedure write_spill_stats;
 {$endif DEBUG_SPILLCOALESCE}
@@ -1619,9 +1621,9 @@ unit rgobj;
         to get too much conflicts with the result that the spilling code
         will never converge (PFV)
 
-        We need a special processing for nodes with the ri_spill_read flag set. 
-        These nodes contain a value loaded from a previously spilled node. 
-        We need to avoid another spilling of ri_spill_read nodes, since it will 
+        We need a special processing for nodes with the ri_spill_helper flag set. 
+        These nodes contain a value of a previously spilled node.
+        We need to avoid another spilling of ri_spill_helper nodes, since it will 
         likely lead to an endless loop and the register allocation will fail.
       }
       maxlength:=0;
@@ -1630,9 +1632,9 @@ unit rgobj;
       with spillworklist do
         begin
           {Safe: This procedure is only called if length<>0}
-          { Search for a candidate to be spilled, ignoring nodes with the ri_spill_read flag set. }
+          { Search for a candidate to be spilled, ignoring nodes with the ri_spill_helper flag set. }
           for i:=0 to length-1 do
-            if not(ri_spill_read in reginfo[buf^[i]].flags) then
+            if not(ri_spill_helper in reginfo[buf^[i]].flags) then
               begin
                 adj:=reginfo[buf^[i]].adjlist;
                 if assigned(adj) and
@@ -1649,10 +1651,10 @@ unit rgobj;
 
           if p=high(p) then
             begin
-              { If no normal nodes found, then only ri_spill_read nodes are present
+              { If no normal nodes found, then only ri_spill_helper nodes are present
                 in the list. Finding the node with the least interferences and
                 the least weight.
-                This allows us to put the most restricted ri_spill_read nodes
+                This allows us to put the most restricted ri_spill_helper nodes
                 to the top of selectstack so they will be the first to get
                 a color assigned.
               }
@@ -1686,63 +1688,115 @@ unit rgobj;
 
     {Assign_colours assigns the actual colours to the registers.}
 
-    var adj : Psuperregisterworklist;
-        i,j,k : cardinal;
-        n,a,c : Tsuperregister;
-        colourednodes : Tsuperregisterset;
+    var
+      colourednodes : Tsuperregisterset;
+
+      procedure reset_colours;
+        var
+          n : Tsuperregister;
+        begin
+          spillednodes.clear;
+          {Reset colours}
+          for n:=0 to maxreg-1 do
+            reginfo[n].colour:=n;
+          {Colour the cpu registers...}
+          supregset_reset(colourednodes,false,maxreg);
+          for n:=0 to first_imaginary-1 do
+            supregset_include(colourednodes,n);
+        end;
+
+    function colour_regitser(n : Tsuperregister) : boolean;
+      var
+        j,k : cardinal;
+        adj : Psuperregisterworklist;
         adj_colours:set of 0..255;
-        found : boolean;
+        a,c : Tsuperregister;
 {$if declared(RS_STACK_POINTER_REG) and (RS_STACK_POINTER_REG<>RS_INVALID)}
         tmpr: tregister;
 {$endif}
+      begin
+        {Create a list of colours that we cannot assign to n.}
+        adj_colours:=[];
+        adj:=reginfo[n].adjlist;
+        if adj<>nil then
+          for j:=0 to adj^.length-1 do
+            begin
+              a:=get_alias(adj^.buf^[j]);
+              if supregset_in(colourednodes,a) and (reginfo[a].colour<=255) then
+                include(adj_colours,reginfo[a].colour);
+            end;
+        { e.g. AVR does not have a stack pointer register }
+{$if declared(RS_STACK_POINTER_REG) and (RS_STACK_POINTER_REG<>RS_INVALID)}
+        { FIXME: temp variable r is needed here to avoid Internal error 20060521 }
+        {        while compiling the compiler. }
+        tmpr:=NR_STACK_POINTER_REG;
+        if (regtype=getregtype(tmpr)) then
+          include(adj_colours,RS_STACK_POINTER_REG);
+{$ifend}
+        {Assume a spill by default...}
+        result:=false;
+        {Search for a colour not in this list.}
+        for k:=0 to usable_registers_cnt-1 do
+          begin
+            c:=usable_registers[k];
+            if not(c in adj_colours) then
+              begin
+                reginfo[n].colour:=c;
+                result:=true;
+                supregset_include(colourednodes,n);
+                break;
+              end;
+          end;
+        if not result then
+          spillednodes.add(n);
+      end;
+
+    var
+        i,k : cardinal;
+        n : Tsuperregister;
+        spill_loop : boolean;
     begin
-      spillednodes.clear;
-      {Reset colours}
-      for n:=0 to maxreg-1 do
-        reginfo[n].colour:=n;
-      {Colour the cpu registers...}
-      supregset_reset(colourednodes,false,maxreg);
-      for n:=0 to first_imaginary-1 do
-        supregset_include(colourednodes,n);
+      reset_colours;
       {Now colour the imaginary registers on the select-stack.}
+      spill_loop:=false;
       for i:=selectstack.length downto 1 do
         begin
           n:=selectstack.buf^[i-1];
-          {Create a list of colours that we cannot assign to n.}
-          adj_colours:=[];
-          adj:=reginfo[n].adjlist;
-          if adj<>nil then
-            for j:=0 to adj^.length-1 do
-              begin
-                a:=get_alias(adj^.buf^[j]);
-                if supregset_in(colourednodes,a) and (reginfo[a].colour<=255) then
-                  include(adj_colours,reginfo[a].colour);
-              end;
-          { e.g. AVR does not have a stack pointer register }
-{$if declared(RS_STACK_POINTER_REG) and (RS_STACK_POINTER_REG<>RS_INVALID)}
-          { FIXME: temp variable r is needed here to avoid Internal error 20060521 }
-          {        while compiling the compiler. }
-          tmpr:=NR_STACK_POINTER_REG;
-          if (regtype=getregtype(tmpr)) then
-            include(adj_colours,RS_STACK_POINTER_REG);
-{$ifend}
-          {Assume a spill by default...}
-          found:=false;
-          {Search for a colour not in this list.}
-          for k:=0 to usable_registers_cnt-1 do
+          if not colour_regitser(n) and
+            (ri_spill_helper in reginfo[n].flags) then
             begin
-              c:=usable_registers[k];
-               if not(c in adj_colours) then
-                 begin
-                   reginfo[n].colour:=c;
-                   found:=true;
-                   supregset_include(colourednodes,n);
-                   break;
-                 end;
+              { Register n is a helper register which holds the value
+                of a previously spilled register. Register n must never
+                be spilled. Report the spilling loop and break. }
+              spill_loop:=true;
+              break;
             end;
-          if not found then
-            spillednodes.add(n);
         end;
+
+      if spill_loop then
+        begin
+          { Spilling loop is detected when colouring registers using the select-stack order.
+            Trying to eliminte this by using a different colouring order. }
+          reset_colours;
+          { To prevent spilling of helper registers it is needed to assign colours to them first. }
+          for i:=selectstack.length downto 1 do
+            begin
+              n:=selectstack.buf^[i-1];
+              if ri_spill_helper in reginfo[n].flags then
+                if not colour_regitser(n) then
+                  { Can't colour the spill helper register n.
+                    This can happen only when the code generator produces invalid code. }
+                  internalerror(2021091001);
+            end;
+          { Assign colours for the rest of the registers }
+          for i:=selectstack.length downto 1 do
+            begin
+              n:=selectstack.buf^[i-1];
+              if not (ri_spill_helper in reginfo[n].flags) then
+                colour_regitser(n);
+            end;
+        end;
+
       {Finally colour the nodes that were coalesced.}
       for i:=1 to coalescednodes.length do
         begin
@@ -2182,7 +2236,7 @@ unit rgobj;
         end;
 
       var
-        hp,p,q:Tai;
+        hp,p:Tai;
         i:shortint;
         u:longint;
         s:string;
@@ -2208,10 +2262,7 @@ unit rgobj;
                           other regalloc }
                         if not(ratype in [ra_alloc,ra_dealloc]) then
                           begin
-                            q:=Tai(next);
-                            list.remove(p);
-                            p.free;
-                            p:=q;
+                            remove_ai(list,p);
                             continue;
                           end
                         else
@@ -2245,10 +2296,7 @@ unit rgobj;
                           if tai_varloc(p).newlocationhi<>NR_NO then
                             setsupreg(tai_varloc(p).newlocationhi,reginfo[getsupreg(tai_varloc(p).newlocationhi)].colour);
                         end;
-                      q:=tai(p.next);
-                      list.remove(p);
-                      p.free;
-                      p:=q;
+                      remove_ai(list,p);
                       continue;
                     end;
                 end;
@@ -2334,10 +2382,7 @@ unit rgobj;
                       it is a move and both arguments are the same }
                     if is_same_reg_move(regtype) then
                       begin
-                        q:=Tai(p.next);
-                        list.remove(p);
-                        p.free;
-                        p:=q;
+                        remove_ai(list,p);
                         continue;
                       end;
                   end;
@@ -2355,7 +2400,7 @@ unit rgobj;
       var
         i : cardinal;
         t : tsuperregister;
-        p,q : Tai;
+        p : Tai;
         regs_to_spill_set:Tsuperregisterset;
         spill_temps : ^Tspill_temp_list;
         supreg,x,y : tsuperregister;
@@ -2467,8 +2512,9 @@ unit rgobj;
                   begin
                     if (getregtype(reg)=regtype) then
                       begin
-                        {A register allocation of a spilled register can be removed.}
-                        supreg:=getsupreg(reg);
+                        {A register allocation of the spilled register (and all coalesced registers) 
+                         must be removed.}
+                        supreg:=get_alias(getsupreg(reg));
                         if supregset_in(regs_to_spill_set,supreg) then
                           begin
                             { Remove loading of the register from its initial memory location
@@ -2482,10 +2528,7 @@ unit rgobj;
                                 dec(reginfo[supreg].weight,100);
                               end;
                             { Remove the regalloc }
-                            q:=Tai(p.next);
-                            list.remove(p);
-                            p.free;
-                            p:=q;
+                            remove_ai(list,p);
                             continue;
                           end
                         else
@@ -2746,6 +2789,20 @@ unit rgobj;
         if not spilled then
           exit;
 
+        { Check if the instruction is "OP reg1,reg2" and reg1 is coalesced with reg2 }
+        if (regs.reginfocount=1) and (instr.ops=2) and
+          (instr.oper[0]^.typ=top_reg) and (instr.oper[1]^.typ=top_reg) and
+          (getregtype(instr.oper[0]^.reg)=getregtype(instr.oper[1]^.reg)) then
+          begin
+            { Set both registers in the instruction to the same register }
+            setsupreg(instr.oper[0]^.reg, regs.reginfo[0].orgreg);
+            setsupreg(instr.oper[1]^.reg, regs.reginfo[0].orgreg);
+            { In case of MOV reg,reg no spilling is needed.
+              This MOV will be removed later in translate_registers() }
+            if instr.is_same_reg_move(regtype) then
+              exit;
+          end;
+
 {$if defined(x86) or defined(mips) or defined(sparcgen) or defined(arm) or defined(m68k)}
         { Try replacing the register with the spilltemp. This is useful only
           for the i386,x86_64 that support memory locations for several instructions
@@ -2815,7 +2872,7 @@ unit rgobj;
               belong to the previous instruction and not the current instruction }
             if (tai_regalloc(loadpos).instr=instr) and
                (tai_regalloc(loadpos).ratype=ra_dealloc) then
-              live_registers.add(getsupreg(tai_regalloc(loadpos).reg));
+              live_registers.add(get_alias(getsupreg(tai_regalloc(loadpos).reg)));
             loadpos:=tai(loadpos.previous);
           end;
         loadpos:=tai(loadpos.next);
@@ -2828,7 +2885,7 @@ unit rgobj;
                 begin
                   loadreg:=getregisterinline(list,regs.reginfo[counter].spillregconstraints);
                   do_spill_read(list,tai(loadpos.previous),spilltemplist[orgreg],loadreg,orgreg);
-                  include(reginfo[getsupreg(loadreg)].flags,ri_spill_read);
+                  include(reginfo[getsupreg(loadreg)].flags,ri_spill_helper);
                 end;
             end;
 
@@ -2866,6 +2923,7 @@ unit rgobj;
                      ssa_safe then
                     begin
                       storereg:=getregisterinline(list,regs.reginfo[counter].spillregconstraints);
+                      include(reginfo[getsupreg(storereg)].flags,ri_spill_helper);
                       { we also use loadreg for store replacements in case we
                         don't have ensure ssa -> initialise loadreg even if
                         there are no reads }
@@ -2914,6 +2972,17 @@ unit rgobj;
           certain constraints regarding which imaginary registers interfere
           with certain physical registers. }
         add_cpu_interferences(instr);
+      end;
+
+
+    procedure trgobj.remove_ai(list:TAsmList; var p:Tai);
+      var
+        q:Tai;
+      begin
+        q:=tai(p.next);
+        list.remove(p);
+        p.free;
+        p:=q;
       end;
 
 

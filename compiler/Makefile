@@ -574,30 +574,31 @@ endif
 REVINC:=$(wildcard revision.inc)
 ifneq ($(REVINC),)
 override LOCALOPT+=-dREVINC
-ifeq ($(REVSTR),)
-ifneq ($(wildcard ../.git),)
-ifneq ($(GIT),)
+ ifeq ($(REVSTR),)
+  ifneq ($(wildcard ../.git),)
+   ifneq ($(GIT),)
 GITDESCRIBE=$(shell $(GIT) describe --dirty)
 REVSTR:=$(word 2,$(subst -, ,$(GITDESCRIBE)))-$(word 3,$(subst -, ,$(GITDESCRIBE)))
-ifneq ($(shell $(GIT) log @{u}..),)
+    ifneq ($(shell $(GIT) log @{u}..),)
 REVSTR:=$(REVSTR)-unpushed
-endif
-ifneq ($(word 4,$(subst -, ,$(GITDESCRIBE))),)
+    endif
+    ifneq ($(word 4,$(subst -, ,$(GITDESCRIBE))),)
 REVSTR:=$(REVSTR)-$(word 4,$(subst -, ,$(GITDESCRIBE)))
-endif
+    endif
+   endif
 export REVSTR
-else
-ifneq ($(SVNVERSION),)
+  else
+   ifneq ($(SVNVERSION),)
 REVSTR:=$(subst r,,$(subst r1:,,r$(subst exported,,$(shell $(SVNVERSION) -c .))))
 export REVSTR
-else
+   endif
+  endif
+ endif
+endif
 ifeq ($(REVINC),force)
+ifeq ($(REVSTR),)
 REVSTR:=exported
 export REVSTR
-endif
-endif
-endif
-endif
 endif
 endif
 override LOCALOPT+=-d$(CPC_TARGET) -dGDB
@@ -5073,7 +5074,9 @@ $(TEMPNAME1) :
 $(TEMPNAME2) : $(TEMPNAME1)
 	$(MAKE) 'FPC=$(BASEDIR)/$(TEMPNAME1PREFIX)$(TEMPNAME1)' 'OLDFPC=' next CYCLELEVEL=2 'COMPILEREXENAME=$(TEMPNAME2REFIX)$(TEMPNAME2)'
 $(TEMPNAME3) : $(TEMPNAME2)
-	$(MAKE) 'FPC=$(BASEDIR)/$(TEMPNAME2PREFIX)$(TEMPNAME2)' 'OLDFPC=$(BASEDIR)/$(TEMPNAME1)' next CYCLELEVEL=3 'COMPILEREXENAME=$(TEMPNAME3PREFIX)$(TEMPNAME3)'
+	$(MAKE) 'FPC=$(BASEDIR)/$(TEMPNAME2PREFIX)$(TEMPNAME2)' 'OLDFPC=$(BASEDIR)/$(TEMPNAME1)' next CYCLELEVEL=3
+		-$(DEL) $(TEMPNAME3)
+		$(MOVE) $(EXENAME) $(TEMPNAME3)
 cycle:
 ifdef NEED_G_COMPILERS
 	$(MAKE) fpcmade.generate_g_compilers
