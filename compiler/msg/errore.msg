@@ -3428,7 +3428,7 @@ unit_u_ppu_llvm_mismatch=10067_U_Skipping unit, PPU and compiler have to be both
 #
 #  Options
 #
-# 11063 is the last used one
+# 11064 is the last used one
 #
 option_usage=11000_O_$1 [options] <inputfile> [options]
 # BeginOfTeX
@@ -3587,6 +3587,8 @@ option_debug_info_requires_external_linker=11061_N_The selected debug format is 
 option_valgrind_heaptrc_mismatch=11062_E_You can not use both options ($1) ($2) at same time.
 option_unsupported_fpu=11063_F_The selected FPU type "$1" is not supported by the selected instruction set "$2"
 % Not all instruction sets support all FPU types. For example on ARM, Thumb(-1) supports no FPU/VFP instruction set
+option_too_many_exception_modes=11064_E_Only one WebAssembly exception support mode can be specified.
+% Only one WebAssembly exception support mode (NOEXCEPTIONS, JSEXCEPTIONS or NATIVEEXCEPTIONS) can be specified.
 %\end{description}
 # EndOfTeX
 
@@ -3969,6 +3971,7 @@ p*2CT<x>_Target-specific code generation options
 P*2CT<x>_Target-specific code generation options
 J*2CT<x>_Target-specific code generation options
 A*2CT<x>_Target-specific code generation options
+W*2CT<x>_Target-specific code generation options
 p*3CTsmalltoc_ Generate smaller TOCs at the expense of execution speed (AIX)
 P*3CTsmalltoc_ Generate smaller TOCs at the expense of execution speed (AIX)
 J*3CTautogetterprefix=X_  Automatically create getters for properties with prefix X (empty string disables)
@@ -3982,6 +3985,9 @@ J*3CTenumfieldinit_       Initialize enumeration fields in constructors to enumt
 J*3CTinitlocals_          Initialize local variables that trigger a JVM bytecode verification error if used uninitialized (slows down code)
 J*3CTlowercaseprocstart_  Lowercase the first character of procedure/function/method names
 A*3CTthumbinterworking_ Generate Thumb interworking-safe code if possible
+W*3CTnoexceptions_        Disable the exception support. Raising an exception will abort the program.
+W*3CTjsexceptions_        Enable the JavaScript-based exception support for WebAssembly
+W*3CTwasmexceptions_      Enable the native WebAssembly exceptions support
 J*2Cv_Var/out parameter copy-out checking
 A*2CV<x>_Set section threadvar model to <x>
 **2CX_Create also smartlinked library

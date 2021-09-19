@@ -153,10 +153,15 @@ implementation
 
   procedure TLLVMMachineCodePlaygroundAssembler.WriteAsmList;
     begin
-      inherited;
-      { print all global procedures/functions }
       writer.AsmWriteLn(#9'.globaltype'#9+STACK_POINTER_SYM+', i32');
+      { print all global procedures/functions }
       WriteImports;
+      if ts_wasm_native_exceptions in current_settings.targetswitches then
+        begin
+          writer.AsmWriteLn(#9'.tagtype'#9'__FPC_exception');
+          writer.AsmWriteLn('__FPC_exception:');
+        end;
+      inherited;
     end;
 
 
@@ -328,7 +333,7 @@ implementation
          id     : as_wasm32_llvm_mc;
          idtxt  : 'LLVM-MC';
          asmbin : 'llvm-mc';
-         asmcmd : '--assemble --arch=wasm32 -mattr=+sign-ext --filetype=obj -o $OBJ $EXTRAOPT $ASM';
+         asmcmd : '--assemble --arch=wasm32 -mattr=+sign-ext,+exception-handling --filetype=obj -o $OBJ $EXTRAOPT $ASM';
          supported_targets : [system_wasm32_embedded,system_wasm32_wasi];
          flags : [af_smartlink_sections];
          labelprefix : '.L';

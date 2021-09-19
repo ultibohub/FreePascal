@@ -52,6 +52,9 @@ interface
       { twasmraisenode }
 
       twasmraisenode = class(tcgraisenode)
+      private
+        function pass_1_no_exceptions : tnode;
+        function pass_1_native_exceptions : tnode;
       public
         function pass_1 : tnode;override;
       end;
@@ -59,6 +62,10 @@ interface
       { twasmtryexceptnode }
 
       twasmtryexceptnode = class(tcgtryexceptnode)
+      private
+        procedure pass_generate_code_no_exceptions;
+        procedure pass_generate_code_js_exceptions;
+        procedure pass_generate_code_native_exceptions;
       public
         procedure pass_generate_code;override;
       end;
@@ -66,6 +73,10 @@ interface
       { twasmtryfinallynode }
 
       twasmtryfinallynode = class(tcgtryfinallynode)
+      private
+        procedure pass_generate_code_no_exceptions;
+        procedure pass_generate_code_js_exceptions;
+        procedure pass_generate_code_native_exceptions;
       public
         procedure pass_generate_code;override;
       end;
@@ -75,7 +86,7 @@ implementation
     uses
       verbose,globals,systems,globtype,constexp,
       symconst,symdef,symsym,aasmtai,aasmdata,aasmcpu,defutil,defcmp,
-      procinfo,cgbase,pass_1,pass_2,parabase,compinnr,
+      procinfo,cgbase,cgexcept,pass_1,pass_2,parabase,compinnr,
       cpubase,cpuinfo,
       nbas,nld,ncon,ncnv,ncal,ninl,nmem,nadd,
       tgobj,paramgr,
@@ -214,7 +225,7 @@ implementation
                              twasmraisenode
 *****************************************************************************}
 
-    function twasmraisenode.pass_1 : tnode;
+    function twasmraisenode.pass_1_no_exceptions : tnode;
       var
         statements : tstatementnode;
         //current_addr : tlabelnode;
@@ -270,32 +281,207 @@ implementation
         third:=nil;
       end;
 
+
+    function twasmraisenode.pass_1_native_exceptions : tnode;
+      var
+        statements : tstatementnode;
+        //current_addr : tlabelnode;
+        raisenode : tcallnode;
+      begin
+        result:=internalstatements(statements);
+
+        if assigned(left) then
+          begin
+            { first para must be a class }
+            firstpass(left);
+            { insert needed typeconvs for addr,frame }
+            if assigned(right) then
+              begin
+                { addr }
+                firstpass(right);
+                { frame }
+                if assigned(third) then
+                  firstpass(third)
+                else
+                  third:=cpointerconstnode.Create(0,voidpointertype);
+              end
+            else
+              begin
+                third:=cinlinenode.create(in_get_frame,false,nil);
+                //current_addr:=clabelnode.create(cnothingnode.create,clabelsym.create('$raiseaddr'));
+                //addstatement(statements,current_addr);
+                //right:=caddrnode.create(cloadnode.create(current_addr.labsym,current_addr.labsym.owner));
+                right:=cnilnode.create;
+
+                { raise address off by one so we are for sure inside the action area for the raise }
+                if tf_use_psabieh in target_info.flags then
+                  right:=caddnode.create_internal(addn,right,cordconstnode.create(1,sizesinttype,false));
+              end;
+
+            raisenode:=ccallnode.createintern('fpc_raiseexception',
+              ccallparanode.create(third,
+              ccallparanode.create(right,
+              ccallparanode.create(left,nil)))
+              );
+            include(raisenode.callnodeflags,cnf_call_never_returns);
+            addstatement(statements,raisenode);
+          end
+        else
+          begin
+            addstatement(statements,ccallnode.createintern('fpc_popaddrstack',nil));
+            raisenode:=ccallnode.createintern('fpc_reraise',nil);
+            include(raisenode.callnodeflags,cnf_call_never_returns);
+            addstatement(statements,raisenode);
+          end;
+        left:=nil;
+        right:=nil;
+        third:=nil;
+      end;
+
+
+    function twasmraisenode.pass_1 : tnode;
+      begin
+        if ts_wasm_no_exceptions in current_settings.targetswitches then
+          result:=pass_1_no_exceptions
+        else if ts_wasm_native_exceptions in current_settings.targetswitches then
+          result:=pass_1_native_exceptions
+        else
+          result:=inherited;
+      end;
+
 {*****************************************************************************
                              twasmtryexceptnode
 *****************************************************************************}
 
-    procedure twasmtryexceptnode.pass_generate_code;
+    procedure twasmtryexceptnode.pass_generate_code_no_exceptions;
       begin
         location_reset(location,LOC_VOID,OS_NO);
-
-        current_asmdata.CurrAsmList.concat(tai_comment.Create(strpnew('TODO: try..except, try')));
-
         secondpass(left);
-        //if codegenerror then
-        //  goto errorexit;
+      end;
 
-        current_asmdata.CurrAsmList.concat(tai_comment.Create(strpnew('TODO: try..except, end')));
+    procedure twasmtryexceptnode.pass_generate_code_js_exceptions;
+      begin
+        internalerror(2021091706);
+      end;
+
+    procedure twasmtryexceptnode.pass_generate_code_native_exceptions;
+      begin
+        location_reset(location,LOC_VOID,OS_NO);
+        secondpass(left);
+      end;
+
+    procedure twasmtryexceptnode.pass_generate_code;
+      begin
+        if ts_wasm_no_exceptions in current_settings.targetswitches then
+          pass_generate_code_no_exceptions
+        else if ts_wasm_js_exceptions in current_settings.targetswitches then
+          pass_generate_code_js_exceptions
+        else if ts_wasm_native_exceptions in current_settings.targetswitches then
+          pass_generate_code_native_exceptions
+        else
+          internalerror(2021091705);
       end;
 
 {*****************************************************************************
                              twasmtryfinallynode
 *****************************************************************************}
 
-    procedure twasmtryfinallynode.pass_generate_code;
+    procedure twasmtryfinallynode.pass_generate_code_no_exceptions;
+      var
+        exitfinallylabel,
+        continuefinallylabel,
+        breakfinallylabel,
+        oldCurrExitLabel,
+        oldContinueLabel,
+        oldBreakLabel: tasmlabel;
+        oldLoopContBr: integer;
+        oldLoopBreakBr: integer;
+        oldExitBr: integer;
+        finallyexceptionstate: tcgexceptionstatehandler.texceptionstate;
+        excepttemps : tcgexceptionstatehandler.texceptiontemps;
+        exceptframekind: tcgexceptionstatehandler.texceptframekind;
+        in_loop: Boolean;
+
+        procedure generate_exceptreason_check_br(reason: tcgint; br: aint);
+          var
+            reasonreg : tregister;
+          begin
+            reasonreg:=hlcg.getintregister(current_asmdata.CurrAsmList,exceptionreasontype);
+            hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
+            thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
+            current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
+            thlcgwasm(hlcg).incblock;
+            thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,br+1));
+            current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+            thlcgwasm(hlcg).decblock;
+          end;
+
       begin
         location_reset(location,LOC_VOID,OS_NO);
+        oldBreakLabel:=nil;
+        oldContinueLabel:=nil;
+        continuefinallylabel:=nil;
+        breakfinallylabel:=nil;
+        oldLoopBreakBr:=0;
+        oldLoopContBr:=0;
 
-        current_asmdata.CurrAsmList.concat(tai_comment.Create(strpnew('TODO: try..finally, try')));
+        in_loop:=assigned(current_procinfo.CurrBreakLabel);
+
+        if not implicitframe then
+          exceptframekind:=tek_normalfinally
+        else
+          exceptframekind:=tek_implicitfinally;
+
+        { in 'no exceptions' mode, we still want to handle properly exit,
+          continue and break (they still need to execute the 'finally'
+          statements), so for this we need excepttemps.reasonbuf, and for this
+          reason, we need to allocate excepttemps }
+        cexceptionstatehandler.get_exception_temps(current_asmdata.CurrAsmList,excepttemps);
+        cexceptionstatehandler.new_exception(current_asmdata.CurrAsmList,excepttemps,exceptframekind,finallyexceptionstate);
+
+        { the finally block must catch break, continue and exit }
+        { statements                                            }
+
+        { the outer 'try..finally' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        { the 'exit' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        oldCurrExitLabel:=current_procinfo.CurrExitLabel;
+        oldExitBr:=thlcgwasm(hlcg).exitBr;
+        exitfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
+        current_procinfo.CurrExitLabel:=exitfinallylabel;
+        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
+
+        { the 'break' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        if in_loop then
+          begin
+            oldBreakLabel:=current_procinfo.CurrBreakLabel;
+            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
+            breakfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
+            current_procinfo.CurrBreakLabel:=breakfinallylabel;
+            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
+          end;
+
+        { the 'continue' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        if in_loop then
+          begin
+            oldContinueLabel:=current_procinfo.CurrContinueLabel;
+            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
+            continuefinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
+            current_procinfo.CurrContinueLabel:=continuefinallylabel;
+            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
+          end;
 
         { try code }
         if assigned(left) then
@@ -305,21 +491,293 @@ implementation
               exit;
           end;
 
-        current_asmdata.CurrAsmList.concat(tai_comment.Create(strpnew('TODO: try..finally, finally')));
+        { don't generate line info for internal cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
+
+        cexceptionstatehandler.end_try_block(current_asmdata.CurrAsmList,exceptframekind,excepttemps,finallyexceptionstate,nil);
+
+        { we've reached the end of the 'try' block, with no exceptions/exit/break/continue, so set exceptionreason:=0 }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,0,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,3)); // jump to the 'finally' section
+
+        { exit the 'continue' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=4 (continue) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,4,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,2)); // jump to the 'finally' section
+
+        { exit the 'break' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=3 (break) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,3,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1)); // jump to the 'finally' section
+
+        { exit the 'exit' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=2 (exit) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,2,excepttemps.reasonbuf);
+        { proceed to the 'finally' section, which follow immediately, no need for jumps }
+
+        { exit the outer 'try..finally' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+
+        { end cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
 
         { finally code (don't unconditionally set fc_inflowcontrol, since the
           finally code is unconditionally executed; we do have to filter out
           flags regarding break/contrinue/etc. because we have to give an
           error in case one of those is used in the finally-code }
-        //flowcontrol:=finallyexceptionstate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions];
+        flowcontrol:=finallyexceptionstate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions];
         secondpass(right);
         { goto is allowed if it stays inside the finally block,
           this is checked using the exception block number }
-        //if (flowcontrol-[fc_gotolabel])<>(finallyexceptionstate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions]) then
-        //  CGMessage(cg_e_control_flow_outside_finally);
+        if (flowcontrol-[fc_gotolabel])<>(finallyexceptionstate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions]) then
+          CGMessage(cg_e_control_flow_outside_finally);
         if codegenerror then
           exit;
-        current_asmdata.CurrAsmList.concat(tai_comment.Create(strpnew('TODO: try..finally, end')));
+
+        { don't generate line info for internal cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
+
+        if fc_exit in finallyexceptionstate.newflowcontrol then
+          generate_exceptreason_check_br(2,thlcgwasm(hlcg).br_blocks-oldExitBr);
+        if fc_break in finallyexceptionstate.newflowcontrol then
+          generate_exceptreason_check_br(3,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr);
+        if fc_continue in finallyexceptionstate.newflowcontrol then
+          generate_exceptreason_check_br(4,thlcgwasm(hlcg).br_blocks-oldLoopContBr);
+
+        cexceptionstatehandler.unget_exception_temps(current_asmdata.CurrAsmList,excepttemps);
+
+        { end cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
+
+        current_procinfo.CurrExitLabel:=oldCurrExitLabel;
+        thlcgwasm(hlcg).exitBr:=oldExitBr;
+        if assigned(current_procinfo.CurrBreakLabel) then
+         begin
+           current_procinfo.CurrContinueLabel:=oldContinueLabel;
+           thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
+           current_procinfo.CurrBreakLabel:=oldBreakLabel;
+           thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
+         end;
+        flowcontrol:=finallyexceptionstate.oldflowcontrol+(finallyexceptionstate.newflowcontrol-[fc_inflowcontrol,fc_catching_exceptions]);
+      end;
+
+    procedure twasmtryfinallynode.pass_generate_code_js_exceptions;
+      begin
+        internalerror(2021091702);
+      end;
+
+    procedure twasmtryfinallynode.pass_generate_code_native_exceptions;
+      var
+        exitfinallylabel,
+        continuefinallylabel,
+        breakfinallylabel,
+        oldCurrExitLabel,
+        oldContinueLabel,
+        oldBreakLabel: tasmlabel;
+        oldLoopContBr: integer;
+        oldLoopBreakBr: integer;
+        oldExitBr: integer;
+        finallyexceptionstate: tcgexceptionstatehandler.texceptionstate;
+        excepttemps : tcgexceptionstatehandler.texceptiontemps;
+        exceptframekind: tcgexceptionstatehandler.texceptframekind;
+        in_loop: Boolean;
+
+      procedure generate_exceptreason_check_br(reason: tcgint; br: aint);
+        var
+          reasonreg : tregister;
+        begin
+          reasonreg:=hlcg.getintregister(current_asmdata.CurrAsmList,exceptionreasontype);
+          hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
+          thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
+          current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
+          thlcgwasm(hlcg).incblock;
+          thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+          current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,br+1));
+          current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+          thlcgwasm(hlcg).decblock;
+        end;
+
+      begin
+        location_reset(location,LOC_VOID,OS_NO);
+        oldBreakLabel:=nil;
+        oldContinueLabel:=nil;
+        continuefinallylabel:=nil;
+        breakfinallylabel:=nil;
+        oldLoopBreakBr:=0;
+        oldLoopContBr:=0;
+
+        in_loop:=assigned(current_procinfo.CurrBreakLabel);
+
+        if not implicitframe then
+          exceptframekind:=tek_normalfinally
+        else
+          exceptframekind:=tek_implicitfinally;
+
+        { in 'no exceptions' mode, we still want to handle properly exit,
+          continue and break (they still need to execute the 'finally'
+          statements), so for this we need excepttemps.reasonbuf, and for this
+          reason, we need to allocate excepttemps }
+        cexceptionstatehandler.get_exception_temps(current_asmdata.CurrAsmList,excepttemps);
+        cexceptionstatehandler.new_exception(current_asmdata.CurrAsmList,excepttemps,exceptframekind,finallyexceptionstate);
+
+        { the finally block must catch break, continue and exit }
+        { statements                                            }
+
+        { the outer 'try..finally' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        { the 'exit' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        oldCurrExitLabel:=current_procinfo.CurrExitLabel;
+        oldExitBr:=thlcgwasm(hlcg).exitBr;
+        exitfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
+        current_procinfo.CurrExitLabel:=exitfinallylabel;
+        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
+
+        { the 'break' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        if in_loop then
+          begin
+            oldBreakLabel:=current_procinfo.CurrBreakLabel;
+            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
+            breakfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
+            current_procinfo.CurrBreakLabel:=breakfinallylabel;
+            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
+          end;
+
+        { the 'continue' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
+        thlcgwasm(hlcg).incblock;
+
+        if in_loop then
+          begin
+            oldContinueLabel:=current_procinfo.CurrContinueLabel;
+            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
+            continuefinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
+            current_procinfo.CurrContinueLabel:=continuefinallylabel;
+            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
+          end;
+
+        { the inner 'try..end_try' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
+        thlcgwasm(hlcg).incblock;
+
+        { try code }
+        if assigned(left) then
+          begin
+            secondpass(left);
+            if codegenerror then
+              exit;
+          end;
+
+        { don't generate line info for internal cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
+
+        cexceptionstatehandler.end_try_block(current_asmdata.CurrAsmList,exceptframekind,excepttemps,finallyexceptionstate,nil);
+
+        { we've reached the end of the 'try' block, with no exceptions/exit/break/continue, so set exceptionreason:=0 }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,0,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,4)); // jump to the 'finally' section
+
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_catch));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=1 (exception) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,1,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,3)); // jump to the 'finally' section
+
+        { exit the inner 'try..end_try' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
+
+        { exit the 'continue' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=4 (continue) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,4,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,2)); // jump to the 'finally' section
+
+        { exit the 'break' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=3 (break) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,3,excepttemps.reasonbuf);
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1)); // jump to the 'finally' section
+
+        { exit the 'exit' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+        { exceptionreason:=2 (exit) }
+        hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,2,excepttemps.reasonbuf);
+        { proceed to the 'finally' section, which follow immediately, no need for jumps }
+
+        { exit the outer 'try..finally' block }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
+        thlcgwasm(hlcg).decblock;
+
+        { end cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
+
+        { finally code (don't unconditionally set fc_inflowcontrol, since the
+          finally code is unconditionally executed; we do have to filter out
+          flags regarding break/contrinue/etc. because we have to give an
+          error in case one of those is used in the finally-code }
+        flowcontrol:=finallyexceptionstate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions];
+        secondpass(right);
+        { goto is allowed if it stays inside the finally block,
+          this is checked using the exception block number }
+        if (flowcontrol-[fc_gotolabel])<>(finallyexceptionstate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions]) then
+          CGMessage(cg_e_control_flow_outside_finally);
+        if codegenerror then
+          exit;
+
+        { don't generate line info for internal cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
+
+        if fc_exit in finallyexceptionstate.newflowcontrol then
+          generate_exceptreason_check_br(2,thlcgwasm(hlcg).br_blocks-oldExitBr);
+        if fc_break in finallyexceptionstate.newflowcontrol then
+          generate_exceptreason_check_br(3,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr);
+        if fc_continue in finallyexceptionstate.newflowcontrol then
+          generate_exceptreason_check_br(4,thlcgwasm(hlcg).br_blocks-oldLoopContBr);
+
+        cexceptionstatehandler.unget_exception_temps(current_asmdata.CurrAsmList,excepttemps);
+
+        { end cleanup }
+        current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
+
+        current_procinfo.CurrExitLabel:=oldCurrExitLabel;
+        thlcgwasm(hlcg).exitBr:=oldExitBr;
+        if assigned(current_procinfo.CurrBreakLabel) then
+         begin
+           current_procinfo.CurrContinueLabel:=oldContinueLabel;
+           thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
+           current_procinfo.CurrBreakLabel:=oldBreakLabel;
+           thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
+         end;
+        flowcontrol:=finallyexceptionstate.oldflowcontrol+(finallyexceptionstate.newflowcontrol-[fc_inflowcontrol,fc_catching_exceptions]);
+      end;
+
+    procedure twasmtryfinallynode.pass_generate_code;
+      begin
+        if ts_wasm_no_exceptions in current_settings.targetswitches then
+          pass_generate_code_no_exceptions
+        else if ts_wasm_js_exceptions in current_settings.targetswitches then
+          pass_generate_code_js_exceptions
+        else if ts_wasm_native_exceptions in current_settings.targetswitches then
+          pass_generate_code_native_exceptions
+        else
+          internalerror(2021091704);
       end;
 
 initialization

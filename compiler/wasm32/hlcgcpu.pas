@@ -72,6 +72,8 @@ uses
       procedure a_load_ref_reg(list : TAsmList;fromsize, tosize : tdef;const ref : treference;register : tregister);override;
       procedure a_load_ref_ref(list : TAsmList;fromsize, tosize : tdef;const sref : treference;const dref : treference);override;
       procedure a_loadaddr_ref_reg(list : TAsmList;fromsize, tosize : tdef;const ref : treference;r : tregister);override;
+      procedure a_load_subsetref_regs_index(list: TAsmList; subsetsize: tdef; loadbitsize: byte; const sref: tsubsetreference; valuereg: tregister); override;
+      procedure a_load_regconst_subsetref_intern(list : TAsmList; fromsize, subsetsize: tdef; fromreg: tregister; const sref: tsubsetreference; slopt: tsubsetloadopt); override;
 
       { basic arithmetic operations }
       procedure a_op_const_reg(list: TAsmList; Op: TOpCG; size: tdef; a: tcgint; reg: TRegister); override;
@@ -96,6 +98,8 @@ uses
       procedure a_loadfpu_ref_reg(list: TAsmList; fromsize, tosize: tdef; const ref: treference; reg: tregister); override;
       procedure a_loadfpu_reg_ref(list: TAsmList; fromsize, tosize: tdef; reg: tregister; const ref: treference); override;
       procedure a_loadfpu_reg_reg(list: TAsmList; fromsize, tosize: tdef; reg1, reg2: tregister); override;
+
+      procedure g_unreachable(list: TAsmList); override;
 
       procedure g_concatcopy(list : TAsmList;size: tdef; const source,dest : treference); override;
 
@@ -291,6 +295,7 @@ implementation
     begin
       fevalstackheight:=0;
       fmaxevalstackheight:=0;
+      br_blocks:=0;
       fntypelookup:=TWasmProcTypeLookup.Create;
     end;
 
@@ -314,6 +319,13 @@ implementation
 
   procedure thlcgwasm.incstack(list: TAsmList; slots: longint);
     begin
+      if (fevalstackheight<0) and
+         not(cs_no_regalloc in current_settings.globalswitches) then
+{$ifdef DEBUG_WASMSTACK}
+        list.concat(tai_comment.Create(strpnew('!!! stack underflow')));
+{$else DEBUG_WASMSTACK}
+        internalerror(2010120501);
+{$endif DEBUG_WASMSTACK}
       if slots=0 then
         exit;
       inc(fevalstackheight,slots);
@@ -330,7 +342,11 @@ implementation
       dec(fevalstackheight,slots);
       if (fevalstackheight<0) and
          not(cs_no_regalloc in current_settings.globalswitches) then
+{$ifdef DEBUG_WASMSTACK}
+        list.concat(tai_comment.Create(strpnew('!!! stack underflow')));
+{$else DEBUG_WASMSTACK}
         internalerror(2010120501);
+{$endif DEBUG_WASMSTACK}
       if cs_asm_regalloc in current_settings.globalswitches then
         list.concat(tai_comment.Create(strpnew('    freed '+tostr(slots)+', stack height = '+tostr(fevalstackheight))));
     end;
@@ -1169,6 +1185,289 @@ implementation
       a_load_stack_reg(list, tosize, r);
     end;
 
+  procedure thlcgwasm.a_load_subsetref_regs_index(list: TAsmList; subsetsize: tdef; loadbitsize: byte; const sref: tsubsetreference; valuereg: tregister);
+    var
+      tmpref: treference;
+      extra_value_reg,
+      tmpreg: tregister;
+    begin
+      tmpreg:=getintregister(list,osuinttype);
+      tmpref:=sref.ref;
+      inc(tmpref.offset,loadbitsize div 8);
+      extra_value_reg:=getintregister(list,osuinttype);
+
+      a_op_reg_reg(list,OP_SHR,osuinttype,sref.bitindexreg,valuereg);
+
+      { ensure we don't load anything past the end of the array }
+      a_cmp_const_reg_stack(list,osuinttype,OC_A,loadbitsize-sref.bitlen,sref.bitindexreg);
+
+      current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
+      incblock;
+      decstack(current_asmdata.CurrAsmList,1);
+
+      { Y-x = -(Y-x) }
+      a_op_const_reg_reg(list,OP_SUB,osuinttype,loadbitsize,sref.bitindexreg,tmpreg);
+      a_op_reg_reg(list,OP_NEG,osuinttype,tmpreg,tmpreg);
+
+      { load next "loadbitsize" bits of the array }
+      a_load_ref_reg(list,cgsize_orddef(int_cgsize(loadbitsize div 8)),osuinttype,tmpref,extra_value_reg);
+
+      { tmpreg is in the range 1..<cpu_bitsize>-1 -> always ok }
+      a_op_reg_reg(list,OP_SHL,osuinttype,tmpreg,extra_value_reg);
+      { merge }
+      a_op_reg_reg(list,OP_OR,osuinttype,extra_value_reg,valuereg);
+
+      current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+      decblock;
+
+      { sign extend or mask other bits }
+      if is_signed(subsetsize) then
+        begin
+          a_op_const_reg(list,OP_SHL,osuinttype,AIntBits-sref.bitlen,valuereg);
+          a_op_const_reg(list,OP_SAR,osuinttype,AIntBits-sref.bitlen,valuereg);
+        end
+      else
+        a_op_const_reg(list,OP_AND,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),valuereg);
+    end;
+
+  procedure thlcgwasm.a_load_regconst_subsetref_intern(list : TAsmList; fromsize, subsetsize: tdef; fromreg: tregister; const sref: tsubsetreference; slopt: tsubsetloadopt);
+    var
+      tmpreg, tmpindexreg, valuereg, extra_value_reg, maskreg: tregister;
+      tosreg, fromsreg: tsubsetregister;
+      tmpref: treference;
+      bitmask: aword;
+      loadsize: torddef;
+      loadbitsize: byte;
+      extra_load: boolean;
+    begin
+      { the register must be able to contain the requested value }
+      if (fromsize.size*8<sref.bitlen) then
+        internalerror(2006081613);
+
+      get_subsetref_load_info(sref,loadsize,extra_load);
+      loadbitsize:=loadsize.size*8;
+
+      { load the (first part) of the bit sequence }
+      valuereg:=getintregister(list,osuinttype);
+      a_load_ref_reg(list,loadsize,osuinttype,sref.ref,valuereg);
+
+      { constant offset of bit sequence? }
+      if not extra_load then
+        begin
+          if (sref.bitindexreg=NR_NO) then
+            begin
+              { use subsetreg routine, it may have been overridden with an optimized version }
+              tosreg.subsetreg:=valuereg;
+              tosreg.subsetregsize:=def_cgsize(osuinttype);
+              { subsetregs always count bits from right to left }
+              tosreg.startbit:=sref.startbit;
+              tosreg.bitlen:=sref.bitlen;
+              a_load_regconst_subsetreg_intern(list,fromsize,subsetsize,fromreg,tosreg,slopt);
+            end
+          else
+            begin
+              if (sref.startbit<>0) then
+                internalerror(2006081710);
+              { should be handled by normal code and will give wrong result }
+              { on x86 for the '1 shl bitlen' below                         }
+              if (sref.bitlen=AIntBits) then
+                internalerror(2006081711);
+
+              { zero the bits we have to insert }
+              if (slopt<>SL_SETMAX) then
+                begin
+                  maskreg:=getintregister(list,osuinttype);
+                  a_load_const_reg(list,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),maskreg);
+                  a_op_reg_reg(list,OP_SHL,osuinttype,sref.bitindexreg,maskreg);
+                  a_op_reg_reg(list,OP_NOT,osuinttype,maskreg,maskreg);
+                  a_op_reg_reg(list,OP_AND,osuinttype,maskreg,valuereg);
+                end;
+
+              { insert the value }
+              if (slopt<>SL_SETZERO) then
+                begin
+                  tmpreg:=getintregister(list,osuinttype);
+                  if (slopt<>SL_SETMAX) then
+                    a_load_reg_reg(list,fromsize,osuinttype,fromreg,tmpreg)
+                  else if (sref.bitlen<>AIntBits) then
+                    a_load_const_reg(list,osuinttype,tcgint((aword(1) shl sref.bitlen)-1), tmpreg)
+                  else
+                    a_load_const_reg(list,osuinttype,-1,tmpreg);
+                  if not(slopt in [SL_REGNOSRCMASK,SL_SETMAX]) then
+                    a_op_const_reg(list,OP_AND,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),tmpreg);
+                  a_op_reg_reg(list,OP_SHL,osuinttype,sref.bitindexreg,tmpreg);
+                  a_op_reg_reg(list,OP_OR,osuinttype,tmpreg,valuereg);
+                end;
+            end;
+          { store back to memory }
+          tmpreg:=getintregister(list,loadsize);
+          a_load_reg_reg(list,osuinttype,loadsize,valuereg,tmpreg);
+          a_load_reg_ref(list,loadsize,loadsize,tmpreg,sref.ref);
+          exit;
+        end
+      else
+        begin
+          { load next value }
+          extra_value_reg:=getintregister(list,osuinttype);
+          tmpref:=sref.ref;
+          inc(tmpref.offset,loadbitsize div 8);
+
+          { should maybe be taken out too, can be done more efficiently }
+          { on e.g. i386 with shld/shrd                                 }
+          if (sref.bitindexreg = NR_NO) then
+            begin
+              a_load_ref_reg(list,loadsize,osuinttype,tmpref,extra_value_reg);
+
+              fromsreg.subsetreg:=fromreg;
+              fromsreg.subsetregsize:=def_cgsize(fromsize);
+              tosreg.subsetreg:=valuereg;
+              tosreg.subsetregsize:=def_cgsize(osuinttype);
+
+              { transfer first part }
+              fromsreg.bitlen:=loadbitsize-sref.startbit;
+              tosreg.bitlen:=fromsreg.bitlen;
+
+              { valuereg must contain the lower bits of the value at bits [startbit..loadbitsize] }
+
+              { lower bits of the value ... }
+              fromsreg.startbit:=0;
+              { ... to startbit }
+              tosreg.startbit:=sref.startbit;
+              case slopt of
+                SL_SETZERO,
+                SL_SETMAX:
+                  a_load_regconst_subsetreg_intern(list,fromsize,subsetsize,fromreg,tosreg,slopt);
+                else
+                  a_load_subsetreg_subsetreg(list,subsetsize,subsetsize,fromsreg,tosreg);
+              end;
+{$ifndef cpuhighleveltarget}
+              valuereg:=cg.makeregsize(list,valuereg,def_cgsize(loadsize));
+              a_load_reg_ref(list,loadsize,loadsize,valuereg,sref.ref);
+{$else}
+              tmpreg:=getintregister(list,loadsize);
+              a_load_reg_reg(list,osuinttype,loadsize,valuereg,tmpreg);
+              a_load_reg_ref(list,loadsize,loadsize,tmpreg,sref.ref);
+{$endif}
+
+              { transfer second part }
+              { extra_value_reg must contain the upper bits of the value at bits [0..bitlen-(loadbitsize-startbit)] }
+
+              fromsreg.startbit:=fromsreg.bitlen;
+              tosreg.startbit:=0;
+              tosreg.subsetreg:=extra_value_reg;
+              fromsreg.bitlen:=sref.bitlen-fromsreg.bitlen;
+              tosreg.bitlen:=fromsreg.bitlen;
+
+              case slopt of
+                SL_SETZERO,
+                SL_SETMAX:
+                  a_load_regconst_subsetreg_intern(list,fromsize,subsetsize,fromreg,tosreg,slopt);
+                else
+                  a_load_subsetreg_subsetreg(list,subsetsize,subsetsize,fromsreg,tosreg);
+              end;
+              tmpreg:=getintregister(list,loadsize);
+              a_load_reg_reg(list,osuinttype,loadsize,extra_value_reg,tmpreg);
+              a_load_reg_ref(list,loadsize,loadsize,tmpreg,tmpref);
+              exit;
+            end
+          else
+            begin
+              if (sref.startbit <> 0) then
+                internalerror(2006081812);
+              { should be handled by normal code and will give wrong result }
+              { on x86 for the '1 shl bitlen' below                         }
+              if (sref.bitlen = AIntBits) then
+                internalerror(2006081713);
+
+              { generate mask to zero the bits we have to insert }
+              if (slopt <> SL_SETMAX) then
+                begin
+                  maskreg := getintregister(list,osuinttype);
+                  a_load_const_reg(list,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),maskreg);
+                  a_op_reg_reg(list,OP_SHL,osuinttype,sref.bitindexreg,maskreg);
+
+                  a_op_reg_reg(list,OP_NOT,osuinttype,maskreg,maskreg);
+                  a_op_reg_reg(list,OP_AND,osuinttype,maskreg,valuereg);
+                end;
+
+              { insert the value }
+              if (slopt <> SL_SETZERO) then
+                begin
+                  tmpreg := getintregister(list,osuinttype);
+                  if (slopt <> SL_SETMAX) then
+                    a_load_reg_reg(list,fromsize,osuinttype,fromreg,tmpreg)
+                  else if (sref.bitlen <> AIntBits) then
+                    a_load_const_reg(list,osuinttype,tcgint((aword(1) shl sref.bitlen) - 1), tmpreg)
+                  else
+                    a_load_const_reg(list,osuinttype,-1,tmpreg);
+                  if not(slopt in [SL_REGNOSRCMASK,SL_SETMAX]) then
+                    { mask left over bits }
+                    a_op_const_reg(list,OP_AND,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),tmpreg);
+                  a_op_reg_reg(list,OP_SHL,osuinttype,sref.bitindexreg,tmpreg);
+                  a_op_reg_reg(list,OP_OR,osuinttype,tmpreg,valuereg);
+                end;
+              tmpreg:=getintregister(list,loadsize);
+              a_load_reg_reg(list,osuinttype,loadsize,valuereg,tmpreg);
+              a_load_reg_ref(list,loadsize,loadsize,tmpreg,sref.ref);
+
+              { make sure we do not read/write past the end of the array }
+              a_cmp_const_reg_stack(list,osuinttype,OC_A,loadbitsize-sref.bitlen,sref.bitindexreg);
+              current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
+              incblock;
+              decstack(current_asmdata.CurrAsmList,1);
+
+              a_load_ref_reg(list,loadsize,osuinttype,tmpref,extra_value_reg);
+              tmpindexreg:=getintregister(list,osuinttype);
+
+              { load current array value }
+              if (slopt<>SL_SETZERO) then
+                begin
+                  tmpreg:=getintregister(list,osuinttype);
+                  if (slopt<>SL_SETMAX) then
+                     a_load_reg_reg(list,fromsize,osuinttype,fromreg,tmpreg)
+                  else if (sref.bitlen<>AIntBits) then
+                    a_load_const_reg(list,osuinttype,tcgint((aword(1) shl sref.bitlen) - 1), tmpreg)
+                  else
+                    a_load_const_reg(list,osuinttype,-1,tmpreg);
+                end;
+
+              { generate mask to zero the bits we have to insert }
+              if (slopt<>SL_SETMAX) then
+                begin
+                  maskreg:=getintregister(list,osuinttype);
+
+                  { Y-x = -(x-Y) }
+                  a_op_const_reg_reg(list,OP_SUB,osuinttype,loadbitsize,sref.bitindexreg,tmpindexreg);
+                  a_op_reg_reg(list,OP_NEG,osuinttype,tmpindexreg,tmpindexreg);
+                  a_load_const_reg(list,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),maskreg);
+                  a_op_reg_reg(list,OP_SHR,osuinttype,tmpindexreg,maskreg);
+
+                  a_op_reg_reg(list,OP_NOT,osuinttype,maskreg,maskreg);
+                  a_op_reg_reg(list,OP_AND,osuinttype,maskreg,extra_value_reg);
+                end;
+
+              if (slopt<>SL_SETZERO) then
+                begin
+                  if not(slopt in [SL_REGNOSRCMASK,SL_SETMAX]) then
+                    a_op_const_reg(list,OP_AND,osuinttype,tcgint((aword(1) shl sref.bitlen)-1),tmpreg);
+                  a_op_reg_reg(list,OP_SHR,osuinttype,tmpindexreg,tmpreg);
+                  a_op_reg_reg(list,OP_OR,osuinttype,tmpreg,extra_value_reg);
+                end;
+{$ifndef cpuhighleveltarget}
+              extra_value_reg:=cg.makeregsize(list,extra_value_reg,def_cgsize(loadsize));
+              a_load_reg_ref(list,loadsize,loadsize,extra_value_reg,tmpref);
+{$else}
+              tmpreg:=getintregister(list,loadsize);
+              a_load_reg_reg(list,osuinttype,loadsize,extra_value_reg,tmpreg);
+              a_load_reg_ref(list,loadsize,loadsize,tmpreg,tmpref);
+{$endif}
+
+              current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+              decblock;
+            end;
+        end;
+    end;
+
   procedure thlcgwasm.a_op_const_reg(list: TAsmList; Op: TOpCG; size: tdef; a: tcgint; reg: TRegister);
     begin
       a_op_const_reg_reg(list,op,size,a,reg,reg);
@@ -1395,6 +1694,11 @@ implementation
       a_load_reg_stack(list,fromsize,reg1);
       resizestackfpuval(list,def_cgsize(fromsize),def_cgsize(tosize));
       a_load_stack_reg(list,tosize,reg2);
+    end;
+
+  procedure thlcgwasm.g_unreachable(list: TAsmList);
+    begin
+      list.Concat(taicpu.op_none(a_unreachable));
     end;
 
   procedure thlcgwasm.g_concatcopy(list: TAsmList; size: tdef; const source, dest: treference);
@@ -1744,7 +2048,11 @@ implementation
       list.concat(taicpu.op_none(a_end_block));
       decblock;
       if fevalstackheight<>0 then
+{$ifdef DEBUG_WASMSTACK}
         list.concat(tai_comment.Create(strpnew('!!! values remaining on stack at end of block !!!')));
+{$else DEBUG_WASMSTACK}
+        internalerror(2021091801);
+{$endif DEBUG_WASMSTACK}
       inherited;
     end;
 
@@ -1867,9 +2175,12 @@ implementation
     end;
 
   procedure thlcgwasm.a_load_subsetref_stack(list : TAsmList;size: tdef; const sref: tsubsetreference);
+    var
+      tmpreg: TRegister;
     begin
-      { todo: implement }
-      internalerror(2021080901);
+      tmpreg:=getintregister(list,size);
+      a_load_subsetref_reg(list,size,size,sref,tmpreg);
+      a_load_reg_stack(list,size,tmpreg);
     end;
 
   function thlcgwasm.loadstoreopcref(def: tdef; isload: boolean; const ref: treference; out finishandval: tcgint): tasmop;
@@ -2080,8 +2391,6 @@ implementation
       else
         ft:=tcpuprocdef(pd).create_functype;
       totalremovesize:=Length(ft.params)-Length(ft.results);
-      if Length(ft.results)=0 then
-        dec(totalremovesize);
       { remove parameters from internal evaluation stack counter (in case of
         e.g. no parameters and a result, it can also increase) }
       if totalremovesize>0 then

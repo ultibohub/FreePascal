@@ -100,6 +100,7 @@ Type
     FPassword:String;
     FEcho:Boolean;
     FMaxAge: integer;
+    FInterfaceAddress : String;
     procedure AddToStatus(O: TJSONObject);
     procedure DoEcho(ARequest: TRequest; AResponse: TResponse);
     procedure DoProxyLog(Sender: TObject; const aMethod, aLocation, aFromURL, aToURL: String);
@@ -133,6 +134,7 @@ Type
     Property MimeFile : String Read FMimeFile;
     Property NoIndexPage : Boolean Read FNoIndexPage Write FNoIndexPage;
     Property IndexPageName : String Read FIndexPageName Write FIndexPageName;
+    Property InterfaceAddress : String Read FInterfaceAddress Write FInterfaceAddress;
   end;
 
 
@@ -281,6 +283,7 @@ begin
   Writeln('                         Default is current working directory: ',GetCurrentDir);
   Writeln('-h --help                This help text');
   Writeln('-i --indexpage=name      Directory index page to use (default: index.html)');
+  Writeln('-I --interface=IP        Listen on this interface address only.');
   Writeln('-m --mimetypes=file      Set Filename for loading mimetypes. Default is ',GetDefaultMimeTypesFile);
   Writeln('-n --noindexpage         Do not allow index page.');
   Writeln('-p --port=NNNN           TCP/IP port to listen on (default is 3000)');
@@ -580,7 +583,9 @@ begin
     exit;
   Msg:=Format('(Proxy redirect) location: %s, Method: %s, From: %s, to: %s',[aLocation,aMethod,aFromURl,atoURL]);
   if IsConsole then
+    {AllowWriteln}
     Writeln(FormatDateTime('yyyy-mm-dd hh:nn:ss.zzz',Now),' [',etInfo,'] ',Msg)
+    {AllowWriteln-}
   else
     inherited DoLog(etInfo, Msg);
 end;
@@ -639,6 +644,7 @@ Const
   SLocations = 'Locations';
 
   KeyPort  = 'Port';
+  KeyInterface = 'Interface';   
   KeyDir   = 'Directory';
   KeyIndexPage = 'IndexPage';
   KeyHostName = 'hostname';
@@ -664,6 +670,7 @@ begin
     try
       FBaseDir:=ReadString(SConfig,KeyDir,BaseDir);
       Port:=ReadInteger(SConfig,KeyPort,Port);
+      InterfaceAddress:=ReadString(SConfig,KeyInterface,InterfaceAddress);
       Quiet:=ReadBool(SConfig,KeyQuiet,Quiet);
       FMimeFile:=ReadString(SConfig,keyMimetypes,MimeFile);
       NoIndexPage:=ReadBool(SConfig,KeyNoIndexPage,NoIndexPage);
@@ -717,6 +724,7 @@ begin
     D:=GetCurrentDir;
   if HasOption('m','mimetypes') then
     MimeTypesFile:=GetOptionValue('m','mimetypes');
+    
   if MimeTypesFile='' then
     begin
     MimeTypesFile:=GetDefaultMimeTypesFile;
@@ -740,6 +748,8 @@ begin
   NoIndexPage:=NoIndexPage or HasOption('n','noindexpage');
   if HasOption('i','indexpage') then
     IndexPage:=GetOptionValue('i','indexpage');
+  if HasOption('I','interface') then
+    InterfaceAddress:=GetOptionValue('I','interface');   
   If not NoIndexPage then
     begin
     if (IndexPage='') then
@@ -794,8 +804,14 @@ begin
     httprouter.RegisterRoute('$sys/status',rmGet,@DoStatusRequest);
     end;
   if FAPI<>'' then
+    {$IF FPC_FULLVERSION > 30300}
     TFPWebFileLocationAPIModule.RegisterFileLocationAPI(ExtractWord(1,FAPI,[',']),ExtractWord(2,FAPI,[',']));
+    {$ELSE}
+    Log(etError,'API support missing, Compile with fpc 3.3.1+');
+    {$ENDIF}
   TSimpleFileModule.RegisterDefaultRoute;
+  if InterfaceAddress<>'' then
+    HTTPHandler.Address:=InterfaceAddress;
   inherited;
 end;
 
