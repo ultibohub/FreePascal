@@ -1268,7 +1268,7 @@ var rtl = {
     if (rtl.debug_rtti) rtl.debug('initRTTI');
 
     // base types
-    rtl.tTypeInfo = { name: "tTypeInfo" };
+    rtl.tTypeInfo = { name: "tTypeInfo", kind: 0, $module: null, attr: null };
     function newBaseTI(name,kind,ancestor){
       if (!ancestor) ancestor = rtl.tTypeInfo;
       if (rtl.debug_rtti) rtl.debug('initRTTI.newBaseTI "'+name+'" '+kind+' ("'+ancestor.name+'")');
@@ -1311,7 +1311,7 @@ var rtl = {
     newBaseTI("tTypeInfoRefToProcVar",17 /* tkRefToProcVar */,rtl.tTypeInfoProcVar);
 
     // member kinds
-    rtl.tTypeMember = {};
+    rtl.tTypeMember = { attr: null };
     function newMember(name,kind){
       var m = Object.create(rtl.tTypeMember);
       m.name = name;
@@ -1377,7 +1377,7 @@ var rtl = {
       t.getter = getter;
       t.setter = setter;
       // Note: in options: params, stored, defaultvalue
-      if (rtl.isArray(t.params)) t.params = rtl.newTIParams(t.params);
+      t.params = rtl.isArray(t.params) ? rtl.newTIParams(t.params) : null;
       this.properties.push(name);
       if (!rtl.isString(t.stored)) t.stored = "";
       return t;

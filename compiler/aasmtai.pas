@@ -92,10 +92,13 @@ interface
           ait_llvmmetadatarefoperand, { llvm metadata referece: !metadataname !id }
 {$endif}
 {$ifdef wasm}
-          ait_importexport,
+          ait_export_name,
           ait_local,
+          ait_globaltype,
           ait_functype,
           ait_tagtype,
+          ait_import_module,
+          ait_import_name,
 {$endif}
           { SEH directives used in ARM,MIPS and x86_64 COFF targets }
           ait_seh_directive,
@@ -240,10 +243,13 @@ interface
           'llvmmetadatarefop',
 {$endif}
 {$ifdef wasm}
-          'importexport',
+          'export_name',
           'local',
+          'globaltype',
           'functype',
           'tagtype',
+          'import_module',
+          'import_name',
 {$endif}
           'cfi',
           'seh_directive',
@@ -359,7 +365,13 @@ interface
                      ait_llvmmetadatarefoperand,
 {$endif llvm}
 {$ifdef wasm}
-                     ait_importexport,ait_local,ait_functype,ait_tagtype,
+                     ait_export_name,
+                     ait_local,
+                     ait_globaltype,
+                     ait_functype,
+                     ait_tagtype,
+                     ait_import_module,
+                     ait_import_name,
 {$endif wasm}
                      ait_seh_directive,
                      ait_cfi,
@@ -427,8 +439,6 @@ interface
           ash_nop,
           ash_pushnv,ash_savenv
         );
-
-      TSymbolPairKind = (spk_set, spk_set_global, spk_thumb_set, spk_localentry);
 
 
     const
@@ -3628,9 +3638,11 @@ implementation
 {$endif JVM}
 
 begin
+{$ifndef WASM}
 {$push}{$warnings off}
   { taitype should fit into a 4 byte set for speed reasons }
   if ord(high(taitype))>31 then
     internalerror(201108181);
 {$pop}
+{$endif WASM}
 end.

@@ -959,6 +959,63 @@ implementation
              left:=nil;
              exit;
           end;
+        if is_real(left.resultdef) then
+          begin
+            {
+              -(left-right) => right-left
+
+              As this result in -(1.0-1.0)=0.0 instead of 0.0, this is only valid in fastmath mode
+            }
+            if (cs_opt_fastmath in current_settings.optimizerswitches) and (left.nodetype=subn) then
+              begin
+                result:=caddnode.create(subn,taddnode(left).right.getcopy,taddnode(left).left.getcopy);
+                exit;
+              end;
+
+            {
+              -(-left*right) or -(left*-right) => right*left
+
+              this operation is always valid as reals do not use a two's complement representation for negative
+              numbers, -real means just flip the sign bit
+            }
+            if (left.nodetype=muln) and ((taddnode(left).left.nodetype=unaryminusn)) then
+              begin
+                result:=caddnode.create(muln,tunaryminusnode(taddnode(left).left).left.getcopy,taddnode(left).right.getcopy);
+                exit;
+              end;
+            if (left.nodetype=muln) and ((taddnode(left).right.nodetype=unaryminusn)) then
+              begin
+                result:=caddnode.create(muln,taddnode(left).left.getcopy,tunaryminusnode(taddnode(left).right).left.getcopy);
+                exit;
+              end;
+
+            {
+              -(-left/right) or -(left/-right) => right/left
+
+              this operation is always valid as reals do not use a two's complement representation for negative
+              numbers, -real means just flip the sign bit
+            }
+            if (left.nodetype=slashn) and ((taddnode(left).left.nodetype=unaryminusn)) then
+              begin
+                result:=caddnode.create(slashn,tunaryminusnode(taddnode(left).left).left.getcopy,taddnode(left).right.getcopy);
+                exit;
+              end;
+            if (left.nodetype=slashn) and ((taddnode(left).right.nodetype=unaryminusn)) then
+              begin
+                result:=caddnode.create(slashn,taddnode(left).left.getcopy,tunaryminusnode(taddnode(left).right).left.getcopy);
+                exit;
+              end;
+
+            { --node => node
+              this operation is always valid as reals do not use a two's complement representation for negative
+              numbers, -real means just flip the sign bit
+            }
+            if left.nodetype=unaryminusn then
+              begin
+                result:=tunarynode(left).left.getcopy;
+                exit;
+              end;
+          end;
       end;
 
 

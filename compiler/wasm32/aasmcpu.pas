@@ -83,17 +83,13 @@ uses
         ie_Global  // global variables
       );
 
-      // the actual use is defined by the assembly section used
+      { tai_export_name }
 
-      { timpexp_ai }
-
-      tai_impexp = class(tai)
+      tai_export_name = class(tai)
         extname : ansistring; // external name
         intname : ansistring; // internal name
-        extmodule : ansistring; // external unit name
         symstype: TImpExpType;
-        constructor create(const aextname, aintname: ansistring; asymtype: timpexptype); overload;
-        constructor create(const aextmodule, aextname, aintname: ansistring; asymtype: timpexptype); overload;
+        constructor create(const aextname, aintname: ansistring; asymtype: timpexptype);
       end;
 
       // local variable declaration
@@ -106,6 +102,14 @@ uses
         first: boolean;
         last: boolean;
         constructor create(abasictype: TWasmBasicType; const aname: string = '');
+      end;
+
+      { tai_globaltype }
+
+      tai_globaltype = class(tai)
+        globalname: string;
+        gtype: TWasmBasicType;
+        constructor create(const aglobalname:string; atype: TWasmBasicType);
       end;
 
       { tai_functype }
@@ -125,6 +129,22 @@ uses
         constructor create(const atagname: string; aparams: TWasmResultType);
       end;
 
+      { tai_import_module }
+
+      tai_import_module = class(tai)
+        symname: string;
+        importmodule: string;
+        constructor create(const asymname, aimportmodule: string);
+      end;
+
+      { tai_import_name }
+
+      tai_import_name = class(tai)
+        symname: string;
+        importname: string;
+        constructor create(const asymname, aimportname: string);
+      end;
+
     procedure InitAsm;
     procedure DoneAsm;
 
@@ -132,6 +152,39 @@ uses
     function spilling_create_store(r:tregister; const ref:treference):Taicpu;
 
 implementation
+
+uses
+  ogwasm;
+
+    { tai_globaltype }
+
+    constructor tai_globaltype.create(const aglobalname: string; atype: TWasmBasicType);
+      begin
+        inherited Create;
+        typ:=ait_globaltype;
+        globalname:=aglobalname;
+        gtype:=atype;
+      end;
+
+    { tai_import_name }
+
+    constructor tai_import_name.create(const asymname, aimportname: string);
+      begin
+        inherited Create;
+        typ:=ait_import_name;
+        symname:=asymname;
+        importname:=aimportname;
+      end;
+
+    { tai_import_module }
+
+    constructor tai_import_module.create(const asymname, aimportmodule: string);
+      begin
+        inherited Create;
+        typ:=ait_import_module;
+        symname:=asymname;
+        importmodule:=aimportmodule;
+      end;
 
     { tai_functype }
 
@@ -171,17 +224,11 @@ implementation
 
     { timpexp_ai }
 
-      constructor tai_impexp.create(const aextname, aintname: ansistring;
+      constructor tai_export_name.create(const aextname, aintname: ansistring;
           asymtype: timpexptype);
         begin
-          create('', aextname, aintname, asymtype);;
-        end;
-
-      constructor tai_impexp.create(const aextmodule, aextname, aintname: ansistring; asymtype: timpexptype);
-        begin
           inherited create;
-          typ := ait_importexport;
-          extmodule := aextmodule;
+          typ := ait_export_name;
           extname := aextname;
           intname := aintname;
           symstype:= asymtype;
@@ -483,6 +530,7 @@ implementation
           a_i64_extend8_s,
           a_i64_extend16_s,
           a_i64_extend32_s,
+          a_else,
           a_end_block,
           a_end_if,
           a_end_loop,
@@ -492,19 +540,56 @@ implementation
           a_memory_size,
           a_memory_grow:
             result:=2;
-          a_i32_const,
+          a_i32_const:
+            begin
+              if ops<>1 then
+                internalerror(2021092001);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        result:=6
+                      else
+                        begin
+                          if assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) then
+                            internalerror(2021092018);
+                          result:=1+SlebSize(longint(ref^.offset));
+                        end;
+                    end;
+                  top_const:
+                    result:=1+SlebSize(longint(val));
+                  else
+                    internalerror(2021092615);
+                end;
+            end;
           a_i64_const:
             begin
               if ops<>1 then
                 internalerror(2021092001);
               with oper[0]^ do
                 case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        result:=6
+                      else
+                        begin
+                          if assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) then
+                            internalerror(2021092018);
+                          result:=1+SlebSize(int64(ref^.offset));
+                        end;
+                    end;
                   top_const:
-                    result:=1+SlebSize(val);
+                    result:=1+SlebSize(int64(val));
                   else
-                    Writeln('Warning! Not implemented opcode, pass1: ', opcode, ' ', typ);
+                    internalerror(2021092615);
                 end;
             end;
+          a_f32_const:
+            result:=5;
+          a_f64_const:
+            result:=9;
           a_local_get,
           a_local_set,
           a_local_tee:
@@ -550,7 +635,10 @@ implementation
             end;
           a_end_function:
             result:=0;
-          a_block:
+          a_block,
+          a_loop,
+          a_if,
+          a_try:
             begin
               if ops=0 then
                 result:=2
@@ -558,11 +646,126 @@ implementation
                 begin
                   if ops<>1 then
                     internalerror(2021092015);
-                  Writeln('Warning! Not implemented opcode, pass2: ', opcode, ' ', typ);
+                  with oper[0]^ do
+                    case typ of
+                      top_functype:
+                        begin
+                          if (length(functype.params)=0) and (length(functype.results)<=1) then
+                            result:=2
+                          else
+                            { more complex blocktypes are not yet implemented }
+                            internalerror(2021092621);
+                        end;
+                      else
+                        internalerror(2021092620);
+                    end;
+                end;
+            end;
+          a_i32_load,
+          a_i64_load,
+          a_f32_load,
+          a_f64_load,
+          a_i32_load8_s,
+          a_i32_load8_u,
+          a_i32_load16_s,
+          a_i32_load16_u,
+          a_i64_load8_s,
+          a_i64_load8_u,
+          a_i64_load16_s,
+          a_i64_load16_u,
+          a_i64_load32_s,
+          a_i64_load32_u,
+          a_i32_store,
+          a_i64_store,
+          a_f32_store,
+          a_f64_store,
+          a_i32_store8,
+          a_i32_store16,
+          a_i64_store8,
+          a_i64_store16,
+          a_i64_store32:
+            begin
+              if ops<>1 then
+                internalerror(2021092016);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        begin
+                          Result:=1+
+                            UlebSize(natural_alignment_for_load_store(opcode))+
+                            5;  { relocation, fixed size = 5 bytes }
+                        end
+                      else
+                        begin
+                          if assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) then
+                            internalerror(2021092018);
+                          Result:=1+
+                            UlebSize(natural_alignment_for_load_store(opcode))+
+                            UlebSize(ref^.offset);
+                        end;
+                    end;
+                  top_const:
+                    begin
+                      Result:=1+
+                        UlebSize(natural_alignment_for_load_store(opcode))+
+                        UlebSize(val);
+                    end;
+                  else
+                    internalerror(2021092017);
+                end;
+            end;
+          a_call:
+            begin
+              if ops<>1 then
+                internalerror(2021092021);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if not assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
+                        internalerror(2021092023);
+                      result:=6;
+                    end;
+                  else
+                    internalerror(2021092022);
+                end;
+            end;
+          a_call_indirect:
+            begin
+              if ops<>1 then
+                internalerror(2021092610);
+              with oper[0]^ do
+                case typ of
+                  top_functype:
+                    begin
+                      TWasmObjData(objdata).AddFuncType(functype);
+                      result:=6+
+                        UlebSize(0);
+                    end;
+                  else
+                    internalerror(2021092611);
+                end;
+            end;
+          a_br,
+          a_br_if,
+          a_rethrow,
+          a_delegate:
+            begin
+              if ops<>1 then
+                internalerror(2021092610);
+              with oper[0]^ do
+                case typ of
+                  top_const:
+                    result:=1+
+                      UlebSize(val);
+                  else
+                    internalerror(2021092625);
                 end;
             end;
           else
-            Writeln('Warning! Not implemented opcode, pass1: ', opcode);
+            internalerror(2021092623);
         end;
       end;
 
@@ -573,6 +776,36 @@ implementation
           begin
             objdata.writebytes(b,1);
           end;
+
+{$ifdef FPC_LITTLE_ENDIAN}
+        procedure WriteSingle(s: single);
+          begin
+            objdata.writebytes(s,4);
+          end;
+
+        procedure WriteDouble(d: double);
+          begin
+            objdata.writebytes(d,8);
+          end;
+{$else FPC_LITTLE_ENDIAN}
+        procedure WriteSingle(s: single);
+          var
+            l: longword;
+          begin
+            Move(s,l,4);
+            l:=SwapEndian(l);
+            objdata.writebytes(l,4);
+          end;
+
+        procedure WriteDouble(d: double);
+          var
+            q: qword;
+          begin
+            Move(d,q,8);
+            q:=SwapEndian(q);
+            objdata.writebytes(q,8);
+          end;
+{$endif FPC_LITTLE_ENDIAN}
 
         procedure WriteSleb(v: tcgint);
           var
@@ -886,25 +1119,78 @@ implementation
             WriteByte($0B);
           a_catch_all:
             WriteByte($19);
-          a_i32_const,
-          a_i64_const:
+          a_i32_const:
             begin
-              case opcode of
-                a_i32_const:
-                  WriteByte($41);
-                a_i64_const:
-                  WriteByte($42);
-                else
-                  internalerror(2021092002);
-              end;
+              WriteByte($41);
               if ops<>1 then
                 internalerror(2021092001);
               with oper[0]^ do
                 case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        objdata.writeReloc(ref^.offset,5,ObjData.symbolref(ref^.symbol),RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB)
+                      else
+                        begin
+                          if assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) then
+                            internalerror(2021092018);
+                          WriteSleb(longint(ref^.offset));
+                        end;
+                    end;
                   top_const:
-                    WriteSleb(val);
+                    WriteSleb(longint(val));
                   else
-                    Writeln('Warning! Not implemented opcode, pass2: ', opcode, ' ', typ);
+                    internalerror(2021092615);
+                end;
+            end;
+          a_i64_const:
+            begin
+              WriteByte($42);
+              if ops<>1 then
+                internalerror(2021092001);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        objdata.writeReloc(ref^.offset,5,ObjData.symbolref(ref^.symbol),RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB)
+                      else
+                        begin
+                          if assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) then
+                            internalerror(2021092018);
+                          WriteSleb(int64(ref^.offset));
+                        end;
+                    end;
+                  top_const:
+                    WriteSleb(int64(val));
+                  else
+                    internalerror(2021092615);
+                end;
+            end;
+          a_f32_const:
+            begin
+              if ops<>1 then
+                internalerror(2021092619);
+              WriteByte($44);
+              with oper[0]^ do
+                case typ of
+                  top_single:
+                    WriteSingle(sval);
+                  else
+                    internalerror(2021092618);
+                end;
+            end;
+          a_f64_const:
+            begin
+              if ops<>1 then
+                internalerror(2021092616);
+              WriteByte($44);
+              with oper[0]^ do
+                case typ of
+                  top_double:
+                    WriteDouble(dval);
+                  else
+                    internalerror(2021092617);
                 end;
             end;
           a_local_get,
@@ -970,20 +1256,215 @@ implementation
             end;
           a_end_function:
             ;
-          a_block:
+          a_block,
+          a_loop,
+          a_if,
+          a_try:
             begin
-              WriteByte($02);
+              case opcode of
+                a_block:
+                  WriteByte($02);
+                a_loop:
+                  WriteByte($03);
+                a_if:
+                  WriteByte($04);
+                a_try:
+                  WriteByte($06);
+                else
+                  internalerror(2021092626);
+              end;
               if ops=0 then
                 WriteByte($40)
               else
                 begin
                   if ops<>1 then
                     internalerror(2021092015);
-                  Writeln('Warning! Not implemented opcode, pass2: ', opcode, ' ', typ);
+                  with oper[0]^ do
+                    case typ of
+                      top_functype:
+                        begin
+                          if (length(functype.params)=0) and (length(functype.results)<=1) then
+                            begin
+                              if length(functype.results)=1 then
+                                WriteByte(encode_wasm_basic_type(functype.results[0]))
+                              else
+                                WriteByte($40);
+                            end
+                          else
+                            { more complex blocktypes are not yet implemented }
+                            internalerror(2021092621);
+                        end;
+                      else
+                        internalerror(2021092620);
+                    end;
+                end;
+            end;
+          a_else:
+            WriteByte($05);
+          a_i32_load,
+          a_i64_load,
+          a_f32_load,
+          a_f64_load,
+          a_i32_load8_s,
+          a_i32_load8_u,
+          a_i32_load16_s,
+          a_i32_load16_u,
+          a_i64_load8_s,
+          a_i64_load8_u,
+          a_i64_load16_s,
+          a_i64_load16_u,
+          a_i64_load32_s,
+          a_i64_load32_u,
+          a_i32_store,
+          a_i64_store,
+          a_f32_store,
+          a_f64_store,
+          a_i32_store8,
+          a_i32_store16,
+          a_i64_store8,
+          a_i64_store16,
+          a_i64_store32:
+            begin
+              case opcode of
+                a_i32_load:
+                  WriteByte($28);
+                a_i64_load:
+                  WriteByte($29);
+                a_f32_load:
+                  WriteByte($2A);
+                a_f64_load:
+                  WriteByte($2B);
+                a_i32_load8_s:
+                  WriteByte($2C);
+                a_i32_load8_u:
+                  WriteByte($2D);
+                a_i32_load16_s:
+                  WriteByte($2E);
+                a_i32_load16_u:
+                  WriteByte($2F);
+                a_i64_load8_s:
+                  WriteByte($30);
+                a_i64_load8_u:
+                  WriteByte($31);
+                a_i64_load16_s:
+                  WriteByte($32);
+                a_i64_load16_u:
+                  WriteByte($33);
+                a_i64_load32_s:
+                  WriteByte($34);
+                a_i64_load32_u:
+                  WriteByte($35);
+                a_i32_store:
+                  WriteByte($36);
+                a_i64_store:
+                  WriteByte($37);
+                a_f32_store:
+                  WriteByte($38);
+                a_f64_store:
+                  WriteByte($39);
+                a_i32_store8:
+                  WriteByte($3A);
+                a_i32_store16:
+                  WriteByte($3B);
+                a_i64_store8:
+                  WriteByte($3C);
+                a_i64_store16:
+                  WriteByte($3D);
+                a_i64_store32:
+                  WriteByte($3E);
+                else
+                  internalerror(2021092019);
+              end;
+              if ops<>1 then
+                internalerror(2021092016);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        begin
+                          WriteUleb(natural_alignment_for_load_store(opcode));
+                          objdata.writeReloc(ref^.offset,5,ObjData.symbolref(ref^.symbol),RELOC_MEMORY_ADDR_LEB);
+                        end
+                      else
+                        begin
+                          if assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) then
+                            internalerror(2021092018);
+                          WriteUleb(natural_alignment_for_load_store(opcode));
+                          WriteUleb(ref^.offset);
+                        end;
+                    end;
+                  top_const:
+                    begin
+                      WriteUleb(natural_alignment_for_load_store(opcode));
+                      WriteUleb(val);
+                    end;
+                  else
+                    internalerror(2021092017);
+                end;
+            end;
+          a_call:
+            begin
+              if ops<>1 then
+                internalerror(2021092021);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if not assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
+                        internalerror(2021092023);
+                      WriteByte($10);
+                      objdata.writeReloc(0,5,ObjData.symbolref(ref^.symbol),RELOC_FUNCTION_INDEX_LEB);
+                    end;
+                  else
+                    internalerror(2021092022);
+                end;
+            end;
+          a_call_indirect:
+            begin
+              if ops<>1 then
+                internalerror(2021092610);
+              with oper[0]^ do
+                case typ of
+                  top_functype:
+                    begin
+                      WriteByte($11);
+                      objdata.writeReloc(TWasmObjData(objdata).AddFuncType(functype),5,nil,RELOC_TYPE_INDEX_LEB);
+                      WriteUleb(0);
+                    end;
+                  else
+                    internalerror(2021092611);
+                end;
+            end;
+          a_br,
+          a_br_if,
+          a_rethrow,
+          a_delegate:
+            begin
+              case opcode of
+                a_br:
+                  WriteByte($0C);
+                a_br_if:
+                  WriteByte($0D);
+                a_rethrow:
+                  WriteByte($09);
+                a_delegate:
+                  WriteByte($18);
+                else
+                  internalerror(2021092622);
+              end;
+              if ops<>1 then
+                internalerror(2021092610);
+              with oper[0]^ do
+                case typ of
+                  top_const:
+                    WriteUleb(val);
+                  else
+                    internalerror(2021092625);
                 end;
             end;
           else
-            Writeln('Warning! Not implemented opcode, pass2: ', opcode);
+            internalerror(2021092624);
         end;
       end;
 

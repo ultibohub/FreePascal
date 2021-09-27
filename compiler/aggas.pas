@@ -820,17 +820,6 @@ implementation
         end;
 
 
-      procedure WriteImportExport(hp:tai_impexp);
-        var
-          symstypestr: string;
-        begin
-          Str(hp.symstype,symstypestr);
-          writer.AsmWriteLn(asminfo^.comment+'ait_importexport(extname='''+hp.extname+''', intname='''+hp.intname+''', extmodule='''+hp.extmodule+''', symstype='+symstypestr+')');
-          if hp.extmodule='' then
-            writer.AsmWriteLn(#9'.export_name '+hp.intname+', '+hp.extname);
-        end;
-
-
       procedure WriteTagType(hp: tai_tagtype);
         var
           wasm_basic_typ: TWasmBasicType;
@@ -851,6 +840,8 @@ implementation
               writer.AsmWrite(gas_wasm_basic_type_str[wasm_basic_typ]);
             end;
           writer.AsmLn;
+          writer.AsmWrite(hp.tagname);
+          writer.AsmWriteLn(':');
         end;
 {$endif WASM}
 
@@ -1644,12 +1635,38 @@ implementation
                if tai_local(hp).last then
                  writer.AsmLn;
              end;
+           ait_globaltype:
+             begin
+               writer.AsmWrite(#9'.globaltype'#9);
+               writer.AsmWrite(tai_globaltype(hp).globalname);
+               writer.AsmWrite(', ');
+               writer.AsmWriteLn(gas_wasm_basic_type_str[tai_globaltype(hp).gtype]);
+             end;
            ait_functype:
              WriteFuncTypeDirective(tai_functype(hp));
-           ait_importexport:
-             WriteImportExport(tai_impexp(hp));
+           ait_export_name:
+             begin
+               writer.AsmWrite(#9'.export_name'#9);
+               writer.AsmWrite(tai_export_name(hp).intname);
+               writer.AsmWrite(', ');
+               writer.AsmWriteLn(tai_export_name(hp).extname);
+             end;
            ait_tagtype:
              WriteTagType(tai_tagtype(hp));
+           ait_import_module:
+             begin
+               writer.AsmWrite(#9'.import_module'#9);
+               writer.AsmWrite(tai_import_module(hp).symname);
+               writer.AsmWrite(', ');
+               writer.AsmWriteLn(tai_import_module(hp).importmodule);
+             end;
+           ait_import_name:
+             begin
+               writer.AsmWrite(#9'.import_name'#9);
+               writer.AsmWrite(tai_import_name(hp).symname);
+               writer.AsmWrite(', ');
+               writer.AsmWriteLn(tai_import_name(hp).importname);
+             end;
 {$endif WASM}
 
            else
