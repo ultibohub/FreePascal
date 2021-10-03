@@ -41,6 +41,19 @@ uses
      private
       fevalstackheight,
       fmaxevalstackheight: longint;
+
+      { checks whether the type needs special methodptr-like handling, when stored
+        in a LOC_REGISTER location. This applies to the following types:
+          - method pointers
+          - nested proc ptrs
+        When stored in a LOC_REGISTER tlocation, these types use both register
+        and registerhi with the following sizes:
+
+        register   - cgsize = int_cgsize(voidcodepointertype.size)
+        registerhi - cgsize = int_cgsize(voidpointertype.size) or int_cgsize(parentfpvoidpointertype.size)
+                              (check d.size to determine which one of the two)
+        }
+      function is_methodptr_like_type(d:tdef): boolean;
      public
       br_blocks: integer;
       loopContBr: integer; // the value is different depending of the condition test
@@ -71,6 +84,7 @@ uses
       procedure a_load_reg_reg(list : TAsmList;fromsize, tosize : tdef;reg1,reg2 : tregister);override;
       procedure a_load_ref_reg(list : TAsmList;fromsize, tosize : tdef;const ref : treference;register : tregister);override;
       procedure a_load_ref_ref(list : TAsmList;fromsize, tosize : tdef;const sref : treference;const dref : treference);override;
+      procedure a_load_loc_ref(list : TAsmList;fromsize, tosize: tdef; const loc: tlocation; const ref : treference);override;
       procedure a_loadaddr_ref_reg(list : TAsmList;fromsize, tosize : tdef;const ref : treference;r : tregister);override;
       procedure a_load_subsetref_regs_index(list: TAsmList; subsetsize: tdef; loadbitsize: byte; const sref: tsubsetreference; valuereg: tregister); override;
       procedure a_load_regconst_subsetref_intern(list : TAsmList; fromsize, subsetsize: tdef; fromreg: tregister; const sref: tsubsetreference; slopt: tsubsetloadopt); override;
@@ -290,6 +304,19 @@ implementation
       a_i64_rotl,  {OP_ROL,  rotate left              }
       a_i64_rotr   {OP_ROR   rotate right             }
     );
+
+  function thlcgwasm.is_methodptr_like_type(d:tdef): boolean;
+    var
+      is_methodptr, is_nestedprocptr: Boolean;
+    begin
+      is_methodptr:=(d.typ=procvardef)
+        and (po_methodpointer in tprocvardef(d).procoptions)
+        and not(po_addressonly in tprocvardef(d).procoptions);
+      is_nestedprocptr:=(d.typ=procvardef)
+        and is_nested_pd(tprocvardef(d))
+        and not(po_addressonly in tprocvardef(d).procoptions);
+      result:=is_methodptr or is_nestedprocptr;
+    end;
 
   constructor thlcgwasm.create;
     begin
@@ -512,9 +539,31 @@ implementation
         OS_32,OS_S32:
           begin
             { boolean not: =0? for boolean }
-            { todo: should we also do this for cbool? }
             if (op=OP_NOT) and is_pasbool(size) then
               list.concat(taicpu.op_none(a_i32_eqz))
+            else if (op=OP_NOT) and is_cbool(size) then
+              begin
+                current_asmdata.CurrAsmList.Concat(taicpu.op_functype(a_if,TWasmFuncType.Create([],[wbt_i32])));
+                incblock;
+                decstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i32_const, 0) );
+                incstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.Concat( taicpu.op_none(a_else) );
+                decstack(current_asmdata.CurrAsmList,1);
+                case def_cgsize(size) of
+                  OS_32,OS_S32:
+                    current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i32_const, -1) );
+                  OS_16,OS_S16:
+                    current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i32_const, 65535) );
+                  OS_8,OS_S8:
+                    current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i32_const, 255) );
+                  else
+                    internalerror(2021100102);
+                end;
+                incstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+                thlcgwasm(hlcg).decblock;
+              end
             else
               begin
                 if op=OP_NOT then
@@ -542,9 +591,26 @@ implementation
             if op=OP_DIV then
               internalerror(2010120530);
             { boolean not: =0? for boolean }
-            { todo: should we also do this for cbool? }
             if (op=OP_NOT) and is_pasbool(size) then
-              list.concat(taicpu.op_none(a_i64_eqz))
+              begin
+                list.concat(taicpu.op_none(a_i64_eqz));
+                list.concat(taicpu.op_none(a_i64_extend_i32_u));
+              end
+            else if (op=OP_NOT) and is_cbool(size) then
+              begin
+                list.concat(taicpu.op_none(a_i64_eqz));
+                current_asmdata.CurrAsmList.Concat(taicpu.op_functype(a_if,TWasmFuncType.Create([],[wbt_i64])));
+                incblock;
+                decstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i64_const, -1) );
+                incstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.Concat( taicpu.op_none(a_else) );
+                decstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i64_const, 0) );
+                incstack(current_asmdata.CurrAsmList,1);
+                current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+                thlcgwasm(hlcg).decblock;
+              end
             else
               begin
                 if op=OP_NOT then
@@ -1006,11 +1072,25 @@ implementation
           incstack(list,1);
           list.Concat(taicpu.op_none(a_i32_add));
           decstack(list,1);
+          if assigned(ref.symbol) then
+            begin
+              list.Concat(taicpu.op_sym(a_i32_const,ref.symbol));
+              incstack(list,1);
+              list.Concat(taicpu.op_none(a_i32_add));
+              decstack(list,1);
+            end;
           if ref.offset<0 then
             begin
               list.Concat(taicpu.op_const(a_i32_const,-ref.offset));
               incstack(list,1);
               list.Concat(taicpu.op_none(a_i32_sub));
+              decstack(list,1);
+            end
+          else if ref.offset>0 then
+            begin
+              list.Concat(taicpu.op_const(a_i32_const,ref.offset));
+              incstack(list,1);
+              list.Concat(taicpu.op_none(a_i32_add));
               decstack(list,1);
             end;
           if dup then
@@ -1021,18 +1101,32 @@ implementation
               incstack(list,1);
               list.Concat(taicpu.op_none(a_i32_add));
               decstack(list,1);
+              if assigned(ref.symbol) then
+                begin
+                  list.Concat(taicpu.op_sym(a_i32_const,ref.symbol));
+                  incstack(list,1);
+                  list.Concat(taicpu.op_none(a_i32_add));
+                  decstack(list,1);
+                end;
               if ref.offset<0 then
                 begin
                   list.Concat(taicpu.op_const(a_i32_const,-ref.offset));
                   incstack(list,1);
                   list.Concat(taicpu.op_none(a_i32_sub));
                   decstack(list,1);
+                end
+              else if ref.offset>0 then
+                begin
+                  list.Concat(taicpu.op_const(a_i32_const,ref.offset));
+                  incstack(list,1);
+                  list.Concat(taicpu.op_none(a_i32_add));
+                  decstack(list,1);
                 end;
             end;
           ref.base:=NR_NO;
           ref.index:=NR_NO;
-          if ref.offset<0 then
-            ref.offset:=0;
+          ref.offset:=0;
+          ref.symbol:=nil;
           result:=1;
         end
       else if (ref.base<>NR_NO) then
@@ -1041,26 +1135,54 @@ implementation
             begin
               { regular field -> load self on the stack }
               a_load_reg_stack(list,voidpointertype,ref.base);
+              if assigned(ref.symbol) then
+                begin
+                  list.Concat(taicpu.op_sym(a_i32_const,ref.symbol));
+                  incstack(list,1);
+                  list.Concat(taicpu.op_none(a_i32_add));
+                  decstack(list,1);
+                end;
               if ref.offset<0 then
                 begin
                   list.Concat(taicpu.op_const(a_i32_const,-ref.offset));
                   incstack(list,1);
                   list.Concat(taicpu.op_none(a_i32_sub));
                   decstack(list,1);
+                end
+              else if ref.offset>0 then
+                begin
+                  list.Concat(taicpu.op_const(a_i32_const,ref.offset));
+                  incstack(list,1);
+                  list.Concat(taicpu.op_none(a_i32_add));
+                  decstack(list,1);
                 end;
               if dup then
                 begin
                   a_load_reg_stack(list,voidpointertype,ref.base);
+                  if assigned(ref.symbol) then
+                    begin
+                      list.Concat(taicpu.op_sym(a_i32_const,ref.symbol));
+                      incstack(list,1);
+                      list.Concat(taicpu.op_none(a_i32_add));
+                      decstack(list,1);
+                    end;
                   if ref.offset<0 then
                     begin
                       list.Concat(taicpu.op_const(a_i32_const,-ref.offset));
                       incstack(list,1);
                       list.Concat(taicpu.op_none(a_i32_sub));
                       decstack(list,1);
+                    end
+                  else if ref.offset>0 then
+                    begin
+                      list.Concat(taicpu.op_const(a_i32_const,ref.offset));
+                      incstack(list,1);
+                      list.Concat(taicpu.op_none(a_i32_add));
+                      decstack(list,1);
                     end;
                 end;
-              if ref.offset<0 then
-                ref.offset:=0;
+              ref.offset:=0;
+              ref.symbol:=nil;
               ref.base:=NR_NO;
               result:=1;
             end
@@ -1177,6 +1299,27 @@ implementation
           a_load_ref_reg(list,fromsize,tosize,sref,tmpreg);
           a_load_reg_ref(list,tosize,tosize,tmpreg,dref);
         end;
+    end;
+
+  procedure thlcgwasm.a_load_loc_ref(list : TAsmList;fromsize, tosize: tdef; const loc: tlocation; const ref : treference);
+    var
+      tmpref: treference;
+    begin
+      if is_methodptr_like_type(tosize) and (loc.loc in [LOC_REGISTER,LOC_CREGISTER]) then
+        begin
+          tmpref:=ref;
+          a_load_reg_ref(list,voidcodepointertype,voidcodepointertype,loc.register,tmpref);
+          inc(tmpref.offset,voidcodepointertype.size);
+          { the second part could be either self or parentfp }
+          if tosize.size=(voidcodepointertype.size+voidpointertype.size) then
+            a_load_reg_ref(list,voidpointertype,voidpointertype,loc.registerhi,tmpref)
+          else if tosize.size=(voidcodepointertype.size+parentfpvoidpointertype.size) then
+            a_load_reg_ref(list,parentfpvoidpointertype,parentfpvoidpointertype,loc.registerhi,tmpref)
+          else
+            internalerror(2021100301);
+        end
+      else
+        inherited;
     end;
 
   procedure thlcgwasm.a_loadaddr_ref_reg(list: TAsmList; fromsize, tosize: tdef; const ref: treference; r: tregister);
@@ -2322,7 +2465,11 @@ implementation
                 OS_8:
                   a_op_const_stack(list,OP_AND,s32inttype,255);
                 OS_S8:
-                  list.concat(taicpu.op_none(a_i32_extend8_s));
+                  begin
+                    list.concat(taicpu.op_none(a_i32_extend8_s));
+                    if tocgsize=OS_16 then
+                      a_op_const_stack(list,OP_AND,s32inttype,65535);
+                  end;
                 OS_16:
                   a_op_const_stack(list,OP_AND,s32inttype,65535);
                 OS_S16:

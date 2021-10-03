@@ -117,6 +117,8 @@ interface
          RELOC_MEMORY_ADDR_LEB,
          RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB,
          RELOC_TYPE_INDEX_LEB,
+         RELOC_GLOBAL_INDEX_LEB,
+         RELOC_TAG_INDEX_LEB,
 {$endif WASM32}
          { Relative relocation }
          RELOC_RELATIVE,
@@ -840,7 +842,7 @@ implementation
 
     procedure TObjSymbol.SetAddress(apass:byte;aobjsec:TObjSection;abind:TAsmsymbind;atyp:Tasmsymtype);
       begin
-        if not(abind in [AB_GLOBAL,AB_PRIVATE_EXTERN,AB_LOCAL,AB_COMMON,AB_IMPORT]) then
+        if not(abind in [AB_GLOBAL,AB_PRIVATE_EXTERN,AB_LOCAL,AB_COMMON,AB_IMPORT,AB_WEAK]) then
           internalerror(200603016);
         if not assigned(aobjsec) then
           internalerror(200603017);

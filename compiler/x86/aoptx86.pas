@@ -1027,7 +1027,7 @@ unit aoptx86;
         { TODO: Currently, only the volatile registers are checked - can this be extended to use any register the procedure has preserved? }
         Result := NR_NO;
         RegSet := paramanager.get_volatile_registers_int(current_procinfo.procdef.proccalloption);
-        for CurrentSuperReg := Low(RegSet) to High(RegSet) do
+        for CurrentSuperReg in RegSet do
           begin
             CurrentReg := newreg(R_INTREGISTER, TSuperRegister(CurrentSuperReg), RegSize);
             if not AUsedRegs[R_INTREGISTER].IsUsed(CurrentReg) then
@@ -1090,7 +1090,7 @@ unit aoptx86;
         { TODO: Currently, only the volatile registers are checked - can this be extended to use any register the procedure has preserved? }
         Result := NR_NO;
         RegSet := paramanager.get_volatile_registers_mm(current_procinfo.procdef.proccalloption);
-        for CurrentSuperReg := Low(RegSet) to High(RegSet) do
+        for CurrentSuperReg in RegSet do
           begin
             CurrentReg := newreg(R_MMREGISTER, TSuperRegister(CurrentSuperReg), RegSize);
             if not AUsedRegs[R_MMREGISTER].IsUsed(CurrentReg) then
@@ -3942,6 +3942,29 @@ unit aoptx86;
             exit;
           end;
 
+        {
+          mov ref,reg0
+          <op> reg0,reg1
+          dealloc reg0
+
+          to
+
+          <op> ref,reg1
+        }
+        if MatchOpType(taicpu(p),top_ref,top_reg) and
+          MatchOpType(taicpu(hp1),top_reg,top_reg) and
+          MatchOperand(taicpu(p).oper[1]^,taicpu(hp1).oper[0]^) and
+          MatchInstruction(hp1,[A_AND,A_OR,A_XOR,A_ADD,A_SUB,A_CMP],[Taicpu(p).opsize]) and
+          not(MatchOperand(taicpu(hp1).oper[0]^,taicpu(hp1).oper[1]^)) and
+          RegEndOfLife(taicpu(p).oper[1]^.reg,taicpu(hp1)) then
+          begin
+            taicpu(hp1).loadoper(0,taicpu(p).oper[0]^);
+            DebugMsg(SPeepholeOptimization + 'MovOp2Op done',hp1);
+            RemoveCurrentp(p, hp1);
+            Result:=true;
+            exit;
+          end;
+
 {$ifdef x86_64}
         { Convert:
             movq x(ref),%reg64
@@ -4089,87 +4112,94 @@ unit aoptx86;
       begin
         Result := False;
 
-        if (taicpu(p).oper[1]^.typ = top_reg) then
+        if GetNextInstruction(p, hp1) and
+          MatchInstruction(hp1,A_MOV,[]) and
+          (
+            (taicpu(p).oper[0]^.typ <> top_reg) or
+            not RegInInstruction(taicpu(p).oper[0]^.reg, hp1)
+          ) and
+          (
+            (taicpu(p).oper[1]^.typ <> top_reg) or
+            not RegInInstruction(taicpu(p).oper[1]^.reg, hp1)
+          ) and
+          (
+            { Make sure the register written to doesn't appear in the
+              test instruction (in a reference, say) }
+            (taicpu(hp1).oper[1]^.typ <> top_reg) or
+            not RegInInstruction(taicpu(hp1).oper[1]^.reg, p)
+          ) then
           begin
-            if GetNextInstruction(p, hp1) and
-              MatchInstruction(hp1,A_MOV,[]) and
-              not RegInInstruction(taicpu(p).oper[1]^.reg, hp1) and
-              (
-                (taicpu(p).oper[0]^.typ <> top_reg) or
-                not RegInInstruction(taicpu(p).oper[0]^.reg, hp1)
-              ) then
-              begin
-                { If we have something like:
-                    test %reg1,%reg1
-                    mov  0,%reg2
+            { If we have something like:
+                test %reg1,%reg1
+                mov  0,%reg2
 
-                  And no registers are shared (the two %reg1's can be different, as
-                  long as neither of them are also %reg2), move the MOV command to
-                  before the comparison as this means it can be optimised without
-                  worrying about the FLAGS register. (This combination is generated
-                  by "J(c)Mov1JmpMov0 -> Set(~c)", among other things).
-                }
-                SwapMovCmp(p, hp1);
-                Result := True;
-                Exit;
-              end;
-
-            { Search for:
-                test  %reg,%reg
-                j(c1) @lbl1
-                ...
-              @lbl:
-                test %reg,%reg (same register)
-                j(c2) @lbl2
-
-              If c2 is a subset of c1, change to:
-                test  %reg,%reg
-                j(c1) @lbl2
-                (@lbl1 may become a dead label as a result)
+              And no registers are shared (the two %reg1's can be different, as
+              long as neither of them are also %reg2), move the MOV command to
+              before the comparison as this means it can be optimised without
+              worrying about the FLAGS register. (This combination is generated
+              by "J(c)Mov1JmpMov0 -> Set(~c)", among other things).
             }
+            SwapMovCmp(p, hp1);
+            Result := True;
+            Exit;
+          end;
 
-            if (taicpu(p).oper[0]^.typ = top_reg) and
-              (taicpu(p).oper[0]^.reg = taicpu(p).oper[1]^.reg) and
-              MatchInstruction(hp1, A_JCC, []) and
-              IsJumpToLabel(taicpu(hp1)) then
+        { Search for:
+            test  %reg,%reg
+            j(c1) @lbl1
+            ...
+          @lbl:
+            test %reg,%reg (same register)
+            j(c2) @lbl2
+
+          If c2 is a subset of c1, change to:
+            test  %reg,%reg
+            j(c1) @lbl2
+            (@lbl1 may become a dead label as a result)
+        }
+
+        if (taicpu(p).oper[1]^.typ = top_reg) and
+          (taicpu(p).oper[0]^.typ = top_reg) and
+          (taicpu(p).oper[0]^.reg = taicpu(p).oper[1]^.reg) and
+          MatchInstruction(hp1, A_JCC, []) and
+          IsJumpToLabel(taicpu(hp1)) then
+          begin
+            JumpLabel := TAsmLabel(taicpu(hp1).oper[0]^.ref^.symbol);
+            p_label := nil;
+            if Assigned(JumpLabel) then
+              p_label := getlabelwithsym(JumpLabel);
+
+            if Assigned(p_label) and
+              GetNextInstruction(p_label, p_dist) and
+              MatchInstruction(p_dist, A_TEST, []) and
+              { It's fine if the second test uses smaller sub-registers }
+              (taicpu(p_dist).opsize <= taicpu(p).opsize) and
+              MatchOpType(taicpu(p_dist), top_reg, top_reg) and
+              SuperRegistersEqual(taicpu(p_dist).oper[0]^.reg, taicpu(p).oper[0]^.reg) and
+              SuperRegistersEqual(taicpu(p_dist).oper[1]^.reg, taicpu(p).oper[1]^.reg) and
+              GetNextInstruction(p_dist, hp1_dist) and
+              MatchInstruction(hp1_dist, A_JCC, []) then { This doesn't have to be an explicit label }
               begin
-                JumpLabel := TAsmLabel(taicpu(hp1).oper[0]^.ref^.symbol);
-                p_label := nil;
-                if Assigned(JumpLabel) then
-                  p_label := getlabelwithsym(JumpLabel);
+                JumpLabel_dist := TAsmLabel(taicpu(hp1_dist).oper[0]^.ref^.symbol);
 
-                if Assigned(p_label) and
-                  GetNextInstruction(p_label, p_dist) and
-                  MatchInstruction(p_dist, A_TEST, []) and
-                  { It's fine if the second test uses smaller sub-registers }
-                  (taicpu(p_dist).opsize <= taicpu(p).opsize) and
-                  MatchOpType(taicpu(p_dist), top_reg, top_reg) and
-                  SuperRegistersEqual(taicpu(p_dist).oper[0]^.reg, taicpu(p).oper[0]^.reg) and
-                  SuperRegistersEqual(taicpu(p_dist).oper[1]^.reg, taicpu(p).oper[1]^.reg) and
-                  GetNextInstruction(p_dist, hp1_dist) and
-                  MatchInstruction(hp1_dist, A_JCC, []) then { This doesn't have to be an explicit label }
+                if JumpLabel = JumpLabel_dist then
+                  { This is an infinite loop }
+                  Exit;
+
+                { Best optimisation when the first condition is a subset (or equal) of the second }
+                if condition_in(taicpu(hp1).condition, taicpu(hp1_dist).condition) then
                   begin
-                    JumpLabel_dist := TAsmLabel(taicpu(hp1_dist).oper[0]^.ref^.symbol);
+                    { Any registers used here will already be allocated }
+                    if Assigned(JumpLabel_dist) then
+                      JumpLabel_dist.IncRefs;
 
-                    if JumpLabel = JumpLabel_dist then
-                      { This is an infinite loop }
-                      Exit;
+                    if Assigned(JumpLabel) then
+                      JumpLabel.DecRefs;
 
-                    { Best optimisation when the first condition is a subset (or equal) of the second }
-                    if condition_in(taicpu(hp1).condition, taicpu(hp1_dist).condition) then
-                      begin
-                        { Any registers used here will already be allocated }
-                        if Assigned(JumpLabel_dist) then
-                          JumpLabel_dist.IncRefs;
-
-                        if Assigned(JumpLabel) then
-                          JumpLabel.DecRefs;
-
-                        DebugMsg(SPeepholeOptimization + 'TEST/Jcc/@Lbl/TEST/Jcc -> TEST/Jcc, redirecting first jump', hp1);
-                        taicpu(hp1).loadref(0, taicpu(hp1_dist).oper[0]^.ref^);
-                        Result := True;
-                        Exit;
-                      end;
+                    DebugMsg(SPeepholeOptimization + 'TEST/Jcc/@Lbl/TEST/Jcc -> TEST/Jcc, redirecting first jump', hp1);
+                    taicpu(hp1).loadref(0, taicpu(hp1_dist).oper[0]^.ref^);
+                    Result := True;
+                    Exit;
                   end;
               end;
           end;
@@ -5600,7 +5630,11 @@ unit aoptx86;
 
                  Exit;
                end
-             else if (taicpu(p).oper[1]^.typ = top_reg) then
+             else if (taicpu(p).oper[1]^.typ = top_reg)
+{$ifdef x86_64}
+               and (taicpu(p).opsize <> S_Q) { S_Q will never happen: cmp with 64 bit constants is not possible }
+{$endif x86_64}
+               then
                begin
                  { cmp register,$8000                neg register
                    je target                 -->     jo target
@@ -5610,9 +5644,6 @@ unit aoptx86;
                    S_B: v:=$80;
                    S_W: v:=$8000;
                    S_L: v:=qword($80000000);
-                   { S_Q will never happen: cmp with 64 bit constants is not possible }
-                   S_Q:
-                     Exit;
                    else
                      internalerror(2013112905);
                  end;
@@ -5641,12 +5672,20 @@ unit aoptx86;
                end;
            end;
 
-         if (taicpu(p).oper[1]^.typ = top_reg) and
-           MatchInstruction(hp1,A_MOV,[]) and
-           not RegInInstruction(taicpu(p).oper[1]^.reg, hp1) and
+         if MatchInstruction(hp1,A_MOV,[]) and
            (
              (taicpu(p).oper[0]^.typ <> top_reg) or
              not RegInInstruction(taicpu(p).oper[0]^.reg, hp1)
+           ) and
+           (
+             (taicpu(p).oper[1]^.typ <> top_reg) or
+             not RegInInstruction(taicpu(p).oper[1]^.reg, hp1)
+           ) and
+           (
+             { Make sure the register written to doesn't appear in the
+               cmp instruction (in a reference, say) }
+             (taicpu(hp1).oper[1]^.typ <> top_reg) or
+             not RegInInstruction(taicpu(hp1).oper[1]^.reg, p)
            ) then
            begin
              { If we have something like:
@@ -5927,6 +5966,9 @@ unit aoptx86;
            if taicpu(hp1).opsize=S_B then
              begin
                taicpu(p).loadoper(0, taicpu(hp1).oper[1]^);
+               if taicpu(hp1).oper[1]^.typ = top_reg then
+                 AllocRegBetween(taicpu(hp1).oper[1]^.reg, p, hp2, UsedRegs);
+
                RemoveInstruction(hp1);
              end
            else
@@ -5934,6 +5976,7 @@ unit aoptx86;
                { Will be a register because the size can't be S_B otherwise }
                ThisReg := newreg(R_INTREGISTER,getsupreg(taicpu(hp1).oper[1]^.reg), R_SUBL);
                taicpu(p).loadreg(0, ThisReg);
+               AllocRegBetween(ThisReg, p, hp2, UsedRegs);
 
                if (cs_opt_size in current_settings.optimizerswitches) and IsMOVZXAcceptable then
                  begin
@@ -9755,6 +9798,18 @@ unit aoptx86;
                   taicpu(p).opcode := A_XOR;
                   taicpu(p).loadReg(0,taicpu(p).oper[1]^.reg);
                   Result := True;
+{$ifdef x86_64}
+                end
+              else if (taicpu(p).opsize = S_Q) then
+                begin
+                  RegName := debug_regname(taicpu(p).oper[1]^.reg); { 64-bit register name }
+
+                  { The actual optimization }
+                  setsubreg(taicpu(p).oper[1]^.reg, R_SUBD);
+                  taicpu(p).changeopsize(S_L);
+
+                  DebugMsg(SPeepholeOptimization + 'movq $0,' + RegName + ' -> movl $0,' + debug_regname(taicpu(p).oper[1]^.reg) + ' (immediate can be represented with just 32 bits)', p);
+                  Result := True;
                 end;
             $1..$FFFFFFFF:
               begin
@@ -9776,6 +9831,7 @@ unit aoptx86;
                   else
                     { Do nothing };
                 end;
+{$endif x86_64}
               end;
             -1:
               { Don't make this optimisation if the CPU flags are required, since OR scrambles them }
@@ -9792,6 +9848,8 @@ unit aoptx86;
                   taicpu(p).opcode := A_OR;
                   Result := True;
                 end;
+            else
+              { Do nothing };
             end;
           end;
       end;

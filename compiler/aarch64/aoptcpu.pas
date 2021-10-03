@@ -25,7 +25,9 @@ Unit aoptcpu;
 
 {$i fpcdefs.inc}
 
-{ $define DEBUG_AOPTCPU}
+{$ifdef EXTDEBUG}
+{$define DEBUG_AOPTCPU}
+{$endif EXTDEBUG}
 
 Interface
 
@@ -52,6 +54,7 @@ Interface
         function RemoveSuperfluousFMov(const p: tai; movp: tai; const optimizer: string): boolean;
         function OptPass1Shift(var p: tai): boolean;
         function OptPostCMP(var p: tai): boolean;
+        function OptPostAnd(var p: tai): Boolean;
         function OptPass1Data(var p: tai): boolean;
         function OptPass1FData(var p: tai): Boolean;
         function OptPass1STP(var p: tai): boolean;
@@ -95,29 +98,16 @@ Implementation
 
       p := taicpu(hp);
       case p.opcode of
-        { These operands do not write into a register at all }
-        A_CMP, A_CMN, A_TST, A_B, A_BL, A_MSR, A_FCMP:
+        { These operations do not write into a register at all
+
+          LDR/STR with post/pre-indexed operations do not need special treatment
+          because post-/preindexed does not mean that a register
+          is loaded with a new value, it is only modified }
+        A_STR, A_CMP, A_CMN, A_TST, A_B, A_BL, A_MSR, A_FCMP:
           exit;
-        {Take care of post/preincremented store and loads, they will change their base register}
-        A_STR, A_LDR:
-          begin
-            Result := false;
-            { actually, this does not apply here because post-/preindexed does not mean that a register
-              is loaded with a new value, it is only modified
-              (taicpu(p).oper[1]^.typ=top_ref) and
-              (taicpu(p).oper[1]^.ref^.addressmode in [AM_PREINDEXED,AM_POSTINDEXED]) and
-              (taicpu(p).oper[1]^.ref^.base = reg);
-            }
-            { STR does not load into it's first register }
-            if p.opcode = A_STR then
-              exit;
-          end;
         else
           ;
       end;
-
-      if Result then
-        exit;
 
       case p.oper[0]^.typ of
         top_reg:
@@ -296,11 +286,17 @@ Implementation
 
 
   function TCpuAsmOptimizer.OptPass1LDR(var p: tai): Boolean;
+    var
+      hp1: tai;
     begin
       Result := False;
       if inherited OptPass1LDR(p) or
         LookForPostindexedPattern(p) then
-        Exit(True);
+        Exit(True)
+      else if (taicpu(p).oppostfix in [PF_B,PF_SB,PF_H,PF_SH,PF_None]) and
+        GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
+        RemoveSuperfluousMove(p, hp1, 'Ldr<Postfix>Mov2Ldr<Postfix>') then
+        Exit(true);
     end;
 
 
@@ -787,11 +783,67 @@ Implementation
     end;
 
 
+  function TCpuAsmOptimizer.OptPostAnd(var p: tai): Boolean;
+    var
+      hp1, hp2: tai;
+      hp3: taicpu;
+    begin
+      Result:=false;
+      {
+        and reg1,reg0,<const=power of 2>
+        cmp reg1,#0
+        <reg1 end of life>
+        b.e/b.ne label
+
+        into
+
+        tb(n)z reg0,<power of 2>,label
+      }
+      if MatchOpType(taicpu(p),top_reg,top_reg,top_const) and
+        (PopCnt(QWord(taicpu(p).oper[2]^.val))=1) and
+        GetNextInstruction(p,hp1) and
+        MatchInstruction(hp1,A_CMP,[PF_None]) and
+        MatchOpType(taicpu(hp1),top_reg,top_const) and
+        (taicpu(hp1).oper[1]^.val=0) and
+        MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[0]^) and
+        RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) and
+        GetNextInstruction(hp1,hp2) and
+        MatchInstruction(hp2,A_B,[PF_None]) and
+        (taicpu(hp2).condition in [C_EQ,C_NE]) then
+        begin
+           case taicpu(hp2).condition of
+            C_NE:
+              hp3:=taicpu.op_reg_const_ref(A_TBNZ,taicpu(p).oper[1]^.reg,BsfQWord(taicpu(p).oper[2]^.val),taicpu(hp2).oper[0]^.ref^);
+            C_EQ:
+              hp3:=taicpu.op_reg_const_ref(A_TBZ,taicpu(p).oper[1]^.reg,BsfQWord(taicpu(p).oper[2]^.val),taicpu(hp2).oper[0]^.ref^);
+            else
+              Internalerror(2021100201);
+          end;
+          taicpu(hp3).fileinfo:=taicpu(hp1).fileinfo;
+          asml.insertbefore(hp3, hp1);
+
+          RemoveInstruction(hp1);
+          RemoveInstruction(hp2);
+          RemoveCurrentP(p);
+          DebugMsg(SPeepholeOptimization + 'AndCmpB.E/NE2Tbnz/Tbz done', p);
+          Result:=true;
+        end;
+    end;
+
+
   function TCpuAsmOptimizer.OptPostCMP(var p : tai): boolean;
     var
      hp1,hp2: tai;
     begin
       Result:=false;
+      {
+         cmp reg0,#0
+         b.e/b.ne label
+
+         into
+
+         cb(n)z reg0,label
+      }
       if MatchOpType(taicpu(p),top_reg,top_const) and
         (taicpu(p).oper[1]^.val=0) and
         GetNextInstruction(p,hp1) and
@@ -907,6 +959,8 @@ Implementation
           case taicpu(p).opcode of
             A_CMP:
               Result:=OptPostCMP(p);
+            A_AND:
+              Result:=OptPostAnd(p);
             else
               ;
           end;

@@ -84,6 +84,8 @@ uses
       a_i32_store8, a_i32_store16, a_i64_store8, a_i64_store16, a_i64_store32,
       // additional memory
       a_memory_grow, a_memory_size,
+      // bulk memory operations
+      a_memory_copy, a_memory_fill,
       // exceptions
       a_try,a_catch,a_catch_all,a_delegate,a_throw,a_rethrow,a_end_try
       );
@@ -295,6 +297,8 @@ uses
         implementation's runtime call stack (which includes return addresses and
         function parameters) is not visible in linear memory. }
       STACK_POINTER_SYM = '__stack_pointer';
+      { The exception tag symbol, used for FPC exceptions }
+      FPC_EXCEPTION_TAG_SYM = '__FPC_exception';
 
 {*****************************************************************************
                                   Helpers

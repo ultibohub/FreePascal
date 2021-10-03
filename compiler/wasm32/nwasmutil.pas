@@ -42,7 +42,7 @@ implementation
   uses
     globtype,globals,
     cpubase,
-    aasmdata,aasmcpu,
+    aasmbase,aasmdata,aasmtai,aasmcpu,
     hlcgobj,hlcgcpu,
     symdef,symtype,symconst,
     fmodule;
@@ -69,10 +69,13 @@ implementation
 
       list:=current_asmdata.asmlists[al_start];
 
-      list.Concat(tai_globaltype.create(STACK_POINTER_SYM,wbt_i32));
+      list.Concat(tai_globaltype.create(STACK_POINTER_SYM,wbt_i32,false));
 
       if ts_wasm_native_exceptions in current_settings.targetswitches then
-        list.Concat(tai_tagtype.create('__FPC_exception', []));
+        begin
+          list.Concat(tai_tagtype.create(FPC_EXCEPTION_TAG_SYM, []));
+          list.Concat(tai_symbol.Create_Weak(current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG),0));
+        end;
 
       for i:=0 to current_module.deflist.Count-1 do
         begin
@@ -106,8 +109,7 @@ implementation
                   proc := tprocdef(def);
                   if (po_external in proc.procoptions) and (po_has_importdll in proc.procoptions) then
                     WriteImportDll(list,proc)
-                  else if (not proc.owner.iscurrentunit or (po_external in proc.procoptions)) and
-                     ((proc.paras.Count=0) or (proc.has_paraloc_info in [callerside,callbothsides])) then
+                  else if not proc.owner.iscurrentunit or (po_external in proc.procoptions) then
                     thlcgwasm(hlcg).g_procdef(list,proc);
                 end;
             end;

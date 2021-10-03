@@ -20,6 +20,22 @@ procedure fpc_cpuinit;
   end;
 
 
+{$define FPC_SYSTEM_HAS_FILLCHAR}
+Procedure FillChar(var x;count:SizeInt;value:byte);
+  begin
+    if count>0 then
+      fpc_wasm32_memory_fill(PtrUInt(@x),value,count);
+  end;
+
+
+{$define FPC_SYSTEM_HAS_MOVE}
+procedure Move(const source;var dest;count:SizeInt);[public, alias: 'FPC_MOVE'];
+  begin
+    if count>0 then
+      fpc_wasm32_memory_copy(PtrUInt(@dest),PtrUInt(@source),count);
+  end;
+
+
 {$define FPC_SYSTEM_HAS_GET_CALLER_ADDR}
 function get_caller_addr(framebp:pointer;addr:pointer=nil):pointer;
   begin
@@ -111,7 +127,3 @@ function InterLockedExchangeAdd (var Target: smallint;Source : smallint) : small
     Result:=Target;
     inc(Target,Source);
   end;
-
-{$if defined(FPC_WASM_NATIVE_EXCEPTIONS)}
-  {$I except_native.inc}
-{$endif}

@@ -109,7 +109,8 @@ uses
       tai_globaltype = class(tai)
         globalname: string;
         gtype: TWasmBasicType;
-        constructor create(const aglobalname:string; atype: TWasmBasicType);
+        immutable: boolean;
+        constructor create(const aglobalname:string; atype: TWasmBasicType; aimmutable: boolean);
       end;
 
       { tai_functype }
@@ -158,12 +159,13 @@ uses
 
     { tai_globaltype }
 
-    constructor tai_globaltype.create(const aglobalname: string; atype: TWasmBasicType);
+    constructor tai_globaltype.create(const aglobalname: string; atype: TWasmBasicType; aimmutable: boolean);
       begin
         inherited Create;
         typ:=ait_globaltype;
         globalname:=aglobalname;
         gtype:=atype;
+        immutable:=aimmutable;
       end;
 
     { tai_import_name }
@@ -540,6 +542,10 @@ uses
           a_memory_size,
           a_memory_grow:
             result:=2;
+          a_memory_copy:
+            result:=4;
+          a_memory_fill:
+            result:=3;
           a_i32_const:
             begin
               if ops<>1 then
@@ -625,9 +631,7 @@ uses
                         internalerror(2021092012);
                       if (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
                         internalerror(2021092013);
-                      if ref^.symbol.Name<>'__stack_pointer' then
-                        internalerror(2021092014);
-                      result:=1+UlebSize(0);
+                      result:=6;
                     end;
                   else
                     internalerror(2021092011);
@@ -764,6 +768,23 @@ uses
                     internalerror(2021092625);
                 end;
             end;
+          a_catch,
+          a_throw:
+            begin
+              if ops<>1 then
+                internalerror(2021092709);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if not assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
+                        internalerror(2021092711);
+                      result:=6;
+                    end;
+                  else
+                    internalerror(2021092710);
+                end;
+            end;
           else
             internalerror(2021092623);
         end;
@@ -854,6 +875,19 @@ uses
           a_memory_grow:
             begin
               WriteByte($40);
+              WriteByte($00);
+            end;
+          a_memory_copy:
+            begin
+              WriteByte($FC);
+              WriteUleb(10);
+              WriteByte($00);
+              WriteByte($00);
+            end;
+          a_memory_fill:
+            begin
+              WriteByte($FC);
+              WriteUleb(11);
               WriteByte($00);
             end;
           a_i32_eqz:
@@ -1171,7 +1205,7 @@ uses
             begin
               if ops<>1 then
                 internalerror(2021092619);
-              WriteByte($44);
+              WriteByte($43);
               with oper[0]^ do
                 case typ of
                   top_single:
@@ -1246,9 +1280,7 @@ uses
                         internalerror(2021092012);
                       if (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
                         internalerror(2021092013);
-                      if ref^.symbol.Name<>'__stack_pointer' then
-                        internalerror(2021092014);
-                      WriteUleb(0);
+                      objdata.writeReloc(0,5,TWasmObjData(ObjData).globalref(ref^.symbol),RELOC_GLOBAL_INDEX_LEB);
                     end;
                   else
                     internalerror(2021092011);
@@ -1463,6 +1495,31 @@ uses
                     internalerror(2021092625);
                 end;
             end;
+          a_catch,
+          a_throw:
+            begin
+              case opcode of
+                a_catch:
+                  WriteByte($07);
+                a_throw:
+                  WriteByte($08);
+                else
+                  internalerror(2021092708);
+              end;
+              if ops<>1 then
+                internalerror(2021092709);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if not assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
+                        internalerror(2021092711);
+                      objdata.writeReloc(0,5,TWasmObjData(ObjData).ExceptionTagRef(ref^.symbol),RELOC_TAG_INDEX_LEB);
+                    end;
+                  else
+                    internalerror(2021092710);
+                end;
+            end;
           else
             internalerror(2021092624);
         end;
@@ -1495,5 +1552,4 @@ uses
 initialization
   cai_cpu:=taicpu;
   cai_align:=tai_align;
-  casmdata:=TAsmData;
 end.

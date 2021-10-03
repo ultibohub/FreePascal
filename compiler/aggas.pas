@@ -221,11 +221,11 @@ implementation
 { vtable for a class called Window:                                       }
 { .section .data.rel.ro._ZTV6Window,"awG",@progbits,_ZTV6Window,comdat    }
 { TODO: .data.ro not yet working}
-{$if defined(arm) or defined(riscv64) or defined(powerpc)}
+{$if defined(arm) or defined(riscv64) or defined(powerpc) or defined(x86_64)}
           '.rodata',
-{$else defined(arm) or defined(riscv64) or defined(powerpc)}
+{$else defined(arm) or defined(riscv64) or defined(powerpc) or defined(x86_64)}
           '.data',
-{$endif defined(arm) or defined(riscv64) or defined(powerpc)}
+{$endif defined(arm) or defined(riscv64) or defined(powerpc) or defined(x86_64)}
           '.rodata',
           '.bss',
           '.threadvar',
@@ -840,8 +840,6 @@ implementation
               writer.AsmWrite(gas_wasm_basic_type_str[wasm_basic_typ]);
             end;
           writer.AsmLn;
-          writer.AsmWrite(hp.tagname);
-          writer.AsmWriteLn(':');
         end;
 {$endif WASM}
 
@@ -1392,6 +1390,10 @@ implementation
                    { the dotted name is the name of the actual function entry }
                    writer.AsmWrite('.');
                  end
+               else if tai_symbol(hp).sym.typ=AT_WASM_EXCEPTION_TAG then
+                 begin
+                   { nothing here, to ensure we don' write the .type directive for exception tags }
+                 end
                else
                  begin
                    if ((target_info.system <> system_arm_linux) and (target_info.system <> system_arm_android)) or
@@ -1640,7 +1642,10 @@ implementation
                writer.AsmWrite(#9'.globaltype'#9);
                writer.AsmWrite(tai_globaltype(hp).globalname);
                writer.AsmWrite(', ');
-               writer.AsmWriteLn(gas_wasm_basic_type_str[tai_globaltype(hp).gtype]);
+               writer.AsmWrite(gas_wasm_basic_type_str[tai_globaltype(hp).gtype]);
+               if tai_globaltype(hp).immutable then
+                 writer.AsmWrite(', immutable');
+               writer.AsmLn;
              end;
            ait_functype:
              WriteFuncTypeDirective(tai_functype(hp));

@@ -81,14 +81,25 @@ interface
         procedure pass_generate_code;override;
       end;
 
+      { twasmonnode }
+
+      twasmonnode = class(tcgonnode)
+      private
+        procedure pass_generate_code_no_exceptions;
+        procedure pass_generate_code_js_exceptions;
+        procedure pass_generate_code_native_exceptions;
+      public
+        procedure pass_generate_code;override;
+      end;
+
 implementation
 
     uses
       verbose,globals,systems,globtype,constexp,
-      symconst,symdef,symsym,aasmtai,aasmdata,aasmcpu,defutil,defcmp,
+      symconst,symdef,symsym,symtype,aasmtai,aasmdata,aasmcpu,defutil,defcmp,
       procinfo,cgbase,cgexcept,pass_1,pass_2,parabase,compinnr,
       cpubase,cpuinfo,
-      nbas,nld,ncon,ncnv,ncal,ninl,nmem,nadd,
+      nbas,nld,ncon,ncnv,ncal,ninl,nmem,nadd,nutils,
       tgobj,paramgr,
       cgutils,hlcgobj,hlcgcpu;
 
@@ -201,6 +212,13 @@ implementation
 
         secondpass(left); // condition exprssions
         thlcgwasm(hlcg).a_load_loc_stack(current_asmdata.CurrAsmList,left.resultdef,left.location);
+
+        if is_64bit(left.resultdef) then
+          begin
+            thlcgwasm(hlcg).a_load_const_stack(current_asmdata.CurrAsmList,left.resultdef,0,R_INTREGISTER);
+            current_asmdata.CurrAsmList.Concat(taicpu.op_none(a_i64_ne));
+            thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+          end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
         thlcgwasm(hlcg).incblock;
@@ -328,7 +346,7 @@ implementation
           end
         else
           begin
-            addstatement(statements,ccallnode.createintern('fpc_popaddrstack',nil));
+            //addstatement(statements,ccallnode.createintern('fpc_popaddrstack',nil));
             raisenode:=ccallnode.createintern('fpc_reraise',nil);
             include(raisenode.callnodeflags,cnf_call_never_returns);
             addstatement(statements,raisenode);
@@ -365,9 +383,111 @@ implementation
       end;
 
     procedure twasmtryexceptnode.pass_generate_code_native_exceptions;
+      var
+        trystate,doobjectdestroyandreraisestate: tcgexceptionstatehandler.texceptionstate;
+        destroytemps,
+        excepttemps: tcgexceptionstatehandler.texceptiontemps;
+        afteronflowcontrol: tflowcontrol;
+      label
+        errorexit;
       begin
         location_reset(location,LOC_VOID,OS_NO);
+        doobjectdestroyandreraisestate:=Default(tcgexceptionstatehandler.texceptionstate);
+
+        { Exception temps? We don't need no stinking exception temps! :) }
+        fillchar(excepttemps,sizeof(excepttemps),0);
+        reference_reset(excepttemps.envbuf,0,[]);
+        reference_reset(excepttemps.jmpbuf,0,[]);
+        reference_reset(excepttemps.reasonbuf,0,[]);
+
+        //exceptstate.oldflowcontrol:=flowcontrol;
+        //flowcontrol:=[fc_inflowcontrol,fc_catching_exceptions];
+        cexceptionstatehandler.new_exception(current_asmdata.CurrAsmList,excepttemps,tek_except,trystate);
+
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
+        thlcgwasm(hlcg).incblock;
+
+        { try block }
         secondpass(left);
+        if codegenerror then
+          goto errorexit;
+
+        //exceptionstate.newflowcontrol:=flowcontrol;
+        //flowcontrol:=exceptionstate.oldflowcontrol;
+        cexceptionstatehandler.end_try_block(current_asmdata.CurrAsmList,tek_except,excepttemps,trystate,nil);
+
+        current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_catch,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
+
+        flowcontrol:=[fc_inflowcontrol]+trystate.oldflowcontrol*[fc_catching_exceptions];
+        { on statements }
+        if assigned(right) then
+          secondpass(right);
+
+        afteronflowcontrol:=flowcontrol;
+
+        { default handling except handling }
+        if assigned(t1) then
+          begin
+            { FPC_CATCHES with 'default handler' flag (=-1) need no longer be called,
+              it doesn't change any state and its return value is ignored (Sergei)
+            }
+
+            { the destruction of the exception object must be also }
+            { guarded by an exception frame, but it can be omitted }
+            { if there's no user code in 'except' block            }
+
+            if not (has_no_code(t1)) then
+              begin
+                { if there is an outer frame that catches exceptions, remember this for the "except"
+                  part of this try/except }
+                flowcontrol:=trystate.oldflowcontrol*[fc_inflowcontrol,fc_catching_exceptions];
+                { Exception temps? We don't need no stinking exception temps! :) }
+                fillchar(excepttemps,sizeof(destroytemps),0);
+                reference_reset(destroytemps.envbuf,0,[]);
+                reference_reset(destroytemps.jmpbuf,0,[]);
+                reference_reset(destroytemps.reasonbuf,0,[]);
+                cexceptionstatehandler.new_exception(current_asmdata.CurrAsmList,destroytemps,tek_except,doobjectdestroyandreraisestate);
+                { the flowcontrol from the default except-block must be merged
+                  with the flowcontrol flags potentially set by the
+                  on-statements handled above (secondpass(right)), as they are
+                  at the same program level }
+                flowcontrol:=
+                  flowcontrol+
+                  afteronflowcontrol;
+
+                current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
+                thlcgwasm(hlcg).incblock;
+
+                secondpass(t1);
+
+                hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
+
+                current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_catch,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
+
+                hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_raise_nested',[],nil).resetiftemp;
+
+                current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
+                thlcgwasm(hlcg).decblock;
+              end
+            else
+              begin
+                doobjectdestroyandreraisestate.newflowcontrol:=afteronflowcontrol;
+                hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
+              end;
+          end
+        else
+          begin
+            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_rethrow,0));
+            doobjectdestroyandreraisestate.newflowcontrol:=afteronflowcontrol;
+          end;
+
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
+        thlcgwasm(hlcg).decblock;
+
+      errorexit:
+        { return all used control flow statements }
+        flowcontrol:=trystate.oldflowcontrol+(doobjectdestroyandreraisestate.newflowcontrol +
+          trystate.newflowcontrol - [fc_inflowcontrol,fc_catching_exceptions]);
       end;
 
     procedure twasmtryexceptnode.pass_generate_code;
@@ -604,6 +724,21 @@ implementation
           thlcgwasm(hlcg).decblock;
         end;
 
+      procedure generate_exceptreason_throw(reason: tcgint);
+        var
+          reasonreg : tregister;
+        begin
+          reasonreg:=hlcg.getintregister(current_asmdata.CurrAsmList,exceptionreasontype);
+          hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
+          thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
+          current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
+          thlcgwasm(hlcg).incblock;
+          thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+          current_asmdata.CurrAsmList.Concat(taicpu.op_sym(a_throw,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
+          current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
+          thlcgwasm(hlcg).decblock;
+        end;
+
       begin
         location_reset(location,LOC_VOID,OS_NO);
         oldBreakLabel:=nil;
@@ -691,14 +826,14 @@ implementation
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,0,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,4)); // jump to the 'finally' section
 
-        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_catch));
-        thlcgwasm(hlcg).decblock;
+        current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_catch,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
         { exceptionreason:=1 (exception) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,1,excepttemps.reasonbuf);
-        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,3)); // jump to the 'finally' section
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,4)); // jump to the 'finally' section
 
         { exit the inner 'try..end_try' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
+        thlcgwasm(hlcg).decblock;
 
         { exit the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
@@ -750,6 +885,7 @@ implementation
           generate_exceptreason_check_br(3,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr);
         if fc_continue in finallyexceptionstate.newflowcontrol then
           generate_exceptreason_check_br(4,thlcgwasm(hlcg).br_blocks-oldLoopContBr);
+        generate_exceptreason_throw(1);
 
         cexceptionstatehandler.unget_exception_temps(current_asmdata.CurrAsmList,excepttemps);
 
@@ -780,10 +916,94 @@ implementation
           internalerror(2021091704);
       end;
 
+{*****************************************************************************
+                                  twasmonnode
+*****************************************************************************}
+
+    procedure twasmonnode.pass_generate_code_no_exceptions;
+      begin
+        { should not be called }
+        internalerror(2021092803);
+      end;
+
+    procedure twasmonnode.pass_generate_code_js_exceptions;
+      begin
+        { not yet implemented }
+        internalerror(2021092804);
+      end;
+
+    procedure twasmonnode.pass_generate_code_native_exceptions;
+      var
+        exceptvarsym : tlocalvarsym;
+        exceptlocdef: tdef;
+        exceptlocreg: tregister;
+      begin
+        location_reset(location,LOC_VOID,OS_NO);
+
+        cexceptionstatehandler.begin_catch(current_asmdata.CurrAsmList,excepttype,nil,exceptlocdef,exceptlocreg);
+
+        { Retrieve exception variable }
+        if assigned(excepTSymtable) then
+          exceptvarsym:=tlocalvarsym(excepTSymtable.SymList[0])
+        else
+          internalerror(2011020401);
+
+        if assigned(exceptvarsym) then
+          begin
+            location_reset_ref(exceptvarsym.localloc, LOC_REFERENCE, def_cgsize(voidpointertype), voidpointertype.alignment, []);
+            tg.GetLocal(current_asmdata.CurrAsmList, exceptvarsym.vardef.size, exceptvarsym.vardef, exceptvarsym.localloc.reference);
+            hlcg.a_load_reg_ref(current_asmdata.CurrAsmList, exceptlocdef, exceptvarsym.vardef, exceptlocreg, exceptvarsym.localloc.reference);
+          end;
+
+        { in the case that another exception is risen
+          we've to destroy the old one, so create a new
+          exception frame for the catch-handler }
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
+        thlcgwasm(hlcg).incblock;
+
+        if assigned(right) then
+          secondpass(right);
+
+        hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
+        current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,2));
+
+        current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_catch,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
+
+        hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_raise_nested',[],nil).resetiftemp;
+
+        current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
+        thlcgwasm(hlcg).decblock;
+
+        { clear some stuff }
+        if assigned(exceptvarsym) then
+          begin
+            tg.UngetLocal(current_asmdata.CurrAsmList,exceptvarsym.localloc.reference);
+            exceptvarsym.localloc.loc:=LOC_INVALID;
+          end;
+        cexceptionstatehandler.end_catch(current_asmdata.CurrAsmList);
+
+        { next on node }
+        if assigned(left) then
+          secondpass(left);
+      end;
+
+    procedure twasmonnode.pass_generate_code;
+      begin
+        if ts_wasm_no_exceptions in current_settings.targetswitches then
+          pass_generate_code_no_exceptions
+        else if ts_wasm_js_exceptions in current_settings.targetswitches then
+          pass_generate_code_js_exceptions
+        else if ts_wasm_native_exceptions in current_settings.targetswitches then
+          pass_generate_code_native_exceptions
+        else
+          internalerror(2021092802);
+      end;
+
 initialization
   cifnode:=twasmifnode;
   cwhilerepeatnode:=twasmwhilerepeatnode;
   craisenode:=twasmraisenode;
   ctryexceptnode:=twasmtryexceptnode;
   ctryfinallynode:=twasmtryfinallynode;
+  connode:=twasmonnode;
 end.
