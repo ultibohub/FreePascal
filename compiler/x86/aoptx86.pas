@@ -23,7 +23,9 @@ unit aoptx86;
 
 {$i fpcdefs.inc}
 
+{$ifdef EXTDEBUG}
 {$define DEBUG_AOPTCPU}
+{$endif EXTDEBUG}
 
   interface
 
@@ -158,6 +160,7 @@ unit aoptx86;
         function OptPass1Imul(var p : tai) : boolean;
         function OptPass1Jcc(var p : tai) : boolean;
         function OptPass1SHXX(var p: tai): boolean;
+        function OptPass1_V_Cvtss2sd(var p: tai): boolean;
 
         function OptPass2Movx(var p : tai): Boolean;
         function OptPass2MOV(var p : tai) : boolean;
@@ -278,15 +281,16 @@ unit aoptx86;
         op : TAsmOp;
       begin
         result:=false;
+        if (instr.typ <> ait_instruction) or
+          ((opsize <> []) and not(taicpu(instr).opsize in opsize)) then
+          exit;
         for op in ops do
           begin
-            if (instr.typ = ait_instruction) and
-               (taicpu(instr).opcode = op) and
-               ((opsize = []) or (taicpu(instr).opsize in opsize)) then
-               begin
-                 result:=true;
-                 exit;
-               end;
+            if taicpu(instr).opcode = op then
+              begin
+                result:=true;
+                exit;
+              end;
           end;
       end;
 
@@ -537,59 +541,74 @@ unit aoptx86;
               end;
             with insprop[p.opcode] do
               begin
-                if getregtype(reg)=R_INTREGISTER then
-                  begin
-                    case getsupreg(reg) of
-                      RS_EAX:
-                        if [Ch_REAX,Ch_RWEAX,Ch_MEAX]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_ECX:
-                        if [Ch_RECX,Ch_RWECX,Ch_MECX]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_EDX:
-                        if [Ch_REDX,Ch_RWEDX,Ch_MEDX]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_EBX:
-                        if [Ch_REBX,Ch_RWEBX,Ch_MEBX]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_ESP:
-                        if [Ch_RESP,Ch_RWESP,Ch_MESP]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_EBP:
-                        if [Ch_REBP,Ch_RWEBP,Ch_MEBP]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_ESI:
-                        if [Ch_RESI,Ch_RWESI,Ch_MESI]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
-                      RS_EDI:
-                        if [Ch_REDI,Ch_RWEDI,Ch_MEDI]*Ch<>[] then
-                          begin
-                            RegReadByInstruction := true;
-                            exit
-                          end;
+                case getregtype(reg) of
+                  R_INTREGISTER:
+                    begin
+                      case getsupreg(reg) of
+                        RS_EAX:
+                          if [Ch_REAX,Ch_RWEAX,Ch_MEAX]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_ECX:
+                          if [Ch_RECX,Ch_RWECX,Ch_MECX]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_EDX:
+                          if [Ch_REDX,Ch_RWEDX,Ch_MEDX]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_EBX:
+                          if [Ch_REBX,Ch_RWEBX,Ch_MEBX]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_ESP:
+                          if [Ch_RESP,Ch_RWESP,Ch_MESP]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_EBP:
+                          if [Ch_REBP,Ch_RWEBP,Ch_MEBP]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_ESI:
+                          if [Ch_RESI,Ch_RWESI,Ch_MESI]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        RS_EDI:
+                          if [Ch_REDI,Ch_RWEDI,Ch_MEDI]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        end;
                     end;
-                  end;
+                  R_MMREGISTER:
+                    begin
+                      case getsupreg(reg) of
+                        RS_XMM0:
+                          if [Ch_RXMM0,Ch_RWXMM0,Ch_MXMM0]*Ch<>[] then
+                            begin
+                              RegReadByInstruction := true;
+                              exit
+                            end;
+                        end;
+                    end;
+                  else
+                    ;
+                end;
                 if SuperRegistersEqual(reg,NR_DEFAULTFLAGS) then
                   begin
                     if (Ch_RFLAGScc in Ch) and not(getsubreg(reg) in [R_SUBW,R_SUBD,R_SUBQ]) then
@@ -713,6 +732,17 @@ unit aoptx86;
               result:=([Ch_RESI,Ch_RRSI,Ch_WESI,Ch_WRSI,Ch_RWESI,Ch_RWRSI,Ch_MESI,Ch_MRSI,Ch_RMemEDI]*insprop[taicpu(p1).opcode].Ch)<>[];
             RS_EDI:
               result:=([Ch_REDI,Ch_RRDI,Ch_WEDI,Ch_WRDI,Ch_RWEDI,Ch_RWRDI,Ch_MEDI,Ch_MRDI,Ch_WMemEDI]*insprop[taicpu(p1).opcode].Ch)<>[];
+            else
+              ;
+          end;
+          if result then
+            exit;
+        end
+      else if getregtype(reg)=R_MMREGISTER then
+        begin
+          case getsupreg(reg) of
+            RS_XMM0:
+              result:=([Ch_RXMM0,Ch_WXMM0,Ch_RWXMM0,Ch_MXMM0]*insprop[taicpu(p1).opcode].Ch)<>[];
             else
               ;
           end;
@@ -3935,6 +3965,7 @@ unit aoptx86;
             or  reg1,operand2                      bts reg1,operand1}
           begin
             Taicpu(hp2).opcode:=A_MOV;
+            DebugMsg(SPeepholeOptimization + 'MovBtsOr2MovBts done',hp1);
             asml.remove(hp1);
             insertllitem(hp2,hp2.next,hp1);
             RemoveCurrentp(p, hp1);
@@ -5849,6 +5880,48 @@ unit aoptx86;
                RemoveInstruction(hp1);
                result:=true;
              end;
+         end;
+     end;
+
+
+   function TX86AsmOptimizer.OptPass1_V_Cvtss2sd(var p: tai): boolean;
+     var
+       hp1: tai;
+     begin
+       Result:=false;
+       { get rid of
+
+         (v)cvtss2sd reg0,<reg1,>reg2
+         (v)cvtss2sd reg2,<reg2,>reg0
+       }
+       if GetNextInstruction(p,hp1) and
+         (((taicpu(p).opcode=A_CVTSS2SD) and MatchInstruction(hp1,A_CVTSD2SS,[taicpu(p).opsize]) and
+           MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) and MatchOperand(taicpu(p).oper[1]^,taicpu(hp1).oper[0]^)) or
+          ((taicpu(p).opcode=A_VCVTSS2SD) and MatchInstruction(hp1,A_VCVTSD2SS,[taicpu(p).opsize]) and
+           MatchOpType(taicpu(p),top_reg,top_reg,top_reg) and
+           MatchOpType(taicpu(hp1),top_reg,top_reg,top_reg) and
+           (getsupreg(taicpu(p).oper[0]^.reg)=getsupreg(taicpu(p).oper[1]^.reg)) and
+           (getsupreg(taicpu(hp1).oper[0]^.reg)=getsupreg(taicpu(hp1).oper[1]^.reg)) and
+           (getsupreg(taicpu(p).oper[2]^.reg)=getsupreg(taicpu(hp1).oper[0]^.reg))
+          )
+         ) then
+         begin
+           if getsupreg(taicpu(p).oper[0]^.reg)=getsupreg(taicpu(hp1).oper[2]^.reg) then
+             begin
+               DebugMsg(SPeepholeOptimization + '(V)Cvtss2CvtSd(V)Cvtsd2ss2Nop done',p);
+               RemoveCurrentP(p);
+               RemoveInstruction(hp1);
+             end
+           else
+             begin
+               DebugMsg(SPeepholeOptimization + '(V)Cvtss2CvtSd(V)Cvtsd2ss2Vmovaps done',p);
+               taicpu(p).loadreg(1,taicpu(hp1).oper[2]^.reg);
+               taicpu(p).ops:=2;
+               taicpu(p).opcode:=A_VMOVAPS;
+               RemoveInstruction(hp1);
+             end;
+           Result:=true;
+           Exit;
          end;
      end;
 
@@ -10279,28 +10352,6 @@ unit aoptx86;
               end;
 
           end;
-
-{$ifdef x86_64}
-        { Code size reduction by J. Gareth "Kit" Moreton }
-        { Convert MOVZBQ and MOVZWQ to MOVZBL and MOVZWL respectively if it removes the REX prefix }
-        if (taicpu(p).opsize in [S_BQ, S_WQ]) and
-          (getsupreg(taicpu(p).oper[1]^.reg) in [RS_RAX, RS_RCX, RS_RDX, RS_RBX, RS_RSI, RS_RDI, RS_RBP, RS_RSP])
-        then
-          begin
-            { Has 64-bit register name and opcode suffix }
-            PreMessage := 'movz' + debug_opsize2str(taicpu(p).opsize) + ' ' + debug_operstr(taicpu(p).oper[0]^) + ',' + debug_regname(taicpu(p).oper[1]^.reg) + ' -> movz';
-
-            { The actual optimization }
-            setsubreg(taicpu(p).oper[1]^.reg, R_SUBD);
-            if taicpu(p).opsize = S_BQ then
-              taicpu(p).changeopsize(S_BL)
-            else
-              taicpu(p).changeopsize(S_WL);
-
-            DebugMsg(SPeepholeOptimization + PreMessage +
-              debug_opsize2str(taicpu(p).opsize) + ' ' + debug_operstr(taicpu(p).oper[0]^) + ',' + debug_regname(taicpu(p).oper[1]^.reg) + ' (removes REX prefix)', p);
-          end;
-{$endif}
       end;
 
 
@@ -10324,20 +10375,17 @@ unit aoptx86;
         case taicpu(p).opsize of
           S_Q:
             begin
-              if (getsupreg(taicpu(p).oper[0]^.reg) in [RS_RAX, RS_RCX, RS_RDX, RS_RBX, RS_RSI, RS_RDI, RS_RBP, RS_RSP]) then
-                begin
-                  RegName := debug_regname(taicpu(p).oper[0]^.reg); { 64-bit register name }
-                  PreMessage := 'xorq ' + RegName + ',' + RegName + ' -> xorl ';
+              RegName := debug_regname(taicpu(p).oper[0]^.reg); { 64-bit register name }
+              PreMessage := 'xorq ' + RegName + ',' + RegName + ' -> xorl ';
 
-                  { The actual optimization }
-                  setsubreg(taicpu(p).oper[0]^.reg, R_SUBD);
-                  setsubreg(taicpu(p).oper[1]^.reg, R_SUBD);
-                  taicpu(p).changeopsize(S_L);
+              { The actual optimization }
+              setsubreg(taicpu(p).oper[0]^.reg, R_SUBD);
+              setsubreg(taicpu(p).oper[1]^.reg, R_SUBD);
+              taicpu(p).changeopsize(S_L);
 
-                  RegName := debug_regname(taicpu(p).oper[0]^.reg); { 32-bit register name }
+              RegName := debug_regname(taicpu(p).oper[0]^.reg); { 32-bit register name }
 
-                  DebugMsg(SPeepholeOptimization + PreMessage + RegName + ',' + RegName + ' (removes REX prefix)', p);
-                end;
+              DebugMsg(SPeepholeOptimization + PreMessage + RegName + ',' + RegName + ' (32-bit register recommended when zeroing 64-bit counterpart)', p);
             end;
           else
             ;

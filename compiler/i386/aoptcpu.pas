@@ -24,7 +24,9 @@ unit aoptcpu;
 
 {$i fpcdefs.inc}
 
-{ $define DEBUG_AOPTCPU}
+{$ifdef EXTDEBUG}
+{$define DEBUG_AOPTCPU}
+{$endif EXTDEBUG}
 
   Interface
 
@@ -228,6 +230,9 @@ unit aoptcpu;
                 A_SHRX,
                 A_SHLX:
                   Result:=OptPass1SHXX(p);
+                A_VCVTSS2SD,
+                A_CVTSS2SD:
+                  Result:=OptPass1_V_Cvtss2sd(p);
                 else
                   ;
               end;

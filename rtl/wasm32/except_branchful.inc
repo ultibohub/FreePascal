@@ -24,10 +24,21 @@ Var
 {$endif FPC_HAS_FEATURE_THREADING}
   ExceptObjectStack : PExceptObject;
   ExceptTryLevel    : ObjpasInt;
+  RaisedException   : Boolean;
 
 {$ifdef FPC_USE_PSABIEH}
 {$i psabieh.inc}
 {$endif}
+
+function fpc_raised_exception_flag: Boolean;[public,alias:'FPC_RAISED_EXCEPTION_FLAG']compilerproc;
+begin
+  result:=RaisedException;
+end;
+
+procedure fpc_clear_exception_flag;[public,alias:'FPC_CLEAR_EXCEPTION_FLAG']compilerproc;
+begin
+  RaisedException:=false;
+end;
 
 Function RaiseList : PExceptObject;
 begin
@@ -164,7 +175,8 @@ begin
     with _ExceptObjectStack^ do
       RaiseProc(FObject,Addr,FrameCount,Frames);
   //longjmp(_ExceptAddrStack^.Buf^,FPC_Exception);
-  fpc_wasm32_throw_fpcexception;
+  //fpc_wasm32_throw_fpcexception;
+  RaisedException:=true;
 end;
 {$endif FPC_SYSTEM_HAS_RAISEEXCEPTION}
 
@@ -246,7 +258,8 @@ begin
 //    DoUnHandledException;
   ExceptObjectStack^.refcount := 0;
 //  longjmp(_ExceptAddrStack^.Buf^,FPC_Exception);
-  fpc_wasm32_throw_fpcexception;
+//  fpc_wasm32_throw_fpcexception;
+  RaisedException:=true;
 end;
 {$endif FPC_SYSTEM_HAS_RERAISE}
 
@@ -287,6 +300,7 @@ Procedure SysInitExceptions;
   Initialize exceptionsupport
 }
 begin
+  RaisedException:=false;
   ExceptObjectstack:=Nil;
 end;
 

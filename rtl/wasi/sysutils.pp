@@ -29,6 +29,7 @@ uses
   wasiapi;
 
 {$DEFINE HAS_SLEEP}
+{$DEFINE HAS_GETTICKCOUNT64}
 
 { used OS file system APIs use ansistring }
 {$define SYSUTILS_HAS_ANSISTR_FILEUTIL_IMPL}
@@ -52,6 +53,17 @@ implementation
 
 { Include platform independent implementation part }
 {$i sysutils.inc}
+
+
+function GetTickCount64: QWord;
+var
+  NanoSecsPast: __wasi_timestamp_t;
+begin
+  if __wasi_clock_time_get(__WASI_CLOCKID_MONOTONIC,1000000,@NanoSecsPast)=__WASI_ERRNO_SUCCESS then
+    Result:=NanoSecsPast div 1000000
+  else
+    Result:=0;
+end;
 
 
 {****************************************************************************
@@ -241,15 +253,62 @@ end;
 ****************************************************************************}
 
 Function GetEnvironmentVariable(Const EnvVar : String) : String;
+var
+  hp : ppchar;
+  hs : string;
+  eqpos : longint;
 begin
+  result:='';
+  hp:=envp;
+  if hp<>nil then
+    while assigned(hp^) do
+      begin
+        hs:=strpas(hp^);
+        eqpos:=pos('=',hs);
+        if copy(hs,1,eqpos-1)=envvar then
+          begin
+            result:=copy(hs,eqpos+1,length(hs)-eqpos);
+            break;
+          end;
+        inc(hp);
+      end;
 end;
 
 Function GetEnvironmentVariableCount : Integer;
+var
+  p: ppchar;
 begin
+  result:=0;
+  p:=envp;      {defined in system}
+  if p<>nil then
+    while p^<>nil do
+      begin
+        inc(result);
+        inc(p);
+      end;
 end;
 
 Function GetEnvironmentString(Index : Integer) : {$ifdef FPC_RTL_UNICODE}UnicodeString{$else}AnsiString{$endif};
+Var
+  i : longint;
+  p : ppchar;
 begin
+  if (Index <= 0) or (envp=nil) then
+    result:=''
+  else
+    begin
+      p:=envp;      {defined in system}
+      i:=1;
+      while (i<Index) and (p^<>nil) do
+        begin
+          inc(i);
+          inc(p);
+        end;
+      if p^=nil then
+        result:=''
+      else
+        result:=strpas(p^)
+    end;
 end;
 
 
@@ -269,7 +328,18 @@ end;
 *************************************************************************}
 
 procedure Sleep (MilliSeconds: Cardinal);
+var
+  subscription: __wasi_subscription_t;
+  event: __wasi_event_t;
+  nevents: __wasi_size_t;
 begin
+  FillChar(subscription,SizeOf(subscription),0);
+  subscription.u.tag:=__WASI_EVENTTYPE_CLOCK;
+  subscription.u.u.clock.id:=__WASI_CLOCKID_MONOTONIC;
+  subscription.u.u.clock.timeout:=MilliSeconds*1000000;
+  subscription.u.u.clock.precision:=1000000;
+  subscription.u.u.clock.flags:=0;  { timeout value is relative }
+  __wasi_poll_oneoff(@subscription,@event,1,@nevents);
 end;
 
 {****************************************************************************
