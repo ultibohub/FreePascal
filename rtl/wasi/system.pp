@@ -53,27 +53,56 @@ var
   argv: PPChar;
   envp: PPChar;
 
-function ConvertToFdRelativePath(path: ansistring; out fd: LongInt; out relfd_path: ansistring): Boolean;
+function ConvertToFdRelativePath(path: RawByteString; out fd: LongInt; out relfd_path: RawByteString): Word;
 
 implementation
 
 {$I wasitypes.inc}
 {$I wasiprocs.inc}
 
+function fpc_wasi_path_readlink_ansistring(
+                 fd: __wasi_fd_t;
+                 const path: PChar;
+                 path_len: size_t;
+                 out link: rawbytestring): __wasi_errno_t;[Public, Alias : 'FPC_WASI_PATH_READLINK_ANSISTRING'];
+const
+  InitialBufLen=64;
+  MaximumBufLen=16384;
+var
+  CurrentBufLen: __wasi_size_t;
+  BufUsed: __wasi_size_t;
+begin
+  CurrentBufLen:=InitialBufLen div 2;
+  repeat
+    CurrentBufLen:=CurrentBufLen*2;
+    SetLength(link,CurrentBufLen);
+    result:=__wasi_path_readlink(fd,path,path_len,@(link[1]),CurrentBufLen,@BufUsed);
+  until (result<>__WASI_ERRNO_SUCCESS) or ((result=__WASI_ERRNO_SUCCESS) and (BufUsed<CurrentBufLen)) or (CurrentBufLen>MaximumBufLen);
+  if result=__WASI_ERRNO_SUCCESS then
+  begin
+    SetLength(link,BufUsed);
+    setcodepage(link,DefaultRTLFileSystemCodePage,true);
+  end
+  else
+    link:='';
+end;
+
 function HasDriveLetter(const path: rawbytestring): Boolean;
 begin
-  HasDriveLetter:=(path<>'') and (UpCase(path[1]) in ['A'..'Z']) and (path[2] = ':');
+  HasDriveLetter:=(Length(path)>=2) and (UpCase(path[1]) in ['A'..'Z']) and (path[2] = ':');
 end;
 
 type
   PPreopenedDir = ^TPreopenedDir;
   TPreopenedDir = record
-    dir_name: ansistring;
+    dir_name: RawByteString;
+    drive_str: RawByteString;
     fd: longint;
   end;
   PCurrentDir = ^TCurrentDir;
   TCurrentDir = record
-    dir_name: ansistring;
+    dir_name: RawByteString;
+    drive_str: RawByteString;
   end;
 
 var
@@ -106,11 +135,11 @@ begin
   __wasi_proc_exit(ExitCode);
 End;
 
-function ConvertToFdRelativePath(path: ansistring; out fd: LongInt; out relfd_path: ansistring): Boolean;
+function Do_ConvertToFdRelativePath(path: RawByteString; out fd: LongInt; out relfd_path: RawByteString): Word;
 var
   drive_nr,I,pdir_drive,longest_match,chridx: longint;
   IsAbsolutePath: Boolean;
-  pdir: ansistring;
+  pdir: RawByteString;
 begin
   fd:=0;
   relfd_path:='';
@@ -123,33 +152,26 @@ begin
   else
     drive_nr:=current_drive;
   { path is relative to a current directory? }
-  if (path='') or not (path[1] in ['/','\']) then
+  if (path='') or not (path[1] in AllowDirectorySeparators) then
   begin
     { if so, convert to absolute }
     if (drive_nr>=drives_count) or (current_dirs[drive_nr].dir_name='') then
     begin
-      InOutRes:=15;
-      ConvertToFdRelativePath:=false;
+      Do_ConvertToFdRelativePath:=15;
       exit;
     end;
-    if current_dirs[drive_nr].dir_name[Length(current_dirs[drive_nr].dir_name)] in ['/','\'] then
+    if current_dirs[drive_nr].dir_name[Length(current_dirs[drive_nr].dir_name)] in AllowDirectorySeparators then
       path:=current_dirs[drive_nr].dir_name+path
     else
-      path:=current_dirs[drive_nr].dir_name+'/'+path;
-    if HasDriveLetter(path) then
-      delete(path,1,2);
+      path:=current_dirs[drive_nr].dir_name+DirectorySeparator+path;
   end;
   { path is now absolute. Try to find it in the preopened dirs array }
-  ConvertToFdRelativePath:=false;
   longest_match:=0;
   for I:=0 to preopened_dirs_count-1 do
   begin
     pdir:=preopened_dirs[I].dir_name;
-    if HasDriveLetter(pdir) then
-    begin
-      pdir_drive:=Ord(UpCase(pdir[1]))-(Ord('A')-1);
-      delete(pdir,1,2);
-    end
+    if preopened_dirs[I].drive_str<>'' then
+      pdir_drive:=Ord(UpCase(preopened_dirs[I].drive_str[1]))-(Ord('A')-1)
     else
       pdir_drive:=0;
     if pdir_drive<>drive_nr then
@@ -159,23 +181,28 @@ begin
     if Copy(path,1,Length(pdir))<>pdir then
       continue;
     chridx:=Length(pdir)+1;
-    if ((pdir<>'/') and (pdir<>'\')) and
-       ((chridx>Length(path)) or not (path[chridx] in ['/','\'])) then
+    if ((Length(pdir)<>1) or ((Length(pdir)=1) and not (pdir[1] in AllowDirectorySeparators))) and
+       ((chridx>Length(path)) or not (path[chridx] in AllowDirectorySeparators)) then
       continue;
     if Length(pdir)>longest_match then
     begin
       longest_match:=Length(pdir);
-      while (chridx<=Length(path)) and (path[chridx] in ['/','\']) do
+      while (chridx<=Length(path)) and (path[chridx] in AllowDirectorySeparators) do
         Inc(chridx);
       fd:=preopened_dirs[I].fd;
       relfd_path:=Copy(path,chridx,Length(path)-chridx+1);
-      ConvertToFdRelativePath:=true;
     end;
   end;
   if longest_match>0 then
-    InOutRes:=0
+    Do_ConvertToFdRelativePath:=0
   else
-    InOutRes:=3;
+    Do_ConvertToFdRelativePath:=3;
+end;
+
+function ConvertToFdRelativePath(path: RawByteString; out fd: LongInt; out relfd_path: RawByteString): Word;
+begin
+  ConvertToFdRelativePath:=Do_ConvertToFdRelativePath(ToSingleByteFileSystemEncodedFileName(path),fd,relfd_path);
+  setcodepage(relfd_path,DefaultRTLFileSystemCodePage,true);
 end;
 
 procedure Setup_PreopenedDirs;
@@ -183,7 +210,7 @@ var
   fd: __wasi_fd_t;
   prestat: __wasi_prestat_t;
   res: __wasi_errno_t;
-  prestat_dir_name: ansistring;
+  prestat_dir_name: RawByteString;
   drive_nr: longint;
 begin
   preopened_dirs_count:=0;
@@ -201,17 +228,25 @@ begin
         SetLength(prestat_dir_name,prestat.u.dir.pr_name_len);
         if __wasi_fd_prestat_dir_name(fd,PByte(prestat_dir_name),prestat.u.dir.pr_name_len)=__WASI_ERRNO_SUCCESS then
         begin
+          setcodepage(prestat_dir_name,DefaultRTLFileSystemCodePage,true);
           Inc(preopened_dirs_count);
           if preopened_dirs=nil then
             preopened_dirs:=AllocMem(preopened_dirs_count*SizeOf(TPreopenedDir))
           else
             ReAllocMem(preopened_dirs, preopened_dirs_count*SizeOf(TPreopenedDir));
-          preopened_dirs[preopened_dirs_count-1].dir_name:=prestat_dir_name;
           preopened_dirs[preopened_dirs_count-1].fd:=fd;
           if HasDriveLetter(prestat_dir_name) then
-            drive_nr:=Ord(UpCase(prestat_dir_name[1]))-(Ord('A')-1)
+          begin
+            drive_nr:=Ord(UpCase(prestat_dir_name[1]))-(Ord('A')-1);
+            preopened_dirs[preopened_dirs_count-1].drive_str:=Copy(prestat_dir_name,1,2);
+            preopened_dirs[preopened_dirs_count-1].dir_name:=Copy(prestat_dir_name,2,Length(prestat_dir_name)-2);
+          end
           else
+          begin
             drive_nr:=0;
+            preopened_dirs[preopened_dirs_count-1].drive_str:='';
+            preopened_dirs[preopened_dirs_count-1].dir_name:=prestat_dir_name;
+          end;
           if (drive_nr+1)>drives_count then
           begin
             drives_count:=drive_nr+1;
@@ -227,8 +262,15 @@ begin
     end;
     Inc(fd);
   until res<>__WASI_ERRNO_SUCCESS;
-  while (current_drive<drives_count) and (current_dirs[current_drive].dir_name='') do
+  while (current_drive<(drives_count-1)) and (current_dirs[current_drive].dir_name='') do
     Inc(current_drive);
+  for drive_nr:=0 to drives_count-1 do
+  begin
+    if drive_nr>0 then
+      current_dirs[drive_nr].drive_str:=Chr(Ord('A')+drive_nr-1)+':';
+    if current_dirs[drive_nr].dir_name='' then
+      current_dirs[drive_nr].dir_name:=DirectorySeparator;
+  end;
 end;
 
 procedure Setup_Environment;

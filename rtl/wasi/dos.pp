@@ -47,7 +47,7 @@ Type
 {Extra Utils}
 function weekday(y,m,d : longint) : longint; platform;
 Procedure WasiDateToDt(NanoSecsPast: UInt64; Var Dt: DateTime); platform;
-//Function  DTToUnixDate(DT: DateTime): LongInt; platform;
+Function DTToWasiDate(DT: DateTime): UInt64; platform;
 
 {Disk}
 //Function AddDisk(const path:string) : byte; platform;
@@ -179,6 +179,65 @@ begin
 end;
 
 
+Function DTToWasiDate(DT: DateTime): UInt64;
+const
+  days_in_month: array [boolean, 1..12] of Byte =
+    ((31,28,31,30,31,30,31,31,30,31,30,31),
+     (31,29,31,30,31,30,31,31,30,31,30,31));
+  days_before_month: array [boolean, 1..12] of Word =
+    ((0,
+      0+31,
+      0+31+28,
+      0+31+28+31,
+      0+31+28+31+30,
+      0+31+28+31+30+31,
+      0+31+28+31+30+31+30,
+      0+31+28+31+30+31+30+31,
+      0+31+28+31+30+31+30+31+31,
+      0+31+28+31+30+31+30+31+31+30,
+      0+31+28+31+30+31+30+31+31+30+31,
+      0+31+28+31+30+31+30+31+31+30+31+30),
+     (0,
+      0+31,
+      0+31+29,
+      0+31+29+31,
+      0+31+29+31+30,
+      0+31+29+31+30+31,
+      0+31+29+31+30+31+30,
+      0+31+29+31+30+31+30+31,
+      0+31+29+31+30+31+30+31+31,
+      0+31+29+31+30+31+30+31+31+30,
+      0+31+29+31+30+31+30+31+31+30+31,
+      0+31+29+31+30+31+30+31+31+30+31+30));
+var
+  leap: Boolean;
+  days_in_year: LongInt;
+  y,m: LongInt;
+begin
+  if (DT.year<1970) or (DT.month<1) or (DT.month>12) or (DT.day<1) or (DT.day>31) or
+     (DT.hour>=24) or (DT.min>=60) or (DT.sec>=60) then
+  begin
+    DTToWasiDate:=-1;
+    exit;
+  end;
+  leap:=((DT.year mod 4)=0) and (((DT.year mod 100)<>0) or ((DT.year mod 400)=0));
+  if DT.day>days_in_month[leap,DT.month] then
+  begin
+    DTToWasiDate:=-1;
+    exit;
+  end;
+  DTToWasiDate:=0;
+  for y:=1970 to DT.year-1 do
+    if ((y mod 4)=0) and (((y mod 100)<>0) or ((y mod 400)=0)) then
+      Inc(DTToWasiDate,366)
+    else
+      Inc(DTToWasiDate,365);
+  Inc(DTToWasiDate,days_before_month[leap,DT.month]);
+  Inc(DTToWasiDate,DT.day-1);
+  DTToWasiDate:=((((DTToWasiDate*24+DT.hour)*60+DT.min)*60)+DT.sec)*1000000000;
+end;
+
+
 Procedure WasiDateToDt(NanoSecsPast: UInt64; Var Dt: DateTime);
 const
   days_in_month: array [boolean, 1..12] of Byte =
@@ -218,11 +277,6 @@ Begin
     Inc(Dt.Month);
   end;
   Dt.Day:=Word(NanoSecsPast);
-End;
-
-
-Function DTToUnixDate(DT: DateTime): LongInt;
-Begin
 End;
 
 
@@ -461,10 +515,10 @@ var
   Info : RtlInfoType;
   st   : __wasi_filestat_t;
   fd   : __wasi_fd_t;
-  pr   : ansistring;
+  pr   : RawByteString;
 begin
   FindGetFileInfo:=false;
-  if not ConvertToFdRelativePath(s,fd,pr) then
+  if ConvertToFdRelativePath(s,fd,pr)<>0 then
     exit;
   { todo: __WASI_LOOKUPFLAGS_SYMLINK_FOLLOW??? }
   if __wasi_path_filestat_get(fd,0,PChar(pr),Length(pr),@st)<>__WASI_ERRNO_SUCCESS then
@@ -529,9 +583,9 @@ Procedure FindNext(Var f: SearchRec);
 }
 Var
   fd,ourfd: __wasi_fd_t;
-  pr: ansistring;
+  pr: RawByteString;
   res: __wasi_errno_t;
-  DirName  : ansistring;
+  DirName  : RawByteString;
   i,
   ArrayPos : Longint;
   FName,
@@ -556,7 +610,7 @@ Begin
          DirName:='./'
         Else
          DirName:=Copy(f.SearchSpec,1,f.NamePos);
-        if ConvertToFdRelativePath(DirName,fd,pr) then
+        if ConvertToFdRelativePath(DirName,fd,pr)=0 then
          begin
            repeat
              res:=__wasi_path_open(fd,
@@ -651,7 +705,7 @@ Begin
   f.SearchAttr := Attr or archive or readonly;
   f.SearchPos  := 0;
   f.NamePos := Length(f.SearchSpec);
-  while (f.NamePos>0) and not (f.SearchSpec[f.NamePos] in ['/','\']) do
+  while (f.NamePos>0) and not (f.SearchSpec[f.NamePos] in AllowDirectorySeparators) do
    dec(f.NamePos);
 {Wildcards?}
   if (Pos('?',Path)=0)  and (Pos('*',Path)=0) then
@@ -696,42 +750,27 @@ Begin
 End;
 
 Procedure GetFAttr(var f; var attr : word);
-(*Var
-  info    : baseunix.stat;
-  LinAttr : longint;
-  p       : pchar;
-{$ifndef FPC_ANSI_TEXTFILEREC}
-  r       : RawByteString;
-{$endif not FPC_ANSI_TEXTFILEREC}*)
+Var
+  pr: RawByteString;
+  fd: __wasi_fd_t;
+  Info: __wasi_filestat_t;
 Begin
-(*  DosError:=0;
-{$ifdef FPC_ANSI_TEXTFILEREC}
-  { encoding is already correct }
-  p:=@textrec(f).name;
-{$else}
-  r:=ToSingleByteFileSystemEncodedFileName(textrec(f).name);
-  p:=pchar(r);
-{$endif}
-  { use the pchar rather than the rawbytestring version so that we don't check
-    a second time whether the string needs to be converted to the right code
-    page
-  }
-  if FPStat(p,info)<0 then
-   begin
-     Attr:=0;
-     DosError:=3;
-     exit;
-   end
-  else
-   LinAttr:=Info.st_Mode;
-  if fpS_ISDIR(LinAttr) then
-   Attr:=$10
-  else
-   Attr:=$0;
-  if fpAccess(p,W_OK)<0 then
-   Attr:=Attr or $1;
+  DosError:=0;
+  Attr:=0;
+  if ConvertToFdRelativePath(textrec(f).name,fd,pr)<>0 then
+    begin
+      DosError:=3;
+      exit;
+    end;
+  if __wasi_path_filestat_get(fd,__WASI_LOOKUPFLAGS_SYMLINK_FOLLOW,PChar(pr),length(pr),@Info)<>__WASI_ERRNO_SUCCESS then
+    begin
+      DosError:=3;
+      exit;
+    end;
+  if Info.filetype=__WASI_FILETYPE_DIRECTORY then
+    Attr:=$10;
   if filerec(f).name[0]='.' then
-   Attr:=Attr or $2;*)
+    Attr:=Attr or $2;
 end;
 
 Procedure getftime (var f; var time : longint);
@@ -760,38 +799,23 @@ Begin
 End;
 
 Procedure setftime(var f; time : longint);
-(*
 Var
-  utim: utimbuf;
   DT: DateTime;
-  p : pchar;
-{$ifndef FPC_ANSI_TEXTFILEREC}
-  r : Rawbytestring;
-{$endif not FPC_ANSI_TEXTFILEREC}*)
+  modtime: UInt64;
+  pr: RawByteString;
+  fd: __wasi_fd_t;
 Begin
-(*  doserror:=0;
-  with utim do
+  doserror:=0;
+  UnPackTime(Time,DT);
+  modtime:=DTToWasiDate(DT);
+  if ConvertToFdRelativePath(textrec(f).name,fd,pr)<>0 then
     begin
-      actime:=fptime;
-      UnPackTime(Time,DT);
-      modtime:=DTToUnixDate(DT);
-    end;
-{$ifdef FPC_ANSI_TEXTFILEREC}
-  { encoding is already correct }
-  p:=@textrec(f).name;
-{$else}
-  r:=ToSingleByteFileSystemEncodedFileName(textrec(f).name);
-  p:=pchar(r);
-{$endif}
-  { use the pchar rather than the rawbytestring version so that we don't check
-    a second time whether the string needs to be converted to the right code
-    page
-  }
-  if fputime(p,@utim)<0 then
-    begin
-      Time:=0;
       doserror:=3;
-    end;*)
+      exit;
+    end;
+  if __wasi_path_filestat_set_times(fd,0,PChar(pr),length(pr),0,modtime,
+     __WASI_FSTFLAGS_MTIM or __WASI_FSTFLAGS_ATIM_NOW)<>__WASI_ERRNO_SUCCESS then
+    doserror:=3;
 End;
 
 {******************************************************************************
@@ -864,10 +888,10 @@ End;
 
 Procedure setfattr (var f;attr : word);
 Begin
-(*  {! No Unix equivalent !}
+  {! No WASI equivalent !}
   { Fail for setting VolumeId }
   if (attr and VolumeID)<>0 then
-   doserror:=5;*)
+   doserror:=5;
 End;
 
 
