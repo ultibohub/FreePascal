@@ -20,7 +20,7 @@
 unit TCModules;
 
 {$mode objfpc}{$H+}
-
+{$Optimization }
 interface
 
 uses
@@ -910,9 +910,12 @@ type
 
     // Library
     Procedure TestLibrary_Empty;
-    Procedure TestLibrary_ExportFunc; // ToDo
+    Procedure TestLibrary_ExportFunc;
+    Procedure TestLibrary_Export_Index_Fail;
+    Procedure TestLibrary_ExportVar; // ToDo
+    Procedure TestLibrary_ExportUnitFunc;
     // ToDo: test delayed specialization init
-    // ToDO: analyzer
+    // ToDo: analyzer
   end;
 
 function LinesToStr(Args: array of const): string;
@@ -1982,8 +1985,17 @@ var
   InitName: String;
   LastNode: TJSElement;
   Arg: TJSArrayLiteralElement;
+  IsProg, IsLib: Boolean;
 begin
   if SkipTests then exit;
+
+  IsProg:=false;
+  IsLib:=false;
+  if Module is TPasProgram then
+    IsProg:=true
+  else if Module is TPasLibrary then
+    IsLib:=true;
+
   try
     FJSModule:=FConverter.ConvertPasElement(Module,Engine) as TJSSourceElements;
   except
@@ -2018,9 +2030,9 @@ begin
   AssertNotNull('module name param',Arg.Expr);
   ModuleNameExpr:=Arg.Expr as TJSLiteral;
   AssertEquals('module name param is string',ord(jstString),ord(ModuleNameExpr.Value.ValueType));
-  if Module is TPasProgram then
+  if IsProg then
     AssertEquals('module name','program',String(ModuleNameExpr.Value.AsString))
-  else if Module is TPasLibrary then
+  else if IsLib then
     AssertEquals('module name','library',String(ModuleNameExpr.Value.AsString))
   else
     AssertEquals('module name',Module.Name,String(ModuleNameExpr.Value.AsString));
@@ -2038,13 +2050,15 @@ begin
   CheckFunctionParam('module intf-function',Arg,FJSModuleSrc);
 
   // search for $mod.$init or $mod.$main - the last statement
-  if (Module is TPasProgram) or (Module is TPasLibrary) then
+  if IsProg or IsLib then
     begin
     InitName:='$main';
     AssertEquals('$mod.'+InitName+' function 1',true,JSModuleSrc.Statements.Count>0);
     end
   else
     InitName:='$init';
+  InitAssign:=nil;
+  InitFunction:=nil;
   FJSInitBody:=nil;
   if JSModuleSrc.Statements.Count>0 then
     begin
@@ -2057,7 +2071,7 @@ begin
         InitFunction:=InitAssign.Expr as TJSFunctionDeclarationStatement;
         FJSInitBody:=InitFunction.AFunction.Body as TJSFunctionBody;
         end
-      else if (Module is TPasProgram) or (Module is TPasLibrary) then
+      else if IsProg or IsLib then
         CheckDottedIdentifier('init function',InitAssign.LHS,'$mod.'+InitName);
       end;
     end;
@@ -2125,6 +2139,7 @@ procedure TCustomTestModule.CheckSource(Msg, Statements: String;
   InitStatements: string; ImplStatements: string);
 var
   ActualSrc, ExpectedSrc, InitName: String;
+  IsProg, IsLib: Boolean;
 begin
   ActualSrc:=JSToStr(JSModuleSrc);
   if coUseStrict in Converter.Options then
@@ -2142,9 +2157,15 @@ begin
       +'};'+LineEnding;
 
   // program main or unit initialization
-  if (Module is TPasProgram) or (Trim(InitStatements)<>'') then
+  IsProg:=false;
+  IsLib:=false;
+  if Module is TPasProgram then
+    IsProg:=true
+  else if Module is TPasLibrary then
+    IsLib:=true;
+  if IsProg or IsLib or (Trim(InitStatements)<>'') then
     begin
-    if (Module is TPasProgram) or (Module is TPasLibrary) then
+    if IsProg or IsLib then
       InitName:='$main'
     else
       InitName:='$init';
@@ -2156,6 +2177,7 @@ begin
 
   //writeln('TCustomTestModule.CheckSource ExpectedIntf="',ExpectedSrc,'"');
   //writeln('TTestModule.CheckSource InitStatements="',Trim(InitStatements),'"');
+  //writeln('TCustomTestModule.CheckSource ',ActualSrc);
   CheckDiff(Msg,ExpectedSrc,ActualSrc);
 end;
 
@@ -20863,7 +20885,7 @@ begin
     '    this.FAnt = null;',
     '  };',
     '  this.$final = function () {',
-    '    this.FAnt = undefined;',
+    '    rtl.setIntfP(this, "FAnt", null);',
     '  };',
     '  rtl.addIntf(this, $mod.IUnknown);',
     '});',
@@ -21041,7 +21063,7 @@ begin
     '    this.FDoveObj = null;',
     '  };',
     '  this.$final = function () {',
-    '    this.FBirdIntf = undefined;',
+    '    rtl.setIntfP(this, "FBirdIntf", null);',
     '    this.FDoveObj = undefined;',
     '    $mod.TObject.$final.call(this);',
     '  };',
@@ -33777,24 +33799,64 @@ end;
 
 procedure TTestModule.TestLibrary_ExportFunc;
 begin
-  exit;
-
   StartLibrary(false);
   Add([
   'procedure Run(w: word);',
   'begin',
   'end;',
   'exports',
-  '  Run,',
+  '  Run;',
   '  run name ''Foo'';',
+  '  test1.run name ''Test1Run'';',
   '']);
   ConvertLibrary;
   CheckSource('TestLibrary_ExportFunc',
     LinesToStr([ // statements
+    'this.Run = function (w) {',
+    '};',
+    'export { this.Run as Run, this.Run as Foo, this.Run as Test1Run };',
     '']),
     LinesToStr([
     '']));
   CheckResolverUnexpectedHints();
+end;
+
+procedure TTestModule.TestLibrary_Export_Index_Fail;
+begin
+  StartLibrary(false);
+  Add([
+  'procedure Run(w: word);',
+  'begin',
+  'end;',
+  'exports',
+  '  Run index 3;',
+  '']);
+  SetExpectedPasResolverError('Not supported: export index',nNotSupportedX);
+  ConvertLibrary;
+end;
+
+procedure TTestModule.TestLibrary_ExportVar;
+begin
+  StartLibrary(false);
+  Add([
+  'var Wing: word;',
+  'exports',
+  '  Wing;',
+  '']);
+  ConvertLibrary;
+  CheckSource('TestLibrary_ExportVar',
+    LinesToStr([ // statements
+    'this.Wing = 0;',
+    'export { this.Wing as Wing };',
+    '']),
+    LinesToStr([
+    '']));
+  CheckResolverUnexpectedHints();
+end;
+
+procedure TTestModule.TestLibrary_ExportUnitFunc;
+begin
+
 end;
 
 Initialization

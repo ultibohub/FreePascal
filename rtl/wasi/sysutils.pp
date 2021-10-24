@@ -26,7 +26,7 @@ interface
 {$modeswitch advancedrecords}
 
 uses
-  wasiapi;
+  wasiapi, wasiutil;
 
 {$DEFINE OS_FILESETDATEBYNAME}
 {$DEFINE HAS_SLEEP}
@@ -36,6 +36,9 @@ uses
 {$define SYSUTILS_HAS_ANSISTR_FILEUTIL_IMPL}
 { OS has an ansistring/single byte environment variable API }
 {$define SYSUTILS_HAS_ANSISTR_ENVVAR_IMPL}
+
+type
+  TWasiFindData = TWasiSearchRec;
 
 { Include platform independent interface part }
 {$i sysutilh.inc}
@@ -51,12 +54,6 @@ implementation
 {$DEFINE HAS_LOCALTIMEZONEOFFSET}
 
 {$DEFINE executeprocuni} (* Only 1 byte version of ExecuteProcess is provided by the OS *)
-
-function fpc_wasi_path_readlink_ansistring(
-                 fd: __wasi_fd_t;
-                 const path: PChar;
-                 path_len: size_t;
-                 out link: rawbytestring): __wasi_errno_t; external name 'FPC_WASI_PATH_READLINK_ANSISTRING';
 
 Function UniversalToEpoch(year,month,day,hour,minute,second:Word):int64;
 const
@@ -532,21 +529,49 @@ end;
 
 
 Function InternalFindFirst (Const Path : RawByteString; Attr : Longint; out Rslt : TAbstractSearchRec; var Name: RawByteString) : Longint;
+var
+  derror: longint;
 begin
-  { not yet implemented }
-  Result := -1;
+  Result:=-1;
+  { this is safe even though Rslt actually contains a refcounted field, because
+    it is declared as "out" and hence has already been initialised }
+  fillchar(Rslt,sizeof(Rslt),0);
+  if Path='' then
+    exit;
+
+  derror:=WasiFindFirst(Path, Attr, Rslt.FindData);
+  if derror=0 then
+    result:=0
+  else
+    result:=-1;
+
+  Name:=Rslt.FindData.Name;
+  Rslt.Attr:=Rslt.FindData.Attr;
+  Rslt.Size:=Rslt.FindData.Size;
+  Rslt.Time:=Rslt.FindData.Time div 1000000000;
 end;
 
 
 Function InternalFindNext (var Rslt : TAbstractSearchRec; var Name : RawByteString) : Longint;
+var
+  derror: longint;
 begin
-  { not yet implemented }
-  Result := -1;
+  derror:=WasiFindNext(Rslt.FindData);
+  if derror=0 then
+    result:=0
+  else
+    result:=-1;
+
+  Name:=Rslt.FindData.Name;
+  Rslt.Attr:=Rslt.FindData.Attr;
+  Rslt.Size:=Rslt.FindData.Size;
+  Rslt.Time:=Rslt.FindData.Time div 1000000000;
 end;
 
 
-Procedure InternalFindClose(var Handle: THandle);
+Procedure InternalFindClose(var Handle: THandle; var FindData: TFindData);
 begin
+  WasiFindClose(FindData);
 end;
 
 

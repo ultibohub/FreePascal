@@ -986,6 +986,7 @@ type
     Procedure TestLibrary_ExportFunc_NameIntFail;
     Procedure TestLibrary_ExportFunc_IndexStringFail;
     Procedure TestLibrary_ExportVar; // ToDo
+    Procedure TestLibrary_ExportLocalFuncFail;
     Procedure TestLibrary_Initialization_Finalization;
     Procedure TestLibrary_ExportFuncOverloadFail;
     Procedure TestLibrary_UnitExports;
@@ -18799,7 +18800,8 @@ begin
   'end;',
   'exports',
   '  Run,',
-  '  Fly name ''FlyHi'';',
+  '  Fly name ''FlyHi'',',
+  '  afile.run name ''Runner'';',
   'exports',
   '  Run index 3+4;',
   'begin',
@@ -18850,6 +18852,20 @@ begin
   'begin',
   '']);
   ParseLibrary;
+end;
+
+procedure TTestResolver.TestLibrary_ExportLocalFuncFail;
+begin
+  StartLibrary(false);
+  Add([
+  'procedure Run;',
+  'exports',
+  '  Run;',
+  'begin',
+  'end;',
+  'begin',
+  '']);
+  CheckParserException('Expected "begin"',nParserExpectTokenError);
 end;
 
 procedure TTestResolver.TestLibrary_Initialization_Finalization;

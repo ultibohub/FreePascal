@@ -2098,6 +2098,7 @@ type
     // section
     Function CreateImplementationSection(El: TPasModule; IntfContext: TInterfaceSectionContext): TJSFunctionDeclarationStatement; virtual;
     Procedure CreateInitSection(El: TPasModule; Src: TJSSourceElements; AContext: TConvertContext); virtual;
+    Procedure CreateExportsSection(El: TPasLibrary; Src: TJSSourceElements; AContext: TConvertContext); virtual;
     Procedure AddHeaderStatement(JS: TJSElement; PosEl: TPasElement; aContext: TConvertContext); virtual;
     Procedure AddImplHeaderStatement(JS: TJSElement; PosEl: TPasElement; aContext: TConvertContext); virtual;
     function AddDelayedInits(El: TPasModule; Src: TJSSourceElements; AContext: TConvertContext): boolean; virtual;
@@ -4914,6 +4915,7 @@ var
   ResolvedEl: TPasResolverResult;
   DeclEl: TPasElement;
   Proc: TPasProcedure;
+  V: TPasVariable;
 begin
   if El.Parent is TLibrarySection then
     // ok
@@ -4929,14 +4931,28 @@ begin
   DeclEl:=ResolvedEl.IdentEl;
   if DeclEl=nil then
     RaiseMsg(20210106223620,nSymbolCannotBeExportedFromALibrary,
-      sSymbolCannotBeExportedFromALibrary,[],El)
-  else if DeclEl is TPasProcedure then
+      sSymbolCannotBeExportedFromALibrary,[],El);
+  if not (DeclEl.Parent is TPasSection) then
+    RaiseMsg(20210106224436,nSymbolCannotBeExportedFromALibrary,
+      sSymbolCannotBeExportedFromALibrary,[],El);
+
+  if not (DeclEl.Parent is TLibrarySection) then
+    // disable exports in units
+    RaiseMsg(20211022224239,nSymbolCannotBeExportedFromALibrary,
+      sSymbolCannotBeExportedFromALibrary,[],El);
+
+  if DeclEl is TPasProcedure then
     begin
     Proc:=TPasProcedure(DeclEl);
-    if Proc.Parent is TPasSection then
-      // ok
-    else
-      RaiseMsg(20210106224436,nSymbolCannotBeExportedFromALibrary,
+    if Proc.IsExternal or Proc.IsAbstract then
+      RaiseMsg(20211021225630,nSymbolCannotBeExportedFromALibrary,
+        sSymbolCannotBeExportedFromALibrary,[],El);
+    end
+  else if DeclEl is TPasVariable then
+    begin
+    V:=TPasVariable(DeclEl);
+    if vmExternal in V.VarModifiers then
+      RaiseMsg(20211021225634,nSymbolCannotBeExportedFromALibrary,
         sSymbolCannotBeExportedFromALibrary,[],El);
     end
   else
@@ -8312,8 +8328,8 @@ begin
       if Assigned(Lib.LibrarySection) then
         AddToSourceElements(Src,ConvertDeclarations(Lib.LibrarySection,IntfContext));
       HasImplCode:=AddDelayedInits(Lib,Src,IntfContext);
+      CreateExportsSection(Lib,Src,IntfContext);
       CreateInitSection(Lib,Src,IntfContext);
-      // ToDo: append exports
       end
     else
       begin // unit
@@ -17991,11 +18007,81 @@ begin
   RootContext:=AContext.GetRootContext as TRootContext;
   // add initialization section
   if Assigned(El.InitializationSection)
+      or (El is TPasLibrary) // the begin..end is optional in a library, but the js it always needed
       or (length(RootContext.GlobalClassMethods)>0) then
     AddToSourceElements(Src,ConvertInitializationSection(El,AContext));
   // finalization: not supported
   if Assigned(El.FinalizationSection) then
     raise Exception.Create('TPasToJSConverter.ConvertInitializationSection: finalization section is not supported');
+end;
+
+procedure TPasToJSConverter.CreateExportsSection(El: TPasLibrary;
+  Src: TJSSourceElements; AContext: TConvertContext);
+var
+  ExportSymbols: TFPList;
+  aResolver: TPas2JSResolver;
+  ExpSt: TJSExportStatement;
+  i: Integer;
+  Symb: TPasExportSymbol;
+  Ref: TResolvedReference;
+  NamePath: String;
+  EvalValue: TResEvalValue;
+  ExpNameJS: TJSExportNameElement;
+  Decl: TPasElement;
+  ResolvedEl: TPasResolverResult;
+begin
+  ExportSymbols:=El.LibrarySection.ExportSymbols;
+  if ExportSymbols.Count=0 then exit;
+  aResolver:=AContext.Resolver;
+
+  ExpSt:=TJSExportStatement(CreateElement(TJSExportStatement,El));
+  AddToSourceElements(Src,ExpSt);
+  for i:=0 to ExportSymbols.Count-1 do
+    begin
+    ExpNameJS:=ExpSt.ExportNames.AddElement;
+    Symb:=TObject(ExportSymbols[i]) as TPasExportSymbol;
+
+    // name
+    if Symb.NameExpr<>nil then
+      begin
+      aResolver.ComputeElement(Symb.NameExpr,ResolvedEl,[rcConstant]);
+      Decl:=ResolvedEl.IdentEl;
+      end
+    else
+      begin
+      if not (Symb.CustomData is TResolvedReference) then
+        RaiseNotSupported(Symb,AContext,20211020142506,GetObjName(Symb.CustomData));
+      Ref:=TResolvedReference(Symb.CustomData);
+      Decl:=Ref.Declaration;
+      end;
+    NamePath:=CreateReferencePath(Decl,AContext,rpkPathAndName,true);
+    ExpNameJS.Name:=NamePath;
+
+    // alias
+    if Symb.ExportName<>nil then
+      begin
+      EvalValue:=aResolver.Eval(Symb.ExportName,[refConst]);
+      if EvalValue=nil then
+        RaiseNotSupported(Symb.ExportName,AContext,20211020144200);
+      case EvalValue.Kind of
+      {$ifdef FPC_HAS_CPSTRING}
+      revkString:
+        ExpNameJS.Alias:=TResEvalString(EvalValue).S;
+      {$endif}
+      revkUnicodeString:
+        ExpNameJS.Alias:=String(TResEvalUTF16(EvalValue).S);
+      else
+        RaiseNotSupported(Symb.ExportName,AContext,20211020144404);
+      end;
+
+      end
+    else
+      begin
+      if Decl.Name='' then
+        RaiseNotSupported(Symb,AContext,20211020144730);
+      ExpNameJS.Alias:=Decl.Name;
+      end;
+    end;
 end;
 
 procedure TPasToJSConverter.AddHeaderStatement(JS: TJSElement;
@@ -19104,6 +19190,9 @@ var
   Func: TJSFunctionDeclarationStatement;
   VarType: TPasType;
   AssignSt: TJSSimpleAssignStatement;
+  C: TClass;
+  ElClass: TPasClassType;
+  Call: TJSCallExpression;
 begin
   // add instance members
   AncestorIsExternal:=(Ancestor is TPasClassType) and TPasClassType(Ancestor).IsExternal;
@@ -19133,13 +19222,29 @@ begin
           // mfFinalize: clear reference
           if vmExternal in TPasVariable(P).VarModifiers then continue;
           VarType:=ClassContext.Resolver.ResolveAliasType(TPasVariable(P).VarType);
-          if (VarType.ClassType=TPasRecordType)
-              or (VarType.ClassType=TPasClassType)
-              or (VarType.ClassType=TPasClassOfType)
-              or (VarType.ClassType=TPasSetType)
-              or (VarType.ClassType=TPasProcedureType)
-              or (VarType.ClassType=TPasFunctionType)
-              or (VarType.ClassType=TPasArrayType) then
+          C:=VarType.ClassType;
+          if (C=TPasClassType) then
+            begin
+            ElClass:=TPasClassType(VarType);
+            if (ElClass.ObjKind=okInterface) and (ElClass.InterfaceType=citCom) then
+              begin
+              // rtl.setIntfP(this,"FieldName",null)
+              Call:=CreateCallExpression(El);
+              NewEl:=Call;
+              Call.Expr:=CreateMemberExpression([GetBIName(pbivnRTL),GetBIName(pbifnIntfSetIntfP)]);
+              Call.AddArg(CreatePrimitiveDotExpr('this',El));
+              Call.AddArg(CreateLiteralString(El,TransformElToJSName(P,New_FuncContext)));
+              Call.AddArg(CreateLiteralNull(El));
+              end;
+            end;
+          if (NewEl=nil)
+              and ((C=TPasRecordType)
+                or (C=TPasClassType)
+                or (C=TPasClassOfType)
+                or (C=TPasSetType)
+                or (C=TPasProcedureType)
+                or (C=TPasFunctionType)
+                or (C=TPasArrayType)) then
             begin
             // add 'this.FieldName = undefined;'
             AssignSt:=TJSSimpleAssignStatement(CreateElement(TJSSimpleAssignStatement,El));
@@ -21052,7 +21157,7 @@ begin
     Result:=Call;
     if LHS is TJSDotMemberExpression then
       begin
-      // path.name = RHS  ->  rtl.setIntfP(path,"IntfVar",RHS})
+      // path.name = RHS  ->  rtl.setIntfP(path,"IntfVar",RHS)
       Call.Expr:=CreateMemberExpression([GetBIName(pbivnRTL),GetBIName(pbifnIntfSetIntfP)]);
       Call.AddArg(TJSDotMemberExpression(LHS).MExpr);
       TJSDotMemberExpression(LHS).MExpr:=nil;
@@ -21065,7 +21170,7 @@ begin
       end
     else if LHS is TJSBracketMemberExpression then
       begin
-      // path[index] = RHS  ->  rtl.setIntfP(path,index,RHS})
+      // path[index] = RHS  ->  rtl.setIntfP(path,index,RHS)
       Call.Expr:=CreateMemberExpression([GetBIName(pbivnRTL),GetBIName(pbifnIntfSetIntfP)]);
       Call.AddArg(TJSBracketMemberExpression(LHS).MExpr);
       TJSBracketMemberExpression(LHS).MExpr:=nil;

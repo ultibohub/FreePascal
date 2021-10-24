@@ -102,7 +102,7 @@ implementation
       verbose,globals,systems,globtype,constexp,
       symconst,symdef,symsym,symtype,aasmtai,aasmdata,aasmcpu,defutil,defcmp,
       procinfo,cgbase,cgexcept,pass_1,pass_2,parabase,compinnr,
-      cpubase,cpuinfo,
+      cpubase,cpuinfo,cpupi,
       nbas,nld,ncon,ncnv,ncal,ninl,nmem,nadd,nutils,
       tgobj,paramgr,
       cgutils,hlcgobj,hlcgcpu;
@@ -131,8 +131,6 @@ implementation
          oldclabel,oldblabel : tasmlabel;
          truelabel,falselabel : tasmlabel;
          oldflowcontrol : tflowcontrol;
-         oldloopcontbroffset: Integer;
-         oldloopbreakbroffset: Integer;
       begin
         location_reset(location,LOC_VOID,OS_NO);
 
@@ -142,8 +140,6 @@ implementation
 
         oldflowcontrol:=flowcontrol;
 
-        oldloopcontbroffset:=thlcgwasm(hlcg).loopContBr;
-        oldloopbreakbroffset:=thlcgwasm(hlcg).loopBreakBr;
         oldclabel:=current_procinfo.CurrContinueLabel;
         oldblabel:=current_procinfo.CurrBreakLabel;
 
@@ -151,20 +147,15 @@ implementation
         exclude(flowcontrol,fc_unwind_loop);
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
-        thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_loop));
-        thlcgwasm(hlcg).incblock;
 
         if lnf_testatbegin in loopflags then
         begin
+          hlcg.a_label(current_asmdata.CurrAsmList,lcont);
           pass_generate_code_condition;
-          thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
-        end else
-          thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks+1;
+        end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         current_procinfo.CurrContinueLabel:=lcont;
         current_procinfo.CurrBreakLabel:=lbreak;
@@ -175,21 +166,19 @@ implementation
           current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1) ); // jump back to the external loop
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
-        if not (lnf_testatbegin in loopflags) then begin
-          pass_generate_code_condition;
-        end;
+        if not (lnf_testatbegin in loopflags) then
+          begin
+            hlcg.a_label(current_asmdata.CurrAsmList,lcont);
+            pass_generate_code_condition;
+          end;
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,0) ); // jump back to loop
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_loop));
-        thlcgwasm(hlcg).decblock;
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,lbreak);
 
         current_procinfo.CurrContinueLabel:=oldclabel;
         current_procinfo.CurrBreakLabel:=oldblabel;
-        thlcgwasm(hlcg).loopContBr:=oldloopcontbroffset;
-        thlcgwasm(hlcg).loopBreakBr:=oldloopbreakbroffset;
 
         { a break/continue in a while/repeat block can't be seen outside }
         flowcontrol:=oldflowcontrol+(flowcontrol-[fc_break,fc_continue,fc_inflowcontrol]);
@@ -225,7 +214,6 @@ implementation
           end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
-        thlcgwasm(hlcg).incblock;
         thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
 
         if Assigned(right) then
@@ -238,7 +226,6 @@ implementation
           end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-        thlcgwasm(hlcg).decblock;
 
         flowcontrol := oldflowcontrol + (flowcontrol - [fc_inflowcontrol]);
       end;
@@ -453,10 +440,8 @@ implementation
         afteronflowcontrol: tflowcontrol;
         oldCurrExitLabel,
         oldContinueLabel,
-        oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
+        oldBreakLabel, NewContinueLabel, NewBreakLabel,
+        NewCurrExitLabel: tasmlabel;
         in_loop: Boolean;
       label
         errorexit;
@@ -464,9 +449,8 @@ implementation
         oldCurrExitLabel:=nil;
         oldContinueLabel:=nil;
         oldBreakLabel:=nil;
-        oldLoopContBr:=0;
-        oldLoopBreakBr:=0;
-        oldExitBr:=0;
+        NewContinueLabel:=nil;
+        NewBreakLabel:=nil;
         location_reset(location,LOC_VOID,OS_NO);
         doobjectdestroyandreraisestate:=Default(tcgexceptionstatehandler.texceptionstate);
 
@@ -481,7 +465,6 @@ implementation
         cexceptionstatehandler.new_exception(current_asmdata.CurrAsmList,excepttemps,tek_except,trystate);
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
-        thlcgwasm(hlcg).incblock;
 
         { try block }
         secondpass(left);
@@ -530,39 +513,32 @@ implementation
                   afteronflowcontrol;
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
-                thlcgwasm(hlcg).incblock;
 
                 { the 'exit' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-                oldExitBr:=thlcgwasm(hlcg).exitBr;
-                current_asmdata.getjumplabel(current_procinfo.CurrExitLabel);
-                thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
+                current_asmdata.getjumplabel(NewCurrExitLabel);
+                current_procinfo.CurrExitLabel:=NewCurrExitLabel;
 
                 { the 'break' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 if in_loop then
                   begin
                     oldBreakLabel:=current_procinfo.CurrBreakLabel;
-                    oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
-                    current_asmdata.getjumplabel(current_procinfo.CurrBreakLabel);
-                    thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
+                    current_asmdata.getjumplabel(NewBreakLabel);
+                    current_procinfo.CurrBreakLabel:=NewBreakLabel;
                   end;
 
                 { the 'continue' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 if in_loop then
                   begin
                     oldContinueLabel:=current_procinfo.CurrContinueLabel;
-                    oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
-                    current_asmdata.getjumplabel(current_procinfo.CurrContinueLabel);
-                    thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
+                    current_asmdata.getjumplabel(NewContinueLabel);
+                    current_procinfo.CurrContinueLabel:=NewContinueLabel;
                   end;
 
                 secondpass(t1);
@@ -574,39 +550,38 @@ implementation
 
                 { exit the 'continue' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-                thlcgwasm(hlcg).decblock;
+                if in_loop then
+                  hlcg.a_label(current_asmdata.CurrAsmList,NewContinueLabel);
                 if fc_continue in doobjectdestroyandreraisestate.newflowcontrol then
                   begin
                     hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-                    current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopContBr));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldContinueLabel));
                   end;
 
                 { exit the 'break' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // break
-                thlcgwasm(hlcg).decblock;
+                if in_loop then
+                  hlcg.a_label(current_asmdata.CurrAsmList,NewBreakLabel);
                 if fc_break in doobjectdestroyandreraisestate.newflowcontrol then
                   begin
                     hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-                    current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldBreakLabel));
                   end;
 
                 { exit the 'exit' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // exit
-                thlcgwasm(hlcg).decblock;
+                hlcg.a_label(current_asmdata.CurrAsmList,NewCurrExitLabel);
                 if fc_exit in doobjectdestroyandreraisestate.newflowcontrol then
                   begin
                     hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-                    current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldExitBr));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldCurrExitLabel));
                   end;
 
                 current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-                thlcgwasm(hlcg).exitBr:=oldExitBr;
                 if in_loop then
                   begin
                     current_procinfo.CurrContinueLabel:=oldContinueLabel;
-                    thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
                     current_procinfo.CurrBreakLabel:=oldBreakLabel;
-                    thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
                   end;
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_catch,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
@@ -614,7 +589,6 @@ implementation
                 hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_raise_nested',[],nil).resetiftemp;
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
-                thlcgwasm(hlcg).decblock;
               end
             else
               begin
@@ -629,7 +603,6 @@ implementation
           end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
-        thlcgwasm(hlcg).decblock;
 
       errorexit:
         { return all used control flow statements }
@@ -643,24 +616,22 @@ implementation
         destroytemps,
         excepttemps: tcgexceptionstatehandler.texceptiontemps;
         afteronflowcontrol: tflowcontrol;
+        oldCurrRaiseLabel,
         oldCurrExitLabel,
         oldContinueLabel,
-        oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
-        oldRaiseBr: Integer;
+        oldBreakLabel, NewContinueLabel, NewBreakLabel,
+        NewCurrExitLabel, NewCurrRaiseLabel: tasmlabel;
         in_loop: Boolean;
       label
         errorexit;
       begin
+        oldCurrRaiseLabel:=nil;
         oldCurrExitLabel:=nil;
         oldContinueLabel:=nil;
         oldBreakLabel:=nil;
-        oldLoopContBr:=0;
-        oldLoopBreakBr:=0;
-        oldExitBr:=0;
-        oldRaiseBr:=0;
+        NewContinueLabel:=nil;
+        NewBreakLabel:=nil;
+        NewCurrRaiseLabel:=nil;
         location_reset(location,LOC_VOID,OS_NO);
         doobjectdestroyandreraisestate:=Default(tcgexceptionstatehandler.texceptionstate);
 
@@ -675,12 +646,11 @@ implementation
         cexceptionstatehandler.new_exception(current_asmdata.CurrAsmList,excepttemps,tek_except,trystate);
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
-        oldRaiseBr:=thlcgwasm(hlcg).raiseBr;
-        thlcgwasm(hlcg).raiseBr:=thlcgwasm(hlcg).br_blocks;
+        oldCurrRaiseLabel:=tcpuprocinfo(current_procinfo).CurrRaiseLabel;
+        current_asmdata.getjumplabel(NewCurrRaiseLabel);
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=NewCurrRaiseLabel;
 
         { try block }
         secondpass(left);
@@ -691,10 +661,10 @@ implementation
 
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1));
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,NewCurrRaiseLabel);
 
         hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_clear_exception_flag',[],nil).resetiftemp;
-        thlcgwasm(hlcg).raiseBr:=oldRaiseBr;
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=OldCurrRaiseLabel;
 
         flowcontrol:=[fc_inflowcontrol]+trystate.oldflowcontrol*[fc_catching_exceptions];
         { on statements }
@@ -734,44 +704,37 @@ implementation
                   afteronflowcontrol;
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
-                oldRaiseBr:=thlcgwasm(hlcg).raiseBr;
-                thlcgwasm(hlcg).raiseBr:=thlcgwasm(hlcg).br_blocks;
+                oldCurrRaiseLabel:=tcpuprocinfo(current_procinfo).CurrRaiseLabel;
+                current_asmdata.getjumplabel(NewCurrRaiseLabel);
+                tcpuprocinfo(current_procinfo).CurrRaiseLabel:=NewCurrRaiseLabel;
 
                 { the 'exit' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-                oldExitBr:=thlcgwasm(hlcg).exitBr;
-                current_asmdata.getjumplabel(current_procinfo.CurrExitLabel);
-                thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
+                current_asmdata.getjumplabel(NewCurrExitLabel);
+                current_procinfo.CurrExitLabel:=NewCurrExitLabel;
 
                 { the 'break' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 if in_loop then
                   begin
                     oldBreakLabel:=current_procinfo.CurrBreakLabel;
-                    oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
-                    current_asmdata.getjumplabel(current_procinfo.CurrBreakLabel);
-                    thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
+                    current_asmdata.getjumplabel(NewBreakLabel);
+                    current_procinfo.CurrBreakLabel:=NewBreakLabel;
                   end;
 
                 { the 'continue' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-                thlcgwasm(hlcg).incblock;
 
                 if in_loop then
                   begin
                     oldContinueLabel:=current_procinfo.CurrContinueLabel;
-                    oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
-                    current_asmdata.getjumplabel(current_procinfo.CurrContinueLabel);
-                    thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
+                    current_asmdata.getjumplabel(NewContinueLabel);
+                    current_procinfo.CurrContinueLabel:=NewContinueLabel;
                   end;
 
                 secondpass(t1);
@@ -783,51 +746,49 @@ implementation
 
                 { exit the 'continue' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-                thlcgwasm(hlcg).decblock;
+                if in_loop then
+                  hlcg.a_label(current_asmdata.CurrAsmList,NewContinueLabel);
                 if fc_continue in doobjectdestroyandreraisestate.newflowcontrol then
                   begin
                     hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-                    current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopContBr));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,OldContinueLabel));
                   end;
 
                 { exit the 'break' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // break
-                thlcgwasm(hlcg).decblock;
+                if in_loop then
+                  hlcg.a_label(current_asmdata.CurrAsmList,NewBreakLabel);
                 if fc_break in doobjectdestroyandreraisestate.newflowcontrol then
                   begin
                     hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-                    current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,OldBreakLabel));
                   end;
 
                 { exit the 'exit' block }
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // exit
-                thlcgwasm(hlcg).decblock;
+                hlcg.a_label(current_asmdata.CurrAsmList,NewCurrExitLabel);
                 if fc_exit in doobjectdestroyandreraisestate.newflowcontrol then
                   begin
                     hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-                    current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldExitBr));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldCurrExitLabel));
                   end;
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-                thlcgwasm(hlcg).decblock;
+                hlcg.a_label(current_asmdata.CurrAsmList,NewCurrRaiseLabel);
 
                 current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-                thlcgwasm(hlcg).exitBr:=oldExitBr;
                 if in_loop then
                   begin
                     current_procinfo.CurrContinueLabel:=oldContinueLabel;
-                    thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
                     current_procinfo.CurrBreakLabel:=oldBreakLabel;
-                    thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
                   end;
-                thlcgwasm(hlcg).raiseBr:=oldRaiseBr;
+                tcpuprocinfo(current_procinfo).CurrRaiseLabel:=OldCurrRaiseLabel;
 
                 hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_clear_exception_flag',[],nil).resetiftemp;
                 hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_raise_nested',[],nil).resetiftemp;
                 hlcg.g_maybe_checkforexceptions(current_asmdata.CurrAsmList);
 
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-                thlcgwasm(hlcg).decblock;
               end
             else
               begin
@@ -843,13 +804,12 @@ implementation
           end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
 
       errorexit:
         { return all used control flow statements }
         flowcontrol:=trystate.oldflowcontrol+(doobjectdestroyandreraisestate.newflowcontrol +
           trystate.newflowcontrol - [fc_inflowcontrol,fc_catching_exceptions]);
-        thlcgwasm(hlcg).raiseBr:=oldRaiseBr;
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=OldCurrRaiseLabel;
       end;
 
     procedure twasmtryexceptnode.pass_generate_code;
@@ -878,9 +838,6 @@ implementation
         oldCurrExitLabel,
         oldContinueLabel,
         oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
         finallyexceptionstate: tcgexceptionstatehandler.texceptionstate;
         excepttemps : tcgexceptionstatehandler.texceptiontemps;
         exceptframekind: tcgexceptionstatehandler.texceptframekind;
@@ -897,14 +854,23 @@ implementation
             thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
           end;
 
+        procedure generate_exceptreason_check_br(reason: tcgint; l: TAsmLabel);
+          var
+            reasonreg : tregister;
+          begin
+            reasonreg:=hlcg.getintregister(current_asmdata.CurrAsmList,exceptionreasontype);
+            hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
+            thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+            thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+          end;
+
       begin
         location_reset(location,LOC_VOID,OS_NO);
         oldBreakLabel:=nil;
         oldContinueLabel:=nil;
         continuefinallylabel:=nil;
         breakfinallylabel:=nil;
-        oldLoopBreakBr:=0;
-        oldLoopContBr:=0;
 
         in_loop:=assigned(current_procinfo.CurrBreakLabel);
 
@@ -925,42 +891,32 @@ implementation
 
         { the outer 'try..finally' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         { the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-        oldExitBr:=thlcgwasm(hlcg).exitBr;
         exitfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
         current_procinfo.CurrExitLabel:=exitfinallylabel;
-        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
 
         { the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldBreakLabel:=current_procinfo.CurrBreakLabel;
-            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
             breakfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
             current_procinfo.CurrBreakLabel:=breakfinallylabel;
-            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
           end;
 
         { the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldContinueLabel:=current_procinfo.CurrContinueLabel;
-            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
             continuefinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
             current_procinfo.CurrContinueLabel:=continuefinallylabel;
-            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
           end;
 
         { try code }
@@ -982,28 +938,29 @@ implementation
 
         { exit the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,continuefinallylabel);
         { exceptionreason:=4 (continue) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,4,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,2)); // jump to the 'finally' section
 
         { exit the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,breakfinallylabel);
         { exceptionreason:=3 (break) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,3,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1)); // jump to the 'finally' section
 
         { exit the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,exitfinallylabel);
         { exceptionreason:=2 (exit) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,2,excepttemps.reasonbuf);
         { proceed to the 'finally' section, which follow immediately, no need for jumps }
 
         { exit the outer 'try..finally' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
 
         { end cleanup }
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
@@ -1025,11 +982,11 @@ implementation
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
 
         if fc_exit in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(2,thlcgwasm(hlcg).br_blocks-oldExitBr);
+          generate_exceptreason_check_br(2,oldCurrExitLabel);
         if fc_break in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(3,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr);
+          generate_exceptreason_check_br(3,oldBreakLabel);
         if fc_continue in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(4,thlcgwasm(hlcg).br_blocks-oldLoopContBr);
+          generate_exceptreason_check_br(4,oldContinueLabel);
 
         cexceptionstatehandler.unget_exception_temps(current_asmdata.CurrAsmList,excepttemps);
 
@@ -1037,13 +994,10 @@ implementation
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
 
         current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-        thlcgwasm(hlcg).exitBr:=oldExitBr;
         if assigned(current_procinfo.CurrBreakLabel) then
          begin
            current_procinfo.CurrContinueLabel:=oldContinueLabel;
-           thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
            current_procinfo.CurrBreakLabel:=oldBreakLabel;
-           thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
          end;
         flowcontrol:=finallyexceptionstate.oldflowcontrol+(finallyexceptionstate.newflowcontrol-[fc_inflowcontrol,fc_catching_exceptions]);
       end;
@@ -1061,9 +1015,6 @@ implementation
         oldCurrExitLabel,
         oldContinueLabel,
         oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
         finallyexceptionstate: tcgexceptionstatehandler.texceptionstate;
         excepttemps : tcgexceptionstatehandler.texceptiontemps;
         exceptframekind: tcgexceptionstatehandler.texceptframekind;
@@ -1080,6 +1031,17 @@ implementation
           thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
         end;
 
+      procedure generate_exceptreason_check_br(reason: tcgint; l: tasmlabel);
+        var
+          reasonreg : tregister;
+        begin
+          reasonreg:=hlcg.getintregister(current_asmdata.CurrAsmList,exceptionreasontype);
+          hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
+          thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
+          current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+          thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+        end;
+
       procedure generate_exceptreason_throw(reason: tcgint);
         var
           reasonreg : tregister;
@@ -1088,11 +1050,9 @@ implementation
           hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
           thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
           current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
-          thlcgwasm(hlcg).incblock;
           thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
           current_asmdata.CurrAsmList.Concat(taicpu.op_sym(a_throw,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
           current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-          thlcgwasm(hlcg).decblock;
         end;
 
       begin
@@ -1101,8 +1061,6 @@ implementation
         oldContinueLabel:=nil;
         continuefinallylabel:=nil;
         breakfinallylabel:=nil;
-        oldLoopBreakBr:=0;
-        oldLoopContBr:=0;
 
         in_loop:=assigned(current_procinfo.CurrBreakLabel);
 
@@ -1123,47 +1081,36 @@ implementation
 
         { the outer 'try..finally' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         { the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-        oldExitBr:=thlcgwasm(hlcg).exitBr;
         exitfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
         current_procinfo.CurrExitLabel:=exitfinallylabel;
-        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
 
         { the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldBreakLabel:=current_procinfo.CurrBreakLabel;
-            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
             breakfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
             current_procinfo.CurrBreakLabel:=breakfinallylabel;
-            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
           end;
 
         { the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldContinueLabel:=current_procinfo.CurrContinueLabel;
-            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
             continuefinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
             current_procinfo.CurrContinueLabel:=continuefinallylabel;
-            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
           end;
 
         { the inner 'try..end_try' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
-        thlcgwasm(hlcg).incblock;
 
         { try code }
         if assigned(left) then
@@ -1189,32 +1136,32 @@ implementation
 
         { exit the inner 'try..end_try' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
-        thlcgwasm(hlcg).decblock;
 
         { exit the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,continuefinallylabel);
         { exceptionreason:=4 (continue) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,4,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,2)); // jump to the 'finally' section
 
         { exit the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,breakfinallylabel);
         { exceptionreason:=3 (break) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,3,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1)); // jump to the 'finally' section
 
         { exit the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,exitfinallylabel);
         { exceptionreason:=2 (exit) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,2,excepttemps.reasonbuf);
         { proceed to the 'finally' section, which follow immediately, no need for jumps }
 
         { exit the outer 'try..finally' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
 
         { end cleanup }
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
@@ -1236,11 +1183,11 @@ implementation
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
 
         if fc_exit in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(2,thlcgwasm(hlcg).br_blocks-oldExitBr);
+          generate_exceptreason_check_br(2,oldCurrExitLabel);
         if fc_break in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(3,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr);
+          generate_exceptreason_check_br(3,oldBreakLabel);
         if fc_continue in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(4,thlcgwasm(hlcg).br_blocks-oldLoopContBr);
+          generate_exceptreason_check_br(4,oldContinueLabel);
         generate_exceptreason_throw(1);
 
         cexceptionstatehandler.unget_exception_temps(current_asmdata.CurrAsmList,excepttemps);
@@ -1249,29 +1196,24 @@ implementation
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
 
         current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-        thlcgwasm(hlcg).exitBr:=oldExitBr;
         if assigned(current_procinfo.CurrBreakLabel) then
          begin
            current_procinfo.CurrContinueLabel:=oldContinueLabel;
-           thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
            current_procinfo.CurrBreakLabel:=oldBreakLabel;
-           thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
          end;
         flowcontrol:=finallyexceptionstate.oldflowcontrol+(finallyexceptionstate.newflowcontrol-[fc_inflowcontrol,fc_catching_exceptions]);
       end;
 
     procedure twasmtryfinallynode.pass_generate_code_bf_exceptions;
       var
+        raisefinallylabel,
         exitfinallylabel,
         continuefinallylabel,
         breakfinallylabel,
+        oldCurrRaiseLabel,
         oldCurrExitLabel,
         oldContinueLabel,
         oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
-        oldRaiseBr: integer;
         finallyexceptionstate: tcgexceptionstatehandler.texceptionstate;
         excepttemps : tcgexceptionstatehandler.texceptiontemps;
         exceptframekind: tcgexceptionstatehandler.texceptframekind;
@@ -1288,6 +1230,17 @@ implementation
           thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
         end;
 
+      procedure generate_exceptreason_check_br(reason: tcgint; l: tasmsymbol);
+        var
+          reasonreg : tregister;
+        begin
+          reasonreg:=hlcg.getintregister(current_asmdata.CurrAsmList,exceptionreasontype);
+          hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
+          thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
+          current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+          thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
+        end;
+
       procedure generate_exceptreason_reraise(reason: tcgint);
         var
           reasonreg : tregister;
@@ -1296,23 +1249,19 @@ implementation
           hlcg.g_exception_reason_load(current_asmdata.CurrAsmList,exceptionreasontype,exceptionreasontype,excepttemps.reasonbuf,reasonreg);
           thlcgwasm(hlcg).a_cmp_const_reg_stack(current_asmdata.CurrAsmList,exceptionreasontype,OC_EQ,reason,reasonreg);
           current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
-          thlcgwasm(hlcg).incblock;
           thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
           hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_reraise',[],nil).resetiftemp;
           hlcg.g_maybe_checkforexceptions(current_asmdata.CurrAsmList);
           current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-          thlcgwasm(hlcg).decblock;
         end;
 
       begin
         location_reset(location,LOC_VOID,OS_NO);
+        oldCurrRaiseLabel:=nil;
         oldBreakLabel:=nil;
         oldContinueLabel:=nil;
         continuefinallylabel:=nil;
         breakfinallylabel:=nil;
-        oldLoopBreakBr:=0;
-        oldLoopContBr:=0;
-        oldRaiseBr:=0;
 
         in_loop:=assigned(current_procinfo.CurrBreakLabel);
 
@@ -1333,49 +1282,39 @@ implementation
 
         { the outer 'try..finally' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         { the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-        oldExitBr:=thlcgwasm(hlcg).exitBr;
         exitfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
         current_procinfo.CurrExitLabel:=exitfinallylabel;
-        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
 
         { the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldBreakLabel:=current_procinfo.CurrBreakLabel;
-            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
             breakfinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
             current_procinfo.CurrBreakLabel:=breakfinallylabel;
-            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
           end;
 
         { the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldContinueLabel:=current_procinfo.CurrContinueLabel;
-            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
             continuefinallylabel:=get_jump_out_of_try_finally_frame_label(finallyexceptionstate);
             current_procinfo.CurrContinueLabel:=continuefinallylabel;
-            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
           end;
 
         { the inner 'try..end_try' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
-        oldRaiseBr:=thlcgwasm(hlcg).raiseBr;
-        thlcgwasm(hlcg).raiseBr:=thlcgwasm(hlcg).br_blocks;
+        oldCurrRaiseLabel:=tcpuprocinfo(current_procinfo).CurrRaiseLabel;
+        current_asmdata.getjumplabel(raisefinallylabel);
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=raisefinallylabel;
 
         { try code }
         if assigned(left) then
@@ -1396,7 +1335,7 @@ implementation
 
         { exit the inner 'try..end_try' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,raisefinallylabel);
 
         { exceptionreason:=1 (exception) }
         hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_clear_exception_flag',[],nil).resetiftemp;
@@ -1405,34 +1344,34 @@ implementation
 
         { exit the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,continuefinallylabel);
         { exceptionreason:=4 (continue) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,4,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,2)); // jump to the 'finally' section
 
         { exit the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,breakfinallylabel);
         { exceptionreason:=3 (break) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,3,excepttemps.reasonbuf);
         current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,1)); // jump to the 'finally' section
 
         { exit the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,exitfinallylabel);
         { exceptionreason:=2 (exit) }
         hlcg.g_exception_reason_save_const(current_asmdata.CurrAsmList,exceptionreasontype,2,excepttemps.reasonbuf);
         { proceed to the 'finally' section, which follow immediately, no need for jumps }
 
         { exit the outer 'try..finally' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
 
         { end cleanup }
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
 
-        { restore previous raiseBr }
-        thlcgwasm(hlcg).raiseBr:=oldRaiseBr;
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=oldCurrRaiseLabel;
 
         { finally code (don't unconditionally set fc_inflowcontrol, since the
           finally code is unconditionally executed; we do have to filter out
@@ -1451,11 +1390,11 @@ implementation
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoStart));
 
         if fc_exit in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(2,thlcgwasm(hlcg).br_blocks-oldExitBr);
+          generate_exceptreason_check_br(2,oldCurrExitLabel);
         if fc_break in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(3,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr);
+          generate_exceptreason_check_br(3,oldBreakLabel);
         if fc_continue in finallyexceptionstate.newflowcontrol then
-          generate_exceptreason_check_br(4,thlcgwasm(hlcg).br_blocks-oldLoopContBr);
+          generate_exceptreason_check_br(4,oldContinueLabel);
         generate_exceptreason_reraise(1);
 
         cexceptionstatehandler.unget_exception_temps(current_asmdata.CurrAsmList,excepttemps);
@@ -1464,13 +1403,10 @@ implementation
         current_asmdata.CurrAsmList.concat(tai_marker.create(mark_NoLineInfoEnd));
 
         current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-        thlcgwasm(hlcg).exitBr:=oldExitBr;
         if assigned(current_procinfo.CurrBreakLabel) then
          begin
            current_procinfo.CurrContinueLabel:=oldContinueLabel;
-           thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
            current_procinfo.CurrBreakLabel:=oldBreakLabel;
-           thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
          end;
         flowcontrol:=finallyexceptionstate.oldflowcontrol+(finallyexceptionstate.newflowcontrol-[fc_inflowcontrol,fc_catching_exceptions]);
       end;
@@ -1512,10 +1448,8 @@ implementation
         exceptlocreg: tregister;
         oldCurrExitLabel,
         oldContinueLabel,
-        oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
+        oldBreakLabel, NewContinueLabel, NewBreakLabel,
+        NewCurrExitLabel: tasmlabel;
         in_loop: Boolean;
         doobjectdestroyandreraisestate: tcgexceptionstatehandler.texceptionstate;
         excepttemps: tcgexceptionstatehandler.texceptiontemps;
@@ -1523,9 +1457,8 @@ implementation
         oldCurrExitLabel:=nil;
         oldContinueLabel:=nil;
         oldBreakLabel:=nil;
-        oldLoopContBr:=0;
-        oldLoopBreakBr:=0;
-        oldExitBr:=0;
+        NewBreakLabel:=nil;
+        NewContinueLabel:=nil;
         location_reset(location,LOC_VOID,OS_NO);
 
         { Exception temps? We don't need no stinking exception temps! :) }
@@ -1557,39 +1490,32 @@ implementation
           we've to destroy the old one, so create a new
           exception frame for the catch-handler }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_try));
-        thlcgwasm(hlcg).incblock;
 
         { the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-        oldExitBr:=thlcgwasm(hlcg).exitBr;
-        current_asmdata.getjumplabel(current_procinfo.CurrExitLabel);
-        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
+        current_asmdata.getjumplabel(NewCurrExitLabel);
+        current_procinfo.CurrExitLabel:=NewCurrExitLabel;
 
         { the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldBreakLabel:=current_procinfo.CurrBreakLabel;
-            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
-            current_asmdata.getjumplabel(current_procinfo.CurrBreakLabel);
-            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
+            current_asmdata.getjumplabel(NewBreakLabel);
+            current_procinfo.CurrBreakLabel:=NewBreakLabel;
           end;
 
         { the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldContinueLabel:=current_procinfo.CurrContinueLabel;
-            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
-            current_asmdata.getjumplabel(current_procinfo.CurrContinueLabel);
-            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
+            current_asmdata.getjumplabel(NewContinueLabel);
+            current_procinfo.CurrContinueLabel:=NewContinueLabel;
           end;
 
         if assigned(right) then
@@ -1602,39 +1528,38 @@ implementation
 
         { exit the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,NewContinueLabel);
         if fc_continue in doobjectdestroyandreraisestate.newflowcontrol then
           begin
             hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopContBr));
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldContinueLabel));
           end;
 
         { exit the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // break
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,NewBreakLabel);
         if fc_break in doobjectdestroyandreraisestate.newflowcontrol then
           begin
             hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr));
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldBreakLabel));
           end;
 
         { exit the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // exit
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,NewCurrExitLabel);
         if fc_exit in doobjectdestroyandreraisestate.newflowcontrol then
           begin
             hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldExitBr));
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldCurrExitLabel));
           end;
 
         current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-        thlcgwasm(hlcg).exitBr:=oldExitBr;
         if in_loop then
           begin
             current_procinfo.CurrContinueLabel:=oldContinueLabel;
-            thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
             current_procinfo.CurrBreakLabel:=oldBreakLabel;
-            thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
           end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_catch,current_asmdata.WeakRefAsmSymbol(FPC_EXCEPTION_TAG_SYM,AT_WASM_EXCEPTION_TAG)));
@@ -1642,7 +1567,6 @@ implementation
         hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_raise_nested',[],nil).resetiftemp;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_try));
-        thlcgwasm(hlcg).decblock;
 
         { clear some stuff }
         if assigned(exceptvarsym) then
@@ -1665,24 +1589,22 @@ implementation
         exceptvarsym : tlocalvarsym;
         exceptlocdef: tdef;
         exceptlocreg: tregister;
+        oldCurrRaiseLabel,
         oldCurrExitLabel,
         oldContinueLabel,
-        oldBreakLabel: tasmlabel;
-        oldLoopContBr: integer;
-        oldLoopBreakBr: integer;
-        oldExitBr: integer;
-        oldRaiseBr: Integer;
+        oldBreakLabel, NewContinueLabel, NewBreakLabel,
+        NewCurrRaiseLabel, NewCurrExitLabel: tasmlabel;
         in_loop: Boolean;
         doobjectdestroyandreraisestate: tcgexceptionstatehandler.texceptionstate;
         excepttemps: tcgexceptionstatehandler.texceptiontemps;
       begin
+        oldCurrRaiseLabel:=nil;
         oldCurrExitLabel:=nil;
         oldContinueLabel:=nil;
         oldBreakLabel:=nil;
-        oldLoopContBr:=0;
-        oldLoopBreakBr:=0;
-        oldExitBr:=0;
-        oldRaiseBr:=0;
+        NewCurrRaiseLabel:=nil;
+        NewBreakLabel:=nil;
+        NewContinueLabel:=nil;
         location_reset(location,LOC_VOID,OS_NO);
 
         { Exception temps? We don't need no stinking exception temps! :) }
@@ -1714,44 +1636,37 @@ implementation
           we've to destroy the old one, so create a new
           exception frame for the catch-handler }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
-        oldRaiseBr:=thlcgwasm(hlcg).raiseBr;
-        thlcgwasm(hlcg).raiseBr:=thlcgwasm(hlcg).br_blocks;
+        oldCurrRaiseLabel:=tcpuprocinfo(current_procinfo).CurrRaiseLabel;
+        current_asmdata.getjumplabel(NewCurrRaiseLabel);
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=NewCurrRaiseLabel;
 
         { the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         oldCurrExitLabel:=current_procinfo.CurrExitLabel;
-        oldExitBr:=thlcgwasm(hlcg).exitBr;
-        current_asmdata.getjumplabel(current_procinfo.CurrExitLabel);
-        thlcgwasm(hlcg).exitBr:=thlcgwasm(hlcg).br_blocks;
+        current_asmdata.getjumplabel(NewCurrExitLabel);
+        current_procinfo.CurrExitLabel:=NewCurrExitLabel;
 
         { the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldBreakLabel:=current_procinfo.CurrBreakLabel;
-            oldLoopBreakBr:=thlcgwasm(hlcg).loopBreakBr;
-            current_asmdata.getjumplabel(current_procinfo.CurrBreakLabel);
-            thlcgwasm(hlcg).loopBreakBr:=thlcgwasm(hlcg).br_blocks;
+            current_asmdata.getjumplabel(NewBreakLabel);
+            current_procinfo.CurrBreakLabel:=NewBreakLabel;
           end;
 
         { the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_block));
-        thlcgwasm(hlcg).incblock;
 
         if in_loop then
           begin
             oldContinueLabel:=current_procinfo.CurrContinueLabel;
-            oldLoopContBr:=thlcgwasm(hlcg).loopContBr;
-            current_asmdata.getjumplabel(current_procinfo.CurrContinueLabel);
-            thlcgwasm(hlcg).loopContBr:=thlcgwasm(hlcg).br_blocks;
+            current_asmdata.getjumplabel(NewContinueLabel);
+            current_procinfo.CurrContinueLabel:=NewContinueLabel;
           end;
 
         if assigned(right) then
@@ -1764,51 +1679,49 @@ implementation
 
         { exit the 'continue' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,NewContinueLabel);
         if fc_continue in doobjectdestroyandreraisestate.newflowcontrol then
           begin
             hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopContBr));
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldContinueLabel));
           end;
 
         { exit the 'break' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // break
-        thlcgwasm(hlcg).decblock;
+        if in_loop then
+          hlcg.a_label(current_asmdata.CurrAsmList,NewBreakLabel);
         if fc_break in doobjectdestroyandreraisestate.newflowcontrol then
           begin
             hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldLoopBreakBr));
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldBreakLabel));
           end;
 
         { exit the 'exit' block }
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));  // exit
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,NewCurrExitLabel);
         if fc_exit in doobjectdestroyandreraisestate.newflowcontrol then
           begin
             hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_doneexception',[],nil).resetiftemp;
-            current_asmdata.CurrAsmList.concat(taicpu.op_const(a_br,thlcgwasm(hlcg).br_blocks-oldExitBr));
+            current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br,oldCurrExitLabel));
           end;
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
+        hlcg.a_label(current_asmdata.CurrAsmList,NewCurrRaiseLabel);
 
         current_procinfo.CurrExitLabel:=oldCurrExitLabel;
-        thlcgwasm(hlcg).exitBr:=oldExitBr;
         if in_loop then
           begin
             current_procinfo.CurrContinueLabel:=oldContinueLabel;
-            thlcgwasm(hlcg).loopContBr:=oldLoopContBr;
             current_procinfo.CurrBreakLabel:=oldBreakLabel;
-            thlcgwasm(hlcg).loopBreakBr:=oldLoopBreakBr;
           end;
-        thlcgwasm(hlcg).raiseBr:=oldRaiseBr;
+        tcpuprocinfo(current_procinfo).CurrRaiseLabel:=oldCurrRaiseLabel;
 
         hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_clear_exception_flag',[],nil).resetiftemp;
         hlcg.g_call_system_proc(current_asmdata.CurrAsmList,'fpc_raise_nested',[],nil).resetiftemp;
         hlcg.g_maybe_checkforexceptions(current_asmdata.CurrAsmList);
 
         current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_block));
-        thlcgwasm(hlcg).decblock;
 
         { clear some stuff }
         if assigned(exceptvarsym) then

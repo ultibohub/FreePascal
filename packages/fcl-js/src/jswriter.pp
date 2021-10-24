@@ -1732,29 +1732,29 @@ begin
   if El.IsDefault then
     Write('default ');
   if assigned(El.Declaration) then
-    WriteJS(EL.Declaration)
+    WriteJS(El.Declaration)
   else if (El.NameSpaceExport<>'') then
     begin
     if El.NameSpaceExport<>'*' then
       Write('* as '+El.NameSpaceExport)
     else
       Write('*');
-    if EL.ModuleName<>'' then
-      Write(' from "'+EL.ModuleName+'"');
+    if El.ModuleName<>'' then
+      Write(' from "'+El.ModuleName+'"');
     end
   else if El.HaveExportNames then
     begin
     Write('{ ');
-    For I:=0 to EL.ExportNames.Count-1 do
+    For I:=0 to El.ExportNames.Count-1 do
       begin
-      N:=EL.ExportNames[i];
+      N:=El.ExportNames[i];
       if I>0 then
         Write(', ');
-      Write(N.Name+' ');
+      Write(N.Name);
       if N.Alias<>'' then
-        Write('as '+N.Alias+' ');
+        Write(' as '+N.Alias);
       end;
-    Write('}');
+    Write(' }');
     if El.ModuleName<>'' then
       Write(' from "'+El.ModuleName+'"');
     end;

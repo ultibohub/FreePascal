@@ -55,20 +55,10 @@ uses
         }
       function is_methodptr_like_type(d:tdef): boolean;
      public
-      br_blocks: integer;
-      loopContBr: integer; // the value is different depending of the condition test
-                           // if it's in the beggning the jump should be done to the loop (1)
-                           // if the condition at the end, the jump should done to the end of block (0)
-      loopBreakBr: integer;
-      exitBr: integer;
-      raiseBr: integer;  // raiseBr is only used in branchful exceptions mode (ts_wasm_bf_exceptions)
       fntypelookup : TWasmProcTypeLookup;
 
       constructor create;
       destructor Destroy; override;
-
-      procedure incblock;
-      procedure decblock;
 
       procedure incstack(list : TAsmList;slots: longint);
       procedure decstack(list : TAsmList;slots: longint);
@@ -262,7 +252,7 @@ implementation
 
   uses
     verbose,cutils,globals,fmodule,constexp,
-    defutil,
+    defutil,cpupi,
     aasmtai,aasmcpu,
     symtable,symcpu,
     procinfo,cpuinfo,cgcpu,tgobj,tgcpu,paramgr;
@@ -326,7 +316,6 @@ implementation
     begin
       fevalstackheight:=0;
       fmaxevalstackheight:=0;
-      br_blocks:=0;
       fntypelookup:=TWasmProcTypeLookup.Create;
     end;
 
@@ -334,18 +323,6 @@ implementation
     begin
       fntypelookup.Free;
       inherited Destroy;
-    end;
-
-  procedure thlcgwasm.incblock;
-    begin
-      inc(br_blocks);
-    end;
-
-  procedure thlcgwasm.decblock;
-    begin
-      dec(br_blocks);
-      if br_blocks<0 then
-        Internalerror(2019091807); // out of block
     end;
 
   procedure thlcgwasm.incstack(list: TAsmList; slots: longint);
@@ -558,7 +535,6 @@ implementation
             else if (op=OP_NOT) and is_cbool(size) then
               begin
                 current_asmdata.CurrAsmList.Concat(taicpu.op_functype(a_if,TWasmFuncType.Create([],[wbt_i32])));
-                incblock;
                 decstack(current_asmdata.CurrAsmList,1);
                 current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i32_const, 0) );
                 incstack(current_asmdata.CurrAsmList,1);
@@ -576,7 +552,6 @@ implementation
                 end;
                 incstack(current_asmdata.CurrAsmList,1);
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-                thlcgwasm(hlcg).decblock;
               end
             else
               begin
@@ -614,7 +589,6 @@ implementation
               begin
                 list.concat(taicpu.op_none(a_i64_eqz));
                 current_asmdata.CurrAsmList.Concat(taicpu.op_functype(a_if,TWasmFuncType.Create([],[wbt_i64])));
-                incblock;
                 decstack(current_asmdata.CurrAsmList,1);
                 current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i64_const, -1) );
                 incstack(current_asmdata.CurrAsmList,1);
@@ -623,7 +597,6 @@ implementation
                 current_asmdata.CurrAsmList.Concat( taicpu.op_const(a_i64_const, 0) );
                 incstack(current_asmdata.CurrAsmList,1);
                 current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-                thlcgwasm(hlcg).decblock;
               end
             else
               begin
@@ -1359,7 +1332,6 @@ implementation
       a_cmp_const_reg_stack(list,osuinttype,OC_A,loadbitsize-sref.bitlen,sref.bitindexreg);
 
       current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
-      incblock;
       decstack(current_asmdata.CurrAsmList,1);
 
       { Y-x = -(Y-x) }
@@ -1375,7 +1347,6 @@ implementation
       a_op_reg_reg(list,OP_OR,osuinttype,extra_value_reg,valuereg);
 
       current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-      decblock;
 
       { sign extend or mask other bits }
       if is_signed(subsetsize) then
@@ -1570,7 +1541,6 @@ implementation
               { make sure we do not read/write past the end of the array }
               a_cmp_const_reg_stack(list,osuinttype,OC_A,loadbitsize-sref.bitlen,sref.bitindexreg);
               current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
-              incblock;
               decstack(current_asmdata.CurrAsmList,1);
 
               a_load_ref_reg(list,loadsize,osuinttype,tmpref,extra_value_reg);
@@ -1620,7 +1590,6 @@ implementation
 {$endif}
 
               current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-              decblock;
             end;
         end;
     end;
@@ -1776,37 +1745,47 @@ implementation
 
   procedure thlcgwasm.a_cmp_const_ref_label(list: TAsmList; size: tdef; cmp_op: topcmp; a: tcgint; const ref: treference; l: tasmlabel);
     begin
-      internalerror(2021011802);
+      a_cmp_const_ref_stack(list,size,cmp_op,a,ref);
+      current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+      thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
     end;
 
   procedure thlcgwasm.a_cmp_const_reg_label(list: TAsmList; size: tdef; cmp_op: topcmp; a: tcgint; reg: tregister; l: tasmlabel);
     begin
-      internalerror(2021011802);
+      a_cmp_const_reg_stack(list,size,cmp_op,a,reg);
+      current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+      thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
     end;
 
   procedure thlcgwasm.a_cmp_ref_reg_label(list: TAsmList; size: tdef; cmp_op: topcmp; const ref: treference; reg: tregister; l: tasmlabel);
     begin
-      internalerror(2021011802);
+      a_cmp_ref_reg_stack(list,size,cmp_op,ref,reg);
+      current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+      thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
     end;
 
   procedure thlcgwasm.a_cmp_reg_ref_label(list: TAsmList; size: tdef; cmp_op: topcmp; reg: tregister; const ref: treference; l: tasmlabel);
     begin
-      internalerror(2021011802);
+      a_cmp_reg_ref_stack(list,size,cmp_op,reg,ref);
+      current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+      thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
     end;
 
   procedure thlcgwasm.a_cmp_reg_reg_label(list: TAsmList; size: tdef; cmp_op: topcmp; reg1, reg2: tregister; l: tasmlabel);
     begin
-      internalerror(2021011802);
+      a_cmp_reg_reg_stack(list,size,cmp_op,reg1,reg2);
+      current_asmdata.CurrAsmList.concat(taicpu.op_sym(a_br_if,l));
+      thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
     end;
 
   procedure thlcgwasm.a_jmp_always(list: TAsmList; l: tasmlabel);
     begin
       if l=current_procinfo.CurrBreakLabel then
-        list.concat(taicpu.op_const(a_br,br_blocks-loopBreakBr))
+        list.concat(taicpu.op_sym(a_br,l))
       else if l=current_procinfo.CurrContinueLabel then
-        list.concat(taicpu.op_const(a_br,br_blocks-loopContBr))
+        list.concat(taicpu.op_sym(a_br,l))
       else if l=current_procinfo.CurrExitLabel then
-        list.concat(taicpu.op_const(a_br,br_blocks-exitBr))
+        list.concat(taicpu.op_sym(a_br,l))
       else
         Internalerror(2019091806); // unexpected jump
     end;
@@ -2160,13 +2139,11 @@ implementation
       a_cmp_stack_stack(list,maxdef,OC_A);
 
       current_asmdata.CurrAsmList.concat(taicpu.op_none(a_if));
-      thlcgwasm(hlcg).incblock;
       thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
 
       g_call_system_proc(list,'fpc_rangeerror',[],nil).resetiftemp;
 
       current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
-      thlcgwasm(hlcg).decblock;
     end;
 
   procedure thlcgwasm.g_overflowcheck(list: TAsmList; const Loc: tlocation; def: tdef);
@@ -2196,15 +2173,14 @@ implementation
     begin
       inherited;
       list.concat(taicpu.op_none(a_block));
-      incblock;
-      exitBr:=br_blocks;
-      raiseBr:=br_blocks;
+      list.concat(taicpu.op_none(a_block));
     end;
 
   procedure thlcgwasm.gen_exit_code(list: TAsmList);
     begin
       list.concat(taicpu.op_none(a_end_block));
-      decblock;
+      if ts_wasm_bf_exceptions in current_settings.targetswitches then
+        a_label(list,tcpuprocinfo(current_procinfo).CurrRaiseLabel);
       if fevalstackheight<>0 then
 {$ifdef DEBUG_WASMSTACK}
         list.concat(tai_comment.Create(strpnew('!!! values remaining on stack at end of block !!!')));
@@ -2290,7 +2266,7 @@ implementation
 
           decstack(current_asmdata.CurrAsmList,1);
 
-          list.concat(taicpu.op_const(a_br_if,br_blocks-raiseBr));
+          list.concat(taicpu.op_sym(a_br_if,tcpuprocinfo(current_procinfo).CurrRaiseLabel));
       end;
     end;
 

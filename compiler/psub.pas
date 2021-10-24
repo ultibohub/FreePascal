@@ -29,7 +29,7 @@ interface
 
     uses
       globals,cclasses,
-      node,nbas,nutils,
+      node,nbas,nutils,aasmdata,
       symdef,procinfo,optdfa;
 
     type
@@ -74,6 +74,7 @@ interface
         procedure generate_code;
         procedure generate_code_tree;
         procedure generate_exceptfilter(nestedpi: tcgprocinfo);
+        procedure generate_exit_label(list: tasmlist); virtual;
         procedure resetprocdef;
         procedure add_to_symtablestack;
         procedure remove_from_symtablestack;
@@ -122,7 +123,7 @@ implementation
        cutils, cmsgs,
        { global }
        globtype,tokens,verbose,comphook,constexp,
-       systems,cpubase,aasmbase,aasmtai,aasmdata,
+       systems,cpubase,aasmbase,aasmtai,
        { symtable }
        symconst,symbase,symsym,symtype,symtable,defutil,defcmp,symcreat,
        paramgr,
@@ -1217,11 +1218,7 @@ implementation
              end;
 
            if RedoDFA then
-             begin
-               dfabuilder.resetdfainfo(code);
-               dfabuilder.createdfainfo(code);
-               include(flags,pi_dfaavailable);
-             end;
+             dfabuilder.redodfainfo(code);
 
            if cs_opt_forloop in current_settings.optimizerswitches then
              RedoDFA:=OptimizeForLoop(code);
@@ -1229,11 +1226,7 @@ implementation
            RedoDFA:=ConvertForLoops(code) or RedoDFA;
 
            if RedoDFA then
-             begin
-               dfabuilder.resetdfainfo(code);
-               dfabuilder.createdfainfo(code);
-               include(flags,pi_dfaavailable);
-             end;
+             dfabuilder.redodfainfo(code);
 
            { when life info is available, we can give more sophisticated warning about uninitialized
              variables ...
@@ -1700,6 +1693,12 @@ implementation
       end;
 
 
+    procedure tcgprocinfo.generate_exit_label(list: tasmlist);
+      begin
+        hlcg.a_label(list,CurrExitLabel);
+      end;
+
+
      procedure TCGProcinfo.CreateInlineInfo;
        begin
         new(procdef.inlininginfo);
@@ -2058,7 +2057,7 @@ implementation
                 aktproccode.concatlist(templist);
               end;
             { insert exit label at the correct position }
-            hlcg.a_label(templist,CurrExitLabel);
+            generate_exit_label(templist);
             if assigned(exitlabel_asmnode.currenttai) then
               aktproccode.insertlistafter(exitlabel_asmnode.currenttai,templist)
             else

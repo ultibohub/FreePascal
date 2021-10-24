@@ -111,7 +111,7 @@ unit aoptx86;
 
         { Replaces all references to AOldReg in an instruction to ANewReg,
           except where the register is being written }
-        function ReplaceRegisterInInstruction(const p: taicpu; const AOldReg, ANewReg: TRegister): Boolean;
+        class function ReplaceRegisterInInstruction(const p: taicpu; const AOldReg, ANewReg: TRegister): Boolean; static;
 
         { Returns true if the reference only refers to ESP or EBP (or their 64-bit equivalents),
           or writes to a global symbol }
@@ -2198,7 +2198,7 @@ unit aoptx86;
 
 
     { Replaces all references to AOldReg in an instruction to ANewReg }
-    function TX86AsmOptimizer.ReplaceRegisterInInstruction(const p: taicpu; const AOldReg, ANewReg: TRegister): Boolean;
+    class function TX86AsmOptimizer.ReplaceRegisterInInstruction(const p: taicpu; const AOldReg, ANewReg: TRegister): Boolean;
       const
         ReadFlag: array[0..3] of TInsChange = (Ch_Rop1, Ch_Rop2, Ch_Rop3, Ch_Rop4);
       var
@@ -3436,7 +3436,7 @@ unit aoptx86;
                               }
                               CurrentReg := taicpu(p).oper[0]^.reg; { Saves on a handful of pointer dereferences }
                               RegName1 := debug_regname(taicpu(hp2).oper[0]^.reg);
-                              if taicpu(hp2).oper[1]^.reg = CurrentReg then
+                              if MatchOperand(taicpu(hp2).oper[1]^, CurrentReg) then
                                 begin
                                   { %reg = y - remove hp2 completely (doing it here instead of relying on
                                     the "mov %reg,%reg" optimisation might cut down on a pass iteration) }
@@ -3468,22 +3468,27 @@ unit aoptx86;
                                 begin
                                   AllocRegBetween(CurrentReg, p, hp2, UsedRegs);
                                   taicpu(hp2).loadReg(0, CurrentReg);
-                                  if TempRegUsed then
-                                    begin
-                                      { Don't remove the first instruction if the temporary register is in use }
-                                      DebugMsg(SPeepholeOptimization + RegName1 + ' = ' + debug_regname(CurrentReg) + '; changed to minimise pipeline stall (MovMov2Mov 6a}',hp2);
 
-                                      { No need to set Result to True. If there's another instruction later on
-                                        that can be optimised, it will be detected when the main Pass 1 loop
-                                        reaches what is now hp2 and passes it through OptPass1MOV. [Kit] };
-                                    end
-                                  else
+                                  DebugMsg(SPeepholeOptimization + RegName1 + ' = ' + debug_regname(CurrentReg) + '; changed to minimise pipeline stall (MovMov2Mov 6a}',hp2);
+
+                                  { Check to see if the register also appears in the reference }
+                                  if (taicpu(hp2).oper[1]^.typ = top_ref) then
+                                    ReplaceRegisterInRef(taicpu(hp2).oper[1]^.ref^, ActiveReg, CurrentReg);
+
+                                  { Don't remove the first instruction if the temporary register is in use }
+                                  if not TempRegUsed and
+                                    { ReplaceRegisterInRef won't actually replace the register if it's a different size }
+                                    not RegInOp(ActiveReg, taicpu(hp2).oper[1]^) then
                                     begin
                                       DebugMsg(SPeepholeOptimization + 'MovMov2Mov 6 done',p);
                                       RemoveCurrentP(p, hp1);
                                       Result:=true;
                                       Exit;
                                     end;
+
+                                  { No need to set Result to True here. If there's another instruction later
+                                    on that can be optimised, it will be detected when the main Pass 1 loop
+                                    reaches what is now hp2 and passes it through OptPass1MOV. [Kit] }
                                 end;
                             end;
                           top_const:
@@ -4089,7 +4094,8 @@ unit aoptx86;
         Result:=false;
         if taicpu(p).ops <> 2 then
           exit;
-        if GetNextInstruction(p,hp1) then
+        if ((taicpu(p).oper[1]^.typ=top_reg) and GetNextInstructionUsingReg(p,hp1,taicpu(p).oper[1]^.reg)) or
+          GetNextInstruction(p,hp1) then
           begin
             if MatchInstruction(hp1,taicpu(p).opcode,[taicpu(p).opsize]) and
             (taicpu(hp1).ops = 2) then
@@ -4121,14 +4127,17 @@ unit aoptx86;
                               DebugMsg(SPeepholeOptimization + 'MovXXMovXX2Nop 1 done',p);
                               RemoveInstruction(hp1);
                               RemoveCurrentp(p); { p will now be equal to the instruction that follows what was hp1 }
+                              Result:=true;
+                              exit;
                             end
-                          else
+                          else if (taicpu(hp1).oper[1]^.typ<>top_ref) or (not(vol_write in taicpu(hp1).oper[1]^.ref^.volatility)) and
+                            (taicpu(hp1).oper[0]^.typ<>top_ref) or (not(vol_read in taicpu(hp1).oper[0]^.ref^.volatility)) then
                             begin
                               DebugMsg(SPeepholeOptimization + 'MovXXMovXX2MoVXX 1 done',p);
                               RemoveInstruction(hp1);
+                              Result:=true;
+                              exit;
                             end;
-                          Result:=true;
-                          exit;
                         end
                   end;
               end;
