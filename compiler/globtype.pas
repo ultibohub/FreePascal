@@ -171,7 +171,8 @@ interface
          { i8086 specific }
          cs_force_far_calls,
          cs_hugeptr_arithmetic_normalization,
-         cs_hugeptr_comparison_normalization
+         cs_hugeptr_comparison_normalization,
+         cs_legacyifend
        );
        tlocalswitches = set of tlocalswitch;
 
@@ -785,7 +786,9 @@ interface
          { subroutine uses get_frame }
          pi_uses_get_frame,
          { x86 only: subroutine uses ymm registers, requires vzeroupper call }
-         pi_uses_ymm
+         pi_uses_ymm,
+         { set if no frame pointer is needed, the rules when this applies is target specific }
+         pi_no_framepointer_needed
        );
        tprocinfoflags=set of tprocinfoflag;
 

@@ -356,6 +356,7 @@ type
     Functions,  // TPasProcedure
     Properties, // TPasProperty
     ResStrings, // TPasResString
+    Labels,     // TPasLabel
     Types,      // TPasType, except TPasClassType, TPasRecordType
     Variables   // TPasVariable, not descendants
       : TFPList;
@@ -738,7 +739,7 @@ type
     procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
       const Arg: Pointer); override;
   public
-    Values: TFPList; // list of TPasElement
+    Values: TFPList; // list of TPasExpr
     Members: TPasRecordType;
   end;
 
@@ -1687,6 +1688,13 @@ type
   TPasImplLabelMark = class(TPasImplElement)
   public
     LabelId: String;
+  end;
+
+  { TPasImplGoto }
+
+  TPasImplGoto = class(TPasImplStatement)
+  public
+    LabelName: string;
   end;
 
   { TPassTreeVisitor }
@@ -3278,6 +3286,7 @@ begin
   Properties := TFPList.Create;
   ResStrings := TFPList.Create;
   Types := TFPList.Create;
+  Labels := TFPList.Create;
   Variables := TFPList.Create;
 end;
 
@@ -3296,6 +3305,7 @@ begin
   FreeAndNil(Consts);
   FreeAndNil(Classes);
   FreeAndNil(Attributes);
+  FreeAndNil(Labels);
   {$IFDEF VerbosePasTreeMem}writeln('TPasDeclarations.Destroy Declarations');{$ENDIF}
   for i := 0 to Declarations.Count - 1 do
     begin

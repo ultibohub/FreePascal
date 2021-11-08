@@ -1661,7 +1661,10 @@ const
          (mask:pi_uses_get_frame;
          str:' uses get_frame'),
          (mask:pi_uses_ymm;
-         str:' uses ymm register (x86 only)')
+         str:' uses ymm register (x86 only)'),
+         (mask:pi_no_framepointer_needed;
+         str:' set if no frame pointer is needed, the rules when this applies is target specific'
+         )
   );
 var
   procinfooptions : tprocinfoflags;
@@ -2371,7 +2374,8 @@ const
          { i8086 specific }
         'i8086 force FAR calls', {cs_force_far_calls}
         'i8086 huge pointer arithmetic', {cs_hugeptr_arithmetic_normalization}
-        'i8086 huge pointer comparison' {cs_hugeptr_comparison_normalization}
+        'i8086 huge pointer comparison', {cs_hugeptr_comparison_normalization}
+        'enforce legacy ifend behaviour' {cs_legacyifend}
        );
        { Switches which can be changed by a mode (fpc,tp7,delphi) }
        modeswitchname : array[tmodeswitch] of string[50] =

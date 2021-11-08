@@ -23,9 +23,7 @@ Interface
 
 Type
    bestreal = double;
-{$if FPC_FULLVERSION>20700}
    bestrealrec = TDoubleRec;
-{$endif FPC_FULLVERSION>20700}
    ts32real = single;
    ts64real = double;
    ts80real = type extended;
@@ -137,7 +135,12 @@ Const
 
 type
    tcpuflags =
-     (CPUAARCH64_HAS_LSE       { CPU supports Large System Extensions }
+     (CPUAARCH64_HAS_LSE,     { CPU supports Large System Extensions }
+      CPUAARCH64_HAS_DOTPROD, { CPU supports dotprod extension }
+      CPUAARCH64_HAS_AES,     { CPU supports AES extension }
+      CPUAARCH64_HAS_SHA2,    { CPU supports SHA2 extension }
+      CPUAARCH64_HAS_SHA3,    { CPU supports SHA3 extension }
+      CPUAARCH64_HAS_SM4      { CPU supports SM3 and SM4 extension }
      );
 
    tfpuflags =

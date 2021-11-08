@@ -2921,55 +2921,65 @@ begin
     else
       begin
       NextToken;
-      x:=DoParseConstValueExpression(AParent);
-      case CurToken of
-        tkComma: // array of values (a,b,c);
-          ReadArrayValues(x);
-
-        tkColon: // record field (a:xxx;b:yyy;c:zzz);
-          begin
-          if not (x is TPrimitiveExpr) then
-            CheckToken(tkBraceClose);
-          r:=nil;
-          try
-            n:=GetExprIdent(x);
-            r:=CreateRecordValues(AParent);
-            NextToken;
-            v:=DoParseConstValueExpression(r);
-            r.AddField(TPrimitiveExpr(x), v);
-            x:=nil;
-            if not lastfield then
-              repeat
-                n:=ExpectIdentifier;
-                x:=CreatePrimitiveExpr(r,pekIdent,n);
-                ExpectToken(tkColon);
-                NextToken;
-                v:=DoParseConstValueExpression(AParent);
-                r.AddField(TPrimitiveExpr(x), v);
-                x:=nil;
-              until lastfield; // CurToken<>tkSemicolon;
-            Result:=r;
-          finally
-            if Result=nil then
-              begin
-              r.Free;
-              x.Free;
-              end;
-          end;
-          end;
-      else
-        // Binary expression!  ((128 div sizeof(longint)) - 3);
-        Result:=DoParseExpression(AParent,x);
-        if CurToken<>tkBraceClose then
-          begin
-          ReleaseAndNil(TPasElement(Result){$IFDEF CheckPasTreeRefCount},'CreateElement'{$ENDIF});
-          ParseExc(nParserExpectedCommaRBracket,SParserExpectedCommaRBracket);
-          end;
+      // Empty record constant: a: Record .. end = ();
+      if (CurToken=tkBraceClose) then
+        begin
+        Result:=CreateRecordValues(AParent);
         NextToken;
-        if CurToken <> tkSemicolon then // the continue of expression
-          Result:=DoParseExpression(AParent,Result);
         Exit;
-      end;
+        end
+      else
+        begin
+        x:=DoParseConstValueExpression(AParent);
+        case CurToken of
+          tkComma: // array of values (a,b,c);
+            ReadArrayValues(x);
+
+          tkColon: // record field (a:xxx;b:yyy;c:zzz);
+            begin
+            if not (x is TPrimitiveExpr) then
+              CheckToken(tkBraceClose);
+            r:=nil;
+            try
+              n:=GetExprIdent(x);
+              r:=CreateRecordValues(AParent);
+              NextToken;
+              v:=DoParseConstValueExpression(r);
+              r.AddField(TPrimitiveExpr(x), v);
+              x:=nil;
+              if not lastfield then
+                repeat
+                  n:=ExpectIdentifier;
+                  x:=CreatePrimitiveExpr(r,pekIdent,n);
+                  ExpectToken(tkColon);
+                  NextToken;
+                  v:=DoParseConstValueExpression(AParent);
+                  r.AddField(TPrimitiveExpr(x), v);
+                  x:=nil;
+                until lastfield; // CurToken<>tkSemicolon;
+              Result:=r;
+            finally
+              if Result=nil then
+                begin
+                r.Free;
+                x.Free;
+                end;
+            end;
+            end;
+        else
+          // Binary expression!  ((128 div sizeof(longint)) - 3);
+          Result:=DoParseExpression(AParent,x);
+          if CurToken<>tkBraceClose then
+            begin
+            ReleaseAndNil(TPasElement(Result){$IFDEF CheckPasTreeRefCount},'CreateElement'{$ENDIF});
+            ParseExc(nParserExpectedCommaRBracket,SParserExpectedCommaRBracket);
+            end;
+          NextToken;
+          if CurToken <> tkSemicolon then // the continue of expression
+            Result:=DoParseExpression(AParent,Result);
+          Exit;
+        end;
+        end;
       end;
     if CurToken<>tkBraceClose then
       begin
@@ -4677,7 +4687,7 @@ begin
   NextToken;
   if not (CurToken in [tkString,tkIdentifier]) then
     begin
-    if (CurToken=tkSemicolon) and (ExtMod in [vmExternal,vmPublic]) then
+    if (CurToken=tkSemicolon) and (ExtMod in [vmExternal,vmPublic,vmExport]) then
       exit;
     ParseExcSyntaxError;
     end;
@@ -5989,7 +5999,11 @@ begin
 end;
 
 // Next token is start of (compound) statement
-// After parsing CurToken is on last token of statement
+// After parsing CurToken is on last token of statement, which might be the semicolon
+// For example:
+//  try..finally..end|
+//  DoSomething| else
+//  DoSomething;| NextStatement
 procedure TPasParser.ParseStatement(Parent: TPasImplBlock;
   out NewImplElement: TPasImplElement);
 var
@@ -6087,6 +6101,7 @@ var
   ImplRaise: TPasImplRaise;
   VarEl: TPasVariable;
   ImplExceptOn: TPasImplExceptOn;
+  ImplGoto: TPasImplGoto;
 
 begin
   NewImplElement:=nil;
@@ -6194,6 +6209,7 @@ begin
               or (CurBlock is TPasImplForLoop)
               or (CurBlock is TPasImplWithDo)
               or (CurBlock is TPasImplRaise)
+              or (CurBlock is TPasImplGoto)
               or (CurBlock is TPasImplExceptOn) then
             // simply close block
           else
@@ -6220,9 +6236,11 @@ begin
       tkgoto:
         begin
         CheckStatementCanStart;
-        NextToken;
-        CurBlock.AddCommand('goto '+curtokenstring);
-        // expecttoken(tkSemiColon);
+        SrcPos:=CurTokenPos;
+        ExpectTokens([tkIdentifier,tkNumber]);
+        ImplGoto:=TPasImplGoto(CreateElement(TPasImplGoto,'',CurBlock,SrcPos));
+        CreateBlock(ImplGoto);
+        ImplGoto.LabelName:=CurTokenString;
         end;
       tkfor:
         begin
@@ -6429,12 +6447,15 @@ begin
         CreateBlock(ImplRaise);
         NextToken;
         If Curtoken in [tkElse,tkEnd,tkSemicolon,tkotherwise] then
+          // raise without object
           UnGetToken
         else
           begin
+          // raise with object
           ImplRaise.ExceptObject:=DoParseExpression(ImplRaise);
           if (CurToken=tkIdentifier) and (Uppercase(CurtokenString)='AT') then
             begin
+            // raise object at expr
             NextToken;
             ImplRaise.ExceptAddr:=DoParseExpression(ImplRaise);
             end;
@@ -6623,12 +6644,20 @@ var
 begin
   Labels:=TPasLabels(CreateElement(TPasLabels, '', AParent));
   repeat
-    expectTokens([tkIdentifier,tkNumber]);
+    ExpectTokens([tkIdentifier,tkNumber]);
     Labels.Labels.Add(CurTokenString);
     NextToken;
     if not (CurToken in [tkSemicolon, tkComma]) then
       ParseExcTokenError(TokenInfos[tkSemicolon]);
   until CurToken=tkSemicolon;
+  if not (aParent is TPasDeclarations) then
+    FreeAndNil(Labels)
+  else
+    begin
+    TPasDeclarations(aParent).Declarations.Add(Labels);
+    TPasDeclarations(aParent).Labels.Add(Labels);
+    end;
+
 end;
 
 // Starts after the "procedure" or "function" token
