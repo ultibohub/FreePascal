@@ -72,22 +72,25 @@ unit i_ultibo;
             endian       : endian_little;
             alignment    :
               (
-                procalign       : 4; //4;
-                loopalign       : 4; //4;
-                jumpalign       : 0; //0;
-                constalignmin   : 0; //0;
-                constalignmax   : 8; //4;
-                varalignmin     : 0; //0;
-                varalignmax     : 8; //4;
-                localalignmin   : 4; //4;
-                localalignmax   : 8; //4;
-                recordalignmin  : 0; //0;
-                recordalignmax  : 8; //4;
-                maxCrecordalign : 8  //4
+                procalign       : 4;
+                loopalign       : 4;
+                jumpalign       : 0;
+                jumpalignskipmax    : 0;
+                coalescealign   : 0;
+                coalescealignskipmax: 0;
+                constalignmin   : 0;
+                constalignmax   : 8;
+                varalignmin     : 0;
+                varalignmax     : 8;
+                localalignmin   : 4;
+                localalignmax   : 8;
+                recordalignmin  : 0;
+                recordalignmax  : 8;
+                maxCrecordalign : 8
               );
             first_parm_offset : 8;
             stacksize    : 262144;
-            stackalign   : 8; //4;
+            stackalign   : 8;
             abi : {$ifdef FPC_ARMHF}abi_eabihf{$else}abi_eabi{$endif}; //abi_default;
             llvmdatalayout : 'e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:64:128-a0:0:64-n32-S32';
           );
@@ -97,8 +100,8 @@ unit i_ultibo;
             system       : system_i386_ultibo;
             name         : 'Ultibo';
             shortname    : 'ultibo';
-            flags        : [tf_needs_symbol_size,tf_files_case_sensitive
-	                          ,tf_smartlink_sections];
+            flags        : [tf_needs_symbol_size,tf_files_case_sensitive,
+	                        tf_smartlink_sections];
             cpu          : cpu_i386;
             unit_env     : '';
             extradefines : '';
@@ -139,8 +142,11 @@ unit i_ultibo;
                 procalign       : 16;
                 loopalign       : 4;
                 jumpalign       : 0;
+                jumpalignskipmax    : 0;
+                coalescealign   : 0;
+                coalescealignskipmax: 0;
                 constalignmin   : 0;
-                constalignmax   : 8;
+                constalignmax   : 16;
                 varalignmin     : 0;
                 varalignmax     : 16;
                 localalignmin   : 4;
@@ -150,8 +156,8 @@ unit i_ultibo;
                 maxCrecordalign : 4
               );
             first_parm_offset : 8;
-            stacksize    : 4096;
-            stackalign   : 4;
+            stacksize    : 262144;
+            stackalign   : 8;
             abi : abi_default;
             llvmdatalayout : 'e-p:32:32:32-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:32:64-f32:32:32-f64:32:64-v64:64:64-v128:128:128-a0:0:64-f80:32:32-n8:16:32-S32';
           );
@@ -201,20 +207,23 @@ unit i_ultibo;
             alignment    :
               (
                 procalign       : 8;
-                loopalign       : 4;
+                loopalign       : 8;
                 jumpalign       : 0;
+                jumpalignskipmax    : 0;
+                coalescealign   : 0;
+                coalescealignskipmax: 0;
                 constalignmin   : 0;
                 constalignmax   : 8;
                 varalignmin     : 0;
                 varalignmax     : 16;
-                localalignmin   : 4;
+                localalignmin   : 8;
                 localalignmax   : 16;
                 recordalignmin  : 0;
                 recordalignmax  : 16;
                 maxCrecordalign : 16
               );
             first_parm_offset : 16;
-            stacksize    : 1*1024*1024;
+            stacksize    : 262144;
             stackalign   : 16;
             abi : abi_default;
             llvmdatalayout : 'e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-n32:64-S128'

@@ -3,6 +3,9 @@
 program fpmake;
 
 uses fpmkunit;
+{$endif ALLPACKAGES}
+
+procedure add_sqlite(const ADirectory: string);
 
 Const 
   SQLiteOSes      = AllUnixOSes+AllWindowsOSes-[qnx,win16];
@@ -14,13 +17,9 @@ Var
 begin
   With Installer do
     begin
-{$endif ALLPACKAGES}
-
     P:=AddPackage('sqlite');
     P.ShortName:='sqlt';
-{$ifdef ALLPACKAGES}
     P.Directory:=ADirectory;
-{$endif ALLPACKAGES}
     P.Version:='3.3.1';
     P.OSes := SQLiteOSes+SQLite3OSes;
     if Defaults.CPU=jvm then
@@ -62,9 +61,12 @@ begin
     P.Targets.AddExampleProgram('testapiv3x.pp');
     P.Targets.AddExampleProgram('test.pas');
     // 'testapiv3x.README
+  end
+end;
 
 {$ifndef ALLPACKAGES}
-    Run;
-    end;
+begin
+  add_sqlite('');
+  Installer.Run;
 end.
 {$endif ALLPACKAGES}

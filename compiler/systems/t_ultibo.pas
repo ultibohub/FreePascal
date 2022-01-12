@@ -61,7 +61,7 @@ implementation
        SysUtils,
        cutils,cfileutl,cclasses,
        verbose,systems,globtype,globals,
-       symconst,comphook,script,
+       symconst,comphook,cscript,
        fmodule,aasmbase,aasmtai,aasmdata,aasmcpu,cpubase,cpuinfo,i_ultibo,ogbase;
 
 {*****************************************************************************
@@ -95,7 +95,7 @@ var
   hp2 : texported_item;
 begin
   { first test the index value }
-  if (hp.options and eo_index)<>0 then
+  if eo_index in hp.options then
    begin
      Message1(parser_e_no_export_with_index_for_target,'ultibo');
      exit;
@@ -153,8 +153,8 @@ begin
 {$ifdef i386}
            { place jump in al_procedures }
            current_asmdata.asmlists[al_procedures].concat(Tai_align.Create_op(4,$90));
-           current_asmdata.asmlists[al_procedures].concat(Tai_symbol.Createname_global(hp2.name^,AT_FUNCTION,0));
-           current_asmdata.asmlists[al_procedures].concat(Taicpu.Op_sym(A_JMP,S_NO,current_asmdata.RefAsmSymbol(pd.mangledname)));
+           current_asmdata.asmlists[al_procedures].concat(Tai_symbol.Createname_global(hp2.name^,AT_FUNCTION,0,pd));
+           current_asmdata.asmlists[al_procedures].concat(Taicpu.Op_sym(A_JMP,S_NO,current_asmdata.RefAsmSymbol(pd.mangledname,AT_FUNCTION)));
            current_asmdata.asmlists[al_procedures].concat(Tai_symbol_end.Createname(hp2.name^));
 {$endif i386}
          end;
