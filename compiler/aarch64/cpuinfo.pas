@@ -58,21 +58,21 @@ Type
       ct_raspi3,
       ct_raspi4,
 
-      { Raspberry Pi3 (64 bit mode)}
+      { Ultibo Raspberry Pi3 (64 bit mode)}
       ct_rpi3a,
       ct_rpi3b,
 
-      { Raspberry Pi4 (64 bit mode)}
+      { Ultibo Raspberry Pi4 (64 bit mode)}
       ct_rpi4b,
       ct_rpi400,
 
-      { Raspberry Pi Zero 2 (64 bit mode)}
+      { Ultibo Raspberry Pi Zero 2 (64 bit mode)}
       ct_rpizero2w,
 
-      { QEMU VersatilePB (64 bit mode)}
+      { Ultibo QEMU VersatilePB (64 bit mode)}
       ct_qemuvpb,
 
-      { QEMU Raspberry Pi3 (64 bit mode)}
+      { Ultibo QEMU Raspberry Pi3 (64 bit mode)}
       ct_qemurpi3a,
       ct_qemurpi3b
      );
@@ -109,21 +109,21 @@ Const
       (controllertypestr:'RASPI3'; controllerunitstr:'RASPI3'; cputype:cpu_armv8a; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00008000; sramsize:$10000000),
       (controllertypestr:'RASPI4'; controllerunitstr:'RASPI4'; cputype:cpu_armv8a; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00008000; sramsize:$10000000)
 
-      { Raspberry Pi3}
+      { Ultibo Raspberry Pi3}
       (controllertypestr:'RPI3A'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
       (controllertypestr:'RPI3B'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000),
 
-      { Raspberry Pi4}
+      { Ultibo Raspberry Pi4}
       (controllertypestr:'RPI4B'; controllerunitstr:'BOOTRPI4'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000),
       (controllertypestr:'RPI400'; controllerunitstr:'BOOTRPI4'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000),
 
-      { Raspberry Pi Zero 2}
+      { Ultibo Raspberry Pi Zero 2}
       (controllertypestr:'RPIZERO2W'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
 
-      { QEMU VersatilePB}
+      { Ultibo QEMU VersatilePB}
       (controllertypestr:'QEMUVPB'; controllerunitstr:'BOOTQEMUVPB'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$10000000),
 
-      { QEMU Raspberry Pi3}
+      { Ultibo QEMU Raspberry Pi3}
       (controllertypestr:'QEMURPI3A'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
       (controllertypestr:'QEMURPI3B'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000)
 
