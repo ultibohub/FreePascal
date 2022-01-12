@@ -584,13 +584,16 @@ implementation
 
 
     procedure internalerror(i : longint);noreturn;
+      procedure doraise;
+        begin
+          raise ECompilerAbort.Create;
+        end;
       begin
         UpdateStatus;
         do_internalerror(i);
         GenerateError;
-        raise ECompilerAbort.Create;
+        doraise;
       end;
-
 
     procedure Comment(l:longint;s:ansistring);
       var
@@ -1058,8 +1061,10 @@ implementation
           $10000..$FFFFFFFF:
             WritePointer := '$' + hexstr(PtrUInt(P), 8);
     {$ifend sizeof(Pointer) >= 4}
+    {$if sizeof(Pointer) > 4}
           else
             WritePointer := '$' + hexstr(PtrUInt(P), 2*sizeof(Pointer));
+    {$ifend sizeof(Pointer) > 4}
         end;
       end;
 

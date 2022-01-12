@@ -14,6 +14,7 @@
 
  **********************************************************************}
 
+{$MODE OBJFPC}
 unit Video;
 
 {.$define VIDEODEBUG}
@@ -177,7 +178,8 @@ var
   videoDefaultFlags: PtrUInt;
 begin
   videoDefaultFlags:=VIDEO_WFLG_DEFAULTS;
-  if GetVar('FPC_VIDEO_SIMPLEREFRESH',@envBuf,sizeof(envBuf),0) > -1 then
+  if (GetVar('FPC_VIDEO_SIMPLEREFRESH',@envBuf,sizeof(envBuf),0) > -1) or
+     FPC_VIDEO_FULLSCREEN then
     videoDefaultFlags:=videoDefaultFlags and not WFLG_SMART_REFRESH;
   if FPC_VIDEO_FULLSCREEN then
   begin
@@ -198,7 +200,7 @@ begin
       WA_Activate   , 1,
       WA_Borderless , 1,
       WA_BackDrop   , 1,
-      WA_FLAGS      , VIDEO_WFLG_DEFAULTS or WFLG_BORDERLESS,
+      WA_FLAGS      , videoDefaultFlags,
       WA_IDCMP      , VIDEO_IDCMP_DEFAULTS,
       TAG_END, TAG_END
     ]);
@@ -215,7 +217,7 @@ begin
       WA_MaxHeight  , 32768,
       WA_Title      , PtrUInt(PChar('FPC Video Window Output')),
       WA_Activate   , 1,
-      WA_FLAGS      , (VIDEO_WFLG_DEFAULTS or
+      WA_FLAGS      , (videoDefaultFlags or
                        WFLG_DRAGBAR       or WFLG_DEPTHGADGET   or WFLG_SIZEGADGET or
                        WFLG_SIZEBBOTTOM   or WFLG_CLOSEGADGET),
       WA_IDCMP      , VIDEO_IDCMP_DEFAULTS,
@@ -444,6 +446,7 @@ begin
       if (msg <> nil) then ReplyMsg(msg);
     until msg = nil;
     ModifyIDCMP(videoWindow,0);
+    VideoWindow^.UserPort:=nil;
     Permit();
     CloseWindow(videoWindow);
     VideoWindow := nil;
@@ -561,21 +564,24 @@ begin
   end;
 end;
 
-procedure SysUpdateScreen(Force: Boolean);
+
+procedure SysUpdateScreenArea(const X1,Y1,X2,Y2: Word; Force: Boolean);
 var
-  BufCounter: Longint;
   SmallForce: Boolean;
-  Counter, CounterX, CounterY: LongInt;
-  NumChanged: Integer;
+  CounterX, CounterY: LongInt;
   LocalRP: PRastPort;
   sY, sX: LongInt;
-  TmpCharData: Word;
+  BufStartOfs: LongInt;
+  BufLineDiff: Longint;
   {$ifdef VideoSpeedTest}
+  NumChanged: Integer;
   t,ta: Double;
   {$endif}
+  VBuf,OldVBuf: PWord;
 begin
   {$ifdef VideoSpeedTest}
   ta := now();
+  NumChanged := 0;
   {$endif}
   SmallForce := False;
 
@@ -591,19 +597,7 @@ begin
     end;
   end;
 
-  if Force then
-  begin
-    SmallForce:=true;
-  end else
-  begin
-    Counter:=0;
-    if not ForceCursorUpdate then
-      while not smallforce and (Counter < (VideoBufSize div 4) - 1) do
-      begin
-        SmallForce := (PDWord(VideoBuf)[Counter] <> PDWord(OldVideoBuf)[Counter]);
-        inc(Counter);
-      end;
-  end;
+  SmallForce:=Force or not ForceCursorUpdate;
 
   LocalRP := VideoWindow^.RPort;
 
@@ -620,32 +614,36 @@ begin
   LocalRP := BufRp;
   {$endif}
 
-  BufCounter:=0;
-  NumChanged:=0;
-
-
   if Smallforce then
   begin
     {$ifdef VideoSpeedTest}
     t := now();
     {$endif}
-    sY := videoWindow^.borderTop;
-    for CounterY := 0 to ScreenHeight - 1 do
+    BufStartOfs:=Y1 * ScreenWidth + X1;
+    BufLineDiff:=ScreenWidth-(X2-X1+1);
+    VBuf:=@VideoBuf^[BufStartOfs];
+    OldVBuf:=@OldVideoBuf^[BufStartOfs];
+    sY := videoWindow^.borderTop + Y1 * VideoFontHeight;
+    for CounterY := Y1 to Y2 do
     begin
-      sX := videoWindow^.borderLeft;
-      for CounterX := 0 to ScreenWidth - 1 do
+      sX := videoWindow^.borderLeft + X1 * 8;
+      for CounterX := X1 to X2 do
       begin
-        if (VideoBuf^[BufCounter] <> OldVideoBuf^[BufCounter]) or Force then
+        if (VBuf^ <> OldVBuf^) or Force then
         begin
-          TmpCharData := VideoBuf^[BufCounter];
-          SetABPenDrMd(LocalRP, VideoPens[(TmpCharData shr 8) and %00001111], VideoPens[(TmpCharData shr 12) and %00000111], JAM2);
-          BltTemplate(CharPointers[TmpCharData and $FF], 0, SrcMod, LocalRP, sX, sY, 8, VideoFontHeight);
-          OldVideoBuf^[BufCounter] := VideoBuf^[BufCounter];
+          SetABPenDrMd(LocalRP, VideoPens[(VBuf^ shr 8) and %00001111], VideoPens[(VBuf^ shr 12) and %00000111], JAM2);
+          BltTemplate(CharPointers[VBuf^ and $FF], 0, SrcMod, LocalRP, sX, sY, 8, VideoFontHeight);
+          OldVBuf^:=VBuf^;
+          {$ifdef VideoSpeedTest}
           Inc(NumChanged);
+          {$endif}
         end;
-        Inc(BufCounter);
+        Inc(VBuf);
+        Inc(OldVBuf);
         sX := sX + 8;
       end;
+      Inc(VBuf,BufLineDiff);
+      Inc(OldVBuf,BufLineDiff);
       sY := sY + VideoFontHeight;
     end;
     {$ifdef VideoSpeedTest}
@@ -673,6 +671,10 @@ begin
   {$endif}
 end;
 
+procedure SysUpdateScreen(Force: Boolean);
+begin
+  SysUpdateScreenArea(0,0,ScreenWidth-1,ScreenHeight-1,Force);
+end;
 
 procedure SysSetCursorPos(NewCursorX, NewCursorY: Word);
 begin
@@ -877,6 +879,7 @@ const
     InitDriver : @SysInitVideo;
     DoneDriver : @SysDoneVideo;
     UpdateScreen : @SysUpdateScreen;
+    UpdateScreenArea : @SysUpdateScreenArea;
     ClearScreen : @SysClearScreen;
     SetVideoMode : @SysSetVideoMode;
     GetVideoModeCount : @SysGetVideoModeCount;

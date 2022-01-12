@@ -110,6 +110,12 @@ begin
 {$include fcl-extra/fpmake.pp}
 end;
 
+procedure add_fcl_hash(const ADirectory: string);
+begin
+  with Installer do
+{$include fcl-hash/fpmake.pp}
+end;
+
 procedure add_fcl_fpcunit(const ADirectory: string);
 begin
   with Installer do
@@ -831,6 +837,12 @@ procedure add_mustache(const ADirectory: string);
 begin
   with Installer do
 {$include fcl-mustache/fpmake.pp}
+end;
+
+procedure add_wasmtime(const ADirectory: string);
+begin
+  with Installer do
+{$include wasmtime/fpmake.pp}
 end;
 
 {$include ide/fpmake.pp}

@@ -36,7 +36,7 @@ type
      tjsPLUSEQ, tjsPLUSPLUS,
      tjsURSHIFT, tjsURSHIFTEQ,
      tjsRSHIFT, tjsRSHIFTEQ,
-     tjsSEQ, tjsSNE, tjsMULEQ,
+     tjsSEQ, tjsSNE, tjsMULEQ, tjsArrow, tjsEllipsis,
      { Reserved words start here. They must be last }
      tjsAWAIT, tjsBREAK, tjsCASE, tjsCATCH, tjsCLASS, tjsCONST, tjsCONTINUE,
      tjsDEBUGGER, tjsDEFAULT, tjsDELETE, tjsDO,
@@ -58,7 +58,7 @@ const
   FirstKeyword = tjsAwait;
   LastKeyWord = tJSYield;
 
-  TokenInfos: array[TJSToken] of string = ('unknown',
+  TokenInfos: array[TJSToken] of String = ('unknown',
        // Specials
         'EOF','whitespace','Char','String', 'identifier','number','comment','regular expression', 'reserved word',
         '&&','&=',
@@ -74,7 +74,7 @@ const
         '+=', '++',
         '>>>', '>>>=',
         '>>', '>>=',
-        '===', '!==', '*=',
+        '===', '!==', '*=', '=>', '...',
         // Identifiers last
         'await', 'break','case','catch', 'class','const','continue',
      'debugger','default','delete', 'do',

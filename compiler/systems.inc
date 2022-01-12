@@ -205,11 +205,11 @@
              system_m68k_sinclairql,    { 113 }
              system_wasm32_wasi,        { 114 }
              system_aarch64_freebsd,    { 115 }
-             system_arm_ultibo,         { 116 }
-             system_i386_ultibo,        { 117 }
-             system_x86_64_ultibo,      { 118 }
-             system_aarch64_ultibo      { 119 }
-             
+             system_aarch64_embedded    { 116 }
+             system_arm_ultibo,         { 117 }
+             system_i386_ultibo,        { 118 }
+             system_x86_64_ultibo,      { 119 }
+             system_aarch64_ultibo      { 120 }
        );
 
      type

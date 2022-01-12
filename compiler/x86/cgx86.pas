@@ -1917,6 +1917,8 @@ unit cgx86;
                 if size in [OS_M256,OS_M512] then
                   Include(current_procinfo.flags,pi_uses_ymm);
               end
+            else if size in [OS_F32,OS_F64] then
+              asmop:=opmm2asmop[0,size,op]
             else
               asmop:=opmm2asmop_full[op];
           end
@@ -3711,6 +3713,7 @@ unit cgx86;
          ai.is_jmp:=true;
          list.concat(ai);
 
+         a_reg_dealloc(list, NR_DEFAULTFLAGS);
          a_call_name(list,'FPC_OVERFLOW',false);
          a_label(list,hl);
       end;

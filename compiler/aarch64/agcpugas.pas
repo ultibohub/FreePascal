@@ -117,6 +117,16 @@ unit agcpugas;
                 Result:=Result+'+sha3';
               CPUAARCH64_HAS_SM4:
                 Result:=Result+'+sm4';
+              CPUAARCH64_HAS_CRYPTO:
+                Result:=Result+'+crypto';
+              CPUAARCH64_HAS_MEMTAG:
+                Result:=Result+'+memtag';
+              CPUAARCH64_HAS_PAUTH:
+                Result:=Result+'+pauth';
+              CPUAARCH64_HAS_TME:
+                Result:=Result+'+tme';
+              CPUAARCH64_HAS_PROFILE:
+                Result:=Result+'+profile';
               else
                 ;
             end
@@ -836,7 +846,7 @@ unit agcpugas;
             idtxt  : 'AS';
             asmbin : 'as';
             asmcmd : '-o $OBJ $MARCHOPT $EXTRAOPT $ASM';
-            supported_targets : [system_aarch64_freebsd,system_aarch64_linux,system_aarch64_android,system_aarch64_ultibo];
+            supported_targets : [system_aarch64_freebsd,system_aarch64_linux,system_aarch64_android,system_aarch64_embedded,system_aarch64_ultibo];
             flags : [af_needar,af_smartlink_sections];
             labelprefix : '.L';
             labelmaxlen : -1;

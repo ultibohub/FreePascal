@@ -445,7 +445,7 @@ scan_e_unexpected_endif=02108_E_$ENDIF directive found without a matching $IF(N)
 #
 # Parser
 #
-# 03355 is the last used one
+# 03361 is the last used one
 #
 % \section{Parser messages}
 % This section lists all parser messages. The parser takes care of the
@@ -1632,6 +1632,9 @@ parser_e_location_regpair_only_consecutive=03359_E_Only consecutive registers ar
 % MorphOS syscall specific: only consecutive (f.e.: d1-d2) registers are supported for 64bit register pairs
 parser_e_constructurs_cannot_take_type_parameters=03360_E_Constructors cannot take type parameters
 % The use of type parameters in constructors is not allowed.
+parser_e_raise_with_noreturn_not_allowed=03361_E_Raise in subroutines declared as noreturn is not allowed
+% \var{noreturn} tells the compiler that the activation scope of the subroutine is never left. This includes exceptions
+% goto or any other mean. While the compiler cannot detect all such cases some are trivial and the compiler gives an error.
 %
 % \end{description}
 %
@@ -3000,7 +3003,7 @@ asmw_e_illegal_use_of_sp=08036_E_Asm: ESP/RSP cannot be used as index register
 #
 # Executing linker/assembler
 #
-# 09035 is the last used one
+# 09036 is the last used one
 #
 # BeginOfTeX
 %
@@ -3061,9 +3064,6 @@ exec_e_exe_not_supported=09018_E_Creation of Executables not supported
 exec_e_dll_not_supported=09019_E_Creation of Dynamic/Shared Libraries not supported
 % Creating dynamically loadable libraries is not supported for this platform, because it was
 % not yet implemented in the compiler.
-exec_e_static_lib_not_supported=09035_E_Creation of Static Libraries not supported
-% Creating static libraries is not supported for this platform, because it was
-% not yet implemented in the compiler.
 exec_i_closing_script=09020_I_Closing script $1
 % Informational message showing when writing of the external assembling and linking script is finished.
 exec_e_res_not_found=09021_E_Resource compiler "$1" not found, switching to external mode
@@ -3101,6 +3101,12 @@ exec_w_init_file_not_found=09034_W_"$1" not found, this will probably cause a li
 % If the system has gcc installed, running \var{gcc --print-file-name <filename>} might return the path to the file.
 % Add this path in your \var{fpc.cfg} using the switch \var{-Fl} to fix this error. This requires though,
 % that gcc targets the same target as FPC.
+exec_e_static_lib_not_supported=09035_E_Creation of Static Libraries not supported
+% Creating static libraries is not supported for this platform, because it was
+% not yet implemented in the compiler.
+exec_f_controllertype_expected=09036_F_To generate the correct linker call, a controller type must be set by the directive -Wp
+% Xtensa micro controller require a detailed specification linker command which depends on the target controller.
+% If no target controller is set, this command cannot be build and thus linking cannot be carried out.
 %
 %\end{description}
 # EndOfTeX
@@ -4360,6 +4366,7 @@ x*2Wp<x>_Specify the controller type; see fpc -i or fpc -iu for possible values
 4*2WP<x>_Minimum iOS deployment version: 8.0, 8.0.2, ... (iphonesim)
 a*2WP<x>_Minimum iOS deployment version: 7.0, 7.1.2, ... (Darwin)
 A*2WP<x>_Minimum iOS deployment version: 3.0, 5.0.1, ... (Darwin)
+x*2WP<x>_Esp8266-rtos-sdk or esp-idf version number: 3.3, 3.4 (esp8266) or 4.2, 4.3 (esp32)
 3*2WR_Generate relocation code (Windows)
 4*2WR_Generate relocation code (Windows)
 A*2WR_Generate relocation code (Windows)

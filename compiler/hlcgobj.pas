@@ -3896,10 +3896,12 @@ implementation
         a_cmp_const_reg_label(list,OS_INT,OC_GTE,aint(hto-lto),hreg,neglabel)
       else
       }
+      cg.a_reg_alloc(list, NR_DEFAULTFLAGS);
       if qword(hto-lto)>qword(aintmax) then
         a_cmp_const_reg_label(list,maxdef,OC_BE,aintmax,hreg,neglabel)
       else
         a_cmp_const_reg_label(list,maxdef,OC_BE,tcgint(int64(hto-lto)),hreg,neglabel);
+      cg.a_reg_dealloc(list, NR_DEFAULTFLAGS);
       g_call_system_proc(list,'fpc_rangeerror',[],nil).resetiftemp;
       a_label(list,neglabel);
     end;
@@ -5476,7 +5478,7 @@ implementation
     begin
       pd:=search_system_proc('fpc_stackcheck');
       paraloc1.init;
-      { The parameter to fpc_stackcheck is loaded seperately via
+      { The parameter to fpc_stackcheck is loaded separately via
         gen_stack_check_size_para() }
       paramanager.getcgtempparaloc(list,pd,1,paraloc1);
       paramanager.freecgpara(list,paraloc1);

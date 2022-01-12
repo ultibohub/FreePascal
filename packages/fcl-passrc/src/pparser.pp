@@ -253,6 +253,7 @@ type
   private
     FCurModule: TPasModule;
     FFileResolver: TBaseFileResolver;
+    FIdentifierPos: TPasSourcePos;
     FImplicitUses: TStrings;
     FLastMsg: string;
     FLastMsgArgs: TMessageArgs;
@@ -390,6 +391,7 @@ type
     procedure ExpectTokens(tk:  TTokens);
     function GetPrevToken: TToken;
     function ExpectIdentifier: String;
+    Procedure SaveIdentifierPosition;
     Function CurTokenIsIdentifier(Const S : String) : Boolean;
     // Expression parsing
     function isEndOfExp(AllowEqual : Boolean = False; CheckHints : Boolean = True): Boolean;
@@ -398,7 +400,8 @@ type
     // Type declarations
     function ResolveTypeReference(Name: string; Parent: TPasElement; ParamCnt: integer = 0): TPasType;
     function ParseVarType(Parent : TPasElement = Nil): TPasType;
-    function ParseTypeDecl(Parent: TPasElement): TPasType;
+    function ParseTypeDecl(Parent: TPasElement): TPasType; overload;
+    function ParseTypeDecl(Parent: TPasElement; NamePos : TPasSourcePos): TPasType; overload;
     function ParseGenericTypeDecl(Parent: TPasElement; AddToParent: boolean): TPasGenericType;
     function ParseType(Parent: TPasElement; const NamePos: TPasSourcePos; const TypeName: String = ''; Full: Boolean = false): TPasType;
     function ParseReferenceToProcedureType(Parent: TPasElement; Const NamePos: TPasSourcePos; Const TypeName: String): TPasProcedureType;
@@ -473,6 +476,7 @@ type
     property LastMsgType: TMessageType read FLastMsgType write FLastMsgType;
     property LastMsgPattern: string read FLastMsgPattern write FLastMsgPattern;
     property LastMsgArgs: TMessageArgs read FLastMsgArgs write FLastMsgArgs;
+    Property IdentifierPosition : TPasSourcePos Read FIdentifierPos;
   end;
 
 Type
@@ -1319,6 +1323,11 @@ begin
   Result := CurTokenString;
 end;
 
+procedure TPasParser.SaveIdentifierPosition;
+begin
+  FIdentifierPos:=FScanner.CurSourcePos;
+end;
+
 function TPasParser.CurTokenIsIdentifier(const S: String): Boolean;
 begin
   Result:=(Curtoken=tkIdentifier) and (CompareText(S,CurtokenText)=0);
@@ -1505,10 +1514,10 @@ function TPasParser.ParseStringType(Parent: TPasElement;
   const NamePos: TPasSourcePos; const TypeName: String): TPasAliasType;
 
 Var
-  LengthAsText : String;
+  CodePageAsText,LengthAsText : String;
   ok: Boolean;
   Params: TParamsExpr;
-  LengthExpr: TPasExpr;
+  CodePageExpr,LengthExpr: TPasExpr;
 
 begin
   Result := TPasAliasType(CreateElement(TPasAliasType, TypeName, Parent, NamePos));
@@ -1532,10 +1541,20 @@ begin
       CheckToken(tkSquaredBraceClose);
       LengthAsText:=ExprToText(LengthExpr);
       end
+    else if CurToken=tkBraceOpen then
+      begin
+      CodePageAsText:='';
+      NextToken;
+      CodePageExpr:=DoParseExpression(Result,nil,false);
+      Result.CodePageExpr:=CodePageExpr;
+      CheckToken(tkBraceClose);
+      CodePageAsText:=ExprToText(CodePageExpr);
+      end
     else
       UngetToken;
     Result.DestType:=TPasStringType(CreateElement(TPasStringType,'string',Result));
     TPasStringType(Result.DestType).LengthExpr:=LengthAsText;
+    TPasStringType(Result.DestType).CodePageExpr:=CodePageAsText;
     ok:=true;
   finally
     if not ok then
@@ -1608,9 +1627,12 @@ begin
       ok:=true;
       exit;
       end
-    else if (CurToken in [tkBraceOpen,tkDotDot]) then // A: B..C;
+    else if (CurToken in [tkBraceOpen,tkDotDot])  then // A: B..C or A: string(CP);
       begin
-      K:=stkRange;
+      if not (LowerCase(Name)='string') then
+        K:=stkRange
+      else
+        K:=stkString;
       UnGetToken;
       end
     else
@@ -1901,7 +1923,7 @@ Type
 
 Const
   // These types are allowed only when full type declarations
-  FullTypeTokens = [tkGeneric,{tkSpecialize,}tkClass,tkObjCClass,tkInterface,tkObjcProtocol,tkDispInterface,tkType];
+  FullTypeTokens = [tkGeneric,{tkSpecialize,tkClass,}tkObjCClass,tkInterface,tkObjcProtocol,tkDispInterface,tkType];
   // Parsing of these types already takes care of hints
   NoHintTokens = [tkProcedure,tkFunction];
   InterfaceKindTypes : Array[Boolean] of TPasObjKind = (okInterface,okObjcProtocol);
@@ -1951,6 +1973,10 @@ begin
           begin
           lClassType:=lctClass;
           NextToken;
+          if not (Full or (CurToken=tkOf)) then
+             ParseExc(nParserTypeNotAllowedHere,SParserTypeNotAllowedHere,[CurtokenText]);
+           //  Parser.CurrentModeswitches:=Parser.CurrentModeswitches+[msClass];
+
           if CurTokenIsIdentifier('Helper') then
             begin
             // class helper: atype end;
@@ -3673,6 +3699,7 @@ begin
       begin
       Scanner.UnSetTokenOption(toOperatorToken);
       SaveComments;
+      SaveIdentifierPosition;
       case CurBlock of
         declConst:
           begin
@@ -3690,7 +3717,7 @@ begin
           end;
         declType:
           begin
-          TypeEl := ParseTypeDecl(Declarations);
+          TypeEl := ParseTypeDecl(Declarations,IdentifierPosition);
           // Scanner.SetForceCaret(OldForceCaret); // It may have been switched off
           if Assigned(TypeEl) then        // !!!
             begin
@@ -4043,7 +4070,7 @@ var
   OldForceCaret,ok: Boolean;
 begin
   SaveComments;
-  Result := TPasConst(CreateElement(TPasConst, CurTokenString, Parent));
+  Result := TPasConst(CreateElement(TPasConst, CurTokenString, Parent, IdentifierPosition));
   if Parent is TPasMembersType then
     Include(Result.VarModifiers,vmClass);
   ok:=false;
@@ -4137,7 +4164,7 @@ var
   ok: Boolean;
 begin
   SaveComments;
-  Result := TPasResString(CreateElement(TPasResString, CurTokenString, Parent));
+  Result := TPasResString(CreateElement(TPasResString, CurTokenString, Parent,IdentifierPosition));
   ok:=false;
   try
     ExpectToken(tkEqual);
@@ -4382,9 +4409,12 @@ begin
       if CurTokenIsIdentifier('INDEX') then
         begin
         NextToken;
-        E.Exportindex:=DoParseExpression(E,Nil)
-        end
-      else if CurTokenIsIdentifier('NAME') then
+        E.Exportindex:=DoParseExpression(E,Nil);
+        nextToken;
+        if not CurTokenIsIdentifier('NAME') then
+          UngetToken;
+        end;
+      if CurTokenIsIdentifier('NAME') then
         begin
         NextToken;
         E.ExportName:=DoParseExpression(E,Nil)
@@ -4421,13 +4451,20 @@ begin
 end;
 
 function TPasParser.ParseTypeDecl(Parent: TPasElement): TPasType;
+
+begin
+  Result:=ParseTypeDecl(Parent,CurSourcePos);
+end;
+
+function TPasParser.ParseTypeDecl(Parent: TPasElement; NamePos : TPasSourcePos): TPasType;
+
 var
   TypeName: String;
-  NamePos: TPasSourcePos;
   OldForceCaret , IsDelphiGenericType: Boolean;
+
 begin
-  OldForceCaret:=Scanner.SetForceCaret(True);
   try
+    OldForceCaret:=Scanner.SetForceCaret(True);
     IsDelphiGenericType:=false;
     if (msDelphi in CurrentModeswitches) then
       begin
@@ -4440,7 +4477,6 @@ begin
     else
       begin
       TypeName := CurTokenString;
-      NamePos:=CurSourcePos;
       ExpectToken(tkEqual);
       Result:=ParseType(Parent,NamePos,TypeName,True);
       end;
@@ -7049,6 +7085,7 @@ begin
         if CheckSection then
           continue;
         ExpectToken(tkIdentifier);
+        SaveIdentifierPosition;
         ParseMembersLocalConsts(ARec,v);
         end;
       tkVar:
@@ -7058,6 +7095,7 @@ begin
         if CheckSection then
           continue;
         ExpectToken(tkIdentifier);
+        SaveIdentifierPosition;
         OldCount:=ARec.Members.Count;
         ParseInlineVarDecl(ARec, ARec.Members, v, AEndToken=tkBraceClose);
         for i:=OldCount to ARec.Members.Count-1 do
@@ -7641,7 +7679,7 @@ var
   s: String;
   Expr: TPasExpr;
 begin
-  if (CurToken=tkIdentifier) and (AType.ObjKind=okClass) then
+  if (CurToken=tkIdentifier) and (AType.ObjKind in [okClass,okObject]) then
     begin
     s := LowerCase(CurTokenString);
     if (s = 'sealed') or (s = 'abstract') then

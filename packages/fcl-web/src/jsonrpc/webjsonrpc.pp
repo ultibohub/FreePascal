@@ -147,9 +147,9 @@ type
 
 implementation
 
-{$ifdef debugjsonrpc}
-uses dbugintf;
-{$endif}
+
+uses {$ifdef debugjsonrpc}dbugintf,{$endif} fprpcstrings;
+
 
 Const
   SApplicationJSON = 'application/json';
@@ -270,10 +270,13 @@ end;
 function TCustomJSONRPCModule.IsAPIRequest(ARequest: TRequest): Boolean;
 begin
   Result:=False;
-  if (asURL in APIRequestSources) then
-    Result:=SameText(aRequest.GetNextPathInfo,APIRequestName);
-  if (asQuery in APIRequestSources) then
-    Result:=Result or (aRequest.QueryFields.Values[APIRequestName]<>'');
+  if APIRequestName<>'' then
+    begin
+    if (asURL in APIRequestSources) then
+      Result:=SameText(aRequest.GetNextPathInfo,APIRequestName);
+    if (asQuery in APIRequestSources) then
+      Result:=Result or (aRequest.QueryFields.Values[APIRequestName]<>'');
+    end;
 end;
 
 
@@ -292,30 +295,57 @@ begin
   FOptions := DefaultDispatchOptions+[jdoSearchRegistry];
   APIRequestSources := DefaultAPIRequestSources;
   APICreateOptions:=[caoFullParams];
+  APIRequestName:='API';
 end;
 
 Function TCustomJSONRPCModule.GetAPI(aDisp : TCustomJSONRPCDispatcher; ARequest: TRequest) : TJSONStringType;
 
+  Function GetV(Name1,Name2 : String) : string;
+
+  begin
+    Result:=aRequest.QueryFields.Values[Name1];
+    if (Result='') and (Name2<>'') then
+      Result:=aRequest.QueryFields.Values[Name2];
+  end;
+
+
 var
-  B : Boolean;
+  B,asPascal : Boolean;
   APIOptions : TCreateAPIOptions;
+  aUnit,Fmt : string;
 
 begin
   B:=False;
   APIOptions:=[];
-  if (aRequest.QueryFields.Values['extended']<>'') or (aRequest.QueryFields.Values['full']<>'') then
+  Fmt:=GetV('format','fmt');
+  asPascal:=(Fmt='pas') or (fmt='pascal');
+  if asPascal then
     begin
-    Include(APIOptions,caoFullParams);
+    APIOptions:=[caoFullParams];
+    aUnit:=GetV('unit','unitname');
     B:=true;
-    end;
-  if (aRequest.QueryFields.Values['formatted']<>'') or (aRequest.QueryFields.Values['humanreadable']<>'') then
+    end
+  else
     begin
-    Include(APIOptions,caoFormatted);
-    B:=true;
+    Fmt:=GetV('extended','full');
+    if (Fmt<>'') then
+      begin
+      Include(APIOptions,caoFullParams);
+      B:=true;
+      end;
+    Fmt:=GetV('formatted','humanreadable');
+    if (Fmt<>'') then
+      begin
+      Include(APIOptions,caoFormatted);
+      B:=true;
+      end;
     end;
   if Not B then
     APIOptions:=aDisp.APICreator.DefaultOptions;
-  Result:=aDisp.APIAsString(APIOptions);
+  if asPascal then
+    Result:=aDisp.APIAsPascal(APIOptions,aUnit)
+  else
+    Result:=aDisp.APIAsString(APIOptions);
 end;
 
 procedure TCustomJSONRPCModule.HandleRequest(ARequest: TRequest; AResponse: TResponse);

@@ -1,3 +1,4 @@
+
 {
     *********************************************************************
     Copyright (C) 1997, 1998 Gertjan Schouten
@@ -877,9 +878,6 @@ end;
 
 {   IntToHex returns a string representing the hexadecimal value of Value   }
 
-const
-   HexDigits: array[0..15] of char = '0123456789ABCDEF';
-
 function IntToHex(Value: Longint; Digits: integer): string;
 var i: integer;
 begin
@@ -962,13 +960,11 @@ end;
 function TryStrToInt(const s: string; out i : Longint) : boolean;
 var
   Error : word;
-  li : Int64;
 begin
-  Val(s, li, Error);
-  TryStrToInt:=(Error=0) and (li<=High(Longint)) and (li>=Low(Longint));
-  if TryStrToInt then
-    i:=li;
+  Val(s, i, Error);
+  TryStrToInt:=(Error=0)
 end;
+
 
 {   StrToInt converts the string S to an integer value,
     if S does not represent a valid integer value EConvertError is raised  }
@@ -1009,10 +1005,14 @@ begin
 end;
 
 function TryStrToDWord(const s: string; Out D: DWord): boolean;
-var Error : word;
+var 
+  Error : word;
+  lq : QWord;
 begin
-  Val(s, D, Error);
-  TryStrToDWord:=Error=0
+  Val(s, lq, Error);
+  TryStrToDWord:=(Error=0) and (lq<=High(DWord));
+  if TryStrToDWord then
+    D:=lq;
 end;
 
 function StrToUInt(const s: string): Cardinal;

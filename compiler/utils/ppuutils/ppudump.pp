@@ -236,10 +236,11 @@ const
   { 113 } 'SinclairQL-m68k',
   { 114 } 'WASI-WASM32',
   { 115 } 'FreeBSD-AArch64',
-  { 116 }  'Ultibo-arm',
-  { 117 }  'Ultibo-i386',
-  { 118 }  'Ultibo-x86-64',
-  { 119 }  'Ultibo-AArch64'
+  { 116 } 'Embedded-aarch64',
+  { 117 } 'Ultibo-arm',
+  { 118 } 'Ultibo-i386',
+  { 119 } 'Ultibo-x86-64',
+  { 120 } 'Ultibo-AArch64'
   );
 
 const
@@ -2430,7 +2431,8 @@ const
          'm_array_operators',     { use Delphi compatible array operators instead of custom ones ("+") }
          'm_multi_helpers',       { helpers can appear in multiple scopes simultaneously }
          'm_array2dynarray',      { regular arrays can be implicitly converted to dynamic arrays }
-         'm_prefixed_attributes'  { enable attributes that are defined before the type they belong to }
+         'm_prefixed_attributes', { enable attributes that are defined before the type they belong to }
+         'm_underscoreisseparator'{ _ can be used as separator to group digits in numbers }
        );
        { optimizer }
        optimizerswitchname : array[toptimizerswitch] of string[50] =

@@ -661,7 +661,9 @@ unit cpupara;
 
                     { Split into 2 Singles again so they correctly fall into separate XMM registers }
                     classes[0].typ := X86_64_SSESF_CLASS;
-                    classes[0].def := tdef(tarraydef(classes[0].def).elementdef); { Break up the array }
+                    if classes[0].def.typ = arraydef then
+                       { Break up the array }
+                      classes[0].def := tdef(tarraydef(classes[0].def).elementdef); { Break up the array }
                     classes[1].typ := X86_64_SSESF_CLASS;
                     classes[1].def := classes[0].def;
                     result := 2;
@@ -676,7 +678,9 @@ unit cpupara;
                     classes[2].typ := X86_64_SSESF_CLASS;
                     classes[2].def := classes[1].def; { Transfer class 1 to class 2 }
                     classes[0].typ := X86_64_SSESF_CLASS;
-                    classes[0].def := tdef(tarraydef(classes[0].def).elementdef); { Break up the array }
+                    if classes[0].def.typ = arraydef then
+                      { Break up the array }
+                      classes[0].def := tdef(tarraydef(classes[0].def).elementdef);
                     classes[1].typ := X86_64_SSESF_CLASS;
                     classes[1].def := classes[0].def;
                     result := 3;
@@ -688,8 +692,13 @@ unit cpupara;
                         { HFA too large (or not a true HFA) }
                         Exit(0);
 
-                    classes[0].def := tdef(tarraydef(classes[0].def).elementdef); { Break up the arrays }
-                    classes[2].def := tdef(tarraydef(classes[1].def).elementdef);
+                    if classes[0].def.typ = arraydef then
+                       { Break up the array }
+                      classes[0].def := tdef(tarraydef(classes[0].def).elementdef);
+                    if classes[1].def.typ = arraydef then
+                       { Break up the array }
+                      classes[2].def := tdef(tarraydef(classes[1].def).elementdef);
+
                     classes[1].def := classes[0].def;
                     classes[3].def := classes[2].def;
 
@@ -1377,8 +1386,8 @@ unit cpupara;
 
     function tcpuparamanager.get_saved_registers_int(calloption : tproccalloption):tcpuregisterarray;
       const
-        win64_saved_std_regs : {$ifndef VER3_0}tcpuregisterarray{$else}array[0..7] of tsuperregister{$endif} = (RS_RBX,RS_RDI,RS_RSI,RS_R12,RS_R13,RS_R14,RS_R15,RS_RBP);
-        others_saved_std_regs : {$ifndef VER3_0}tcpuregisterarray{$else}array[0..4] of tsuperregister{$endif} = (RS_RBX,RS_R12,RS_R13,RS_R14,RS_R15);
+        win64_saved_std_regs : tcpuregisterarray = (RS_RBX,RS_RDI,RS_RSI,RS_R12,RS_R13,RS_R14,RS_R15,RS_RBP);
+        others_saved_std_regs : tcpuregisterarray = (RS_RBX,RS_R12,RS_R13,RS_R14,RS_R15);
       begin
         if tcgx86_64(cg).use_ms_abi then
           result:=win64_saved_std_regs
@@ -1389,7 +1398,7 @@ unit cpupara;
 
     function tcpuparamanager.get_saved_registers_mm(calloption: tproccalloption):tcpuregisterarray;
       const
-        win64_saved_xmm_regs : {$ifndef VER3_0}tcpuregisterarray{$else}array[0..9] of tsuperregister{$endif} = (RS_XMM6,RS_XMM7,
+        win64_saved_xmm_regs : tcpuregisterarray = (RS_XMM6,RS_XMM7,
           RS_XMM8,RS_XMM9,RS_XMM10,RS_XMM11,RS_XMM12,RS_XMM13,RS_XMM14,RS_XMM15);
       begin
         if tcgx86_64(cg).use_ms_abi then

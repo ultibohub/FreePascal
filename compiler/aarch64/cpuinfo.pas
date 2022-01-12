@@ -54,6 +54,10 @@ Type
    tcontrollertype =
      (ct_none,
 
+      { Raspberry Pi 3/4 }
+      ct_raspi3,
+      ct_raspi4,
+
       { Raspberry Pi3 (64 bit mode)}
       ct_rpi3a,
       ct_rpi3b,
@@ -71,7 +75,6 @@ Type
       { QEMU Raspberry Pi3 (64 bit mode)}
       ct_qemurpi3a,
       ct_qemurpi3b
-
      );
 
    tcontrollerdatatype = record
@@ -88,7 +91,7 @@ Const
 
    { Is there support for dealing with multiple microcontrollers available }
    { for this platform? }
-   ControllerSupport = true;
+   ControllerSupport = true; (* Not yet at least ;-) *)
    {# Size of native extended floating point type }
    extended_size = 8;
    { target cpu string (used by compiler options) }
@@ -101,6 +104,10 @@ Const
    embedded_controllers : array [tcontrollertype] of tcontrollerdatatype =
    (
       (controllertypestr:''; controllerunitstr:''; cputype:cpu_none; fputype:fpu_none; flashbase:0; flashsize:0; srambase:0; sramsize:0),
+
+      { Raspberry Pi 3/4 }
+      (controllertypestr:'RASPI3'; controllerunitstr:'RASPI3'; cputype:cpu_armv8a; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00008000; sramsize:$10000000),
+      (controllertypestr:'RASPI4'; controllerunitstr:'RASPI4'; cputype:cpu_armv8a; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00008000; sramsize:$10000000)
 
       { Raspberry Pi3}
       (controllertypestr:'RPI3A'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
@@ -120,7 +127,7 @@ Const
       (controllertypestr:'QEMURPI3A'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
       (controllertypestr:'QEMURPI3B'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000)
 
-   );
+      );
    {$POP}
 
    { calling conventions supported by the code generator }
@@ -176,10 +183,15 @@ type
    tcpuflags =
      (CPUAARCH64_HAS_LSE,     { CPU supports Large System Extensions }
       CPUAARCH64_HAS_DOTPROD, { CPU supports dotprod extension }
-      CPUAARCH64_HAS_AES,     { CPU supports AES extension }
-      CPUAARCH64_HAS_SHA2,    { CPU supports SHA2 extension }
-      CPUAARCH64_HAS_SHA3,    { CPU supports SHA3 extension }
-      CPUAARCH64_HAS_SM4      { CPU supports SM3 and SM4 extension }
+      CPUAARCH64_HAS_CRYPTO,  { CPU supports the crypto extension }
+      CPUAARCH64_HAS_AES,     { CPU supports the AES extension }
+      CPUAARCH64_HAS_SHA2,    { CPU supports the SHA2 extension }
+      CPUAARCH64_HAS_SHA3,    { CPU supports the SHA3 extension }
+      CPUAARCH64_HAS_SM4,     { CPU supports the SM3 and SM4 extension }
+      CPUAARCH64_HAS_PROFILE, { CPU supports the profile extension }
+      CPUAARCH64_HAS_MEMTAG,  { CPU supports the memtag extension }
+      CPUAARCH64_HAS_TME,     { CPU supports the tme extension }
+      CPUAARCH64_HAS_PAUTH    { CPU supports the pauth extension }
      );
 
    tfpuflags =

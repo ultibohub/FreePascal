@@ -19,10 +19,9 @@ unit basenenc;
 
 interface
 
-uses Types, SysUtils;
+uses SysUtils;
 
 Type
-
   { TAlphabetEncoder }
   TReverseAlphabet = Array[0..255] of Byte;
   TStandardEncoder = (seBase16,
@@ -42,7 +41,7 @@ Type
         'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_');
   Private
     FBits : Byte;
-    FAlphabet : TByteDynArray;
+    FAlphabet : TBytes;
     FReverse : TReverseAlphabet;
     FPadding : Integer;
     class var StdEncoders : Array[TStandardEncoder] of TAlphabetEncoder;
@@ -62,11 +61,11 @@ Type
     Function Encode(const aBuffer : AnsiString; doPad : Boolean = True) : AnsiString; overload;
     // Decode aSrcBuffer with length aLen.
     // Buffer must have enough room. Calculate maximum needed room with GetDecodeLen
-    Function Decode(const aSrcBuffer : PByte; aLen : Integer; ABuffer : PByte) : Integer; virtual; overload;
+    Function Decode(const aSrcBuffer : PByte; aLen : Integer; ABuffer : PByte; SkipWhiteSpace : Boolean = True) : Integer; virtual; overload;
     // Buffer must have enough room. Calculate maximum needed room with GetDecodeLen
-    Function Decode(const S : AnsiString; ABuffer : PByte) : Integer; overload;
+    Function Decode(const S : AnsiString; ABuffer : PByte; SkipWhiteSpace : Boolean = True) : Integer; overload;
     // Return a buffer with decoded data.
-    Function Decode(const S : AnsiString) : TBytes; overload;
+    Function Decode(const S : AnsiString; SkipWhiteSpace : Boolean = True) : TBytes; overload;
     // Return a buffer with decoded data, starting with buffer.
     Function Decode(const aBuffer: PByte; aLen : Integer) : TBytes; overload;
     // Get a decoding length for the encoded string S. May be oversized due to padding.
@@ -74,7 +73,7 @@ Type
     // Bits per characters
     Property Bits : Byte Read FBits;
     // ASCII value of characters
-    Property Alphabet : TByteDynArray Read FAlphabet;
+    Property Alphabet : TBytes Read FAlphabet;
     // Reverse byte->character map
     Property Reverse : TReverseAlphabet Read FReverse;
     // Bits of padding
@@ -209,7 +208,10 @@ begin
 end;
 
 
-Function TAlphabetEncoder.Decode(const aSrcBuffer : PByte; aLen : Integer; ABuffer : PByte) : Integer;
+Function TAlphabetEncoder.Decode(const aSrcBuffer : PByte; aLen : Integer; ABuffer : PByte;SkipWhiteSpace : Boolean = True) : Integer;
+
+Const
+  WhiteSpace = [Ord(' '),10,13,9];
 
 var
   i, Reg, lBits : Integer;
@@ -224,8 +226,19 @@ begin
   if Alen=0 then exit;
   pSrc:=@aSrcBuffer[0];
   pDest:=aBuffer;
-  for i:=1 to aLen do
+  I:=1;
+  While (i<=aLen) do
     begin
+    if SkipWhiteSpace then
+      begin
+      While (PSrc^ in WhiteSpace) and (I<=aLen) do
+        begin
+        Inc(PSrc);
+        Inc(I);
+        end;
+      if I>aLen then
+        break;
+      end;
     if Reverse[pSrc^] <= 0 then
       break;
     Reg:=Reg shl Bits;
@@ -238,6 +251,7 @@ begin
       inc(pDest);
       end;
     inc(pSrc);
+    Inc(i);
     end;
   Result:=pDest-aBuffer;
 end;
@@ -250,12 +264,12 @@ begin
 end;
 
 
-function TAlphabetEncoder.Decode(const S: AnsiString): TBytes;
+function TAlphabetEncoder.Decode(const S: AnsiString; SkipWhiteSpace : Boolean = True): TBytes;
 
 begin
   Result:=[];
   SetLength(Result,GetDecodeLen(S));
-  SetLength(Result,Decode(S,PByte(Result)));
+  SetLength(Result,Decode(S,PByte(Result),SkipWhiteSpace));
 end;
 
 
@@ -268,10 +282,10 @@ begin
 end;
 
 
-Function TAlphabetEncoder.Decode(const S : AnsiString; ABuffer : PByte) : Integer; overload;
+Function TAlphabetEncoder.Decode(const S : AnsiString; ABuffer : PByte;SkipWhiteSpace : Boolean = True) : Integer; overload;
 
 begin
-  Result:=Decode(PByte(S),Length(S),ABuffer);
+  Result:=Decode(PByte(S),Length(S),ABuffer,SkipWhiteSpace);
 end;
 
 

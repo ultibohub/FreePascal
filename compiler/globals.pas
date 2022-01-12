@@ -55,7 +55,7 @@ interface
           m_pointer_2_procedure,m_autoderef,m_tp_procvar,m_initfinal,m_default_ansistring,
           m_out,m_default_para,m_duplicate_names,m_hintdirective,
           m_property,m_default_inline,m_except,m_advanced_records,
-          m_array_operators,m_prefixed_attributes];
+          m_array_operators,m_prefixed_attributes,m_underscoreisseparator];
        delphiunicodemodeswitches = delphimodeswitches + [m_systemcodepage,m_default_unicodestring];
        fpcmodeswitches =
          [m_fpc,m_string_pchar,m_nested_comment,m_repeat_forward,
@@ -207,16 +207,16 @@ interface
       private
         itemcnt : longint;
         fmap : Array Of TLinkRec;
-        function  Lookup(key:Ansistring):longint;
+        function  Lookup(const key:Ansistring):longint;
         function getlinkrec(i:longint):TLinkRec;
       public
-        procedure Add(key:ansistring;value:AnsiString='';weight:longint=LinkMapWeightDefault);
-        procedure addseries(keys:AnsiString;weight:longint=LinkMapWeightDefault);
-        function  AddDep(keyvalue:String):boolean;
-        function  AddWeight(keyvalue:String):boolean;
-        procedure SetValue(key:AnsiString;Weight:Integer);
+        procedure Add(const key:ansistring;const value:AnsiString='';weight:longint=LinkMapWeightDefault);
+        procedure addseries(const keys:AnsiString;weight:longint=LinkMapWeightDefault);
+        function  AddDep(const keyvalue:String):boolean;
+        function  AddWeight(const keyvalue:String):boolean;
+        procedure SetValue(const key:AnsiString;Weight:Integer);
         procedure SortonWeight;
-        function Find(key:AnsiString):AnsiString;
+        function Find(const key:AnsiString):AnsiString;
         procedure Expand(src:TCmdStrList;dest: TLinkStrMap);
         procedure UpdateWeights(Weightmap:TLinkStrMap);
         constructor Create;
@@ -265,6 +265,8 @@ interface
 {$ifdef XTENSA}
        { specified with -Ff }
        idfpath           : TPathStr;
+       { specified with }
+       idf_version       : longint;
 {$endif XTENSA}
        { external assembler extra option }
        asmextraopt       : string;
@@ -304,7 +306,7 @@ interface
        exepath       : TPathStr;
        { Path to unicode charmap/collation binaries }
        unicodepath   : TPathStr;
-       { path for searching units, different paths can be seperated by ; }
+       { path for searching units, different paths can be separated by ; }
        librarysearchpath,
        unitsearchpath,
        objectsearchpath,
@@ -699,7 +701,7 @@ implementation
       end;
 
 
-    procedure TLinkStrMap.Add(key:ansistring;value:AnsiString='';weight:longint=LinkMapWeightDefault);
+    procedure TLinkStrMap.Add(const key:ansistring;const value:AnsiString='';weight:longint=LinkMapWeightDefault);
       begin
         if lookup(key)<>-1 Then
           exit;
@@ -712,7 +714,7 @@ implementation
       end;
 
 
-    function  TLinkStrMap.AddDep(keyvalue:String):boolean;
+    function  TLinkStrMap.AddDep(const keyvalue:String):boolean;
       var
         i : Longint;
       begin
@@ -725,7 +727,7 @@ implementation
       end;
 
 
-    function  TLinkStrMap.AddWeight(keyvalue:String):boolean;
+    function  TLinkStrMap.AddWeight(const keyvalue:String):boolean;
       var
         i,j    : Longint;
         Code : Word;
@@ -745,7 +747,7 @@ implementation
       end;
 
 
-    procedure TLinkStrMap.addseries(keys:AnsiString;weight:longint);
+    procedure TLinkStrMap.addseries(const keys:AnsiString;weight:longint);
       var
         i,j,k : longint;
       begin
@@ -761,7 +763,7 @@ implementation
          end;
       end;
 
-    procedure TLinkStrMap.SetValue(Key:Ansistring;weight:Integer);
+    procedure TLinkStrMap.SetValue(const Key:Ansistring;weight:Integer);
       var
         j : longint;
       begin
@@ -771,7 +773,7 @@ implementation
       end;
 
 
-    function TLinkStrMap.find(key:Ansistring):Ansistring;
+    function TLinkStrMap.find(const key:Ansistring):Ansistring;
       var
         j : longint;
       begin
@@ -782,7 +784,7 @@ implementation
       end;
 
 
-    function TLinkStrMap.lookup(key:Ansistring):longint;
+    function TLinkStrMap.lookup(const key:Ansistring):longint;
       var
         i : longint;
       begin

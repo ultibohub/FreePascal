@@ -457,7 +457,6 @@ procedure TPasWriter.WriteDummyExternalFunctions(aSection : TPasSection);
 Var
   I : Integer;
   E : TPasElement;
-  C : TPasClassType;
 
 begin
   Addln;
@@ -1007,7 +1006,7 @@ begin
       A:= TPasArgument(AList[i]);
       if i > 0 then
         Add('; ');
-      Add(AccessNames[A.Access]+A.Name);
+      Add(AccessNames[A.Access]+A.SafeName);
       if Assigned(A.ArgType) then
         begin
         Add(': ');

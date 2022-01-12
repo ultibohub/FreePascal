@@ -19,6 +19,7 @@
   add_fcl_db(ADirectory+IncludeTrailingPathDelimiter('fcl-db'));
   add_fcl_extra(ADirectory+IncludeTrailingPathDelimiter('fcl-extra'));
   add_fcl_fpcunit(ADirectory+IncludeTrailingPathDelimiter('fcl-fpcunit'));
+  add_fcl_hash(ADirectory+IncludeTrailingPathDelimiter('fcl-hash'));
   add_fcl_image(ADirectory+IncludeTrailingPathDelimiter('fcl-image'));
   add_fcl_js(ADirectory+IncludeTrailingPathDelimiter('fcl-js'));
   add_fcl_json(ADirectory+IncludeTrailingPathDelimiter('fcl-json'));
@@ -147,5 +148,6 @@
   add_vclcompat(ADirectory+IncludeTrailingPathDelimiter('vcl-compat'));
   add_qlunits(ADirectory+IncludeTrailingPathDelimiter('qlunits'));
   add_mustache(ADirectory+IncludeTrailingPathDelimiter('fcl-mustache'));
+  add_wasmtime(ADirectory+IncludeTrailingPathDelimiter('wasmtime'));
   add_gitlab(ADirectory+IncludeTrailingPathDelimiter('gitlab'));
   

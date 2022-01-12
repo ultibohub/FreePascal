@@ -24,7 +24,7 @@ Const
   StdConvsOSes  = [NativeNT,Win32,win64,os2,msdos,go32v2,freertos,wasi,ultibo]+UnixLikes-[BeOS];
   FmtBCDOSes    = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,sinclairql,symbian,watcom,wii,win32,win64,wince,freertos,ultibo]+UnixLikes+AllAmigaLikeOSes;
   VariantsOSes  = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,sinclairql,symbian,watcom,wii,win32,win64,wince,freertos,ultibo]+UnixLikes+AllAmigaLikeOSes;
-  RttiOSes      = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,sinclairql,watcom,wii,win32,win64,wince,freertos,ultibo]+UnixLikes+AllAmigaLikeOSes;
+  RttiOSes      = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,sinclairql,symbian,watcom,wii,win32,win64,wince,freertos,ultibo]+UnixLikes+AllAmigaLikeOSes;
   UItypesOSes   = [atari,emx,gba,go32v2,msdos,nativent,nds,netware,netwlibc,os2,sinclairql,watcom,wii,win32,win64,wince,freertos,wasi,ultibo]+UnixLikes+AllAmigaLikeOSes-ConvUtilOSes;
   AllTargetsObjPas = DateUtilsOses +DateUtilOSes+
                   VarutilsOses + ConvutilsOSes + ConvutilOSes + StdConvsOSes+
@@ -68,6 +68,7 @@ begin
 
     T:=P.Targets.AddUnit('strutils.pp',StrUtilsOses);
       T.ResourceStrings:=true;
+    T:=P.Targets.AddUnit('syshelpers.pp',StrUtilsOses);
     T:=P.Targets.AddUnit('widestrutils.pp',StrUtilsOses-ConvUtilOSes);
     T:=P.Targets.AddUnit('varutils.pp',VarUtilsOses);
     with T.Dependencies do

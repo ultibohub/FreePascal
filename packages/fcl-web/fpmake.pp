@@ -32,6 +32,8 @@ begin
     P.Dependencies.Add('fcl-net');
     P.Dependencies.Add('fcl-process');
     P.Dependencies.Add('fcl-fpcunit');
+    P.Dependencies.Add('fcl-hash');
+    P.Dependencies.Add('hash');
     P.Dependencies.Add('fcl-registry',AllWindowsOSes);
     P.Dependencies.Add('openssl',AllUnixOSes+AllWindowsOSes);
     P.Dependencies.Add('fastcgi');
@@ -300,20 +302,27 @@ begin
       AddUnit('httpdefs');
       AddUnit('fpextjs');
       end;
-    T:=P.Targets.AddUnit('fpjsonrpc.pp');
+    T:=P.Targets.AddUnit('fprpcstrings.pp');
     T.ResourceStrings:=true;
+    T:=P.Targets.AddUnit('fpjsonrpc.pp');
     T:=P.Targets.AddUnit('webjsonrpc.pp');
     With T.Dependencies do
       begin
       AddUnit('fpjsonrpc');
       end;
+    T:=P.Targets.AddUnit('fprpcrtti.pp');
+    With T.Dependencies do
+      begin
+      AddUnit('fpjsonrpc');
+      end;
+    T:=P.Targets.AddUnit('fprpcclient.pp');
+    T:=P.Targets.AddUnit('fprpccodegen.pp');
     T:=P.Targets.AddUnit('fpdispextdirect.pp');
     With T.Dependencies do
       begin
       AddUnit('fpjsonrpc');
       end;
     T:=P.Targets.AddUnit('fpextdirect.pp');
-    T.ResourceStrings:=true;
     With T.Dependencies do
       begin
       AddUnit('fpdispextdirect');
@@ -333,6 +342,8 @@ begin
     T:=P.Targets.AddUnit('fpjwasha512.pp');
     T.Dependencies.AddUnit('fpjwt');
     T:=P.Targets.AddUnit('fpjwasha384.pp');
+    T.Dependencies.AddUnit('fpjwt');
+    T:=P.Targets.AddUnit('fpjwaes256.pp');
     T.Dependencies.AddUnit('fpjwt');
     T:=P.Targets.AddUnit('fphttpwebclient.pp');
     T.Dependencies.AddUnit('fpwebclient');
