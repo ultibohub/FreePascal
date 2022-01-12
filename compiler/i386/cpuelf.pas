@@ -521,7 +521,7 @@ implementation
                               system_i386_openbsd,system_i386_netbsd,
                               system_i386_Netware,system_i386_netwlibc,
                               system_i386_solaris,system_i386_embedded,
-                              system_i386_android,system_i386_aros];
+                              system_i386_android,system_i386_aros,system_i386_ultibo];
          flags : [af_outputbinary,af_smartlink_sections,af_supports_dwarf];
          labelprefix : '.L';
          labelmaxlen : -1;

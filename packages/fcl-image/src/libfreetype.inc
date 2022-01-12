@@ -29,6 +29,13 @@ Const
   FreeTypeDLL = 'libfreetype.so';
   {$define ft_found_platform}
 {$endif}
+{$IFDEF ULTIBO}
+  FreeTypeDLL = 'libfreetype';
+  {C Libraries (Needed here to ensure that libc.a and libgcc.a are listed last in the link.res file)(Fixed in 1.3.075)}
+  {--$linklib c}
+  {--$linklib gcc}
+  {$define ft_found_platform}
+{$ENDIF} 
 // Other platforms
 {$ifndef ft_found_platform}
   FreeTypeDLL = 'freetype';

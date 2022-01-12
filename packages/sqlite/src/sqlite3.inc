@@ -7,6 +7,10 @@
 
 {$packrecords C}
 
+{$IFDEF ULTIBO}
+  {$UNDEF LOAD_DYNAMICALLY}
+{$ENDIF} 
+
 {.$DEFINE SQLITE_OBSOLETE}
 
 interface
@@ -16,8 +20,21 @@ uses
 {$ifdef LOAD_DYNAMICALLY}
   SysUtils, DynLibs;
 {$else}
-  DynLibs;
-
+  {$IFDEF ULTIBO}
+    GlobalConfig,
+    GlobalConst,
+    GlobalTypes,
+    Platform,
+    Threads,
+    Filesystem,
+    SysUtils,
+    Syscalls,
+    Ultibo;
+    
+    {$linklib sqlite3}
+  {$ELSE}
+    DynLibs;
+  {$ENDIF} 
   {$ifdef darwin}
     {$linklib sqlite3}
   {$endif}
@@ -27,7 +44,11 @@ const
 {$IFDEF WINDOWS}
   Sqlite3Lib = 'sqlite3.dll';
 {$else}
-  Sqlite3Lib = 'libsqlite3.'+sharedsuffix;
+  {$IFDEF ULTIBO}
+    Sqlite3Lib = 'libsqlite3';
+  {$ELSE}
+    Sqlite3Lib = 'libsqlite3.'+sharedsuffix;
+  {$ENDIF} 
 {$endif}
 
 {$IFDEF LOAD_DYNAMICALLY}
@@ -1177,6 +1198,10 @@ var
 
 implementation
 
+{$IFDEF ULTIBO}
+{$i sqlite3ultibo.inc}
+{$ENDIF} 
+
 function sqlite3_version(): pansichar;
 begin
   Result := sqlite3_libversion();
@@ -1462,3 +1487,8 @@ begin
 end;
 
 {$ENDIF}
+
+{$IFDEF ULTIBO}
+initialization
+ sqlite3_ultibo_init;
+{$ENDIF} 

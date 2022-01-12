@@ -235,7 +235,11 @@ const
   { 112 } 'AmstradCPC-Z80',
   { 113 } 'SinclairQL-m68k',
   { 114 } 'WASI-WASM32',
-  { 115 } 'FreeBSD-AArch64'
+  { 115 } 'FreeBSD-AArch64',
+  { 116 }  'Ultibo-arm',
+  { 117 }  'Ultibo-i386',
+  { 118 }  'Ultibo-x86-64',
+  { 119 }  'Ultibo-AArch64'
   );
 
 const

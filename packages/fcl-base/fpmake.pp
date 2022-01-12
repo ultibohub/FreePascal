@@ -65,7 +65,7 @@ begin
         begin
           AddInclude('eventlog.inc');
         end;
-    T:=P.Targets.AddUnit('fptimer.pp',AllWindowsOSes+AllUnixOSes);
+    T:=P.Targets.AddUnit('fptimer.pp',AllWindowsOSes+AllUnixOSes+[ultibo]);
     T:=P.Targets.AddUnit('gettext.pp');
     T:=P.Targets.AddUnit('idea.pp');
 

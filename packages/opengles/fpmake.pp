@@ -22,13 +22,13 @@ begin
     P.Author := 'Free Pascal Development team';
     P.License := 'LGPL with modification';
     P.HomepageURL := 'www.freepascal.org';
-    P.OSes := [darwin,iphonesim,ios,linux,win32,win64,wince];
+    P.OSes := [darwin,iphonesim,ios,linux,win32,win64,wince,ultibo];
 
     P.Dependencies.Add('x11',AllUnixOSes-[darwin,iphonesim,ios]);
     P.SourcePath.Add('src');
 
-    T:=P.Targets.AddUnit('gles11.pp',[darwin,iphonesim,ios]);
-    T:=P.Targets.AddUnit('gles20.pas',[linux,win32,win64,wince,darwin]);
+    T:=P.Targets.AddUnit('gles11.pp',[darwin,iphonesim,ios,ultibo]);
+    T:=P.Targets.AddUnit('gles20.pas',[linux,win32,win64,wince,darwin,ultibo]);
 
     P.Targets.AddExampleProgram('examples/es2example1.pas');
     P.Sources.AddExampleFiles('examples/*',P.Directory,false,'.');

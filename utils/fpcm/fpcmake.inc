@@ -1,7 +1,7 @@
 {$ifdef Delphi}
-const fpcmakeini : array[0..258] of string[240]=(
+const fpcmakeini : array[0..259] of string[240]=(
 {$else Delphi}
-const fpcmakeini : array[0..258,1..240] of char=(
+const fpcmakeini : array[0..259,1..240] of char=(
 {$endif Delphi}
   ';'#010+
   '; Templates used by fpcmake to create a Makefile from Makefile.fpc'#010+

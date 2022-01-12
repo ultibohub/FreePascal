@@ -71,6 +71,9 @@ implementation
     {$ifndef NOTARGETFREERTOS}
       ,t_freertos
     {$endif}
+    {$ifndef NOTARGETULTIBO}
+      ,t_ultibo
+    {$endif}
 
 
 {**************************************

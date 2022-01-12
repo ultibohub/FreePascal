@@ -1657,10 +1657,10 @@ Procedure SysInitExceptions;
 {$endif FPC_HAS_FEATURE_EXCEPTIONS}
 {$ifdef FPC_HAS_FEATURE_CONSOLEIO}
 
-{$if not(defined(EMBEDDED)) and not(defined(FREERTOS))}
+{$if not(defined(EMBEDDED)) and not(defined(FREERTOS)) and not(defined(ULTIBO))}
 procedure SysInitStdIO;
 procedure SysFlushStdIO;
-{$endif not(defined(EMBEDDED)) and not(defined(FREERTOS))}
+{$endif not(defined(EMBEDDED)) and not(defined(FREERTOS)) and not(defined(ULTIBO))}
 
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
 {$ifndef FPUNONE}

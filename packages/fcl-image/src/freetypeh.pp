@@ -17,6 +17,10 @@ unit freetypeh;
 
 interface
 
+{$IFDEF ULTIBO}
+uses Syscalls;
+{$ENDIF} 
+
 {$I libfreetype.inc}
 
 end.

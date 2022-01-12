@@ -66,6 +66,9 @@ implementation
     {$ifndef NOTARGETANDROID}
       ,t_android
     {$endif}
+    {$ifndef NOTARGETULTIBO}
+      ,t_ultibo
+    {$endif}
 
 {**************************************
              Assemblers

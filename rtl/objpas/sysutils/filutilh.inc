@@ -47,6 +47,10 @@ Type
     TFindData = TWasiFindData;
     {$define SEARCHREC_USEFINDDATA}
 {$endif}
+{$ifdef ULTIBO}
+    {$define USEFINDDATA}
+    TFindData = TWin32FindDataA;
+{$endif ULTIBO}
 
   // The actual unicode search record
   TUnicodeSearchRec = Record

@@ -685,6 +685,12 @@ begin
 {$include tplylib/fpmake.pp}
 end;
 
+procedure add_ultibounits(const ADirectory: string);
+begin
+  with Installer do
+{$include ultibounits/fpmake.pp}
+end;
+
 procedure add_univint(const ADirectory: string);
 begin
   with Installer do

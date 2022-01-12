@@ -50,6 +50,9 @@ implementation
     {$ifndef NOTARGETWIN64}
       ,t_win
     {$endif}
+    {$ifndef NOTARGETULTIBO}
+      ,t_ultibo
+    {$endif}
 
 {**************************************
              Assemblers

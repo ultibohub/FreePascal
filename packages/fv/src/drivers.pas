@@ -102,7 +102,11 @@ USES
       dos, amigados,
    {$ENDIF}
 
-   video,
+   {$IFDEF OS_ULTIBO}
+      Platform, Threads,
+   {$ENDIF}
+
+   {$IFDEF OS_ULTIBO}consolevideo{$ELSE}video{$ENDIF},
    SysMsg,
    FVCommon, Objects;                                 { GFV standard units }
 
@@ -298,7 +302,7 @@ TYPE
    END;
    PEvent = ^TEvent;
 
-   TVideoMode = Video.TVideoMode;                     { Screen mode }
+   TVideoMode = {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}TVideoMode;                     { Screen mode }
 
 {---------------------------------------------------------------------------}
 {                    ERROR HANDLER FUNCTION DEFINITION                      }
@@ -637,7 +641,8 @@ VAR
 { API Units }
   USES
   FVConsts,
-  Keyboard,Mouse;
+  {$IFDEF OS_ULTIBO}ConsoleKeyboard{$ELSE}Keyboard{$ENDIF},
+  {$IFDEF OS_ULTIBO}ConsoleMouse{$ELSE}Mouse{$ENDIF};
 
 {***************************************************************************}
 {                        PRIVATE INTERNAL CONSTANTS                         }
@@ -787,6 +792,11 @@ var
     GetDosTicks:= ((dos.GetMsCount div 55) - StartupTicks) and $7FFFFFFF;
   end;
 {$ENDIF OS_AMIGA}
+{$IFDEF OS_ULTIBO}
+  begin
+     GetDosTicks:=SysUtilsGetTickCount div 55;
+  end;
+{$ENDIF OS_ULTIBO}
 
 
 procedure GiveUpTimeSlice;
@@ -847,6 +857,11 @@ end;
     Keyboard.WaitForSystemEvent(150);
   end;
 {$ENDIF OS_AMIGA}
+{$IFDEF OS_ULTIBO}
+begin
+  ThreadSleep(1);
+end;
+{$ENDIF OS_ULTIBO}
 
 
 {---------------------------------------------------------------------------}
@@ -904,7 +919,7 @@ end;
 {  DetectMouse -> Platforms DOS/DPMI/WIN/NT/OS2 - Updated 19May98 LdB       }
 FUNCTION DetectMouse: Byte;inline;
 begin
-  DetectMouse:=Mouse.DetectMouse;
+  DetectMouse:={$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}DetectMouse;
 end;
 
 {***************************************************************************}
@@ -1073,7 +1088,7 @@ END;
 {---------------------------------------------------------------------------}
 FUNCTION GetShiftState: Byte;
 begin
-  GetShiftState:=Keyboard.GetKeyEventShiftState(Keyboard.PollShiftStateEvent);
+  GetShiftState:={$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}GetKeyEventShiftState({$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}PollShiftStateEvent);
 end;
 
 {---------------------------------------------------------------------------}
@@ -1085,11 +1100,11 @@ var
   keycode  : Word;
   keyshift : byte;
 begin
-  if Keyboard.PollKeyEvent<>0 then
+  if {$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}PollKeyEvent<>0 then
    begin
-     key:=Keyboard.GetKeyEvent;
-     keycode:=Keyboard.GetKeyEventCode(key);
-     keyshift:=KeyBoard.GetKeyEventShiftState(key);
+     key:={$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}GetKeyEvent;
+     keycode:={$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}GetKeyEventCode(key);
+     keyshift:={$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}GetKeyEventShiftState(key);
      // some kbds still honour old XT E0 prefix. (org IBM ps/2, win98?) bug #8978
      if (keycode and $FF = $E0) and
         (byte(keycode shr 8) in
@@ -1155,7 +1170,7 @@ procedure HideMouse;
 begin
 { Is mouse hidden yet?
   If (HideCount = 0) Then}
-    Mouse.HideMouse;
+    {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}HideMouse;
 {  Inc(HideCount);}
 end;
 
@@ -1167,7 +1182,7 @@ begin
 {  if HideCount>0 then
     dec(HideCount);
   if (HideCount=0) then}
-   Mouse.ShowMouse;
+   {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}ShowMouse;
 end;
 
 {---------------------------------------------------------------------------}
@@ -1175,11 +1190,11 @@ end;
 {---------------------------------------------------------------------------}
 procedure GetMouseEvent (Var Event: TEvent);
 var
-  e : Mouse.TMouseEvent;
+  e : {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}TMouseEvent;
 begin
-  if Mouse.PollMouseEvent(e) then
+  if {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}PollMouseEvent(e) then
    begin
-     Mouse.GetMouseEvent(e);
+     {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}GetMouseEvent(e);
      MouseWhere.X:=e.x;
      MouseWhere.Y:=e.y;
      Event.Double:=false;
@@ -1285,14 +1300,14 @@ PROCEDURE InitEvents;
 BEGIN
   If (ButtonCount <> 0) Then
     begin                   { Mouse is available }
-     Mouse.InitMouse;                                 { Hook the mouse }
+     {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}InitMouse;                                 { Hook the mouse }
      { this is required by the use of HideCount variable }
-     Mouse.ShowMouse;                                 { visible by default }
+     {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}ShowMouse;                                 { visible by default }
      { HideCount:=0;  }
      LastButtons := 0;                                { Clear last buttons }
      DownButtons := 0;                                { Clear down buttons }
-     MouseWhere.X:=Mouse.GetMouseX;
-     MouseWhere.Y:=Mouse.GetMouseY;                   { Get mouse position }
+     MouseWhere.X:={$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}GetMouseX;
+     MouseWhere.Y:={$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}GetMouseY;                   { Get mouse position }
      LastWhere.x:=MouseWhere.x;
      LastWhereX:=MouseWhere.x;
      LastWhere.y:=MouseWhere.y;
@@ -1308,7 +1323,7 @@ END;
 PROCEDURE DoneEvents;
 BEGIN
   DoneSystemMsg;
-  Mouse.DoneMouse;
+  {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}DoneMouse;
   MouseEvents:=false;
 END;
 
@@ -1326,7 +1341,7 @@ const
 procedure initkeyboard;inline;
 
 begin
-  keyboard.initkeyboard;
+  {$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}initkeyboard;
 end;
 
 {---------------------------------------------------------------------------}
@@ -1336,7 +1351,7 @@ end;
 procedure donekeyboard;inline;
 
 begin
-  keyboard.donekeyboard;
+  {$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}donekeyboard;
 end;
 
 {---------------------------------------------------------------------------}
@@ -1356,14 +1371,14 @@ begin
   else
     StoreScreenMode.Col:=0;
 
-  Video.InitVideo;
-  if video.errorcode<>viook then
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}InitVideo;
+  if {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}errorcode<>viook then
     exit;
   GetVideoMode(StartupScreenMode);
   GetVideoMode(ScreenMode);
 {$ifdef OS_WINDOWS}
   { Force the console to the current screen mode }
-  Video.SetVideoMode(ScreenMode);
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(ScreenMode);
 {$endif OS_WINDOWS}
 
   If (StoreScreenMode.Col<>0) and
@@ -1371,14 +1386,14 @@ begin
      (StoreScreenMode.row<>ScreenMode.row) or
      (StoreScreenMode.col<>ScreenMode.col)) then
     begin
-      Video.SetVideoMode(StoreScreenMode);
+      {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(StoreScreenMode);
       GetVideoMode(ScreenMode);
     end;
 
   if ScreenWidth > MaxViewWidth then
     ScreenWidth := MaxViewWidth;
-  ScreenWidth:=Video.ScreenWidth;
-  ScreenHeight:=Video.ScreenHeight;
+  ScreenWidth:={$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ScreenWidth;
+  ScreenHeight:={$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ScreenHeight;
   VideoInitialized:=true;
   initvideo:=true;
 end;
@@ -1390,10 +1405,10 @@ PROCEDURE DoneVideo;
 BEGIN
   if not VideoInitialized then
     exit;
-  Video.SetVideoMode(StartupScreenMode);
-  Video.ClearScreen;
-  Video.SetCursorPos(0,0);
-  Video.DoneVideo;
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(StartupScreenMode);
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ClearScreen;
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorPos(0,0);
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}DoneVideo;
   VideoInitialized:=false;
 END;
 
@@ -1402,7 +1417,7 @@ END;
 {---------------------------------------------------------------------------}
 PROCEDURE ClearScreen;
 BEGIN
-  Video.ClearScreen;
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ClearScreen;
 END;
 
 {---------------------------------------------------------------------------}

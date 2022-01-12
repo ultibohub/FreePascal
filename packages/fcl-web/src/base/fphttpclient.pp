@@ -19,7 +19,7 @@ unit fphttpclient;
 interface
 
 uses
-  Classes, SysUtils, ssockets, httpdefs, uriparser, base64, sslsockets;
+  Classes, SysUtils, ssockets, httpdefs, uriparser, base64{$if not defined(ultibo)}, sslsockets{$endif};
 
 Const
   // Socket Read buffer size
@@ -643,6 +643,7 @@ begin
   if Assigned(FonGetSocketHandler) then
     FOnGetSocketHandler(Self,UseSSL,Result);
   if (Result=Nil) then
+    {$if not defined(ultibo)}
     If UseSSL then
       begin
       SSLHandler:=TSSLSocketHandler.GetDefaultHandler;
@@ -651,6 +652,7 @@ begin
       Result:=SSLHandler;
       end
     else
+    {$endif}
       Result:=TSocketHandler.Create;
   if Assigned(AfterSocketHandlerCreate) then
     AfterSocketHandlerCreate(Self,Result);

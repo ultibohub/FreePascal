@@ -15,7 +15,9 @@
 {$mode objfpc}{$h+}
 unit freetype;
 
+{$IFNDEF ULTIBO}
 {$DEFINE DYNAMIC}
+{$ENDIF} 
 
 interface
 

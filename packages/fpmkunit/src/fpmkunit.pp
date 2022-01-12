@@ -123,7 +123,7 @@ Type
     win64,wince,gba,nds,embedded,symbian,haiku,iphonesim,
     aix,java,android,nativent,msdos,wii,aros,dragonfly,
     win16,freertos,zxspectrum,msxdos,ios,amstradcpc,sinclairql,
-    wasi
+    wasi,ultibo
   );
   TOSes = Set of TOS;
 
@@ -233,7 +233,8 @@ Const
     { ios }     ( false, false, false, false, false, false,  true, false, false, false, false, false, false, false,   false, false, true , false, false,  false,  false,   false, false),
     {amstradcpc}( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, true ),
     {sinclairql}( false, false, true,  false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, false),
-    { wasi }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, true,  false,  false,  false,   false, false)
+    { wasi }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, true,  false,  false,  false,   false, false),
+    { ultibo }  ( false, true,  false, false, false, true,  true,  false, false, false, false, false, false, false,   false, false, true,  false, false,  false,  false,   false, false)
   );
 
   // Useful

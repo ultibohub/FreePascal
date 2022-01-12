@@ -4198,6 +4198,7 @@ F*2P<x>_Setze den Zielprozessor (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel
 3*2Tos2_OS/2 / eComStation
 3*2Tsymbian_Symbian OS
 3*2Tsolaris_Solaris
+3*2Tultibo_Ultibo
 3*2Twatcom_Watcom compatible DOS extender
 3*2Twdosx_WDOSX DOS extender
 3*2Twin32_Windows 32 Bit
@@ -4242,6 +4243,7 @@ A*2Tnds_Nintendo DS
 A*2Tnetbsd_NetBSD
 A*2Tpalmos_PalmOS
 A*2Tsymbian_Symbian
+A*2Tultibo_Ultibo
 A*2Twince_Windows CE
 # aarch64 targets
 a*2Tandroid_Android
@@ -4333,11 +4335,11 @@ a*2Wb_Erzeuge statt einer Bibliothek ein Bundle (Darwin)
 A*2Wb_Erzeuge statt einer Bibliothek ein Bundle (Darwin)
 4*2Wb_Erzeuge statt einer Bibliothek ein Bundle (Darwin)
 3*2WB_Erzeuge ein relozierbares Image (Windows, Symbian)
-3*2WB<x>_Setze die Imagebasis auf <x> (Windows, Symbian)
+3*2WB<x>_Setze die Imagebasis auf <x> (Windows, Symbian, Ultibo)
 4*2WB_Erzeuge ein relozierbares Image (Windows)
 4*2WB<x>_Setze die Imagebasis auf <x> (Windows)
 A*2WB_Erzeuge ein relozierbares Image (Windows, Symbian)
-A*2WB<x>_Setze die Imagebasis auf <x> (Windows, Symbian)
+A*2WB<x>_Setze die Imagebasis auf <x> (Windows, Symbian, Ultibo)
 Z*2WB<x>_Setze die Imagebasis auf <x> (ZX Spectrum)
 3*2WC_Spezifiziere "console type application" (EMX, OS/2, Windows)
 4*2WC_Spezifiziere "console type application" (Windows)

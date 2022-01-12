@@ -57,12 +57,12 @@ Var
         SysInitExceptions;
 {$endif FPC_HAS_FEATURE_EXCEPTIONS}
 {$ifdef FPC_HAS_FEATURE_CONSOLEIO}
-{$ifndef EMBEDDED}
+{$if not(defined(EMBEDDED)) and not(defined(ULTIBO))}
         { Open all stdio fds again }
         SysInitStdio;
         InOutRes:=0;
         // ErrNo:=0;
-{$endif EMBEDDED}
+{$endif not(defined(EMBEDDED)) and not(defined(ULTIBO))}
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
 {$ifdef FPC_HAS_FEATURE_STACKCHECK}
         { Stack checking }
@@ -421,7 +421,7 @@ const
 Procedure NoThreadError;
 
 begin
-{$ifndef EMBEDDED}
+{$if not(defined(EMBEDDED)) and not(defined(ULTIBO))}
 {$ifdef FPC_HAS_FEATURE_CONSOLEIO}
   If IsConsole then
     begin
@@ -429,7 +429,7 @@ begin
     Writeln(StdErr,SRecompileWithThreads);
     end;
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
-{$endif EMBEDDED}
+{$endif not(defined(EMBEDDED)) and not(defined(ULTIBO))}
   RunError(232)
 end;
 
@@ -585,7 +585,7 @@ const
   NoThreadManager : TThreadManager = (
          InitManager            : Nil;
          DoneManager            : Nil;
-{$ifdef EMBEDDED}
+{$if defined(EMBEDDED) or defined(ULTIBO)}
          { while this is pretty hacky, it reduces the size of typical embedded programs
            and works fine on arm and avr }
          BeginThread            : @NoBeginThread;
@@ -623,7 +623,7 @@ const
          RTLEventResetEvent     : TRTLEventHandler(@NoThreadError);
          RTLEventWaitFor        : TRTLEventHandler(@NoThreadError);
          RTLEventwaitfortimeout : TRTLEventHandlerTimeout(@NoThreadError);
-{$else EMBEDDED}
+{$else defined(EMBEDDED) or defined(ULTIBO)}
          BeginThread            : @NoBeginThread;
          EndThread              : @NoEndThread;
          SuspendThread          : @NoThreadHandler;
@@ -659,7 +659,7 @@ const
          RTLEventResetEvent     : @NoRTLEvent;
          RTLEventWaitFor        : @NoRTLEvent;
          RTLEventWaitforTimeout : @NoRTLEventWaitForTimeout;
-{$endif EMBEDDED}
+{$endif defined(EMBEDDED) or defined(ULTIBO)}
       );
 
 Procedure SetNoThreadManager;
