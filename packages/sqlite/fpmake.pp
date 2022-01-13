@@ -9,7 +9,7 @@ procedure add_sqlite(const ADirectory: string);
 
 Const 
   SQLiteOSes      = AllUnixOSes+AllWindowsOSes-[qnx,win16];
-  SQLite3OSes     = AllUnixOSes+AllWindowsOSes+[ultibo]-[qnx,win16];
+  SQLite3OSes     = AllUnixOSes+AllWindowsOSes-[qnx,win16]; //AllUnixOSes+AllWindowsOSes+[ultibo]-[qnx,win16]; //To Do //TestingFPC
 
 Var
   P : TPackage;

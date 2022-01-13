@@ -600,8 +600,11 @@ begin
          Add('    _bss_end = ALIGN(4096);');
          Add('}');
          Add('_end = .;');
-         end;
+        end;
       end;
+     else
+      if not (cs_link_nolink in current_settings.globalswitches) then
+        internalerror(200902011);
     end;
    end;
 {$endif ARM}
@@ -739,8 +742,11 @@ begin
          Add('    _bss_end = ALIGN(4096);');
          Add('}');
          Add('_end = .;');
-         end;
+        end;
       end;
+     else
+      if not (cs_link_nolink in current_settings.globalswitches) then
+        internalerror(200902011);
     end;
    end;
 {$endif AARCH64}
@@ -972,6 +978,10 @@ begin
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
           ChangeFileExt(current_module.exefilename,'.elf')+' kernel7.qimg',true,false);
        end;
+      else
+       begin
+        { Nothing }
+       end;
      end;  
      {$endif ARM}
      {$ifdef i386}
@@ -1006,6 +1016,10 @@ begin
           ChangeFileExt(current_module.exefilename,'.elf')+' kernel8.img',true,false);
         
         {Note: Kernel trailer is no longer honoured by latest Raspberry Pi firmware}
+       end;
+      else
+       begin
+        { Nothing }
        end;
      end;  
      {$endif AARCH64}

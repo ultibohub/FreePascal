@@ -48,7 +48,7 @@ Type
     {$define SEARCHREC_USEFINDDATA}
 {$endif}
 {$ifdef ULTIBO}
-    {$define USEFINDDATA}
+    {$define SEARCHREC_USEFINDDATA}
     TFindData = TWin32FindDataA;
 {$endif ULTIBO}
 
