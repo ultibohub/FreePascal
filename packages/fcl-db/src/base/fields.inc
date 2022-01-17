@@ -2642,7 +2642,14 @@ var Temp : string;
 begin
   Temp:=UpperCase(AValue);
   if Temp='' then
-    Clear
+    begin
+    if FDisplays[True,True]='' then
+      SetAsBoolean(True)
+    else if FDisplays[True,False]='' then
+      SetAsBoolean(False)
+    else
+      Clear
+    end
   else if pos(Temp, FDisplays[True,True])=1 then
     SetAsBoolean(True)
   else if pos(Temp, FDisplays[True,False])=1 then
@@ -2669,11 +2676,13 @@ Procedure TBooleanField.SetDisplayValues(const AValue : String);
 var I : longint;
 
 begin
+  if aValue='' then
+    DatabaseErrorFmt(SFieldError+SInvalidDisplayValues,[DisplayName,AValue]);
   If FDisplayValues<>AValue then
     begin
     I:=Pos(';',AValue);
-    If (I<2) or (I=Length(AValue)) then
-      DatabaseErrorFmt(SFieldError+SInvalidDisplayValues,[DisplayName,AValue]);
+    If I=0 then
+      I:=Length(aValue)+1;
     FdisplayValues:=AValue;
     // Store display values and their uppercase equivalents;
     FDisplays[False,True]:=Copy(AValue,1,I-1);
