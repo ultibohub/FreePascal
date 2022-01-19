@@ -366,9 +366,7 @@ Function DecodeURLElement(Const S : String) : String;
 
 implementation
 
-{$if not defined(ultibo)}
 uses sslsockets;
-{$endif}
 
 resourcestring
   SErrInvalidProtocol = 'Invalid protocol : "%s"';
@@ -592,11 +590,9 @@ begin
   if Assigned(FonGetSocketHandler) then
     FOnGetSocketHandler(Self,UseSSL,Result);
   if (Result=Nil) then
-  {$if not defined(ultibo)}
     If UseSSL then
       Result:=TSSLSocketHandler.GetDefaultHandler
     else
-  {$endif}  
       Result:=TSocketHandler.Create;
   if Assigned(AfterSocketHandlerCreate) then
     AfterSocketHandlerCreate(Self,Result);
