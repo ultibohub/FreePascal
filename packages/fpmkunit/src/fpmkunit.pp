@@ -122,7 +122,7 @@ Type
     palmos,macosclassic,darwin,emx,watcom,morphos,netwlibc,
     win64,wince,gba,nds,embedded,symbian,haiku,iphonesim,
     aix,java,android,nativent,msdos,wii,aros,dragonfly,
-    win16,ios
+    win16,ios,ultibo
   );
   TOSes = Set of TOS;
 
@@ -226,7 +226,8 @@ Const
     { aros }    ( false, true,  false, false, false, true,  true,  false, false, false, false, false, false, false, false, false),
     { dragonfly}( false, false, false, false, false, true,  false, false, false, false, false, false, false, false, false, false),
     { win16 }   ( false, false, false, false, false, false, false, false, false, false, false, false, false, true , false, false),
-    { ios }     ( false, false, false, false, false, false,  true, false, false, false, false, false, false, false, true , false)
+    { ios }     ( false, false, false, false, false, false,  true, false, false, false, false, false, false, false, true , false),
+    { ultibo }  ( false, true,  false, false, false, true,  true,  false, false, false, false, false, false, false, true , false)
   );
 
   // Useful

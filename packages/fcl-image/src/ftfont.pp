@@ -17,7 +17,9 @@ unit ftfont;
 
 interface
 
+{$IFNDEF ULTIBO}
 {$DEFINE DYNAMIC}
+{$ENDIF} 
 
 uses
   SysUtils, Classes, FPCanvas, fpimgcmn, math,

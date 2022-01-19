@@ -675,8 +675,20 @@ asm
   strex r2, r1, [r0]
   cmp r2, #0
   bne .Lloop
+{$ifdef ULTIBO}
+{$ifdef CPUARM_HAS_DMB}
+  dmb
+{$else}
+  mov r12, #0
+  mcr p15, #0, r12, cr7, cr10, #5
+{$endif}
+{$endif}
   movs r0, r1
+{$ifdef CPUARM_HAS_BX}
   bx  lr
+{$else}
+  mov pc,lr
+{$endif}
 {$else}
 {$ifdef SYSTEM_HAS_KUSER_CMPXCHG}
   stmfd r13!, {lr}
@@ -758,8 +770,20 @@ asm
   strex r2, r1, [r0]
   cmp r2, #0
   bne .Lloop
+{$ifdef ULTIBO}
+{$ifdef CPUARM_HAS_DMB}
+  dmb
+{$else}
+  mov r12, #0
+  mcr p15, #0, r12, cr7, cr10, #5
+{$endif}
+{$endif}
   mov r0, r1
+{$ifdef CPUARM_HAS_BX}
   bx  lr
+{$else}
+  mov pc,lr
+{$endif}
 {$else}
 {$ifdef SYSTEM_HAS_KUSER_CMPXCHG}
   stmfd r13!, {lr}
@@ -839,8 +863,20 @@ asm
   strex r3, r1, [r0]
   cmp r3, #0
   bne .Lloop
+{$ifdef ULTIBO}
+{$ifdef CPUARM_HAS_DMB}
+  dmb
+{$else}
+  mov r12, #0
+  mcr p15, #0, r12, cr7, cr10, #5
+{$endif}
+{$endif}
   mov r0, r2
+{$ifdef CPUARM_HAS_BX}
   bx  lr
+{$else}
+  mov pc,lr
+{$endif}
 {$else}
 {$ifdef SYSTEM_HAS_KUSER_CMPXCHG}
   stmfd r13!, {r4, lr}
@@ -920,8 +956,20 @@ asm
   strex r3, r12, [r0]
   cmp r3, #0
   bne .Lloop
+{$ifdef ULTIBO}
+{$ifdef CPUARM_HAS_DMB}
+  dmb
+{$else}
+  mov r12, #0
+  mcr p15, #0, r12, cr7, cr10, #5
+{$endif}
+{$endif}
   mov  r0, r2
+{$ifdef CPUARM_HAS_BX}
   bx  lr
+{$else}
+  mov pc,lr
+{$endif}
 {$else}
 {$ifdef SYSTEM_HAS_KUSER_CMPXCHG}
   stmfd r13!, {r4, lr}
@@ -1009,8 +1057,20 @@ asm
   strexeq  r12, r1, [r0]
   cmp      r12, #0
   bne      .Lloop
+{$ifdef ULTIBO}
+{$ifdef CPUARM_HAS_DMB}
+  dmb
+{$else}
+  mov r12, #0
+  mcr p15, #0, r12, cr7, cr10, #5
+{$endif}
+{$endif}
   mov      r0, r3
+{$ifdef CPUARM_HAS_BX}
   bx       lr
+{$else}
+  mov      pc,lr
+{$endif}
 {$else}
 {$ifdef SYSTEM_HAS_KUSER_CMPXCHG}
   stmfd r13!, {r4, lr}

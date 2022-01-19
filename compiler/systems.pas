@@ -282,7 +282,11 @@ interface
                            obsolete_system_mips_embedded,system_arm_embedded,
                            system_powerpc64_embedded,system_avr_embedded,
                            system_jvm_java32,system_mipseb_embedded,system_mipsel_embedded,
-                           system_i8086_embedded];
+                           system_i8086_embedded,
+                           system_arm_ultibo,system_i386_ultibo,system_x86_64_ultibo,system_aarch64_ultibo];
+
+       { all ultibo systems }
+       systems_ultibo = [system_arm_ultibo,system_i386_ultibo,system_x86_64_ultibo,system_aarch64_ultibo];
 
        { all systems that allow section directive }
        systems_allow_section = systems_embedded;
@@ -391,7 +395,7 @@ interface
 
        { all systems where a value parameter passed by reference must be copied
          on the caller side rather than on the callee side }
-       systems_caller_copy_addr_value_para = [system_aarch64_ios,system_aarch64_darwin,system_aarch64_linux];
+       systems_caller_copy_addr_value_para = [system_aarch64_ios,system_aarch64_darwin,system_aarch64_linux,system_aarch64_ultibo];
 
        { pointer checking (requires special code in FPC_CHECKPOINTER,
          and can never work for libc-based targets or any other program
@@ -1002,6 +1006,10 @@ begin
       {$define default_target_set}
       default_target(system_arm_ios);
     {$endif}
+    {$ifdef ULTIBO}
+      {$define default_target_set}
+      default_target(system_arm_ultibo);
+    {$endif}
     {$ifndef default_target_set}
       default_target(system_arm_linux);
       {$define default_target_set}
@@ -1048,6 +1056,10 @@ begin
       {$define default_target_set}
       default_target(system_aarch64_android);
     {$endif android}
+    {$ifdef ULTIBO}
+      {$define default_target_set}
+      default_target(system_aarch64_ultibo);
+    {$endif ULTIBO}
     {$ifndef default_target_set}
       default_target(system_aarch64_linux);
       {$define default_target_set}

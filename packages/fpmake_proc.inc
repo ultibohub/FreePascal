@@ -643,11 +643,7 @@ begin
 {$include sdl/fpmake.pp}
 end;
 
-procedure add_sqlite(const ADirectory: string);
-begin
-  with Installer do
 {$include sqlite/fpmake.pp}
-end;
 
 procedure add_svgalib(const ADirectory: string);
 begin
@@ -683,6 +679,12 @@ procedure add_tplylib(const ADirectory: string);
 begin
   with Installer do
 {$include tplylib/fpmake.pp}
+end;
+
+procedure add_ultibounits(const ADirectory: string);
+begin
+  with Installer do
+{$include ultibounits/fpmake.pp}
 end;
 
 procedure add_univint(const ADirectory: string);

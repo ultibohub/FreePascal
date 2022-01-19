@@ -47,7 +47,25 @@ Type
      );
 
    tcontrollertype =
-     (ct_none
+     (ct_none,
+
+      { Ultibo Raspberry Pi3 (64 bit mode)}
+      ct_rpi3a,
+      ct_rpi3b,
+
+      { Ultibo Raspberry Pi4 (64 bit mode)}
+      ct_rpi4b,
+      ct_rpi400,
+
+      { Ultibo Raspberry Pi Zero 2 (64 bit mode)}
+      ct_rpizero2w,
+
+      { Ultibo QEMU VersatilePB (64 bit mode)}
+      ct_qemuvpb,
+
+      { Ultibo QEMU Raspberry Pi3 (64 bit mode)}
+      ct_qemurpi3a,
+      ct_qemurpi3b
      );
 
    tcontrollerdatatype = record
@@ -60,7 +78,7 @@ Type
 Const
    { Is there support for dealing with multiple microcontrollers available }
    { for this platform? }
-   ControllerSupport = false; (* Not yet at least ;-) *)
+   ControllerSupport = true; (* Not yet at least ;-) *)
    {# Size of native extended floating point type }
    extended_size = 8;
    { target cpu string (used by compiler options) }
@@ -72,7 +90,27 @@ Const
     {$WARN 3177 OFF}
    embedded_controllers : array [tcontrollertype] of tcontrollerdatatype =
    (
-      (controllertypestr:''; controllerunitstr:''; cputype:cpu_none; fputype:fpu_none; flashbase:0; flashsize:0; srambase:0; sramsize:0));
+      (controllertypestr:''; controllerunitstr:''; cputype:cpu_none; fputype:fpu_none; flashbase:0; flashsize:0; srambase:0; sramsize:0),
+      
+      { Ultibo Raspberry Pi3}
+      (controllertypestr:'RPI3A'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
+      (controllertypestr:'RPI3B'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000),
+
+      { Ultibo Raspberry Pi4}
+      (controllertypestr:'RPI4B'; controllerunitstr:'BOOTRPI4'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000),
+      (controllertypestr:'RPI400'; controllerunitstr:'BOOTRPI4'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000),
+
+      { Ultibo Raspberry Pi Zero 2}
+      (controllertypestr:'RPIZERO2W'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
+
+      { Ultibo QEMU VersatilePB}
+      (controllertypestr:'QEMUVPB'; controllerunitstr:'BOOTQEMUVPB'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$10000000),
+
+      { Ultibo QEMU Raspberry Pi3}
+      (controllertypestr:'QEMURPI3A'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$20000000),
+      (controllertypestr:'QEMURPI3B'; controllerunitstr:'BOOTRPI3'; cputype:cpu_armv8; fputype:fpu_vfp; flashbase:$00000000; flashsize:$00000000; srambase:$00080000; sramsize:$40000000)
+
+      );
    {$POP}
 
    { calling conventions supported by the code generator }

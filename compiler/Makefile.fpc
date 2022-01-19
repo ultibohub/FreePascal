@@ -390,6 +390,9 @@ endif
 ifeq ($(OS_TARGET),nds)
 NoNativeBinaries=1
 endif
+ifeq ($(OS_TARGET),ultibo)
+NoNativeBinaries=1
+endif
 ifeq ($(OS_TARGET),win16)
 NoNativeBinaries=1
 endif

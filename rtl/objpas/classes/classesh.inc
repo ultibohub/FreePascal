@@ -1759,7 +1759,7 @@ type
     procedure ForceQueue(aMethod: TThreadMethod); inline;
     property ReturnValue: Integer read FReturnValue write FReturnValue;
     property Terminated: Boolean read FTerminated;
-{$if defined(windows) or defined(OS2)}
+{$if defined(windows) or defined(OS2) or defined(ultibo)}
   private
     FInitialSuspended: boolean;
 {$endif}

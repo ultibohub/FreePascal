@@ -20,7 +20,7 @@ begin
     P.Version:='3.2.3';
     P.SourcePath.Add('src');
     P.IncludePath.Add('src');
-    P.OSes := AllUnixOSes+AllWindowsOSes+AllAmigaLikeOSes-[qnx];
+    P.OSes := AllUnixOSes+AllWindowsOSes+AllAmigaLikeOSes+[ultibo]-[qnx];
     if Defaults.CPU=jvm then
       P.OSes := P.OSes - [java,android];
 //    P.Dependencies.Add('x11');
@@ -86,7 +86,7 @@ begin
           AddUnit('dsl');
           AddUnit('omv');
         end;
-    T:=P.Targets.AddUnit('numlib.pas', AllOSes-AllAmigaLikeOSes);
+    T:=P.Targets.AddUnit('numlib.pas', AllOSes-AllAmigaLikeOSes-[ultibo]);
       with T.Dependencies do
         begin
           AddInclude('direct.inc');

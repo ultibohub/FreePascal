@@ -1073,6 +1073,7 @@ Begin
     console i/o is done by the Consoleio unit which can do things like
     redirection to seriell i/o }
 {$ifndef EMBEDDED}
+{$ifndef ULTIBO}
   { Show runtime error and exit }
   if WriteErrorsToStdErr then
     pstdout:=@stderr
@@ -1087,6 +1088,7 @@ Begin
      Writeln(pstdout^,'');
    End;
   SysFlushStdIO;
+{$endif ULTIBO}  
 {$endif EMBEDDED}
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
 

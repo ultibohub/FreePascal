@@ -21,7 +21,7 @@ begin
     P.Version:='3.2.3';
     P.Dependencies.Add('zlib');
     P.SourcePath.Add('src');
-    P.OSes := AllUnixOSes-[qnx]+[win32,os2,emx];
+    P.OSes := AllUnixOSes-[qnx]+[win32,os2,emx,ultibo];
     if Defaults.CPU=jvm then
       P.OSes := P.OSes - [java,android];
 

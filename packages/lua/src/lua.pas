@@ -42,13 +42,25 @@ unit lua;
 
 interface
 
+{$IFDEF ULTIBO}
+uses 
+  Syscalls;
+{$ENDIF}
+
 const
 {$IFDEF UNIX}
   LUA_NAME = 'liblua.so.5.1';
   LUA_LIB_NAME = 'liblua.so.5.1';
 {$ELSE}
-  LUA_NAME = 'lua5.1.dll';
-  LUA_LIB_NAME = 'lua5.1.dll';
+  {$IFDEF ULTIBO}
+    LUA_NAME = 'lua';
+    LUA_LIB_NAME = 'lua';
+    {$linklib lua}
+    {$linklib m}
+  {$ELSE}
+    LUA_NAME = 'lua5.1.dll';
+    LUA_LIB_NAME = 'lua5.1.dll';
+  {$ENDIF}
 {$ENDIF}
 
 type
@@ -56,11 +68,23 @@ type
   Psize_t = ^size_t;
 
 const
+  {$IFDEF ULTIBO}
+  LUA_VERSION_MAJOR = '5';
+  LUA_VERSION_MINOR = '3';
+  LUA_VERSION_NUM = 503;
+  LUA_VERSION_RELEASE = '4';
+  
+  LUA_VERSION = 'Lua ' + LUA_VERSION_MAJOR + '.' + LUA_VERSION_MINOR;
+  LUA_RELEASE = LUA_VERSION + '.' + LUA_VERSION_RELEASE;
+  LUA_COPYRIGHT = LUA_RELEASE + '  Copyright (C) 1994-2017 Lua.org, PUC-Rio';
+  LUA_AUTHORS = 'R. Ierusalimschy, L. H. de Figueiredo, W. Celes';
+  {$ELSE}
   LUA_VERSION = 'Lua 5.1';
   LUA_RELEASE = 'Lua 5.1.1';
   LUA_VERSION_NUM = 501;
   LUA_COPYRIGHT = 'Copyright (C) 1994-2006 Lua.org, PUC-Rio';
   LUA_AUTHORS = 'R. Ierusalimschy, L. H. de Figueiredo & W. Celes';
+  {$ENDIF}
 
 (* option for multiple returns in `lua_pcall' and `lua_call' *)
   LUA_MULTRET = -1;
