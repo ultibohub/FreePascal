@@ -678,7 +678,7 @@ implementation
                              system_x86_64_openbsd,system_x86_64_netbsd,
                              system_x86_64_dragonfly,system_x86_64_solaris,
                              system_x86_64_aros,system_x86_64_android,
-                             system_x86_64_haiku];
+                             system_x86_64_haiku,system_x86_64_ultibo];
         flags : [af_outputbinary,af_smartlink_sections,af_supports_dwarf];
         labelprefix : '.L';
         comment : '';

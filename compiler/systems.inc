@@ -187,7 +187,11 @@
              system_aarch64_android,    { 100 }
              system_x86_64_android,     { 101 }
              system_x86_64_haiku,       { 102 }
-             system_aarch64_darwin      { 111 (in trunk) }
+             system_aarch64_darwin,     { 111 (in trunk) }
+             system_arm_ultibo,         { 117 }
+             system_i386_ultibo,        { 118 }
+             system_x86_64_ultibo,      { 119 }
+             system_aarch64_ultibo      { 120 }
        );
 
      type
@@ -280,7 +284,8 @@
              ld_int_nativent,
              ld_int_netware,
              ld_int_windows,
-             ld_int_msdos
+             ld_int_msdos,
+             ld_ultibo
        );
 
        tar = (ar_none

@@ -159,6 +159,7 @@ const
 Procedure NoDynLibsError; {$ifndef ver2_6}noreturn;{$endif}
 begin
 {$ifndef EMBEDDED}
+{$ifndef ULTIBO}
 {$ifdef FPC_HAS_FEATURE_CONSOLEIO}
   If IsConsole then
     begin
@@ -166,6 +167,7 @@ begin
     Writeln(StdErr,SRecompileWithDynLibs);
     end;
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
+{$endif ULTIBO}
 {$endif EMBEDDED}
   RunError(235)
 end;

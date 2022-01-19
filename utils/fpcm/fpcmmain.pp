@@ -78,7 +78,7 @@ interface
         o_palmos,o_macosclassic,o_darwin,o_emx,o_watcom,o_morphos,o_netwlibc,
         o_win64,o_wince,o_gba,o_nds,o_embedded,o_symbian,o_nativent,o_iphonesim,
         o_wii,o_aix,o_java,o_android,o_msdos,o_aros,o_dragonfly,o_win16,o_wasm,
-        o_ios
+        o_ios,o_ultibo
       );
 
       TTargetSet=array[tcpu,tos] of boolean;
@@ -102,7 +102,7 @@ interface
         'palmos','macosclassic','darwin','emx','watcom','morphos','netwlibc',
         'win64','wince','gba','nds','embedded','symbian','nativent',
         'iphonesim', 'wii', 'aix', 'java', 'android', 'msdos', 'aros',
-        'dragonfly', 'win16', 'wasm', 'ios'
+        'dragonfly', 'win16', 'wasm', 'ios', 'ultibo'
       );
 
       OSSuffix : array[TOS] of string=(
@@ -111,7 +111,7 @@ interface
         '_palmos','_macosclassic','_darwin','_emx','_watcom','_morphos','_netwlibc',
         '_win64','_wince','_gba','_nds','_embedded','_symbian','_nativent',
         '_iphonesim','_wii','_aix','_java','_android','_msdos','_aros',
-        '_dragonfly','_win16','_wasm','_ios'
+        '_dragonfly','_win16','_wasm','_ios', '_ultibo'
       );
 
       { This table is kept OS,Cpu because it is easier to maintain (PFV) }
@@ -156,7 +156,8 @@ interface
         {dragonfly} ( false, false, false, false, true,  false, false, false, false, false, false, false, false, false,   false, false, false, false, false),
         { win16 }   ( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, true , false, false, false),
         { wasm }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, true,  false),
-        { ios }     ( false, false, false, false, false, true,  false, false, false, false, false, false, false, false,   false, false, true , false, false)
+        { ios }     ( false, false, false, false, false, true,  false, false, false, false, false, false, false, false,   false, false, true , false, false),
+        { ultibo   }( true,  false, false, false, true,  true,  false, false, false, false, false, false, false, false,   false, false, true , false, false)
       );
 
     type

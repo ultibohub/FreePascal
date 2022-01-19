@@ -21,7 +21,7 @@ begin
     P.ShortName:='fclw';
     P.Directory:=ADirectory;
     P.Version:='3.2.2';
-    P.OSes := [beos,haiku,freebsd,darwin,iphonesim,ios,solaris,netbsd,openbsd,linux,win32,win64,wince,aix,amiga,aros,morphos,dragonfly,android];
+    P.OSes := [beos,haiku,freebsd,darwin,iphonesim,ios,solaris,netbsd,openbsd,linux,win32,win64,wince,aix,amiga,aros,morphos,dragonfly,android,ultibo];
     if Defaults.CPU=jvm then
       P.OSes := P.OSes - [java,android];
 
@@ -35,8 +35,8 @@ begin
     P.Dependencies.Add('fcl-registry',AllWindowsOSes);
     P.Dependencies.Add('openssl',AllUnixOSes+AllWindowsOSes);
     P.Dependencies.Add('fastcgi');
-    P.Dependencies.Add('httpd22', AllOses - [amiga,aros,morphos]);
-    P.Dependencies.Add('httpd24', AllOses - [amiga,aros,morphos]);
+    P.Dependencies.Add('httpd22', AllOses - [amiga,aros,morphos,ultibo]);
+    P.Dependencies.Add('httpd24', AllOses - [amiga,aros,morphos,ultibo]);
     P.Dependencies.Add('winunits-base', [Win32,Win64]);
     // (Temporary) indirect dependencies, not detected by fpcmake:
     P.Dependencies.Add('univint',[MacOSX,iphonesim,ios]);
@@ -142,12 +142,12 @@ begin
       end;
     with P.Targets.AddUnit('fpfcgi.pp') do
       begin
-        OSes:=AllOses-[wince,darwin,iphonesim,ios,aix,amiga,aros,morphos];
+        OSes:=AllOses-[wince,darwin,iphonesim,ios,aix,amiga,aros,morphos,ultibo];
         Dependencies.AddUnit('custfcgi');
       end;
     with P.Targets.AddUnit('custfcgi.pp') do
       begin
-        OSes:=AllOses-[wince,darwin,iphonesim,ios,aix,amiga,aros,morphos];
+        OSes:=AllOses-[wince,darwin,iphonesim,ios,aix,amiga,aros,morphos,ultibo];
         Dependencies.AddUnit('httpprotocol');
         Dependencies.AddUnit('cgiprotocol');
         Dependencies.AddUnit('custcgi');
@@ -157,7 +157,7 @@ begin
       end;
     with P.Targets.AddUnit('custapache.pp') do
       begin
-        OSes:=AllOses-[amiga,aros,morphos];
+        OSes:=AllOses-[amiga,aros,morphos,ultibo];
         Dependencies.AddUnit('httpprotocol');
         Dependencies.AddUnit('fphttp');
         Dependencies.AddUnit('custweb');
@@ -165,19 +165,19 @@ begin
       end;
     with P.Targets.AddUnit('fpapache.pp') do
       begin
-        OSes:=AllOses-[amiga,aros,morphos];
+        OSes:=AllOses-[amiga,aros,morphos,ultibo];
         Dependencies.AddUnit('custapache');
       end;
     with P.Targets.AddUnit('custapache24.pp') do
       begin
-        OSes:=AllOses-[amiga,aros,morphos];
+        OSes:=AllOses-[amiga,aros,morphos,ultibo];
         Dependencies.AddUnit('fphttp');
         Dependencies.AddUnit('custweb');
         ResourceStrings:=true;
       end;
     with P.Targets.AddUnit('fpapache24.pp') do
       begin
-        OSes:=AllOses-[amiga,aros,morphos];
+        OSes:=AllOses-[amiga,aros,morphos,ultibo];
         Dependencies.AddUnit('custapache24');
       end;
     with P.Targets.AddUnit('custhttpsys.pp') do

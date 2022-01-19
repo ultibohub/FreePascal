@@ -215,7 +215,11 @@ const
   { 100 } 'Android-AArch64',
   { 101 } 'Android-x86-64',
   { 102 } 'Haiku-x86-64',
-  { 111 } 'Darwin-AArch64'
+  { 111 } 'Darwin-AArch64',
+  { 117 } 'Ultibo-arm',
+  { 118 } 'Ultibo-i386',
+  { 119 } 'Ultibo-x86-64',
+  { 120 } 'Ultibo-AArch64'
   );
 
 const

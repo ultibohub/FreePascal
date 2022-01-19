@@ -92,6 +92,9 @@ implementation
     {$ifndef NOTARGETAROS}
       ,t_aros
     {$endif}
+    {$ifndef NOTARGETULTIBO}
+      ,t_ultibo
+    {$endif}
 
 {**************************************
              Assemblers

@@ -13,13 +13,13 @@ Const
   UnixLikes = AllUnixOSes -[QNX];
 
   WinEventOSes = [win32,win64];
-  KVMAll       = [emx,go32v2,msdos,netware,netwlibc,os2,win32,win64,win16]+UnixLikes+AllAmigaLikeOSes;
+  KVMAll       = [emx,go32v2,msdos,netware,netwlibc,os2,win32,win64,win16,ultibo]+UnixLikes+AllAmigaLikeOSes;
 
   // all full KVMers have crt too
   CrtOSes      = KVMALL+[WatCom];
-  KbdOSes      = KVMALL;
-  VideoOSes    = KVMALL;
-  MouseOSes    = KVMALL;
+  KbdOSes      = KVMALL-[ultibo];
+  VideoOSes    = KVMALL-[ultibo];
+  MouseOSes    = KVMALL-[ultibo];
   TerminfoOSes = UnixLikes-[beos,haiku];
 
   rtl_consoleOSes =KVMALL+CrtOSes+TermInfoOSes;
@@ -98,6 +98,28 @@ begin
        AddInclude('convert.inc',AllUnixOSes);
        AddInclude('nwsys.inc',[netware]);
        AddUnit   ('mouse',[go32v2,msdos]);
+     end;
+
+    // Alternate versions for Ultibo to resolve name conflict
+    T:=P.Targets.AddUnit('consolekeyboard.pp',[ultibo]);
+    with T.Dependencies do
+      begin
+        AddInclude('keybrdh.inc');
+        AddInclude('keyboard.inc');
+      end;
+     
+    T:=P.Targets.AddUnit('consolemouse.pp',[ultibo]);
+    with T.Dependencies do
+     begin
+       AddInclude('mouseh.inc');
+       AddInclude('mouse.inc');
+     end;
+     
+    T:=P.Targets.AddUnit('consolevideo.pp',[ultibo]);
+    with T.Dependencies do
+     begin
+       AddInclude('videoh.inc');
+       AddInclude('video.inc');
      end;
 
     T:=P.Targets.AddUnit('crt.pp',CrtOSes);

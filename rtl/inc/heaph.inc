@@ -69,6 +69,10 @@ var
   {$define FPC_NO_DEFAULT_MEMORYMANAGER}
 {$endif EMBEDDED}
 
+{$ifdef ULTIBO}
+  {$define FPC_NO_DEFAULT_MEMORYMANAGER}
+{$endif ULTIBO}
+
 {$ifndef FPC_NO_DEFAULT_MEMORYMANAGER}
 { Default MemoryManager functions }
 Function  SysGetmem(Size:ptruint):Pointer;

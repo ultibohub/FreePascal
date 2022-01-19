@@ -4031,6 +4031,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 3*2Tos2_OS/2 / eComStation
 3*2Tsymbian_Symbian OS
 3*2Tsolaris_Solaris
+3*2Tultibo_Ultibo
 3*2Twatcom_Watcom compatible DOS extender
 3*2Twdosx_WDOSX DOS extender
 3*2Twin32_Windows 32 Bit
@@ -4070,6 +4071,7 @@ A*2Tnds_Nintendo DS
 A*2Tnetbsd_NetBSD
 A*2Tpalmos_PalmOS
 A*2Tsymbian_Symbian
+A*2Tultibo_Ultibo
 A*2Twince_Windows CE
 # aarch64 targets
 a*2Tdarwin_Darwin/iOS
@@ -4138,11 +4140,11 @@ a*2Wb_Create a bundle instead of a library (Darwin)
 A*2Wb_Create a bundle instead of a library (Darwin)
 4*2Wb_Create a bundle instead of a library (Darwin)
 3*2WB_Create a relocatable image (Windows, Symbian)
-3*2WB<x>_Set image base to <x> (Windows, Symbian)
+3*2WB<x>_Set image base to <x> (Windows, Symbian, Ultibo)
 4*2WB_Create a relocatable image (Windows)
-4*2WB<x>_Set image base to <x> (Windows)
+4*2WB<x>_Set image base to <x> (Windows, Ultibo)
 A*2WB_Create a relocatable image (Windows, Symbian)
-A*2WB<x>_Set image base to <x> (Windows, Symbian)
+A*2WB<x>_Set image base to <x> (Windows, Symbian, Ultibo)
 3*2WC_Specify console type application (EMX, OS/2, Windows)
 4*2WC_Specify console type application (Windows)
 A*2WC_Specify console type application (Windows)
