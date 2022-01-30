@@ -69,7 +69,7 @@ begin
    begin
     if not UseVLink then
      begin
-      ExeCmd[1]:='ld $DYNLINK $OPT -d -n -o $EXE $RES';
+      ExeCmd[1]:='ld $DYNLINK $OPT $STRIP $MAP -d -n -o $EXE -T $RES';
      end
     else
      begin
@@ -124,6 +124,35 @@ begin
     if s<>'' then
      LinkRes.Add('SEARCH_DIR("'+s+'")');
     HPath:=TCmdStrListItem(HPath.Next);
+   end;
+
+  if not UseVLink then
+   begin
+    LinkRes.Add('SECTIONS');
+    LinkRes.Add('{');
+    LinkRes.Add('  .text 0xe4:');
+    LinkRes.Add('  {');
+    LinkRes.Add('    CREATE_OBJECT_SYMBOLS');
+    LinkRes.Add('    *(.text)');
+    LinkRes.Add('    CONSTRUCTORS');
+    LinkRes.Add('    _etext = .;');
+    LinkRes.Add('    __etext = .;');
+    LinkRes.Add('  }');
+    LinkRes.Add('  .data :');
+    LinkRes.Add('  {');
+    LinkRes.Add('    *(.data)');
+    LinkRes.Add('    _edata = .;');
+    LinkRes.Add('    __edata = .;');
+    LinkRes.Add('  }');
+    LinkRes.Add('  .bss :');
+    LinkRes.Add('  {');
+    LinkRes.Add('    __bss_start = .;');
+    LinkRes.Add('    *(.bss)');
+    LinkRes.Add('    *(COMMON)');
+    LinkRes.Add('    _end = .;');
+    LinkRes.Add('    __end = .;');
+    LinkRes.Add('  }');
+    LinkRes.Add('}');
    end;
 
   LinkRes.Add('INPUT (');
@@ -224,9 +253,9 @@ begin
   GCSectionsStr:='';
   DynLinkStr:='';
   MapStr:='';
-  FlagsStr:='-tos-flags fastload,fastram';
+  FlagsStr:='-tos-flags '+tostr(ataritos_exe_flags);
 
-  if UseVlink and (cs_link_map in current_settings.globalswitches) then
+  if (cs_link_map in current_settings.globalswitches) then
     MapStr:='-M'+maybequoted(ScriptFixFileName(current_module.mapfilename));
   if (cs_link_strip in current_settings.globalswitches) then
     StripStr:='-s';

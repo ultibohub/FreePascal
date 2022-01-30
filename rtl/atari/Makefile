@@ -370,7 +370,7 @@ INC=$(RTL)/inc
 COMMON=$(RTL)/common
 PROCINC=$(RTL)/$(CPU_TARGET)
 UNITPREFIX=rtl
-LOADERS=prt0
+LOADERS=
 SYSTEMUNIT=system
 ifdef RELEASE
 override FPCOPT+=-Ur
@@ -3734,8 +3734,6 @@ SYSINCDEPS=$(addprefix $(INC)/,$(SYSINCNAMES))
 include $(PROCINC)/makefile.cpu
 SYSCPUDEPS=$(addprefix $(PROCINC)/,$(CPUINCNAMES))
 SYSDEPS=$(SYSINCDEPS) $(SYSCPUDEPS)
-prt0$(OEXT) : prt0.as
-	$(AS) -o $(UNITTARGETDIRPREFIX)prt0$(OEXT) prt0.as
 $(SYSTEMUNIT)$(PPUEXT) : $(SYSTEMUNIT).pp $(SYSDEPS)
 	$(COMPILER) $(FPC_SYSTEM_OPT) -Us -Sg @rtl.cfg $(SYSTEMUNIT).pp $(REDIR)
 heaptrc$(PPUEXT) : $(INC)/heaptrc.pp $(SYSTEMUNIT)$(PPUEXT)

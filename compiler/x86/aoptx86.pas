@@ -882,49 +882,49 @@ unit aoptx86;
               begin
                 case getsupreg(reg) of
                   RS_EAX:
-                    if [Ch_WEAX,Ch_RWEAX,Ch_MEAX]*Ch<>[] then
+                    if [Ch_WEAX,Ch_RWEAX,Ch_MEAX,Ch_WRAX,Ch_RWRAX,Ch_MRAX]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_ECX:
-                    if [Ch_WECX,Ch_RWECX,Ch_MECX]*Ch<>[] then
+                    if [Ch_WECX,Ch_RWECX,Ch_MECX,Ch_WRCX,Ch_RWRCX,Ch_MRCX]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_EDX:
-                    if [Ch_WEDX,Ch_RWEDX,Ch_MEDX]*Ch<>[] then
+                    if [Ch_WEDX,Ch_RWEDX,Ch_MEDX,Ch_WRDX,Ch_RWRDX,Ch_MRDX]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_EBX:
-                    if [Ch_WEBX,Ch_RWEBX,Ch_MEBX]*Ch<>[] then
+                    if [Ch_WEBX,Ch_RWEBX,Ch_MEBX,Ch_WRBX,Ch_RWRBX,Ch_MRBX]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_ESP:
-                    if [Ch_WESP,Ch_RWESP,Ch_MESP]*Ch<>[] then
+                    if [Ch_WESP,Ch_RWESP,Ch_MESP,Ch_WRSP,Ch_RWRSP,Ch_MRSP]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_EBP:
-                    if [Ch_WEBP,Ch_RWEBP,Ch_MEBP]*Ch<>[] then
+                    if [Ch_WEBP,Ch_RWEBP,Ch_MEBP,Ch_WRBP,Ch_RWRBP,Ch_MRBP]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_ESI:
-                    if [Ch_WESI,Ch_RWESI,Ch_MESI]*Ch<>[] then
+                    if [Ch_WESI,Ch_RWESI,Ch_MESI,Ch_WRSI,Ch_RWRSI,Ch_MRSI]*Ch<>[] then
                       begin
                         Result := True;
                         exit
                       end;
                   RS_EDI:
-                    if [Ch_WEDI,Ch_RWEDI,Ch_MEDI]*Ch<>[] then
+                    if [Ch_WEDI,Ch_RWEDI,Ch_MEDI,Ch_WRDI,Ch_RWRDI,Ch_MRDI]*Ch<>[] then
                       begin
                         Result := True;
                         exit
@@ -2532,6 +2532,7 @@ unit aoptx86;
         CurrentReg, ActiveReg: TRegister;
         SourceRef, TargetRef: TReference;
         MovAligned, MovUnaligned: TAsmOp;
+        ThisRef: TReference;
 
       begin
         Result:=false;
@@ -2738,23 +2739,34 @@ unit aoptx86;
                           Exit;
                         end;
                       top_ref:
-                        { We have something like:
+                        begin
+                          { We have something like:
 
-                          movb   mem,  %regb
-                          movzbl %regb,%regd
+                            movb   mem,  %regb
+                            movzbl %regb,%regd
 
-                          Change to:
+                            Change to:
 
-                          movzbl mem,  %regd
-                        }
-                        if (taicpu(p).oper[0]^.ref^.refaddr<>addr_full) and (IsMOVZXAcceptable or (taicpu(hp1).opcode<>A_MOVZX)) then
-                          begin
-                            DebugMsg(SPeepholeOptimization + 'MovMovXX2MovXX 1 done',p);
-                            taicpu(hp1).loadref(0,taicpu(p).oper[0]^.ref^);
-                            RemoveCurrentP(p, hp1);
-                            Result:=True;
-                            Exit;
-                          end;
+                            movzbl mem,  %regd
+                          }
+                          ThisRef := taicpu(p).oper[0]^.ref^;
+                          if (ThisRef.refaddr<>addr_full) and (IsMOVZXAcceptable or (taicpu(hp1).opcode<>A_MOVZX)) then
+                            begin
+                              DebugMsg(SPeepholeOptimization + 'MovMovXX2MovXX 1 done',p);
+                              taicpu(hp1).loadref(0, ThisRef);
+
+                              { Make sure any registers in the references are properly tracked }
+                              if (ThisRef.base <> NR_NO){$ifdef x86_64} and (ThisRef.base <> NR_RIP){$endif x86_64} then
+                                AllocRegBetween(ThisRef.base, p, hp1, UsedRegs);
+
+                              if (ThisRef.index <> NR_NO) then
+                                AllocRegBetween(ThisRef.index, p, hp1, UsedRegs);
+
+                              RemoveCurrentP(p, hp1);
+                              Result := True;
+                              Exit;
+                            end;
+                        end;
                       else
                         if (taicpu(hp1).opcode <> A_MOV) and (taicpu(hp1).opcode <> A_LEA) then
                           { Just to make a saving, since there are no more optimisations with MOVZX and MOVSX/D }
@@ -10112,14 +10124,18 @@ unit aoptx86;
                    not(hp1.typ=ait_label) do
                    begin
                       inc(l);
+                      hp5 := hp1;
                       GetNextInstruction(hp1,hp1);
                    end;
                  if assigned(hp1) then
                    begin
+                      TransferUsedRegs(TmpUsedRegs);
                       if FindLabel(tasmlabel(symbol),hp1) then
                         begin
                           if (l<=4) and (l>0) then
                             begin
+                              AllocRegBetween(NR_DEFAULTFLAGS, p, hp5, TmpUsedRegs);
+
                               condition:=inverse_cond(taicpu(p).condition);
                               UpdateUsedRegs(tai(p.next));
                               GetNextInstruction(p,hp1);
@@ -10221,6 +10237,7 @@ unit aoptx86;
                                  CanBeCMOV(hp1) do
                                  begin
                                    inc(l);
+                                   hp5 := hp1;
                                    GetNextInstruction(hp1, hp1);
                                  end;
                                { hp1 points to yyy (or an align right before it) }
@@ -10228,6 +10245,8 @@ unit aoptx86;
                                if assigned(hp1) and
                                  FindLabel(tasmlabel(taicpu(hp2).oper[0]^.ref^.symbol),hp1) then
                                  begin
+                                    AllocRegBetween(NR_DEFAULTFLAGS, p, hp5, TmpUsedRegs);
+
                                     condition:=inverse_cond(taicpu(p).condition);
                                     UpdateUsedRegs(tai(p.next));
                                     GetNextInstruction(p,hp1);
