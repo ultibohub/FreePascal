@@ -56,7 +56,9 @@
              cpu_riscv32,                  { 19 }
              cpu_riscv64,                  { 20 }
              cpu_xtensa,                   { 21 }
-             cpu_z80                       { 22 }
+             cpu_z80,                      { 22 }
+             cpu_mips64,                   { 23 }
+             cpu_mips64el                  { 24 }
        );
 
        tasmmode= (asmmode_none
@@ -206,10 +208,12 @@
              system_wasm32_wasi,        { 114 }
              system_aarch64_freebsd,    { 115 }
              system_aarch64_embedded,   { 116 }
-             system_arm_ultibo,         { 117 }
-             system_i386_ultibo,        { 118 }
-             system_x86_64_ultibo,      { 119 }
-             system_aarch64_ultibo      { 120 }
+             system_mips64_linux,       { 117 }
+             system_mips64el_linux,     { 118 }
+             system_arm_ultibo,         { 119 }
+             system_i386_ultibo,        { 120 }
+             system_x86_64_ultibo,      { 121 }
+             system_aarch64_ultibo      { 122 }
        );
 
      type

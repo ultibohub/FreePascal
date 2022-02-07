@@ -3008,6 +3008,19 @@ begin
                           end
                         else
 {$endif defined(i8086)}
+{$if defined(m68k)}
+                        if (target_info.system in [system_m68k_atari]) then
+                          begin
+                            case Upper(Copy(More,j+1,255)) of
+                              'TOS': ataritos_exe_format := 'ataritos';
+                              'MINT': ataritos_exe_format := 'aoutmint';
+                              else
+                                IllegalPara(opt);
+                            end;
+                            break;
+                          end
+                        else
+{$endif defined(m68k)}
                           IllegalPara(opt);
                       end;
                     'T':
@@ -4158,8 +4171,8 @@ procedure read_arguments(cmd:TCmdStr);
 
       {$ifdef mipsel}
         def_system_macro('CPUMIPS');
-        def_system_macro('CPUMIPS32');
         def_system_macro('CPUMIPSEL');
+        def_system_macro('CPUMIPS32');
         def_system_macro('CPUMIPSEL32');
         def_system_macro('CPU32');
         def_system_macro('FPC_HAS_TYPE_DOUBLE');
@@ -4177,8 +4190,8 @@ procedure read_arguments(cmd:TCmdStr);
 
       {$ifdef mipseb}
         def_system_macro('CPUMIPS');
-        def_system_macro('CPUMIPS32');
         def_system_macro('CPUMIPSEB');
+        def_system_macro('CPUMIPS32');
         def_system_macro('CPUMIPSEB32');
         def_system_macro('CPU32');
         def_system_macro('FPC_HAS_TYPE_DOUBLE');
@@ -4189,7 +4202,40 @@ procedure read_arguments(cmd:TCmdStr);
         def_system_macro('FPC_REQUIRES_PROPER_ALIGNMENT');
         { See comment above for mipsel }
         def_system_macro('FPC_LOCALS_ARE_STACK_REG_RELATIVE');
-      {$endif}
+      {$endif mipseb}
+
+      {$ifdef mips64eb}
+        def_system_macro('CPUMIPS');
+        def_system_macro('CPUMIPS64');
+        def_system_macro('CPUMIPSEB64');
+        def_system_macro('CPUMIPS64EB');
+        def_system_macro('CPU64');
+        def_system_macro('FPC_INCLUDE_SOFTWARE_INT64_TO_DOUBLE');
+        def_system_macro('FPC_CURRENCY_IS_INT64');
+        def_system_macro('FPC_COMP_IS_INT64');
+        def_system_macro('FPC_REQUIRES_PROPER_ALIGNMENT');
+        { See comment above for mipsel }
+        def_system_macro('FPC_LOCALS_ARE_STACK_REG_RELATIVE');
+      {$endif mips64eb}
+
+      {$ifdef mips64el}
+        def_system_macro('CPUMIPS');
+        def_system_macro('CPUMIPS64');
+        def_system_macro('CPUMIPSEL64');
+        def_system_macro('CPUMIPS64EL');
+        def_system_macro('CPU64');
+        def_system_macro('FPC_HAS_TYPE_DOUBLE');
+        def_system_macro('FPC_HAS_TYPE_SINGLE');
+        def_system_macro('FPC_INCLUDE_SOFTWARE_INT64_TO_DOUBLE');
+        def_system_macro('FPC_CURRENCY_IS_INT64');
+        def_system_macro('FPC_COMP_IS_INT64');
+        def_system_macro('FPC_REQUIRES_PROPER_ALIGNMENT');
+        { On most systems, locals are accessed relative to base pointer,
+          but for MIPS cpu, they are accessed relative to stack pointer.
+          This needs adaptation for so low level routines,
+          like MethodPointerLocal and related objects unit functions. }
+        def_system_macro('FPC_LOCALS_ARE_STACK_REG_RELATIVE');
+      {$endif mips64el}
 
       {$ifdef i8086}
         def_system_macro('CPU86');  { Borland compatibility }

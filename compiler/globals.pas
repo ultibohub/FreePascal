@@ -418,6 +418,7 @@ interface
 {$if defined(m68k)}
        { Atari Specific }
        ataritos_exe_flags: dword = 7;
+       ataritos_exe_format: string = 'ataritos';
 
        { Sinclair QL specific }
        sinclairql_metadata_format: string[4] = 'QHDR';
@@ -540,10 +541,17 @@ interface
         fputype : fpu_none;
   {$endif avr}
   {$ifdef mips}
+  {$ifdef mips64}
+        cputype : cpu_mips3;
+        optimizecputype : cpu_mips3;
+        asmcputype : cpu_none;
+        fputype : fpu_mips3;
+  {$else mips64}
         cputype : cpu_mips2;
         optimizecputype : cpu_mips2;
         asmcputype : cpu_none;
         fputype : fpu_mips2;
+  {$endif mips64}
   {$endif mips}
   {$ifdef jvm}
         cputype : cpu_none;

@@ -770,12 +770,14 @@ procedure TTypescriptToPas.DumpElements;
     N : TJSElementNode;
 
   begin
+    {AllowWriteln}
     Writeln(aSection,': ',aList.Count,' elements');
     For I:=0 to aList.Count-1 do
       begin
       N:=Alist[i];
       Writeln(aSection,' element ',I,' : ',N.Node.ClassName);
       end;
+    {AllowWriteln-}
   end;
 
 Var
@@ -1777,6 +1779,7 @@ begin
         DoLog(SLogParsedNDefinitions, [FContext.FTypeMap.Count]);
     finally
       Context.PopScope(SourceElements,Fwds);
+      Fwds.Free;
     end;
     if Assigned(TypeAliases) then
       FContext.AddAliases(TypeAliases);

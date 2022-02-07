@@ -395,7 +395,7 @@ interface
 
        systems_internal_sysinit = [system_i386_win32,system_x86_64_win64,
                                    system_i386_linux,system_powerpc64_linux,system_sparc64_linux,system_x86_64_linux,
-                                   system_xtensa_linux,
+                                   system_xtensa_linux,system_mips64_linux,system_mips64el_linux,
                                    system_m68k_atari,system_m68k_palmos,system_m68k_sinclairql,
                                    system_i386_haiku,system_x86_64_haiku,
                                    system_i386_openbsd,system_x86_64_openbsd,
@@ -452,6 +452,11 @@ interface
          on the caller side rather than on the callee side }
        systems_caller_copy_addr_value_para = [system_aarch64_ios,system_aarch64_darwin,system_aarch64_linux,system_aarch64_win64,system_aarch64_freebsd,system_aarch64_ultibo];
 
+       { all PPC ABIs that use a TOC register to address globals }
+       abis_ppc_toc = [
+         abi_powerpc_sysv,abi_powerpc_aix,abi_powerpc_elfv2
+       ];
+
        { pointer checking (requires special code in FPC_CHECKPOINTER,
          and can never work for libc-based targets or any other program
          linking to an external library)
@@ -473,7 +478,7 @@ interface
             ('','i386','m68k','alpha','powerpc','sparc','vm','ia64','x86_64',
              'mips','arm', 'powerpc64', 'avr', 'mipsel','jvm', 'i8086',
              'aarch64', 'wasm32', 'sparc64', 'riscv32', 'riscv64', 'xtensa',
-             'z80');
+             'z80', 'mips64', 'mips64el');
 
        abiinfo : array[tabi] of tabiinfo = (
          (name: 'DEFAULT'; supported: true),
@@ -1121,7 +1126,7 @@ begin
   default_target(system_avr_embedded);
 {$endif avr}
 
-{$ifdef mips}
+{$ifdef mips32}
 {$ifdef mipsel}
   {$ifdef cpumipsel}
     default_target(source_info.system);
@@ -1131,7 +1136,7 @@ begin
 {$else mipsel}
   default_target(system_mipseb_linux);
 {$endif mipsel}
-{$endif mips}
+{$endif mips32}
 
 {$ifdef jvm}
   default_target(system_jvm_java32);
@@ -1206,6 +1211,13 @@ begin
   {$endif ndef default_target_set}
 {$endif xtensa}
 
+{$ifdef mips64eb}
+  default_target(system_mips64_linux);
+{$endif mips64eb}
+
+{$ifdef mips64el}
+  default_target(system_mips64el_linux);
+{$endif mips64el}
 end;
 
 

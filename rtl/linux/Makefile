@@ -399,6 +399,14 @@ ifeq ($(ARCH),riscv64)
 override LOADERS=
 SYSINIT_UNITS=si_prc si_dll si_c si_g
 endif
+ifeq ($(ARCH),mips64)
+override LOADERS=
+SYSINIT_UNITS=si_prc si_dll si_c si_g
+endif
+ifeq ($(ARCH),mips64el)
+override LOADERS=
+SYSINIT_UNITS=si_prc si_dll si_c si_g
+endif
 ifeq ($(ARCH),mipsel)
 override FPCOPT+=-Ur
 endif
@@ -3975,7 +3983,7 @@ ifdef CREATESHARED
 override FPCOPT+=-Cg
 endif
 ifneq ($(filter $(OS_TARGET),dragonfly freebsd openbsd netbsd linux solaris),)
-ifneq ($(filter $(CPU_TARGET),x86_64 mips mipsel riscv64 powerpc64),)
+ifneq ($(filter $(CPU_TARGET),x86_64 mips mipsel mips64 mips64el riscv64 powerpc64),)
 override FPCOPT+=-Cg
 endif
 endif

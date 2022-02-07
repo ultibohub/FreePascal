@@ -262,21 +262,29 @@
 
 {$ifdef mipsel}
   {$define mips}
+  {$define mips32}
 {$else not mipsel}
   { Define both mips and mipseb if mipsel is not defined
     but mips cpu is wanted. }
   {$ifdef mipseb}
     {$define mips}
+    {$define mips32}
   {$endif mipseb}
   {$ifdef mips}
     {$define mipseb}
+    {$define mips32}
   {$endif mips}
 {$endif mipsel}
+
+{$ifdef mips64eb}
+  {$define mips}
+  {$define mips64}
+{$endif mips64eb}
 
 {$ifdef mips64el}
   {$define mips}
   {$define mips64}
-{$endif mipsel}
+{$endif mips64el}
 
 {$ifdef mips}
   {$ifndef mips64}
