@@ -38,6 +38,7 @@ type
     char : byte;
     ScanValue : byte;
     CharValue : byte;
+    ShiftValue : TEnhancedShiftState;
     SpecialHandler : Tprocedure;
   end;
 
@@ -56,13 +57,14 @@ function AddSpecialSequence(const St : string;Proc : Tprocedure) : PTreeElement;
 {*****************************************************************************}
 
 uses
-  Mouse,  Strings,
+  Mouse,  Strings,unixkvmbase,
   termio,baseUnix
   {$ifdef linux},linuxvcs{$endif};
 
 {$i keyboard.inc}
 
 var OldIO,StartTio : TermIos;
+    Utf8KeyboardInputEnabled: Boolean;
 {$ifdef linux}
     is_console:boolean;
     vt_switched_away:boolean;
@@ -74,9 +76,11 @@ var OldIO,StartTio : TermIos;
 const
   KeyBufferSize = 20;
 var
-  KeyBuffer : Array[0..KeyBufferSize-1] of Char;
+  KeyBuffer : Array[0..KeyBufferSize-1] of TEnhancedKeyEvent;
   KeyPut,
   KeySend   : longint;
+
+  PendingEnhancedKeyEvent: TEnhancedKeyEvent;
 
 { Buffered Input routines }
 const
@@ -177,9 +181,9 @@ type
  end;
 
 const
-  kbdchange:array[0..23] of chgentry=(
+  kbdchange:array[0..35] of chgentry=(
     {This prevents the alt+function keys from switching consoles.
-     We code the F1..F12 sequences into ALT+F1..ALT+12, we check
+     We code the F1..F12 sequences into ALT+F1..ALT+F12, we check
      the shiftstates separetely anyway.}
     (tab:8; idx:$3b; oldtab:0; oldidx:$3b; oldval:0; newval:0),
     (tab:8; idx:$3c; oldtab:0; oldidx:$3c; oldval:0; newval:0),
@@ -191,10 +195,10 @@ const
     (tab:8; idx:$42; oldtab:0; oldidx:$42; oldval:0; newval:0),
     (tab:8; idx:$43; oldtab:0; oldidx:$43; oldval:0; newval:0),
     (tab:8; idx:$44; oldtab:0; oldidx:$44; oldval:0; newval:0),
-    (tab:8; idx:$45; oldtab:0; oldidx:$45; oldval:0; newval:0),
-    (tab:8; idx:$46; oldtab:0; oldidx:$46; oldval:0; newval:0),
+    (tab:8; idx:$57; oldtab:0; oldidx:$57; oldval:0; newval:0),
+    (tab:8; idx:$58; oldtab:0; oldidx:$58; oldval:0; newval:0),
     {This prevents the shift+function keys outputting strings, so
-     the kernel will the codes for the non-shifted function
+     the kernel will send the codes for the non-shifted function
      keys. This is desired because normally shift+f1/f2 will output the
      same string as f11/12. We will get the shift state separately.}
     (tab:1; idx:$3b; oldtab:0; oldidx:$3b; oldval:0; newval:0),
@@ -207,8 +211,24 @@ const
     (tab:1; idx:$42; oldtab:0; oldidx:$42; oldval:0; newval:0),
     (tab:1; idx:$43; oldtab:0; oldidx:$43; oldval:0; newval:0),
     (tab:1; idx:$44; oldtab:0; oldidx:$44; oldval:0; newval:0),
-    (tab:1; idx:$45; oldtab:0; oldidx:$45; oldval:0; newval:0),
-    (tab:1; idx:$46; oldtab:0; oldidx:$46; oldval:0; newval:0)
+    (tab:1; idx:$57; oldtab:0; oldidx:$57; oldval:0; newval:0),
+    (tab:1; idx:$58; oldtab:0; oldidx:$58; oldval:0; newval:0),
+    {This maps ctrl+function keys outputting strings to the regular
+     F1..F12 keys also, because they no longer produce an ASCII
+     output at all in most modern linux keymaps. We obtain the
+     shift state separately.}
+    (tab:4; idx:$3b; oldtab:0; oldidx:$3b; oldval:0; newval:0),
+    (tab:4; idx:$3c; oldtab:0; oldidx:$3c; oldval:0; newval:0),
+    (tab:4; idx:$3d; oldtab:0; oldidx:$3d; oldval:0; newval:0),
+    (tab:4; idx:$3e; oldtab:0; oldidx:$3e; oldval:0; newval:0),
+    (tab:4; idx:$3f; oldtab:0; oldidx:$3f; oldval:0; newval:0),
+    (tab:4; idx:$40; oldtab:0; oldidx:$40; oldval:0; newval:0),
+    (tab:4; idx:$41; oldtab:0; oldidx:$41; oldval:0; newval:0),
+    (tab:4; idx:$42; oldtab:0; oldidx:$42; oldval:0; newval:0),
+    (tab:4; idx:$43; oldtab:0; oldidx:$43; oldval:0; newval:0),
+    (tab:4; idx:$44; oldtab:0; oldidx:$44; oldval:0; newval:0),
+    (tab:4; idx:$57; oldtab:0; oldidx:$57; oldval:0; newval:0),
+    (tab:4; idx:$58; oldtab:0; oldidx:$58; oldval:0; newval:0)
   );
 
  KDGKBENT=$4B46;
@@ -410,7 +430,17 @@ begin
     InTail:=0;
 end;
 
-procedure PushKey(Ch:char);
+{ returns an already read character back into InBuf }
+procedure PutBackIntoInBuf(ch: Char);
+begin
+  If InTail=0 then
+    InTail:=InSize-1
+  else
+    Dec(InTail);
+  InBuf[InTail]:=ch;
+end;
+
+procedure PushKey(const Ch:TEnhancedKeyEvent);
 var
   Tmp : Longint;
 begin
@@ -425,7 +455,7 @@ begin
 End;
 
 
-function PopKey:char;
+function PopKey:TEnhancedKeyEvent;
 begin
   If KeyPut<>KeySend Then
    begin
@@ -435,30 +465,7 @@ begin
       KeySend:=0;
    End
   Else
-   PopKey:=#0;
-End;
-
-
-procedure PushExt(b:byte);
-begin
-  PushKey(#0);
-  PushKey(chr(b));
-end;
-
-
-const
-  AltKeyStr  : string[38]='qwertyuiopasdfghjklzxcvbnm1234567890-=';
-  AltCodeStr : string[38]=#016#017#018#019#020#021#022#023#024#025#030#031#032#033#034#035#036#037#038+
-                          #044#045#046#047#048#049#050#120#121#122#123#124#125#126#127#128#129#130#131;
-function FAltKey(ch:char):byte;
-var
-  Idx : longint;
-begin
-  Idx:=Pos(ch,AltKeyStr);
-  if Idx>0 then
-   FAltKey:=byte(AltCodeStr[Idx])
-  else
-   FAltKey:=0;
+   PopKey:=NilEnhancedKeyEvent;
 End;
 
 
@@ -730,7 +737,7 @@ begin
     Pa^.Child:=newPtree;
 end;
 
-function DoAddSequence(const St : String; AChar,AScan :byte) : PTreeElement;
+function DoAddSequence(const St : String; AChar,AScan :byte; const AShift: TEnhancedShiftState) : PTreeElement;
 var
   CurPTree,NPT : PTreeElement;
   c : byte;
@@ -794,6 +801,7 @@ begin
 {$endif DEBUG}
           ScanValue:=AScan;
           CharValue:=AChar;
+          ShiftValue:=AShift;
         end;
     end
   else with CurPTree^ do
@@ -801,6 +809,7 @@ begin
       CanBeTerminal:=True;
       ScanValue:=AScan;
       CharValue:=AChar;
+      ShiftValue:=AShift;
     end;
   DoAddSequence:=CurPTree;
 end;
@@ -808,7 +817,7 @@ end;
 
 procedure AddSequence(const St : String; AChar,AScan :byte);inline;
 begin
-  DoAddSequence(St,AChar,AScan);
+  DoAddSequence(St,AChar,AScan,[]);
 end;
 
 { Returns the Child that as c as char if it exists }
@@ -829,7 +838,7 @@ function AddSpecialSequence(const St : string;Proc : Tprocedure) : PTreeElement;
 var
   NPT : PTreeElement;
 begin
-  NPT:=DoAddSequence(St,0,0);
+  NPT:=DoAddSequence(St,0,0,[]);
   NPT^.SpecialHandler:=Proc;
   AddSpecialSequence:=NPT;
 end;
@@ -871,331 +880,355 @@ begin
 end;
 
 type  key_sequence=packed record
-        char,scan:byte;
+        char:0..127;
+        scan:byte;
+        shift:TEnhancedShiftState;
         st:string[7];
       end;
 
-const key_sequences:array[0..297] of key_sequence=(
-       (char:0;scan:kbAltA;st:#27'A'),
-       (char:0;scan:kbAltA;st:#27'a'),
-       (char:0;scan:kbAltB;st:#27'B'),
-       (char:0;scan:kbAltB;st:#27'b'),
-       (char:0;scan:kbAltC;st:#27'C'),
-       (char:0;scan:kbAltC;st:#27'c'),
-       (char:0;scan:kbAltD;st:#27'D'),
-       (char:0;scan:kbAltD;st:#27'd'),
-       (char:0;scan:kbAltE;st:#27'E'),
-       (char:0;scan:kbAltE;st:#27'e'),
-       (char:0;scan:kbAltF;st:#27'F'),
-       (char:0;scan:kbAltF;st:#27'f'),
-       (char:0;scan:kbAltG;st:#27'G'),
-       (char:0;scan:kbAltG;st:#27'g'),
-       (char:0;scan:kbAltH;st:#27'H'),
-       (char:0;scan:kbAltH;st:#27'h'),
-       (char:0;scan:kbAltI;st:#27'I'),
-       (char:0;scan:kbAltI;st:#27'i'),
-       (char:0;scan:kbAltJ;st:#27'J'),
-       (char:0;scan:kbAltJ;st:#27'j'),
-       (char:0;scan:kbAltK;st:#27'K'),
-       (char:0;scan:kbAltK;st:#27'k'),
-       (char:0;scan:kbAltL;st:#27'L'),
-       (char:0;scan:kbAltL;st:#27'l'),
-       (char:0;scan:kbAltM;st:#27'M'),
-       (char:0;scan:kbAltM;st:#27'm'),
-       (char:0;scan:kbAltN;st:#27'N'),
-       (char:0;scan:kbAltN;st:#27'n'),
-       (char:0;scan:kbAltO;st:#27'O'),
-       (char:0;scan:kbAltO;st:#27'o'),
-       (char:0;scan:kbAltP;st:#27'P'),
-       (char:0;scan:kbAltP;st:#27'p'),
-       (char:0;scan:kbAltQ;st:#27'Q'),
-       (char:0;scan:kbAltQ;st:#27'q'),
-       (char:0;scan:kbAltR;st:#27'R'),
-       (char:0;scan:kbAltR;st:#27'r'),
-       (char:0;scan:kbAltS;st:#27'S'),
-       (char:0;scan:kbAltS;st:#27's'),
-       (char:0;scan:kbAltT;st:#27'T'),
-       (char:0;scan:kbAltT;st:#27't'),
-       (char:0;scan:kbAltU;st:#27'U'),
-       (char:0;scan:kbAltU;st:#27'u'),
-       (char:0;scan:kbAltV;st:#27'V'),
-       (char:0;scan:kbAltV;st:#27'v'),
-       (char:0;scan:kbAltW;st:#27'W'),
-       (char:0;scan:kbAltW;st:#27'w'),
-       (char:0;scan:kbAltX;st:#27'X'),
-       (char:0;scan:kbAltX;st:#27'x'),
-       (char:0;scan:kbAltY;st:#27'Y'),
-       (char:0;scan:kbAltY;st:#27'y'),
-       (char:0;scan:kbAltZ;st:#27'Z'),
-       (char:0;scan:kbAltZ;st:#27'z'),
-       (char:0;scan:kbAltMinus;st:#27'-'),
-       (char:0;scan:kbAltEqual;st:#27'='),
-       (char:0;scan:kbAlt0;st:#27'0'),
-       (char:0;scan:kbAlt1;st:#27'1'),
-       (char:0;scan:kbAlt2;st:#27'2'),
-       (char:0;scan:kbAlt3;st:#27'3'),
-       (char:0;scan:kbAlt4;st:#27'4'),
-       (char:0;scan:kbAlt5;st:#27'5'),
-       (char:0;scan:kbAlt6;st:#27'6'),
-       (char:0;scan:kbAlt7;st:#27'7'),
-       (char:0;scan:kbAlt8;st:#27'8'),
-       (char:0;scan:kbAlt9;st:#27'9'),
+const key_sequences:array[0..298] of key_sequence=(
+       (char:0;scan:kbAltA;shift:[essAlt];st:#27'A'),
+       (char:0;scan:kbAltA;shift:[essAlt];st:#27'a'),
+       (char:0;scan:kbAltB;shift:[essAlt];st:#27'B'),
+       (char:0;scan:kbAltB;shift:[essAlt];st:#27'b'),
+       (char:0;scan:kbAltC;shift:[essAlt];st:#27'C'),
+       (char:0;scan:kbAltC;shift:[essAlt];st:#27'c'),
+       (char:0;scan:kbAltD;shift:[essAlt];st:#27'D'),
+       (char:0;scan:kbAltD;shift:[essAlt];st:#27'd'),
+       (char:0;scan:kbAltE;shift:[essAlt];st:#27'E'),
+       (char:0;scan:kbAltE;shift:[essAlt];st:#27'e'),
+       (char:0;scan:kbAltF;shift:[essAlt];st:#27'F'),
+       (char:0;scan:kbAltF;shift:[essAlt];st:#27'f'),
+       (char:0;scan:kbAltG;shift:[essAlt];st:#27'G'),
+       (char:0;scan:kbAltG;shift:[essAlt];st:#27'g'),
+       (char:0;scan:kbAltH;shift:[essAlt];st:#27'H'),
+       (char:0;scan:kbAltH;shift:[essAlt];st:#27'h'),
+       (char:0;scan:kbAltI;shift:[essAlt];st:#27'I'),
+       (char:0;scan:kbAltI;shift:[essAlt];st:#27'i'),
+       (char:0;scan:kbAltJ;shift:[essAlt];st:#27'J'),
+       (char:0;scan:kbAltJ;shift:[essAlt];st:#27'j'),
+       (char:0;scan:kbAltK;shift:[essAlt];st:#27'K'),
+       (char:0;scan:kbAltK;shift:[essAlt];st:#27'k'),
+       (char:0;scan:kbAltL;shift:[essAlt];st:#27'L'),
+       (char:0;scan:kbAltL;shift:[essAlt];st:#27'l'),
+       (char:0;scan:kbAltM;shift:[essAlt];st:#27'M'),
+       (char:0;scan:kbAltM;shift:[essAlt];st:#27'm'),
+       (char:0;scan:kbAltN;shift:[essAlt];st:#27'N'),
+       (char:0;scan:kbAltN;shift:[essAlt];st:#27'n'),
+       (char:0;scan:kbAltO;shift:[essAlt];st:#27'O'),
+       (char:0;scan:kbAltO;shift:[essAlt];st:#27'o'),
+       (char:0;scan:kbAltP;shift:[essAlt];st:#27'P'),
+       (char:0;scan:kbAltP;shift:[essAlt];st:#27'p'),
+       (char:0;scan:kbAltQ;shift:[essAlt];st:#27'Q'),
+       (char:0;scan:kbAltQ;shift:[essAlt];st:#27'q'),
+       (char:0;scan:kbAltR;shift:[essAlt];st:#27'R'),
+       (char:0;scan:kbAltR;shift:[essAlt];st:#27'r'),
+       (char:0;scan:kbAltS;shift:[essAlt];st:#27'S'),
+       (char:0;scan:kbAltS;shift:[essAlt];st:#27's'),
+       (char:0;scan:kbAltT;shift:[essAlt];st:#27'T'),
+       (char:0;scan:kbAltT;shift:[essAlt];st:#27't'),
+       (char:0;scan:kbAltU;shift:[essAlt];st:#27'U'),
+       (char:0;scan:kbAltU;shift:[essAlt];st:#27'u'),
+       (char:0;scan:kbAltV;shift:[essAlt];st:#27'V'),
+       (char:0;scan:kbAltV;shift:[essAlt];st:#27'v'),
+       (char:0;scan:kbAltW;shift:[essAlt];st:#27'W'),
+       (char:0;scan:kbAltW;shift:[essAlt];st:#27'w'),
+       (char:0;scan:kbAltX;shift:[essAlt];st:#27'X'),
+       (char:0;scan:kbAltX;shift:[essAlt];st:#27'x'),
+       (char:0;scan:kbAltY;shift:[essAlt];st:#27'Y'),
+       (char:0;scan:kbAltY;shift:[essAlt];st:#27'y'),
+       (char:0;scan:kbAltZ;shift:[essAlt];st:#27'Z'),
+       (char:0;scan:kbAltZ;shift:[essAlt];st:#27'z'),
+       (char:0;scan:kbAltMinus;shift:[essAlt];st:#27'-'),
+       (char:0;scan:kbAltEqual;shift:[essAlt];st:#27'='),
+       (char:0;scan:kbAlt0;shift:[essAlt];st:#27'0'),
+       (char:0;scan:kbAlt1;shift:[essAlt];st:#27'1'),
+       (char:0;scan:kbAlt2;shift:[essAlt];st:#27'2'),
+       (char:0;scan:kbAlt3;shift:[essAlt];st:#27'3'),
+       (char:0;scan:kbAlt4;shift:[essAlt];st:#27'4'),
+       (char:0;scan:kbAlt5;shift:[essAlt];st:#27'5'),
+       (char:0;scan:kbAlt6;shift:[essAlt];st:#27'6'),
+       (char:0;scan:kbAlt7;shift:[essAlt];st:#27'7'),
+       (char:0;scan:kbAlt8;shift:[essAlt];st:#27'8'),
+       (char:0;scan:kbAlt9;shift:[essAlt];st:#27'9'),
 
-       (char:0;scan:kbF1;st:#27'[[A'),           {linux,konsole,xterm}
-       (char:0;scan:kbF2;st:#27'[[B'),           {linux,konsole,xterm}
-       (char:0;scan:kbF3;st:#27'[[C'),           {linux,konsole,xterm}
-       (char:0;scan:kbF4;st:#27'[[D'),           {linux,konsole,xterm}
-       (char:0;scan:kbF5;st:#27'[[E'),           {linux,konsole}
-       (char:0;scan:kbF1;st:#27'[11~'),          {Eterm,rxvt}
-       (char:0;scan:kbF2;st:#27'[12~'),          {Eterm,rxvt}
-       (char:0;scan:kbF3;st:#27'[13~'),          {Eterm,rxvt}
-       (char:0;scan:kbF4;st:#27'[14~'),          {Eterm,rxvt}
-       (char:0;scan:kbF5;st:#27'[15~'),          {xterm,Eterm,gnome,rxvt}
-       (char:0;scan:kbF6;st:#27'[17~'),          {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF7;st:#27'[18~'),          {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF8;st:#27'[19~'),          {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF9;st:#27'[20~'),          {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF10;st:#27'[21~'),         {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF11;st:#27'[23~'),         {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF12;st:#27'[24~'),         {linux,xterm,Eterm,konsole,gnome,rxvt}
-       (char:0;scan:kbF1;st:#27'[M'),            {FreeBSD}
-       (char:0;scan:kbF2;st:#27'[N'),            {FreeBSD}
-       (char:0;scan:kbF3;st:#27'[O'),            {FreeBSD}
-       (char:0;scan:kbF4;st:#27'[P'),            {FreeBSD}
-       (char:0;scan:kbF5;st:#27'[Q'),            {FreeBSD}
-       (char:0;scan:kbF6;st:#27'[R'),            {FreeBSD}
-       (char:0;scan:kbF7;st:#27'[S'),            {FreeBSD}
-       (char:0;scan:kbF8;st:#27'[T'),            {FreeBSD}
-       (char:0;scan:kbF9;st:#27'[U'),            {FreeBSD}
-       (char:0;scan:kbF10;st:#27'[V'),           {FreeBSD}
-       (char:0;scan:kbF11;st:#27'[W'),           {FreeBSD}
-       (char:0;scan:kbF12;st:#27'[X'),           {FreeBSD}
-       (char:0;scan:kbF1;st:#27'OP'),            {vt100,gnome,konsole}
-       (char:0;scan:kbF2;st:#27'OQ'),            {vt100,gnome,konsole}
-       (char:0;scan:kbF3;st:#27'OR'),            {vt100,gnome,konsole}
-       (char:0;scan:kbF4;st:#27'OS'),            {vt100,gnome,konsole}
-       (char:0;scan:kbF5;st:#27'Ot'),            {vt100}
-       (char:0;scan:kbF6;st:#27'Ou'),            {vt100}
-       (char:0;scan:kbF7;st:#27'Ov'),            {vt100}
-       (char:0;scan:kbF8;st:#27'Ol'),            {vt100}
-       (char:0;scan:kbF9;st:#27'Ow'),            {vt100}
-       (char:0;scan:kbF10;st:#27'Ox'),           {vt100}
-       (char:0;scan:kbF11;st:#27'Oy'),           {vt100}
-       (char:0;scan:kbF12;st:#27'Oz'),           {vt100}
-       (char:0;scan:kbEsc;st:#27'[0~'),          {if linux keyboard patched, escape
-                                                  returns this}
-       (char:0;scan:kbIns;st:#27'[2~'),          {linux,Eterm,rxvt}
-       (char:0;scan:kbDel;st:#27'[3~'),          {linux,Eterm,rxvt}
-       (char:0;scan:kbHome;st:#27'[1~'),         {linux}
-       (char:0;scan:kbHome;st:#27'[7~'),         {Eterm,rxvt}
-       (char:0;scan:kbHome;st:#27'[H'),          {FreeBSD}
-       (char:0;scan:kbHome;st:#27'OH'),          {some xterm configurations}
-       (char:0;scan:kbEnd;st:#27'[4~'),          {linux,Eterm}
-       (char:0;scan:kbEnd;st:#27'[8~'),          {rxvt}
-       (char:0;scan:kbEnd;st:#27'[F'),           {FreeBSD}
-       (char:0;scan:kbEnd;st:#27'OF'),           {some xterm configurations}
-       (char:0;scan:kbPgUp;st:#27'[5~'),         {linux,Eterm,rxvt}
-       (char:0;scan:kbPgUp;st:#27'[I'),          {FreeBSD}
-       (char:0;scan:kbPgDn;st:#27'[6~'),         {linux,Eterm,rxvt}
-       (char:0;scan:kbPgDn;st:#27'[G'),          {FreeBSD}
-       (char:0;scan:kbUp;st:#27'[A'),            {linux,FreeBSD,rxvt}
-       (char:0;scan:kbDown;st:#27'[B'),          {linux,FreeBSD,rxvt}
-       (char:0;scan:kbRight;st:#27'[C'),         {linux,FreeBSD,rxvt}
-       (char:0;scan:kbLeft;st:#27'[D'),          {linux,FreeBSD,rxvt}
-       (char:0;scan:kbUp;st:#27'OA'),            {xterm}
-       (char:0;scan:kbDown;st:#27'OB'),          {xterm}
-       (char:0;scan:kbRight;st:#27'OC'),         {xterm}
-       (char:0;scan:kbLeft;st:#27'OD'),          {xterm}
+       (char:0;scan:kbF1;shift:[];st:#27'[[A'),                   {linux,konsole,xterm}
+       (char:0;scan:kbF2;shift:[];st:#27'[[B'),                   {linux,konsole,xterm}
+       (char:0;scan:kbF3;shift:[];st:#27'[[C'),                   {linux,konsole,xterm}
+       (char:0;scan:kbF4;shift:[];st:#27'[[D'),                   {linux,konsole,xterm}
+       (char:0;scan:kbF5;shift:[];st:#27'[[E'),                   {linux,konsole}
+       (char:0;scan:kbF1;shift:[];st:#27'[11~'),                  {Eterm,rxvt}
+       (char:0;scan:kbF2;shift:[];st:#27'[12~'),                  {Eterm,rxvt}
+       (char:0;scan:kbF3;shift:[];st:#27'[13~'),                  {Eterm,rxvt}
+       (char:0;scan:kbF4;shift:[];st:#27'[14~'),                  {Eterm,rxvt}
+       (char:0;scan:kbF5;shift:[];st:#27'[15~'),                  {xterm,Eterm,gnome,rxvt}
+       (char:0;scan:kbF6;shift:[];st:#27'[17~'),                  {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF7;shift:[];st:#27'[18~'),                  {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF8;shift:[];st:#27'[19~'),                  {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF9;shift:[];st:#27'[20~'),                  {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF10;shift:[];st:#27'[21~'),                 {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF11;shift:[];st:#27'[23~'),                 {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF12;shift:[];st:#27'[24~'),                 {linux,xterm,Eterm,konsole,gnome,rxvt}
+       (char:0;scan:kbF1;shift:[];st:#27'[M'),                    {FreeBSD}
+       (char:0;scan:kbF2;shift:[];st:#27'[N'),                    {FreeBSD}
+       (char:0;scan:kbF3;shift:[];st:#27'[O'),                    {FreeBSD}
+       (char:0;scan:kbF4;shift:[];st:#27'[P'),                    {FreeBSD}
+       (char:0;scan:kbF5;shift:[];st:#27'[Q'),                    {FreeBSD}
+       (char:0;scan:kbF6;shift:[];st:#27'[R'),                    {FreeBSD}
+       (char:0;scan:kbF7;shift:[];st:#27'[S'),                    {FreeBSD}
+       (char:0;scan:kbF8;shift:[];st:#27'[T'),                    {FreeBSD}
+       (char:0;scan:kbF9;shift:[];st:#27'[U'),                    {FreeBSD}
+       (char:0;scan:kbF10;shift:[];st:#27'[V'),                   {FreeBSD}
+       (char:0;scan:kbF11;shift:[];st:#27'[W'),                   {FreeBSD}
+       (char:0;scan:kbF12;shift:[];st:#27'[X'),                   {FreeBSD}
+       (char:0;scan:kbF1;shift:[];st:#27'OP'),                    {vt100,gnome,konsole}
+       (char:0;scan:kbF2;shift:[];st:#27'OQ'),                    {vt100,gnome,konsole}
+       (char:0;scan:kbF3;shift:[];st:#27'OR'),                    {vt100,gnome,konsole}
+       (char:0;scan:kbF4;shift:[];st:#27'OS'),                    {vt100,gnome,konsole}
+       (char:0;scan:kbF5;shift:[];st:#27'Ot'),                    {vt100}
+       (char:0;scan:kbF6;shift:[];st:#27'Ou'),                    {vt100}
+       (char:0;scan:kbF7;shift:[];st:#27'Ov'),                    {vt100}
+       (char:0;scan:kbF8;shift:[];st:#27'Ol'),                    {vt100}
+       (char:0;scan:kbF9;shift:[];st:#27'Ow'),                    {vt100}
+       (char:0;scan:kbF10;shift:[];st:#27'Ox'),                   {vt100}
+       (char:0;scan:kbF11;shift:[];st:#27'Oy'),                   {vt100}
+       (char:0;scan:kbF12;shift:[];st:#27'Oz'),                   {vt100}
+       (char:27;scan:kbEsc;shift:[];st:#27'[0~'),                 {if linux keyboard patched, escape
+                                                                   returns this}
+       (char:0;scan:kbIns;shift:[];st:#27'[2~'),                  {linux,Eterm,rxvt}
+       (char:0;scan:kbDel;shift:[];st:#27'[3~'),                  {linux,Eterm,rxvt}
+       (char:0;scan:kbHome;shift:[];st:#27'[1~'),                 {linux}
+       (char:0;scan:kbHome;shift:[];st:#27'[7~'),                 {Eterm,rxvt}
+       (char:0;scan:kbHome;shift:[];st:#27'[H'),                  {FreeBSD}
+       (char:0;scan:kbHome;shift:[];st:#27'OH'),                  {some xterm configurations}
+       (char:0;scan:kbEnd;shift:[];st:#27'[4~'),                  {linux,Eterm}
+       (char:0;scan:kbEnd;shift:[];st:#27'[8~'),                  {rxvt}
+       (char:0;scan:kbEnd;shift:[];st:#27'[F'),                   {FreeBSD}
+       (char:0;scan:kbEnd;shift:[];st:#27'OF'),                   {some xterm configurations}
+       (char:0;scan:kbPgUp;shift:[];st:#27'[5~'),                 {linux,Eterm,rxvt}
+       (char:0;scan:kbPgUp;shift:[];st:#27'[I'),                  {FreeBSD}
+       (char:0;scan:kbPgDn;shift:[];st:#27'[6~'),                 {linux,Eterm,rxvt}
+{$ifdef FREEBSD}
+       (char:0;scan:kbPgDn;shift:[];st:#27'[G'),                  {FreeBSD, conflicts with linux.
+                                                                   Note: new FreeBSD versions seem
+                                                                   to use xterm-like sequences, so
+                                                                   this one is not needed for them.
+                                                                   Todo: resolve conflicting sequences
+                                                                   according to the TERM variable,
+                                                                   instead of using IFDEFs, this way
+                                                                   it'll work over SSH across platforms
+                                                                   too.}
+{$else FREEBSD}
+       (char:0;scan:kbCenter;shift:[];st:#27'[G'),                {linux}
+{$endif FREEBSD}
+       (char:0;scan:kbCenter;shift:[];st:#27'[E'),                {xterm,gnome3}
+       (char:0;scan:kbUp;shift:[];st:#27'[A'),                    {linux,FreeBSD,rxvt}
+       (char:0;scan:kbDown;shift:[];st:#27'[B'),                  {linux,FreeBSD,rxvt}
+       (char:0;scan:kbRight;shift:[];st:#27'[C'),                 {linux,FreeBSD,rxvt}
+       (char:0;scan:kbLeft;shift:[];st:#27'[D'),                  {linux,FreeBSD,rxvt}
+       (char:0;scan:kbUp;shift:[];st:#27'OA'),                    {xterm}
+       (char:0;scan:kbDown;shift:[];st:#27'OB'),                  {xterm}
+       (char:0;scan:kbRight;shift:[];st:#27'OC'),                 {xterm}
+       (char:0;scan:kbLeft;shift:[];st:#27'OD'),                  {xterm}
 (* Already recognized above as F11!
-       (char:0;scan:kbShiftF1;st:#27'[23~'),     {rxvt}
-       (char:0;scan:kbShiftF2;st:#27'[24~'),     {rxvt}
+       (char:0;scan:kbShiftF1;shift:[essShift];st:#27'[23~'),     {rxvt}
+       (char:0;scan:kbShiftF2;shift:[essShift];st:#27'[24~'),     {rxvt}
 *)
-       (char:0;scan:kbShiftF3;st:#27'[25~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF4;st:#27'[26~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF5;st:#27'[28~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF6;st:#27'[29~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF7;st:#27'[31~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF8;st:#27'[32~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF9;st:#27'[33~'),     {linux,rxvt}
-       (char:0;scan:kbShiftF10;st:#27'[34~'),    {linux,rxvt}
-       (char:0;scan:kbShiftF11;st:#27'[23$'),    {rxvt}
-       (char:0;scan:kbShiftF12;st:#27'[24$'),    {rxvt}
-       (char:0;scan:kbShiftF1;st:#27'[11;2~'),   {konsole in vt420pc mode}
-       (char:0;scan:kbShiftF2;st:#27'[12;2~'),   {konsole in vt420pc mode}
-       (char:0;scan:kbShiftF3;st:#27'[13;2~'),   {konsole in vt420pc mode}
-       (char:0;scan:kbShiftF4;st:#27'[14;2~'),   {konsole in vt420pc mode}
-       (char:0;scan:kbShiftF5;st:#27'[15;2~'),   {xterm}
-       (char:0;scan:kbShiftF6;st:#27'[17;2~'),   {xterm}
-       (char:0;scan:kbShiftF7;st:#27'[18;2~'),   {xterm}
-       (char:0;scan:kbShiftF8;st:#27'[19;2~'),   {xterm}
-       (char:0;scan:kbShiftF9;st:#27'[20;2~'),   {xterm}
-       (char:0;scan:kbShiftF10;st:#27'[21;2~'),  {xterm}
-       (char:0;scan:kbShiftF11;st:#27'[23;2~'),  {xterm}
-       (char:0;scan:kbShiftF12;st:#27'[24;2~'),  {xterm}
-       (char:0;scan:kbShiftF1;st:#27'O2P'),      {konsole,xterm}
-       (char:0;scan:kbShiftF2;st:#27'O2Q'),      {konsole,xterm}
-       (char:0;scan:kbShiftF3;st:#27'O2R'),      {konsole,xterm}
-       (char:0;scan:kbShiftF4;st:#27'O2S'),      {konsole,xterm}
-       (char:0;scan:kbShiftF1;st:#27'[1;2P'),    {xterm,gnome3}
-       (char:0;scan:kbShiftF2;st:#27'[1;2Q'),    {xterm,gnome3}
-       (char:0;scan:kbShiftF3;st:#27'[1;2R'),    {xterm,gnome3}
-       (char:0;scan:kbShiftF4;st:#27'[1;2S'),    {xterm,gnome3}
-       (char:0;scan:kbCtrlF1;st:#27'O5P'),       {konsole,xterm}
-       (char:0;scan:kbCtrlF2;st:#27'O5Q'),       {konsole,xterm}
-       (char:0;scan:kbCtrlF3;st:#27'O5R'),       {konsole,xterm}
-       (char:0;scan:kbCtrlF4;st:#27'O5S'),       {konsole,xterm}
-       (char:0;scan:kbCtrlF1;st:#27'[1;5P'),     {xterm,gnome3}
-       (char:0;scan:kbCtrlF2;st:#27'[1;5Q'),     {xterm,gnome3}
-       (char:0;scan:kbCtrlF3;st:#27'[1;5R'),     {xterm,gnome3}
-       (char:0;scan:kbCtrlF4;st:#27'[1;5S'),     {xterm,gnome3}
-       (char:0;scan:kbCtrlF1;st:#27'[11;5~'),    {none, but expected}
-       (char:0;scan:kbCtrlF2;st:#27'[12;5~'),    {none, but expected}
-       (char:0;scan:kbCtrlF3;st:#27'[13;5~'),    {none, but expected}
-       (char:0;scan:kbCtrlF4;st:#27'[14;5~'),    {none, but expected}
-       (char:0;scan:kbCtrlF5;st:#27'[15;5~'),    {xterm}
-       (char:0;scan:kbCtrlF6;st:#27'[17;5~'),    {xterm}
-       (char:0;scan:kbCtrlF7;st:#27'[18;5~'),    {xterm}
-       (char:0;scan:kbCtrlF8;st:#27'[19;5~'),    {xterm}
-       (char:0;scan:kbCtrlF9;st:#27'[20;5~'),    {xterm}
-       (char:0;scan:kbCtrlF10;st:#27'[21;5~'),   {xterm}
-       (char:0;scan:kbCtrlF11;st:#27'[23;5~'),   {xterm}
-       (char:0;scan:kbCtrlF12;st:#27'[24;5~'),   {xterm}
-       (char:0;scan:kbCtrlF1;st:#27'[11^'),      {rxvt}
-       (char:0;scan:kbCtrlF2;st:#27'[12^'),      {rxvt}
-       (char:0;scan:kbCtrlF3;st:#27'[13^'),      {rxvt}
-       (char:0;scan:kbCtrlF4;st:#27'[14^'),      {rxvt}
-       (char:0;scan:kbCtrlF5;st:#27'[15^'),      {rxvt}
-       (char:0;scan:kbCtrlF6;st:#27'[17^'),      {rxvt}
-       (char:0;scan:kbCtrlF7;st:#27'[18^'),      {rxvt}
-       (char:0;scan:kbCtrlF8;st:#27'[19^'),      {rxvt}
-       (char:0;scan:kbCtrlF9;st:#27'[20^'),      {rxvt}
-       (char:0;scan:kbCtrlF10;st:#27'[21^'),     {rxvt}
-       (char:0;scan:kbCtrlF11;st:#27'[23^'),     {rxvt}
-       (char:0;scan:kbCtrlF12;st:#27'[24^'),     {rxvt}
-       (char:0;scan:kbShiftIns;st:#27'[2;2~'),   {should be the code, but shift+ins
-                                                  is paste X clipboard in many
-                                                  terminal emulators :(}
-       (char:0;scan:kbShiftDel;st:#27'[3;2~'),   {xterm,konsole}
-       (char:0;scan:kbCtrlIns;st:#27'[2;5~'),    {xterm}
-       (char:0;scan:kbCtrlDel;st:#27'[3;5~'),    {xterm}
-       (char:0;scan:kbShiftDel;st:#27'[3$'),     {rxvt}
-       (char:0;scan:kbCtrlIns;st:#27'[2^'),      {rxvt}
-       (char:0;scan:kbCtrlDel;st:#27'[3^'),      {rxvt}
-       (char:0;scan:kbAltF1;st:#27#27'[[A'),
-       (char:0;scan:kbAltF2;st:#27#27'[[B'),
-       (char:0;scan:kbAltF3;st:#27#27'[[C'),
-       (char:0;scan:kbAltF4;st:#27#27'[[D'),
-       (char:0;scan:kbAltF5;st:#27#27'[[E'),
-       (char:0;scan:kbAltF1;st:#27#27'[11~'),    {rxvt}
-       (char:0;scan:kbAltF2;st:#27#27'[12~'),    {rxvt}
-       (char:0;scan:kbAltF3;st:#27#27'[13~'),    {rxvt}
-       (char:0;scan:kbAltF4;st:#27#27'[14~'),    {rxvt}
-       (char:0;scan:kbAltF5;st:#27#27'[15~'),    {rxvt}
-       (char:0;scan:kbAltF6;st:#27#27'[17~'),    {rxvt}
-       (char:0;scan:kbAltF7;st:#27#27'[18~'),    {rxvt}
-       (char:0;scan:kbAltF8;st:#27#27'[19~'),    {rxvt}
-       (char:0;scan:kbAltF9;st:#27#27'[20~'),    {rxvt}
-       (char:0;scan:kbAltF10;st:#27#27'[21~'),   {rxvt}
-       (char:0;scan:kbAltF11;st:#27#27'[23~'),   {rxvt}
-       (char:0;scan:kbAltF12;st:#27#27'[24~'),   {rxvt}
-       (char:0;scan:kbAltF1;st:#27#27'OP'),      {xterm}
-       (char:0;scan:kbAltF2;st:#27#27'OQ'),      {xterm}
-       (char:0;scan:kbAltF3;st:#27#27'OR'),      {xterm}
-       (char:0;scan:kbAltF4;st:#27#27'OS'),      {xterm}
-       (char:0;scan:kbAltF5;st:#27#27'Ot'),      {xterm}
-       (char:0;scan:kbAltF6;st:#27#27'Ou'),      {xterm}
-       (char:0;scan:kbAltF7;st:#27#27'Ov'),      {xterm}
-       (char:0;scan:kbAltF8;st:#27#27'Ol'),      {xterm}
-       (char:0;scan:kbAltF9;st:#27#27'Ow'),      {xterm}
-       (char:0;scan:kbAltF10;st:#27#27'Ox'),     {xterm}
-       (char:0;scan:kbAltF11;st:#27#27'Oy'),     {xterm}
-       (char:0;scan:kbAltF12;st:#27#27'Oz'),     {xterm}
-       (char:0;scan:kbAltF1;st:#27'[1;3P'),      {xterm,gnome3}
-       (char:0;scan:kbAltF2;st:#27'[1;3Q'),      {xterm,gnome3}
-       (char:0;scan:kbAltF3;st:#27'[1;3R'),      {xterm,gnome3}
-       (char:0;scan:kbAltF4;st:#27'[1;3S'),      {xterm,gnome3}
-       (char:0;scan:kbAltF1;st:#27'O3P'),        {xterm on FreeBSD}
-       (char:0;scan:kbAltF2;st:#27'O3Q'),        {xterm on FreeBSD}
-       (char:0;scan:kbAltF3;st:#27'O3R'),        {xterm on FreeBSD}
-       (char:0;scan:kbAltF4;st:#27'O3S'),        {xterm on FreeBSD}
-       (char:0;scan:kbAltF5;st:#27'[15;3~'),     {xterm on FreeBSD}
-       (char:0;scan:kbAltF6;st:#27'[17;3~'),     {xterm on FreeBSD}
-       (char:0;scan:kbAltF7;st:#27'[18;3~'),     {xterm on FreeBSD}
-       (char:0;scan:kbAltF8;st:#27'[19;3~'),     {xterm on FreeBSD}
-       (char:0;scan:kbAltF9;st:#27'[20;3~'),     {xterm on FreeBSD}
-       (char:0;scan:kbAltF10;st:#27'[21;3~'),    {xterm on FreeBSD}
-       (char:0;scan:kbAltF11;st:#27'[23;3~'),    {xterm on FreeBSD}
-       (char:0;scan:kbAltF12;st:#27'[24;3~'),    {xterm on FreeBSD}
+(* These seem to be shifted. Probably something changed with linux's default keymaps.
+       (char:0;scan:kbShiftF3;shift:[essShift];st:#27'[25~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF4;shift:[essShift];st:#27'[26~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF5;shift:[essShift];st:#27'[28~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF6;shift:[essShift];st:#27'[29~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF7;shift:[essShift];st:#27'[31~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF8;shift:[essShift];st:#27'[32~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF9;shift:[essShift];st:#27'[33~'),     {linux,rxvt}
+       (char:0;scan:kbShiftF10;shift:[essShift];st:#27'[34~'),    {linux,rxvt}*)
+       (char:0;scan:kbShiftF1;shift:[essShift];st:#27'[25~'),     {linux}
+       (char:0;scan:kbShiftF2;shift:[essShift];st:#27'[26~'),     {linux}
+       (char:0;scan:kbShiftF3;shift:[essShift];st:#27'[28~'),     {linux}
+       (char:0;scan:kbShiftF4;shift:[essShift];st:#27'[29~'),     {linux}
+       (char:0;scan:kbShiftF5;shift:[essShift];st:#27'[31~'),     {linux}
+       (char:0;scan:kbShiftF6;shift:[essShift];st:#27'[32~'),     {linux}
+       (char:0;scan:kbShiftF7;shift:[essShift];st:#27'[33~'),     {linux}
+       (char:0;scan:kbShiftF8;shift:[essShift];st:#27'[34~'),     {linux}
+       (char:0;scan:kbShiftF11;shift:[essShift];st:#27'[23$'),    {rxvt}
+       (char:0;scan:kbShiftF12;shift:[essShift];st:#27'[24$'),    {rxvt}
+       (char:0;scan:kbShiftF1;shift:[essShift];st:#27'[11;2~'),   {konsole in vt420pc mode}
+       (char:0;scan:kbShiftF2;shift:[essShift];st:#27'[12;2~'),   {konsole in vt420pc mode}
+       (char:0;scan:kbShiftF3;shift:[essShift];st:#27'[13;2~'),   {konsole in vt420pc mode}
+       (char:0;scan:kbShiftF4;shift:[essShift];st:#27'[14;2~'),   {konsole in vt420pc mode}
+       (char:0;scan:kbShiftF5;shift:[essShift];st:#27'[15;2~'),   {xterm}
+       (char:0;scan:kbShiftF6;shift:[essShift];st:#27'[17;2~'),   {xterm}
+       (char:0;scan:kbShiftF7;shift:[essShift];st:#27'[18;2~'),   {xterm}
+       (char:0;scan:kbShiftF8;shift:[essShift];st:#27'[19;2~'),   {xterm}
+       (char:0;scan:kbShiftF9;shift:[essShift];st:#27'[20;2~'),   {xterm}
+       (char:0;scan:kbShiftF10;shift:[essShift];st:#27'[21;2~'),  {xterm}
+       (char:0;scan:kbShiftF11;shift:[essShift];st:#27'[23;2~'),  {xterm}
+       (char:0;scan:kbShiftF12;shift:[essShift];st:#27'[24;2~'),  {xterm}
+       (char:0;scan:kbShiftF1;shift:[essShift];st:#27'O2P'),      {konsole,xterm}
+       (char:0;scan:kbShiftF2;shift:[essShift];st:#27'O2Q'),      {konsole,xterm}
+       (char:0;scan:kbShiftF3;shift:[essShift];st:#27'O2R'),      {konsole,xterm}
+       (char:0;scan:kbShiftF4;shift:[essShift];st:#27'O2S'),      {konsole,xterm}
+       (char:0;scan:kbShiftF1;shift:[essShift];st:#27'[1;2P'),    {xterm,gnome3}
+       (char:0;scan:kbShiftF2;shift:[essShift];st:#27'[1;2Q'),    {xterm,gnome3}
+       (char:0;scan:kbShiftF3;shift:[essShift];st:#27'[1;2R'),    {xterm,gnome3}
+       (char:0;scan:kbShiftF4;shift:[essShift];st:#27'[1;2S'),    {xterm,gnome3}
+       (char:0;scan:kbCtrlF1;shift:[essCtrl];st:#27'O5P'),        {konsole,xterm}
+       (char:0;scan:kbCtrlF2;shift:[essCtrl];st:#27'O5Q'),        {konsole,xterm}
+       (char:0;scan:kbCtrlF3;shift:[essCtrl];st:#27'O5R'),        {konsole,xterm}
+       (char:0;scan:kbCtrlF4;shift:[essCtrl];st:#27'O5S'),        {konsole,xterm}
+       (char:0;scan:kbCtrlF1;shift:[essCtrl];st:#27'[1;5P'),      {xterm,gnome3}
+       (char:0;scan:kbCtrlF2;shift:[essCtrl];st:#27'[1;5Q'),      {xterm,gnome3}
+       (char:0;scan:kbCtrlF3;shift:[essCtrl];st:#27'[1;5R'),      {xterm,gnome3}
+       (char:0;scan:kbCtrlF4;shift:[essCtrl];st:#27'[1;5S'),      {xterm,gnome3}
+       (char:0;scan:kbCtrlF1;shift:[essCtrl];st:#27'[11;5~'),     {none, but expected}
+       (char:0;scan:kbCtrlF2;shift:[essCtrl];st:#27'[12;5~'),     {none, but expected}
+       (char:0;scan:kbCtrlF3;shift:[essCtrl];st:#27'[13;5~'),     {none, but expected}
+       (char:0;scan:kbCtrlF4;shift:[essCtrl];st:#27'[14;5~'),     {none, but expected}
+       (char:0;scan:kbCtrlF5;shift:[essCtrl];st:#27'[15;5~'),     {xterm}
+       (char:0;scan:kbCtrlF6;shift:[essCtrl];st:#27'[17;5~'),     {xterm}
+       (char:0;scan:kbCtrlF7;shift:[essCtrl];st:#27'[18;5~'),     {xterm}
+       (char:0;scan:kbCtrlF8;shift:[essCtrl];st:#27'[19;5~'),     {xterm}
+       (char:0;scan:kbCtrlF9;shift:[essCtrl];st:#27'[20;5~'),     {xterm}
+       (char:0;scan:kbCtrlF10;shift:[essCtrl];st:#27'[21;5~'),    {xterm}
+       (char:0;scan:kbCtrlF11;shift:[essCtrl];st:#27'[23;5~'),    {xterm}
+       (char:0;scan:kbCtrlF12;shift:[essCtrl];st:#27'[24;5~'),    {xterm}
+       (char:0;scan:kbCtrlF1;shift:[essCtrl];st:#27'[11^'),       {rxvt}
+       (char:0;scan:kbCtrlF2;shift:[essCtrl];st:#27'[12^'),       {rxvt}
+       (char:0;scan:kbCtrlF3;shift:[essCtrl];st:#27'[13^'),       {rxvt}
+       (char:0;scan:kbCtrlF4;shift:[essCtrl];st:#27'[14^'),       {rxvt}
+       (char:0;scan:kbCtrlF5;shift:[essCtrl];st:#27'[15^'),       {rxvt}
+       (char:0;scan:kbCtrlF6;shift:[essCtrl];st:#27'[17^'),       {rxvt}
+       (char:0;scan:kbCtrlF7;shift:[essCtrl];st:#27'[18^'),       {rxvt}
+       (char:0;scan:kbCtrlF8;shift:[essCtrl];st:#27'[19^'),       {rxvt}
+       (char:0;scan:kbCtrlF9;shift:[essCtrl];st:#27'[20^'),       {rxvt}
+       (char:0;scan:kbCtrlF10;shift:[essCtrl];st:#27'[21^'),      {rxvt}
+       (char:0;scan:kbCtrlF11;shift:[essCtrl];st:#27'[23^'),      {rxvt}
+       (char:0;scan:kbCtrlF12;shift:[essCtrl];st:#27'[24^'),      {rxvt}
+       (char:0;scan:kbShiftIns;shift:[essShift];st:#27'[2;2~'),   {should be the code, but shift+ins
+                                                                   is paste X clipboard in many
+                                                                   terminal emulators :(}
+       (char:0;scan:kbShiftDel;shift:[essShift];st:#27'[3;2~'),   {xterm,konsole}
+       (char:0;scan:kbCtrlIns;shift:[essCtrl];st:#27'[2;5~'),     {xterm}
+       (char:0;scan:kbCtrlDel;shift:[essCtrl];st:#27'[3;5~'),     {xterm}
+       (char:0;scan:kbShiftDel;shift:[essShift];st:#27'[3$'),     {rxvt}
+       (char:0;scan:kbCtrlIns;shift:[essCtrl];st:#27'[2^'),       {rxvt}
+       (char:0;scan:kbCtrlDel;shift:[essCtrl];st:#27'[3^'),       {rxvt}
+       (char:0;scan:kbAltF1;shift:[essAlt];st:#27#27'[[A'),
+       (char:0;scan:kbAltF2;shift:[essAlt];st:#27#27'[[B'),
+       (char:0;scan:kbAltF3;shift:[essAlt];st:#27#27'[[C'),
+       (char:0;scan:kbAltF4;shift:[essAlt];st:#27#27'[[D'),
+       (char:0;scan:kbAltF5;shift:[essAlt];st:#27#27'[[E'),
+       (char:0;scan:kbAltF1;shift:[essAlt];st:#27#27'[11~'),      {rxvt}
+       (char:0;scan:kbAltF2;shift:[essAlt];st:#27#27'[12~'),      {rxvt}
+       (char:0;scan:kbAltF3;shift:[essAlt];st:#27#27'[13~'),      {rxvt}
+       (char:0;scan:kbAltF4;shift:[essAlt];st:#27#27'[14~'),      {rxvt}
+       (char:0;scan:kbAltF5;shift:[essAlt];st:#27#27'[15~'),      {rxvt}
+       (char:0;scan:kbAltF6;shift:[essAlt];st:#27#27'[17~'),      {rxvt}
+       (char:0;scan:kbAltF7;shift:[essAlt];st:#27#27'[18~'),      {rxvt}
+       (char:0;scan:kbAltF8;shift:[essAlt];st:#27#27'[19~'),      {rxvt}
+       (char:0;scan:kbAltF9;shift:[essAlt];st:#27#27'[20~'),      {rxvt}
+       (char:0;scan:kbAltF10;shift:[essAlt];st:#27#27'[21~'),     {rxvt}
+       (char:0;scan:kbAltF11;shift:[essAlt];st:#27#27'[23~'),     {rxvt}
+       (char:0;scan:kbAltF12;shift:[essAlt];st:#27#27'[24~'),     {rxvt}
+       (char:0;scan:kbAltF1;shift:[essAlt];st:#27#27'OP'),        {xterm}
+       (char:0;scan:kbAltF2;shift:[essAlt];st:#27#27'OQ'),        {xterm}
+       (char:0;scan:kbAltF3;shift:[essAlt];st:#27#27'OR'),        {xterm}
+       (char:0;scan:kbAltF4;shift:[essAlt];st:#27#27'OS'),        {xterm}
+       (char:0;scan:kbAltF5;shift:[essAlt];st:#27#27'Ot'),        {xterm}
+       (char:0;scan:kbAltF6;shift:[essAlt];st:#27#27'Ou'),        {xterm}
+       (char:0;scan:kbAltF7;shift:[essAlt];st:#27#27'Ov'),        {xterm}
+       (char:0;scan:kbAltF8;shift:[essAlt];st:#27#27'Ol'),        {xterm}
+       (char:0;scan:kbAltF9;shift:[essAlt];st:#27#27'Ow'),        {xterm}
+       (char:0;scan:kbAltF10;shift:[essAlt];st:#27#27'Ox'),       {xterm}
+       (char:0;scan:kbAltF11;shift:[essAlt];st:#27#27'Oy'),       {xterm}
+       (char:0;scan:kbAltF12;shift:[essAlt];st:#27#27'Oz'),       {xterm}
+       (char:0;scan:kbAltF1;shift:[essAlt];st:#27'[1;3P'),        {xterm,gnome3}
+       (char:0;scan:kbAltF2;shift:[essAlt];st:#27'[1;3Q'),        {xterm,gnome3}
+       (char:0;scan:kbAltF3;shift:[essAlt];st:#27'[1;3R'),        {xterm,gnome3}
+       (char:0;scan:kbAltF4;shift:[essAlt];st:#27'[1;3S'),        {xterm,gnome3}
+       (char:0;scan:kbAltF1;shift:[essAlt];st:#27'O3P'),          {xterm on FreeBSD}
+       (char:0;scan:kbAltF2;shift:[essAlt];st:#27'O3Q'),          {xterm on FreeBSD}
+       (char:0;scan:kbAltF3;shift:[essAlt];st:#27'O3R'),          {xterm on FreeBSD}
+       (char:0;scan:kbAltF4;shift:[essAlt];st:#27'O3S'),          {xterm on FreeBSD}
+       (char:0;scan:kbAltF5;shift:[essAlt];st:#27'[15;3~'),       {xterm on FreeBSD}
+       (char:0;scan:kbAltF6;shift:[essAlt];st:#27'[17;3~'),       {xterm on FreeBSD}
+       (char:0;scan:kbAltF7;shift:[essAlt];st:#27'[18;3~'),       {xterm on FreeBSD}
+       (char:0;scan:kbAltF8;shift:[essAlt];st:#27'[19;3~'),       {xterm on FreeBSD}
+       (char:0;scan:kbAltF9;shift:[essAlt];st:#27'[20;3~'),       {xterm on FreeBSD}
+       (char:0;scan:kbAltF10;shift:[essAlt];st:#27'[21;3~'),      {xterm on FreeBSD}
+       (char:0;scan:kbAltF11;shift:[essAlt];st:#27'[23;3~'),      {xterm on FreeBSD}
+       (char:0;scan:kbAltF12;shift:[essAlt];st:#27'[24;3~'),      {xterm on FreeBSD}
 
-       (char:0;scan:kbShiftTab;st:#27#9),        {linux - 'Meta_Tab'}
-       (char:0;scan:kbShiftTab;st:#27'[Z'),
-       (char:0;scan:kbShiftUp;st:#27'[1;2A'),    {xterm}
-       (char:0;scan:kbShiftDown;st:#27'[1;2B'),  {xterm}
-       (char:0;scan:kbShiftRight;st:#27'[1;2C'), {xterm}
-       (char:0;scan:kbShiftLeft;st:#27'[1;2D'),  {xterm}
-       (char:0;scan:kbShiftUp;st:#27'[a'),       {rxvt}
-       (char:0;scan:kbShiftDown;st:#27'[b'),     {rxvt}
-       (char:0;scan:kbShiftRight;st:#27'[c'),    {rxvt}
-       (char:0;scan:kbShiftLeft;st:#27'[d'),     {rxvt}
-       (char:0;scan:kbShiftEnd;st:#27'[1;2F'),   {xterm}
-       (char:0;scan:kbShiftEnd;st:#27'[8$'),     {rxvt}
-       (char:0;scan:kbShiftHome;st:#27'[1;2H'),  {xterm}
-       (char:0;scan:kbShiftHome;st:#27'[7$'),    {rxvt}
+       (char:0;scan:kbShiftTab;shift:[essShift];st:#27#9),        {linux - 'Meta_Tab'}
+       (char:0;scan:kbShiftTab;shift:[essShift];st:#27'[Z'),
+       (char:0;scan:kbShiftUp;shift:[essShift];st:#27'[1;2A'),    {xterm}
+       (char:0;scan:kbShiftDown;shift:[essShift];st:#27'[1;2B'),  {xterm}
+       (char:0;scan:kbShiftRight;shift:[essShift];st:#27'[1;2C'), {xterm}
+       (char:0;scan:kbShiftLeft;shift:[essShift];st:#27'[1;2D'),  {xterm}
+       (char:0;scan:kbShiftUp;shift:[essShift];st:#27'[a'),       {rxvt}
+       (char:0;scan:kbShiftDown;shift:[essShift];st:#27'[b'),     {rxvt}
+       (char:0;scan:kbShiftRight;shift:[essShift];st:#27'[c'),    {rxvt}
+       (char:0;scan:kbShiftLeft;shift:[essShift];st:#27'[d'),     {rxvt}
+       (char:0;scan:kbShiftEnd;shift:[essShift];st:#27'[1;2F'),   {xterm}
+       (char:0;scan:kbShiftEnd;shift:[essShift];st:#27'[8$'),     {rxvt}
+       (char:0;scan:kbShiftHome;shift:[essShift];st:#27'[1;2H'),  {xterm}
+       (char:0;scan:kbShiftHome;shift:[essShift];st:#27'[7$'),    {rxvt}
 
-       (char:0;scan:KbCtrlShiftUp;st:#27'[1;6A'),    {xterm}
-       (char:0;scan:KbCtrlShiftDown;st:#27'[1;6B'),  {xterm}
-       (char:0;scan:KbCtrlShiftRight;st:#27'[1;6C'), {xterm, xfce4}
-       (char:0;scan:KbCtrlShiftLeft;st:#27'[1;6D'),  {xterm, xfce4}
-       (char:0;scan:KbCtrlShiftHome;st:#27'[1;6H'),  {xterm}
-       (char:0;scan:KbCtrlShiftEnd;st:#27'[1;6F'),   {xterm}
+       (char:0;scan:KbCtrlShiftUp;shift:[essCtrl,essShift];st:#27'[1;6A'),    {xterm}
+       (char:0;scan:KbCtrlShiftDown;shift:[essCtrl,essShift];st:#27'[1;6B'),  {xterm}
+       (char:0;scan:KbCtrlShiftRight;shift:[essCtrl,essShift];st:#27'[1;6C'), {xterm, xfce4}
+       (char:0;scan:KbCtrlShiftLeft;shift:[essCtrl,essShift];st:#27'[1;6D'),  {xterm, xfce4}
+       (char:0;scan:KbCtrlShiftHome;shift:[essCtrl,essShift];st:#27'[1;6H'),  {xterm}
+       (char:0;scan:KbCtrlShiftEnd;shift:[essCtrl,essShift];st:#27'[1;6F'),   {xterm}
 
-       (char:0;scan:kbCtrlPgDn;st:#27'[6;5~'),   {xterm}
-       (char:0;scan:kbCtrlPgUp;st:#27'[5;5~'),   {xterm}
-       (char:0;scan:kbCtrlUp;st:#27'[1;5A'),     {xterm}
-       (char:0;scan:kbCtrlDown;st:#27'[1;5B'),   {xterm}
-       (char:0;scan:kbCtrlRight;st:#27'[1;5C'),  {xterm}
-       (char:0;scan:kbCtrlLeft;st:#27'[1;5D'),   {xterm}
-       (char:0;scan:kbCtrlUp;st:#27'[Oa'),       {rxvt}
-       (char:0;scan:kbCtrlDown;st:#27'[Ob'),     {rxvt}
-       (char:0;scan:kbCtrlRight;st:#27'[Oc'),    {rxvt}
-       (char:0;scan:kbCtrlLeft;st:#27'[Od'),     {rxvt}
-       (char:0;scan:kbCtrlEnd;st:#27'[1;5F'),    {xterm}
-       (char:0;scan:kbCtrlEnd;st:#27'[8^'),      {rxvt}
-       (char:0;scan:kbCtrlHome;st:#27'[1;5H'),   {xterm}
-       (char:0;scan:kbCtrlHome;st:#27'[7^'),     {rxvt}
+       (char:0;scan:kbCtrlPgDn;shift:[essCtrl];st:#27'[6;5~'),    {xterm}
+       (char:0;scan:kbCtrlPgUp;shift:[essCtrl];st:#27'[5;5~'),    {xterm}
+       (char:0;scan:kbCtrlUp;shift:[essCtrl];st:#27'[1;5A'),      {xterm}
+       (char:0;scan:kbCtrlDown;shift:[essCtrl];st:#27'[1;5B'),    {xterm}
+       (char:0;scan:kbCtrlRight;shift:[essCtrl];st:#27'[1;5C'),   {xterm}
+       (char:0;scan:kbCtrlLeft;shift:[essCtrl];st:#27'[1;5D'),    {xterm}
+       (char:0;scan:kbCtrlUp;shift:[essCtrl];st:#27'[Oa'),        {rxvt}
+       (char:0;scan:kbCtrlDown;shift:[essCtrl];st:#27'[Ob'),      {rxvt}
+       (char:0;scan:kbCtrlRight;shift:[essCtrl];st:#27'[Oc'),     {rxvt}
+       (char:0;scan:kbCtrlLeft;shift:[essCtrl];st:#27'[Od'),      {rxvt}
+       (char:0;scan:kbCtrlEnd;shift:[essCtrl];st:#27'[1;5F'),     {xterm}
+       (char:0;scan:kbCtrlEnd;shift:[essCtrl];st:#27'[8^'),       {rxvt}
+       (char:0;scan:kbCtrlHome;shift:[essCtrl];st:#27'[1;5H'),    {xterm}
+       (char:0;scan:kbCtrlHome;shift:[essCtrl];st:#27'[7^'),      {rxvt}
 
-       (char:0;scan:kbAltUp;st:#27#27'[A'),      {rxvt}
-       (char:0;scan:kbAltDown;st:#27#27'[B'),    {rxvt}
-       (char:0;scan:kbAltLeft;st:#27#27'[D'),    {rxvt}
-       (char:0;scan:kbAltRight;st:#27#27'[C'),   {rxvt}
+       (char:0;scan:kbAltUp;shift:[essAlt];st:#27#27'[A'),        {rxvt}
+       (char:0;scan:kbAltDown;shift:[essAlt];st:#27#27'[B'),      {rxvt}
+       (char:0;scan:kbAltLeft;shift:[essAlt];st:#27#27'[D'),      {rxvt}
+       (char:0;scan:kbAltRight;shift:[essAlt];st:#27#27'[C'),     {rxvt}
 {$ifdef HAIKU}
-       (char:0;scan:kbAltUp;st:#27#27'OA'),
-       (char:0;scan:kbAltDown;st:#27#27'OB'),
-       (char:0;scan:kbAltRight;st:#27#27'OC'),
+       (char:0;scan:kbAltUp;shift:[essAlt];st:#27#27'OA'),
+       (char:0;scan:kbAltDown;shift:[essAlt];st:#27#27'OB'),
+       (char:0;scan:kbAltRight;shift:[essAlt];st:#27#27'OC'),
 {$else}
-       (char:0;scan:kbAltUp;st:#27'OA'),
-       (char:0;scan:kbAltDown;st:#27'OB'),
-       (char:0;scan:kbAltRight;st:#27'OC'),
+       (char:0;scan:kbAltUp;shift:[essAlt];st:#27'OA'),
+       (char:0;scan:kbAltDown;shift:[essAlt];st:#27'OB'),
+       (char:0;scan:kbAltRight;shift:[essAlt];st:#27'OC'),
 {$endif}
-       (char:0;scan:kbAltLeft;st:#27#27'OD'),
-       (char:0;scan:kbAltPgUp;st:#27#27'[5~'),   {rxvt}
-       (char:0;scan:kbAltPgDn;st:#27#27'[6~'),   {rxvt}
-       (char:0;scan:kbAltEnd;st:#27#27'[4~'),
-       (char:0;scan:kbAltEnd;st:#27#27'[8~'),    {rxvt}
-       (char:0;scan:kbAltHome;st:#27#27'[1~'),
-       (char:0;scan:kbAltHome;st:#27#27'[7~'),   {rxvt}
-       (char:0;scan:kbAltIns;st:#27#27'[2~'),    {rxvt}
-       (char:0;scan:kbAltDel;st:#27#27'[3~'),    {rxvt}
+       (char:0;scan:kbAltLeft;shift:[essAlt];st:#27#27'OD'),
+       (char:0;scan:kbAltPgUp;shift:[essAlt];st:#27#27'[5~'),     {rxvt}
+       (char:0;scan:kbAltPgDn;shift:[essAlt];st:#27#27'[6~'),     {rxvt}
+       (char:0;scan:kbAltEnd;shift:[essAlt];st:#27#27'[4~'),
+       (char:0;scan:kbAltEnd;shift:[essAlt];st:#27#27'[8~'),      {rxvt}
+       (char:0;scan:kbAltHome;shift:[essAlt];st:#27#27'[1~'),
+       (char:0;scan:kbAltHome;shift:[essAlt];st:#27#27'[7~'),     {rxvt}
+       (char:0;scan:kbAltIns;shift:[essAlt];st:#27#27'[2~'),      {rxvt}
+       (char:0;scan:kbAltDel;shift:[essAlt];st:#27#27'[3~'),      {rxvt}
 
   { xterm default values }
   { xterm alternate default values }
   { ignored sequences }
-       (char:0;scan:0;st:#27'[?1;0c'),
-       (char:0;scan:0;st:#27'[?1l'),
-       (char:0;scan:0;st:#27'[?1h'),
-       (char:0;scan:0;st:#27'[?1;2c'),
-       (char:0;scan:0;st:#27'[?7l'),
-       (char:0;scan:0;st:#27'[?7h')
+       (char:0;scan:0;shift:[];st:#27'[?1;0c'),
+       (char:0;scan:0;shift:[];st:#27'[?1l'),
+       (char:0;scan:0;shift:[];st:#27'[?1h'),
+       (char:0;scan:0;shift:[];st:#27'[?1;2c'),
+       (char:0;scan:0;shift:[];st:#27'[?7l'),
+       (char:0;scan:0;shift:[];st:#27'[?7h')
       );
 
 procedure LoadDefaultSequences;
@@ -1209,18 +1242,18 @@ begin
   if copy(fpgetenv('TERM'),1,4)='cons' then
     begin
       {FreeBSD is until now only terminal that uses it for delete.}
-      DoAddSequence(#127,0,kbDel);        {Delete}
-      DoAddSequence(#27#127,0,kbAltDel);  {Alt+delete}
+      DoAddSequence(#127,0,kbDel,[]);              {Delete}
+      DoAddSequence(#27#127,0,kbAltDel,[essAlt]);  {Alt+delete}
     end
   else
     begin
-      DoAddSequence(#127,8,0);            {Backspace}
-      DoAddSequence(#27#127,0,kbAltBack); {Alt+backspace}
+      DoAddSequence(#127,8,0,[]);                  {Backspace}
+      DoAddSequence(#27#127,0,kbAltBack,[essAlt]); {Alt+backspace}
     end;
   { all Esc letter }
   for i:=low(key_sequences) to high(key_sequences) do
     with key_sequences[i] do
-      DoAddSequence(st,char,scan);
+      DoAddSequence(st,char,scan,shift);
 end;
 
 function RawReadKey:char;
@@ -1228,11 +1261,11 @@ var
   fdsin    : tfdSet;
 begin
   {Check Buffer first}
-  if KeySend<>KeyPut then
+{  if KeySend<>KeyPut then
    begin
      RawReadKey:=PopKey;
      exit;
-   end;
+   end;}
   {Wait for Key}
   if not sysKeyPressed then
    begin
@@ -1267,123 +1300,6 @@ begin
 end;
 
 
-function ReadKey(var IsAlt : boolean):char;
-var
-  ch       : char;
-  fdsin    : tfdSet;
-  store    : array [0..8] of char;
-  arrayind : byte;
-  NPT,NNPT : PTreeElement;
-
-
-    procedure RestoreArray;
-      var
-        i : byte;
-      begin
-        for i:=0 to arrayind-1 do
-          PushKey(store[i]);
-      end;
-
-begin
-  IsAlt:=false;
-{Check Buffer first}
-  if KeySend<>KeyPut then
-   begin
-     ReadKey:=PopKey;
-     exit;
-   end;
-{Wait for Key}
-  if not sysKeyPressed then
-   begin
-     fpFD_ZERO (fdsin);
-     fpFD_SET (StdInputHandle,fdsin);
-     fpSelect (StdInputHandle+1,@fdsin,nil,nil,nil);
-   end;
-  ch:=ttyRecvChar;
-  NPT:=RootTree[ch];
-  if not assigned(NPT) then
-    PushKey(ch)
-  else
-    begin
-      fpFD_ZERO(fdsin);
-      fpFD_SET(StdInputHandle,fdsin);
-      store[0]:=ch;
-      arrayind:=1;
-      while assigned(NPT) and syskeypressed do
-        begin
-          if inhead=intail then
-            fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
-          ch:=ttyRecvChar;
-          if (ch=#27) and double_esc_hack_enabled then
-            begin
-              {This is the same hack as in findsequence; see findsequence for
-               explanation.}
-              ch:=ttyrecvchar;
-              {Alt+O cannot be used in this situation, it can be a function key.}
-              if not(ch in ['a'..'z','A'..'N','P'..'Z','0'..'9','-','+','_','=']) then
-                begin
-                  if intail=0 then
-                    intail:=insize
-                  else
-                    dec(intail);
-                  inbuf[intail]:=ch;
-                  ch:=#27;
-                end
-              else
-                begin
-                  write(#27'[?1036l');
-                  double_esc_hack_enabled:=false;
-                end;
-            end;
-           NNPT:=FindChild(ord(ch),NPT);
-           if assigned(NNPT) then
-             begin
-               NPT:=NNPT;
-               if NPT^.CanBeTerminal and
-                  assigned(NPT^.SpecialHandler) then
-                 break;
-             End;
-           if ch<>#0 then
-             begin
-               store[arrayind]:=ch;
-               inc(arrayind);
-             end;
-           if not assigned(NNPT) then
-             begin
-               if ch<>#0 then
-                 begin
-                   { Put that unused char back into InBuf }
-                   If InTail=0 then
-                     InTail:=InSize-1
-                   else
-                     Dec(InTail);
-                   InBuf[InTail]:=ch;
-                 end;
-               break;
-             end;
-        end;
-      if assigned(NPT) and NPT^.CanBeTerminal then
-        begin
-          if assigned(NPT^.SpecialHandler) then
-            begin
-              NPT^.SpecialHandler;
-              PushExt(0);
-            end
-          else if NPT^.CharValue<>0 then
-            PushKey(chr(NPT^.CharValue))
-          else if NPT^.ScanValue<>0 then
-            PushExt(NPT^.ScanValue);
-        end
-      else
-        RestoreArray;
-   end;
-{$ifdef logging}
-       writeln(f);
-{$endif logging}
-
-  ReadKey:=PopKey;
-End;
-
 {$ifdef linux}
 function ShiftState:byte;
 
@@ -1403,6 +1319,44 @@ begin
       shiftstate:=shiftstate or (kbAlt or kbCtrl);
      if (arg and 1)<>0 then
       inc(shiftstate,kbShift);
+   end;
+end;
+
+function EnhShiftState:TEnhancedShiftState;
+const
+  KG_SHIFT     = 0;
+  KG_CTRL      = 2;
+  KG_ALT       = 3;
+  KG_ALTGR     = 1;
+  KG_SHIFTL    = 4;
+  KG_KANASHIFT = 4;
+  KG_SHIFTR    = 5;
+  KG_CTRLL     = 6;
+  KG_CTRLR     = 7;
+  KG_CAPSSHIFT = 8;
+var
+  arg: longint;
+begin
+  EnhShiftState:=[];
+  arg:=6;
+  if fpioctl(StdInputHandle,TIOCLINUX,@arg)=0 then
+   begin
+     if (arg and (1 shl KG_ALT))<>0 then
+       Include(EnhShiftState,essAlt);
+     if (arg and (1 shl KG_CTRL))<>0 then
+       Include(EnhShiftState,essCtrl);
+     if (arg and (1 shl KG_CTRLL))<>0 then
+       Include(EnhShiftState,essLeftCtrl);
+     if (arg and (1 shl KG_CTRLR))<>0 then
+       Include(EnhShiftState,essRightCtrl);
+     if (arg and (1 shl KG_ALTGR))<>0 then
+       Include(EnhShiftState,essAltGr);
+     if (arg and (1 shl KG_SHIFT))<>0 then
+       Include(EnhShiftState,essShift);
+     if (arg and (1 shl KG_SHIFTL))<>0 then
+       Include(EnhShiftState,essLeftShift);
+     if (arg and (1 shl KG_SHIFTR))<>0 then
+       Include(EnhShiftState,essRightShift);
    end;
 end;
 
@@ -1441,10 +1395,250 @@ begin
 end;
 {$endif linux}
 
+
+function DetectUtf8ByteSequenceStart(ch: Char): LongInt;
+begin
+  if Ord(ch)<128 then
+    DetectUtf8ByteSequenceStart:=1
+  else if (Ord(ch) and %11100000)=%11000000 then
+    DetectUtf8ByteSequenceStart:=2
+  else if (Ord(ch) and %11110000)=%11100000 then
+    DetectUtf8ByteSequenceStart:=3
+  else if (Ord(ch) and %11111000)=%11110000 then
+    DetectUtf8ByteSequenceStart:=4
+  else
+    DetectUtf8ByteSequenceStart:=0;
+end;
+
+
+function IsValidUtf8ContinuationByte(ch: Char): Boolean;
+begin
+  IsValidUtf8ContinuationByte:=(Ord(ch) and %11000000)=%10000000;
+end;
+
+
+function ReadKey:TEnhancedKeyEvent;
+const
+  ReplacementAsciiChar='?';
+var
+  store    : array [0..8] of char;
+  arrayind : byte;
+  SState: TEnhancedShiftState;
+
+
+    procedure RestoreArray;
+      var
+        i : byte;
+        k : TEnhancedKeyEvent;
+      begin
+        for i:=0 to arrayind-1 do
+        begin
+          k := NilEnhancedKeyEvent;
+          k.AsciiChar := store[i];
+          k.VirtualScanCode := Ord(k.AsciiChar);
+          k.ShiftState := SState;
+          { todo: how to set the other fields? }
+          PushKey(k);
+        end;
+      end;
+
+    function ReadUtf8(ch: Char): LongInt;
+      const
+        ErrorCharacter = $FFFD; { U+FFFD = REPLACEMENT CHARACTER }
+      var
+        CodePoint: LongInt;
+      begin
+        ReadUtf8:=ErrorCharacter;
+        case DetectUtf8ByteSequenceStart(ch) of
+          1: ReadUtf8:=Ord(ch);
+          2:begin
+              CodePoint:=(Ord(ch) and %00011111) shl 6;
+              ch:=ttyRecvChar;
+              if not IsValidUtf8ContinuationByte(ch) then
+                exit;
+              CodePoint:=(Ord(ch) and %00111111) or CodePoint;
+              if (CodePoint>=$80) and (CodePoint<=$7FF) then
+                ReadUtf8:=CodePoint;
+            end;
+          3:begin
+              CodePoint:=(Ord(ch) and %00001111) shl 12;
+              ch:=ttyRecvChar;
+              if not IsValidUtf8ContinuationByte(ch) then
+                exit;
+              CodePoint:=((Ord(ch) and %00111111) shl 6) or CodePoint;
+              ch:=ttyRecvChar;
+              if not IsValidUtf8ContinuationByte(ch) then
+                exit;
+              CodePoint:=(Ord(ch) and %00111111) or CodePoint;
+              if ((CodePoint>=$800) and (CodePoint<=$D7FF)) or
+                 ((CodePoint>=$E000) and (CodePoint<=$FFFF)) then
+                ReadUtf8:=CodePoint;
+            end;
+          4:begin
+              CodePoint:=(Ord(ch) and %00000111) shl 18;
+              ch:=ttyRecvChar;
+              if not IsValidUtf8ContinuationByte(ch) then
+                exit;
+              CodePoint:=((Ord(ch) and %00111111) shl 12) or CodePoint;
+              ch:=ttyRecvChar;
+              if not IsValidUtf8ContinuationByte(ch) then
+                exit;
+              CodePoint:=((Ord(ch) and %00111111) shl 6) or CodePoint;
+              ch:=ttyRecvChar;
+              if not IsValidUtf8ContinuationByte(ch) then
+                exit;
+              CodePoint:=(Ord(ch) and %00111111) or CodePoint;
+              if (CodePoint>=$10000) and (CodePoint<=$10FFFF) then
+                ReadUtf8:=CodePoint;
+            end;
+        end;
+      end;
+
+var
+  ch       : char;
+  fdsin    : tfdSet;
+  NPT,NNPT : PTreeElement;
+  k: TEnhancedKeyEvent;
+  UnicodeCodePoint: LongInt;
+begin
+{Check Buffer first}
+  if KeySend<>KeyPut then
+   begin
+     ReadKey:=PopKey;
+     exit;
+   end;
+{Wait for Key}
+  if not sysKeyPressed then
+   begin
+     fpFD_ZERO (fdsin);
+     fpFD_SET (StdInputHandle,fdsin);
+     fpSelect (StdInputHandle+1,@fdsin,nil,nil,nil);
+   end;
+  k:=NilEnhancedKeyEvent;
+{$ifdef linux}
+  if is_console then
+    SState:=EnhShiftState
+  else
+{$endif}
+    SState:=[];
+  k.ShiftState:=SState;
+  ch:=ttyRecvChar;
+  k.AsciiChar:=ch;
+  NPT:=RootTree[ch];
+  if not assigned(NPT) then
+    begin
+      if Utf8KeyboardInputEnabled then
+        begin
+          UnicodeCodePoint:=ReadUtf8(ch);
+          if UnicodeCodePoint<=$FFFF then
+            begin
+              { Code point is in the Basic Multilingual Plane (BMP)
+                -> encode as single WideChar }
+              k.UnicodeChar:=WideChar(UnicodeCodePoint);
+              if UnicodeCodePoint<=127 then
+                k.AsciiChar:=Chr(UnicodeCodePoint)
+              else
+                k.AsciiChar:=ReplacementAsciiChar;
+              PushKey(k);
+            end
+          else if UnicodeCodePoint<=$10FFFF then
+            begin
+              { Code point from the Supplementary Planes (U+010000..U+10FFFF)
+                -> encode as a surrogate pair of WideChars (as in UTF-16) }
+              k.UnicodeChar:=WideChar(((UnicodeCodePoint-$10000) shr 10)+$D800);
+              k.AsciiChar:=ReplacementAsciiChar;
+              PushKey(k);
+              k.UnicodeChar:=WideChar(((UnicodeCodePoint-$10000) and %1111111111)+$DC00);
+              PushKey(k);
+            end;
+        end
+      else
+        PushKey(k);
+    end
+  else
+    begin
+      fpFD_ZERO(fdsin);
+      fpFD_SET(StdInputHandle,fdsin);
+      store[0]:=ch;
+      arrayind:=1;
+      while assigned(NPT) and syskeypressed do
+        begin
+          if inhead=intail then
+            fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
+          ch:=ttyRecvChar;
+          if (ch=#27) and double_esc_hack_enabled then
+            begin
+              {This is the same hack as in findsequence; see findsequence for
+               explanation.}
+              ch:=ttyrecvchar;
+              {Alt+O cannot be used in this situation, it can be a function key.}
+              if not(ch in ['a'..'z','A'..'N','P'..'Z','0'..'9','-','+','_','=']) then
+                begin
+                  PutBackIntoInBuf(ch);
+                  ch:=#27;
+                end
+              else
+                begin
+                  write(#27'[?1036l');
+                  double_esc_hack_enabled:=false;
+                end;
+            end;
+           NNPT:=FindChild(ord(ch),NPT);
+           if assigned(NNPT) then
+             begin
+               NPT:=NNPT;
+               if NPT^.CanBeTerminal and
+                  assigned(NPT^.SpecialHandler) then
+                 break;
+             End
+           else
+             begin
+               { Put that unused char back into InBuf? }
+               if ch<>#0 then
+                 PutBackIntoInBuf(ch);
+               break;
+             end;
+           if ch<>#0 then
+             begin
+               store[arrayind]:=ch;
+               inc(arrayind);
+             end;
+        end;
+      if assigned(NPT) and NPT^.CanBeTerminal then
+        begin
+          if assigned(NPT^.SpecialHandler) then
+            begin
+              NPT^.SpecialHandler;
+              k.AsciiChar := #0;
+              k.UnicodeChar := WideChar(#0);
+              k.VirtualScanCode := 0;
+              PushKey(k);
+            end
+          else if (NPT^.CharValue<>0) or (NPT^.ScanValue<>0) then
+            begin
+              k.AsciiChar := chr(NPT^.CharValue);
+              k.UnicodeChar := WideChar(NPT^.CharValue);
+              k.VirtualScanCode := (NPT^.ScanValue shl 8) or Ord(k.AsciiChar);
+              PushKey(k);
+            end;
+        end
+      else
+        RestoreArray;
+   end;
+{$ifdef logging}
+       writeln(f);
+{$endif logging}
+
+  ReadKey:=PopKey;
+End;
+
+
 { Exported functions }
 
 procedure SysInitKeyboard;
 begin
+  PendingEnhancedKeyEvent:=NilEnhancedKeyEvent;
+  Utf8KeyboardInputEnabled:=UnixKVMBase.UTF8Enabled;
   SetRawMode(true);
 {$ifdef logging}
      assign(f,'keyboard.log');
@@ -1503,7 +1697,7 @@ begin
 end;
 
 
-function SysGetKeyEvent: TKeyEvent;
+function SysGetEnhancedKeyEvent: TEnhancedKeyEvent;
 
   function EvalScan(b:byte):byte;
   const
@@ -1562,33 +1756,34 @@ const
 var
   MyScan:byte;
   MyChar : char;
-  EscUsed,AltPrefixUsed,CtrlPrefixUsed,ShiftPrefixUsed,IsAlt,Again : boolean;
-  SState:byte;
+  MyUniChar: WideChar;
+  MyKey: TEnhancedKeyEvent;
+  EscUsed,AltPrefixUsed,CtrlPrefixUsed,ShiftPrefixUsed,Again : boolean;
+  SState: TEnhancedShiftState;
 
 begin {main}
-  MyChar:=Readkey(IsAlt);
-  MyScan:=ord(MyChar);
-{$ifdef linux}
-  if is_console then
-    SState:=ShiftState
-  else
-{$endif}
-    Sstate:=0;
+  if PendingEnhancedKeyEvent<>NilEnhancedKeyEvent then
+    begin
+      SysGetEnhancedKeyEvent:=PendingEnhancedKeyEvent;
+      PendingEnhancedKeyEvent:=NilEnhancedKeyEvent;
+      exit;
+    end;
+  SysGetEnhancedKeyEvent:=NilEnhancedKeyEvent;
+  MyKey:=ReadKey;
+  MyChar:=MyKey.AsciiChar;
+  MyUniChar:=MyKey.UnicodeChar;
+  MyScan:=MyKey.VirtualScanCode shr 8;
+  Sstate:=MyKey.ShiftState;
   CtrlPrefixUsed:=false;
   AltPrefixUsed:=false;
   ShiftPrefixUsed:=false;
   EscUsed:=false;
-  if IsAlt then
-    SState:=SState or kbAlt;
   repeat
     again:=false;
     if Mychar=#0 then
       begin
-        MyScan:=ord(ReadKey(IsAlt));
-        if myscan=$01 then
-          mychar:=#27;
         { Handle Ctrl-<x>, but not AltGr-<x> }
-        if ((SState and kbCtrl)<>0) and ((SState and kbAlt) = 0)  then
+        if (essCtrl in SState) and (not (essAlt in SState))  then
           case MyScan of
             kbShiftTab: MyScan := kbCtrlTab;
             kbHome..kbDel : { cArrow }
@@ -1599,7 +1794,7 @@ begin {main}
               MyScan:=MyScan+kbCtrlF11-kbF11;
           end
         { Handle Alt-<x>, but not AltGr }
-        else if ((SState and kbAlt)<>0) and ((SState and kbCtrl) = 0) then
+        else if (essAlt in SState) and (not (essCtrl in SState)) then
           case MyScan of
             kbShiftTab: MyScan := kbAltTab;
             kbHome..kbDel : { AltArrow }
@@ -1609,7 +1804,7 @@ begin {main}
             kbF11..KbF12 : { aF11-aF12 }
               MyScan:=MyScan+kbAltF11-kbF11;
           end
-        else if (SState and kbShift)<>0 then
+        else if essShift in SState then
           case MyScan of
             kbIns: MyScan:=kbShiftIns;
             kbDel: MyScan:=kbShiftDel;
@@ -1623,28 +1818,31 @@ begin {main}
             if myscan <= kbShiftEnd then
             begin
                myscan:=ShiftArrow[myscan];
-               sstate:=sstate or kbshift;
+               Include(sstate, essShift);
             end else
             begin
                myscan:=CtrlShiftArrow[myscan];
-               sstate:=sstate or kbshift or kbCtrl;
+               sstate:=sstate + [essShift, essCtrl];
             end;
           end;
         if myscan=kbAltBack then
-          sstate:=sstate or kbalt;
-        if (MyChar<>#0) or (MyScan<>0) or (SState<>0) then
-          SysGetKeyEvent:=$3000000 or ord(MyChar) or (MyScan shl 8) or (SState shl 16)
-        else
-          SysGetKeyEvent:=0;
+          Include(sstate, essAlt);
+        if (MyChar<>#0) or (MyUniChar<>WideChar(0)) or (MyScan<>0) or (SState<>[]) then
+          begin
+            SysGetEnhancedKeyEvent.AsciiChar:=MyChar;
+            SysGetEnhancedKeyEvent.UnicodeChar:=MyUniChar;
+            SysGetEnhancedKeyEvent.ShiftState:=SState;
+            SysGetEnhancedKeyEvent.VirtualScanCode:=(MyScan shl 8) or Ord(MyChar);
+          end;
         exit;
       end
     else if MyChar=#27 then
       begin
         if EscUsed then
-          SState:=SState and not kbAlt
+          SState:=SState-[essAlt,essLeftAlt,essRightAlt]
         else
           begin
-            SState:=SState or kbAlt;
+            Include(SState,essAlt);
             Again:=true;
             EscUsed:=true;
           end;
@@ -1652,97 +1850,101 @@ begin {main}
     else if (AltPrefix<>0) and (MyChar=chr(AltPrefix)) then
       begin { ^Z - replace Alt for Linux OS }
         if AltPrefixUsed then
-          begin
-            SState:=SState and not kbAlt;
-          end
+          SState:=SState-[essAlt,essLeftAlt,essRightAlt]
         else
           begin
             AltPrefixUsed:=true;
-            SState:=SState or kbAlt;
+            Include(SState,essAlt);
             Again:=true;
           end;
       end
     else if (CtrlPrefix<>0) and (MyChar=chr(CtrlPrefix)) then
       begin
         if CtrlPrefixUsed then
-          SState:=SState and not kbCtrl
+          SState:=SState-[essCtrl,essLeftCtrl,essRightCtrl]
         else
           begin
             CtrlPrefixUsed:=true;
-            SState:=SState or kbCtrl;
+            Include(SState,essCtrl);
             Again:=true;
           end;
       end
     else if (ShiftPrefix<>0) and (MyChar=chr(ShiftPrefix)) then
       begin
         if ShiftPrefixUsed then
-          SState:=SState and not kbShift
+          SState:=SState-[essShift,essLeftShift,essRightShift]
         else
           begin
             ShiftPrefixUsed:=true;
-            SState:=SState or kbShift;
+            Include(SState,essShift);
             Again:=true;
           end;
       end;
-    if not again then
+    if again then
       begin
-        MyScan:=EvalScan(ord(MyChar));
-        if ((SState and kbCtrl)<>0) and ((SState and kbAlt) = 0) then
-          begin
-            if MyChar=#9 then
-              begin
-                MyChar:=#0;
-                MyScan:=kbCtrlTab;
-              end;
-          end
-        else if ((SState and kbAlt)<>0) and ((SState and kbCtrl) = 0) then
-          begin
-            if MyChar=#9 then
-              begin
-                MyChar:=#0;
-                MyScan:=kbAltTab;
-              end
-            else
-              begin
-                if MyScan in [$02..$0D] then
-                  inc(MyScan,$76);
-                MyChar:=chr(0);
-              end;
-          end
-        else if (SState and kbShift)<>0 then
-          if MyChar=#9 then
-            begin
-              MyChar:=#0;
-              MyScan:=kbShiftTab;
-            end;
-      end
-    else
-      begin
-        MyChar:=Readkey(IsAlt);
-        MyScan:=ord(MyChar);
-        if IsAlt then
-          SState:=SState or kbAlt;
+        MyKey:=ReadKey;
+        MyChar:=MyKey.AsciiChar;
+        MyUniChar:=MyKey.UnicodeChar;
+        MyScan:=MyKey.VirtualScanCode shr 8;
       end;
-    until not Again;
-  if (MyChar<>#0) or (MyScan<>0) or (SState<>0) then
-    SysGetKeyEvent:=$3000000 or ord(MyChar) or (MyScan shl 8) or (SState shl 16)
-  else
-    SysGetKeyEvent:=0;
+  until not Again;
+  MyScan:=EvalScan(ord(MyChar));
+  if (essCtrl in SState) and (not (essAlt in SState)) then
+    begin
+      if MyChar=#9 then
+        begin
+          MyChar:=#0;
+          MyUniChar:=WideChar(0);
+          MyScan:=kbCtrlTab;
+        end;
+    end
+  else if (essAlt in SState) and (not (essCtrl in SState)) then
+    begin
+      if MyChar=#9 then
+        begin
+          MyChar:=#0;
+          MyUniChar:=WideChar(0);
+          MyScan:=kbAltTab;
+        end
+      else
+        begin
+          if MyScan in [$02..$0D] then
+            inc(MyScan,$76);
+          MyChar:=chr(0);
+          MyUniChar:=WideChar(0);
+        end;
+    end
+  else if essShift in SState then
+    if MyChar=#9 then
+      begin
+        MyChar:=#0;
+        MyUniChar:=WideChar(0);
+        MyScan:=kbShiftTab;
+      end;
+  if (MyChar<>#0) or (MyUniChar<>WideChar(0)) or (MyScan<>0) or (SState<>[]) then
+    begin
+      SysGetEnhancedKeyEvent.AsciiChar:=MyChar;
+      SysGetEnhancedKeyEvent.UnicodeChar:=MyUniChar;
+      SysGetEnhancedKeyEvent.ShiftState:=SState;
+      SysGetEnhancedKeyEvent.VirtualScanCode:=(MyScan shl 8) or Ord(MyChar);
+    end;
 end;
 
 
-function SysPollKeyEvent: TKeyEvent;
+function SysPollEnhancedKeyEvent: TEnhancedKeyEvent;
 var
-  KeyEvent : TKeyEvent;
+  KeyEvent : TEnhancedKeyEvent;
 begin
-  if keypressed then
+  if PendingEnhancedKeyEvent<>NilEnhancedKeyEvent then
+    SysPollEnhancedKeyEvent:=PendingEnhancedKeyEvent
+  else if keypressed then
     begin
-      KeyEvent:=SysGetKeyEvent;
-      PutKeyEvent(KeyEvent);
-      SysPollKeyEvent:=KeyEvent
+      KeyEvent:=SysGetEnhancedKeyEvent;
+      PendingEnhancedKeyEvent:=KeyEvent;
+      SysPollEnhancedKeyEvent:=KeyEvent;
     end
   else
-    SysPollKeyEvent:=0;
+    SysPollEnhancedKeyEvent:=NilEnhancedKeyEvent;
 end;
 
 
@@ -1767,11 +1969,13 @@ const
   SysKeyboardDriver : TKeyboardDriver = (
     InitDriver : @SysInitKeyBoard;
     DoneDriver : @SysDoneKeyBoard;
-    GetKeyevent : @SysGetKeyEvent;
-    PollKeyEvent : @SysPollKeyEvent;
+    GetKeyevent : Nil;
+    PollKeyEvent : Nil;
     GetShiftState : @SysGetShiftState;
     TranslateKeyEvent : Nil;
     TranslateKeyEventUnicode : Nil;
+    GetEnhancedKeyEvent : @SysGetEnhancedKeyEvent;
+    PollEnhancedKeyEvent : @SysPollEnhancedKeyEvent;
   );
 
 begin

@@ -175,7 +175,17 @@ FOR FPC THESE ARE THE TRANSLATIONS
 {  FPC 64 BIT COMPILER added - Update 28Nov2010 PM                          }
 {---------------------------------------------------------------------------}
 {$IFDEF FPC}
-  {$mode fpc}
+  {$mode objfpc}
+
+  {$MACRO ON}
+
+  {$IFDEF FV_UNICODE}
+    {$DEFINE Sw_PString_DeRef:=}
+    {$DEFINE Sw_NewStr:=}
+  {$ELSE FV_UNICODE}
+    {$DEFINE Sw_PString_DeRef:=^}
+    {$DEFINE Sw_NewStr:=NewStr}
+  {$ENDIF FV_UNICODE}
 
   {$UNDEF PROC_Real}
   {$DEFINE PROC_Protected}

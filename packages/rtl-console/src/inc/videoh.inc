@@ -11,6 +11,9 @@
 
  **********************************************************************}
 
+{$mode objfpc}
+{$modeswitch advancedrecords}
+
 type
   PVideoMode = ^TVideoMode;
   TVideoMode = record
@@ -25,19 +28,48 @@ type
   TVideoBuf = array[0..{$ifdef CPU16}16382{$else}32759{$endif}] of TVideoCell;
   PVideoBuf = ^TVideoBuf;
 
+  TEnhancedVideoCell = record
+  private
+    class operator Initialize(var evc: TEnhancedVideoCell);
+    class operator Finalize(var evc: TEnhancedVideoCell);
+    class operator AddRef(var evc: TEnhancedVideoCell);
+    class operator Copy(constref aSrc: TEnhancedVideoCell; var aDst: TEnhancedVideoCell);
+    function GetExtendedGraphemeCluster: UnicodeString;
+    procedure SetExtendedGraphemeCluster(const AExtendedGraphemeCluster: UnicodeString);
+    function GetAttribute: Byte;
+    procedure SetAttribute(Attr: Byte);
+  public
+    property ExtendedGraphemeCluster: UnicodeString read GetExtendedGraphemeCluster write SetExtendedGraphemeCluster;
+    property Attribute: Byte read GetAttribute write SetAttribute;
+
+  private
+    FAttributes: Word;
+    case integer of
+      0: (EGC_SingleChar: WideChar);
+      1: (EGC_WideStr: Pointer);
+  end;
+  PEnhancedVideoCell = ^TEnhancedVideoCell;
+
+  TEnhancedVideoBuf = array of TEnhancedVideoCell;
+
   TVideoDriver = Record
-    InitDriver        : Procedure;
-    DoneDriver        : Procedure;
-    UpdateScreen      : Procedure(Force : Boolean);
-    UpdateScreenArea  : Procedure(const X1, Y1, X2, Y2: Word; Force : Boolean);
-    ClearScreen       : Procedure;
-    SetVideoMode      : Function (Const Mode : TVideoMode) : Boolean;
-    GetVideoModeCount : Function : Word;
-    GetVideoModeData  : Function(Index : Word; Var Data : TVideoMode) : Boolean;
-    SetCursorPos      : procedure (NewCursorX, NewCursorY: Word);
-    GetCursorType     : function : Word;
-    SetCursorType     : procedure (NewType: Word);
-    GetCapabilities   : Function : Word;
+    InitDriver               : Procedure;
+    InitEnhancedDriver       : Procedure;
+    DoneDriver               : Procedure;
+    UpdateScreen             : Procedure(Force : Boolean);
+    UpdateScreenArea         : Procedure(const X1, Y1, X2, Y2: Word; Force : Boolean);
+    ClearScreen              : Procedure;
+    SetVideoMode             : Function (Const Mode : TVideoMode) : Boolean;
+    GetVideoModeCount        : Function : Word;
+    GetVideoModeData         : Function(Index : Word; Var Data : TVideoMode) : Boolean;
+    SetCursorPos             : procedure (NewCursorX, NewCursorY: Word);
+    GetCursorType            : function : Word;
+    SetCursorType            : procedure (NewType: Word);
+    GetCapabilities          : Function : Word;
+    GetActiveCodePage        : function : TSystemCodePage;
+    ActivateCodePage         : procedure(CodePage: TSystemCodePage);
+    GetSupportedCodePageCount: function : Integer;
+    GetSupportedCodePage     : function(Index: Integer): TSystemCodePage;
   end;
 
 const
@@ -98,6 +130,8 @@ var
   OldVideoBuf  : PVideoBuf;
   VideoBufSize : Longint;
   CursorLines  : Byte;
+  EnhancedVideoBuf,
+  OldEnhancedVideoBuf: TEnhancedVideoBuf;
 
 const {The following constants were variables in the past.
        - Lowascii was set to true if ASCII characters < 32 were available
@@ -112,6 +146,8 @@ const {The following constants were variables in the past.
       NoExtendedFrame = false;
 
       FVMaxWidth = 240;
+
+operator = (const a,b : TEnhancedVideoCell) res: Boolean;
 
 Procedure LockScreenUpdate;
 { Increments the screen update lock count with one.}
@@ -128,6 +164,10 @@ procedure InitVideo;
 { Initializes the video subsystem }
 procedure DoneVideo;
 { Deinitializes the video subsystem }
+procedure InitEnhancedVideo;
+{ Initializes the enhanced (Unicode) video subsystem }
+procedure DoneEnhancedVideo;
+{ Deinitializes the enhanced (Unicode) video subsystem }
 function GetCapabilities: Word;
 { Return the capabilities of the current environment }
 procedure ClearScreen;
@@ -147,6 +187,18 @@ function GetCursorType: Word;
 { Return the cursor type: Hidden, UnderLine or Block }
 procedure SetCursorType(NewType: Word);
 { Set the cursor to the given type }
+function ExtendedGraphemeClusterDisplayWidth(const EGC: UnicodeString): Integer;
+{ Returns the number of display columns needed for the given extended grapheme cluster }
+function StringDisplayWidth(const S: UnicodeString): Integer;
+{ Returns the number of display columns needed for the given string }
+function GetActiveCodePage: TSystemCodePage;
+{ Returns the current active legacy code page }
+procedure ActivateCodePage(CodePage: TSystemCodePage);
+{ Activates a specified legacy code page (if supported) }
+function GetSupportedCodePageCount: Integer;
+{ Get the number of code pages supported by this driver }
+function GetSupportedCodePage(Index: Integer): TSystemCodePage;
+{ Get the supported code page with index Index. Index is zero based. }
 
 procedure GetVideoMode(var Mode: TVideoMode);
 { Return dimensions of the current video mode }

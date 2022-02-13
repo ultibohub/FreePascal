@@ -46,6 +46,7 @@ begin
     P.Description := 'Rtl-console, console abstraction';
     P.NeedLibC:= false;
     P.Dependencies.Add('rtl-extra'); // linux,android gpm.
+    P.Dependencies.Add('rtl-unicode');
     P.Dependencies.Add('morphunits',[morphos]);
     P.Dependencies.Add('arosunits',[aros]);
     if Defaults.CPU=m68k then
@@ -78,6 +79,7 @@ begin
         AddInclude('nwsys.inc',[netware]);
         AddUnit   ('mouse',AllUnixOSes);
         AddUnit   ('video',[win16]);
+        AddUnit   ('unixkvmbase',AllUnixOSes);
       end;
 
     T:=P.Targets.AddUnit('mouse.pp',MouseOSes);
@@ -98,6 +100,7 @@ begin
        AddInclude('convert.inc',AllUnixOSes);
        AddInclude('nwsys.inc',[netware]);
        AddUnit   ('mouse',[go32v2,msdos]);
+       AddUnit   ('unixkvmbase',AllUnixOSes);
      end;
 
     // Alternate versions for Ultibo to resolve name conflict
@@ -148,6 +151,8 @@ begin
        AddUnit('video');
        AddUnit('mouse');
      end;
+
+    T:=P.Targets.AddUnit('unixkvmbase.pp',AllUnixOSes);
   end
 end;
 

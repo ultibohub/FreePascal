@@ -20,7 +20,7 @@ interface
 uses
   Classes, SysUtils, contnrs, strutils, fpcunit, testregistry,
   PasTree, PScanner, PParser, PasResolver, PasResolveEval,
-  tcbaseparser;
+  tcbaseparser, TestPasUtils;
 
 type
   TSrcMarkerKind = (
@@ -568,6 +568,7 @@ type
     Procedure TestClass_MethodInvalidOverload;
     Procedure TestClass_MethodOverride;
     Procedure TestClass_MethodOverride2;
+    Procedure TestClass_MethodOverrideAndOverload;
     Procedure TestClass_MethodOverrideFixCase;
     Procedure TestClass_MethodOverrideSameResultType;
     Procedure TestClass_MethodOverrideDiffResultTypeFail;
@@ -4951,7 +4952,7 @@ begin
   Add('var i: longint;');
   Add('begin');
   Add('  if Assigned(i) then ;');
-  CheckResolverException('Incompatible type arg no. 1: Got "Longint", expected "class or array"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Longint", expected "class or array"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -5028,7 +5029,7 @@ begin
   Add('  aString: string;');
   Add('begin');
   Add('  Str(aString,aString);');
-  CheckResolverException('Incompatible type arg no. 1: Got "String", expected "boolean, integer, enum value"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "String", expected "boolean, integer, enum value"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -5040,7 +5041,7 @@ begin
   Add('  aString: string;');
   Add('begin');
   Add('  Str(c,aString);');
-  CheckResolverException('Incompatible type arg no. 1: Got "Char", expected "boolean, integer, enum value"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Char", expected "boolean, integer, enum value"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -5065,7 +5066,7 @@ begin
   Add('  i: string;');
   Add('begin');
   Add('  inc(i);');
-  CheckResolverException('Incompatible type arg no. 1: Got "String", expected "integer"',nIncompatibleTypeArgNo);
+  CheckResolverException('Incompatible type for arg no. 1: Got "String", expected "integer"',nIncompatibleTypeArgNo);
 end;
 
 procedure TTestResolver.TestTypeInfo;
@@ -6415,7 +6416,7 @@ begin
   'begin',
   '  DoColor(i);',
   '']);
-  CheckResolverException('Incompatible type arg no. 1: Got "Longint", expected "TColor". Var param must match exactly.',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Longint", expected "TColor". Var param must match exactly.',
     nIncompatibleTypeArgNoVarParamMustMatchExactly);
 end;
 
@@ -7572,7 +7573,7 @@ begin
   'begin',
   '  ProcA(1,false);',
   '']);
-  CheckResolverException('Incompatible type arg no. 2: Got "Boolean", expected "Word"',nIncompatibleTypeArgNo);
+  CheckResolverException('Incompatible type for arg no. 2: Got "Boolean", expected "Word"',nIncompatibleTypeArgNo);
 end;
 
 procedure TTestResolver.TestProc_ParameterExprAccess;
@@ -9644,6 +9645,36 @@ begin
   ParseProgram;
 end;
 
+procedure TTestResolver.TestClass_MethodOverrideAndOverload;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class',
+  '  public',
+  '    procedure Fly(b: boolean); virtual; abstract; overload;',
+  '    procedure Fly(c: word); virtual; abstract; overload;',
+  '  end;',
+  '  TBird = class(TObject)',
+  '  public',
+  '    procedure Fly(b: boolean); override; overload;',
+  '    procedure Fly(c: word); override; overload;',
+  '  end;',
+  'procedure TBird.Fly(b: boolean);',
+  'begin end;',
+  'procedure TBird.Fly(c: word);',
+  'begin end;',
+  'var',
+  '  b: TBird;',
+  'begin',
+  '  b.Fly(true);',
+  '  b.Fly(1);',
+  'end.',
+  '']);
+  ParseProgram;
+end;
+
 procedure TTestResolver.TestClass_MethodOverrideFixCase;
 
   procedure CheckOverrideName(aLabel: string);
@@ -10045,7 +10076,7 @@ begin
   'begin',
   '  o:=TBird.Create(nil);',
   '']);
-  CheckResolverException('Incompatible type arg no. 1: Got "Nil", expected "Longint"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Nil", expected "Longint"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -12725,7 +12756,7 @@ begin
   Add('    property B: longint write SetB;');
   Add('  end;');
   Add('begin');
-  CheckResolverException('Incompatible type arg no. 1: Got "var", expected "const"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "var", expected "const"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -12738,7 +12769,7 @@ begin
   Add('    property B: longint write SetB;');
   Add('  end;');
   Add('begin');
-  CheckResolverException('Incompatible type arg no. 1: Got "String", expected "Longint"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "String", expected "Longint"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -12935,7 +12966,7 @@ begin
   '    property B: boolean index 1 read GetB;',
   '  end;',
   'begin']);
-  CheckResolverException('Incompatible type arg no. 1: Got "Longint", expected "String"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Longint", expected "String"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -13308,7 +13339,7 @@ begin
   Add('var Obj: tobject;');
   Add('begin');
   Add('  obj.Items[3]:=''4'';');
-  CheckResolverException('Incompatible type arg no. 1: Got "Longint", expected "String"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Longint", expected "String"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -14702,7 +14733,7 @@ begin
   Add('  a: array[TEnum] of longint;');
   Add('begin');
   Add('  SetLength(a,1);');
-  CheckResolverException('Incompatible type arg no. 1: Got "static array[] of Longint", expected "string or dynamic array variable"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "static array[] of Longint", expected "string or dynamic array variable"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -15016,7 +15047,7 @@ begin
   '  SetLength(a,3);',
   'end;',
   'begin']);
-  CheckResolverException('Incompatible type arg no. 1: Got "open array of Byte", expected "string or dynamic array variable"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "open array of Byte", expected "string or dynamic array variable"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -15431,7 +15462,7 @@ begin
   'var a: TArr;',
   'begin',
   '  DoIt(a)']);
-  CheckResolverException('Incompatible type arg no. 1: Got "TArr", expected "array of const"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "TArr", expected "array of const"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -15460,7 +15491,7 @@ begin
   '  SetLength(args,2);',
   'end;',
   'begin']);
-  CheckResolverException('Incompatible type arg no. 1: Got "array of const", expected "string or dynamic array variable"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "array of const", expected "string or dynamic array variable"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -15921,7 +15952,7 @@ begin
   Add('var p: TProcInt;');
   Add('begin');
   Add('  p:=@ProcA;');
-  CheckResolverException('Incompatible type arg no. 1: Got "Longint", expected "String"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Longint", expected "String"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -15935,7 +15966,7 @@ begin
   Add('var p: TProcInt;');
   Add('begin');
   Add('  p:=@ProcA;');
-  CheckResolverException('Incompatible type arg no. 1: Got "access modifier const", expected "default"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "access modifier const", expected "default"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -16390,7 +16421,7 @@ begin
   Add('var Btn: TControl;');
   Add('begin');
   Add('  Btn.OnClick(3);');
-  CheckResolverException('Incompatible type arg no. 1: Got "Longint", expected "TObject"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Longint", expected "TObject"',
     nIncompatibleTypeArgNo);
 end;
 
@@ -17860,7 +17891,7 @@ begin
   'begin',
   '  o:=TObject.Create(nil);',
   '']);
-  CheckResolverException('Incompatible type arg no. 1: Got "Nil", expected "Longint"',
+  CheckResolverException('Incompatible type for arg no. 1: Got "Nil", expected "Longint"',
     nIncompatibleTypeArgNo);
 end;
 

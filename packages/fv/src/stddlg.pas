@@ -931,7 +931,7 @@ begin
 end;
 
 function MatchesMaskList(What, MaskList: string): boolean;
-var P: integer;
+var P: SmallInt;
     Match: boolean;
 begin
   Match:=false;
@@ -1838,12 +1838,21 @@ begin
 end;
 
 procedure TDirListBox.NewDirectory(var ADir: DirStr);
+{$ifdef FV_UNICODE}
 const
-  PathDir       = 'ÀÄÂ';
-  FirstDir     =   'ÀÂÄ';
-  MiddleDir   =   ' ÃÄ';
-  LastDir       =   ' ÀÄ';
+  PathDir       = #$2514#$2500#$252C;
+  FirstDir     =   #$2514#$252C#$2500;
+  MiddleDir   =   ' '#$251C#$2500;
+  LastDir       =   ' '#$2514#$2500;
   IndentSize    = '  ';
+{$else FV_UNICODE}
+const
+  PathDir       = #192#196#194;
+  FirstDir     =   #192#194#196;
+  MiddleDir   =   ' '#195#196;
+  LastDir       =   ' '#192#196;
+  IndentSize    = '  ';
+{$endif FV_UNICODE}
 var
   AList: PCollection;
   NewDir, Dirct: DirStr;
@@ -1949,16 +1958,29 @@ begin
     end;
   FindClose(SR);
     P := PDirEntry(AList^.At(AList^.Count-1))^.DisplayText;
-    I := Pos('À',P^);
+{$ifdef FV_UNICODE}
+    I := Pos(#$2514,P^);
     if I = 0 then
     begin
-      I := Pos('Ã',P^);
-      if I <> 0 then P^[I] := 'À';
+      I := Pos(#$251C,P^);
+      if I <> 0 then P^[I] := #$2514;
     end else
     begin
-      P^[I+1] := 'Ä';
-      P^[I+2] := 'Ä';
+      P^[I+1] := #$2500;
+      P^[I+2] := #$2500;
     end;
+{$else FV_UNICODE}
+    I := Pos(#192,P^);
+    if I = 0 then
+    begin
+      I := Pos(#195,P^);
+      if I <> 0 then P^[I] := #192;
+    end else
+    begin
+      P^[I+1] := #196;
+      P^[I+2] := #196;
+    end;
+{$endif FV_UNICODE}
   end;
   NewList(AList);
   FocusItem(NewCur);
@@ -2491,31 +2513,29 @@ end;
 function IsDir(const S: String): Boolean;
 var
   SR: SearchRec;
-  Is: boolean;
 begin
-  Is:=false;
+  Result:=false;
 {$ifdef Unix}
-  Is:=(S=DirSeparator); { handle root }
+  Result:=(S=DirSeparator); { handle root }
 {$else}
   {$ifdef HASAMIGA}
-  Is := (Length(S) > 0) and (S[Length(S)] = DriveSeparator);
+  Result := (Length(S) > 0) and (S[Length(S)] = DriveSeparator);
   {$else}
-  Is:=(length(S)=3) and (Upcase(S[1]) in['A'..'Z']) and (S[2]=':') and (S[3]=DirSeparator);
+  Result:=(length(S)=3) and (Upcase(S[1]) in['A'..'Z']) and (S[2]=':') and (S[3]=DirSeparator);
   {$endif}
   { handle root dirs }
 {$endif}
-  if Is=false then
+  if Result=false then
   begin
     FindFirst(S, Directory, SR);
     if DosError = 0 then
-      Is := (SR.Attr and Directory) <> 0
+      Result := (SR.Attr and Directory) <> 0
     else
-      Is := False;
+      Result := False;
    {$ifdef fpc}
     FindClose(SR);
    {$endif}
   end;
-  IsDir:=Is;
 end;
 
 {****************************************************************************}

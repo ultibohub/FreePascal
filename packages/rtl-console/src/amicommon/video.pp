@@ -15,6 +15,7 @@
  **********************************************************************}
 
 {$MODE OBJFPC}
+{$modeswitch advancedrecords}
 unit Video;
 
 {.$define VIDEODEBUG}
@@ -56,7 +57,7 @@ var
 implementation
 
 uses
-   exec, agraphics;
+   exec, agraphics, graphemebreakproperty, eastasianwidth, charset;
 
 procedure SysUpdateScreen(Force: Boolean); forward;
 
@@ -877,6 +878,7 @@ end;
 const
   SysVideoDriver : TVideoDriver = (
     InitDriver : @SysInitVideo;
+    InitEnhancedDriver : Nil;
     DoneDriver : @SysDoneVideo;
     UpdateScreen : @SysUpdateScreen;
     UpdateScreenArea : @SysUpdateScreenArea;
@@ -887,7 +889,11 @@ const
     SetCursorPos : @SysSetCursorPos;
     GetCursorType : @SysGetCursorType;
     SetCursorType : @SysSetCursorType;
-    GetCapabilities : @SysGetCapabilities
+    GetCapabilities : @SysGetCapabilities;
+    GetActiveCodePage : Nil;
+    ActivateCodePage : Nil;
+    GetSupportedCodePageCount : Nil;
+    GetSupportedCodePage : Nil;
   );
 {$ifdef Amiga68k}
 function CreateRastport: PRastPort;

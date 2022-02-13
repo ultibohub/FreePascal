@@ -24,56 +24,27 @@ unit video;
 
 {$i videoh.inc}
 
-type  Tencoding=(cp437,         {Codepage 437}
-                 cp850,         {Codepage 850}
-                 cp852,         {Codepage 852}
-                 cp866,         {Codepage 866}
-                 koi8r,         {KOI8-R codepage}
-                 iso01,         {ISO 8859-1}
-                 iso02,         {ISO 8859-2}
-                 iso03,         {ISO 8859-3}
-                 iso04,         {ISO 8859-4}
-                 iso05,         {ISO 8859-5}
-                 iso06,         {ISO 8859-6}
-                 iso07,         {ISO 8859-7}
-                 iso08,         {ISO 8859-8}
-                 iso09,         {ISO 8859-9}
-                 iso10,         {ISO 8859-10}
-                 iso13,         {ISO 8859-13}
-                 iso14,         {ISO 8859-14}
-                 iso15,         {ISO 8859-15}
-                 utf8);         {UTF-8}
-
-const  {Contains all code pages that can be considered a normal vga font.
-        Note: KOI8-R has line drawing characters in wrong place. Support
-              can perhaps be added, for now we'll let it rest.}
-       vga_codepages=[cp437,cp850,cp852,cp866];
-       iso_codepages=[iso01,iso02,iso03,iso04,iso05,iso06,iso07,iso08,
-                      iso09,iso10,iso13,iso14,iso15];
-
-var internal_codepage,external_codepage:Tencoding;
-
-
 {*****************************************************************************}
                                 implementation
 {*****************************************************************************}
 
-uses  baseunix,termio,strings
+uses  baseunix,termio,strings,unixkvmbase,graphemebreakproperty,eastasianwidth
+     ,charset
      {$ifdef linux},linuxvcs{$endif};
 
+const
+  CP_ISO01 = 28591;  {ISO 8859-1}
+  CP_ISO02 = 28592;  {ISO 8859-2}
+  CP_ISO05 = 28595;  {ISO 8859-5}
+
+var external_codepage:TSystemCodePage;
+
 {$i video.inc}
-{$i convert.inc}
 
 type  Tconsole_type=(ttyNetwork
                      {$ifdef linux},ttyLinux{$endif}
                      ,ttyFreeBSD
                      ,ttyNetBSD);
-
-      Tconversion=(cv_none,
-                   cv_cp437_to_iso01,
-                   cv_cp850_to_iso01,
-                   cv_linuxlowascii_to_vga,
-                   cv_cp437_to_UTF8);
 
       Ttermcode=(
         enter_alt_charset_mode,
@@ -179,8 +150,8 @@ const term_codes_ansi:Ttermcodes=
       term_codes_beos:Ttermcodes=
         (nil,//#$0E,                                              {enter_alt_charset_mode}
          nil,//#$0F,                                              {exit_alt_charset_mode}
-         #$1B#$5B#$48#$1B#$5B#$4A,		                    {clear_screen}
-         #$1B#$5B#$48,                                      {cursor_home}
+         #$1B#$5B#$48#$1B#$5B#$4A,                                {clear_screen}
+         #$1B#$5B#$48,                                            {cursor_home}
          #$1B'[?25h',// nil,//#$1B#$5B#$3F#$31#$32#$6C#$1B#$5B#$3F#$32#$35#$68,  {cursor_normal}
          nil,//#$1B#$5B#$3F#$31#$32#$3B#$32#$35#$68,              {cursor visible, underline}
          nil,//#$1B#$5B#$3F#$31#$32#$3B#$32#$35#$68,              {cursor visible, block}
@@ -217,8 +188,6 @@ const    terminal_names:array[0..11] of string[7]=(
                         @term_codes_xterm,
                         @term_codes_beos);
 
-const convert:Tconversion=cv_none;
-
 var
   LastCursorType : byte;
 {$ifdef linux}
@@ -249,6 +218,19 @@ const
   TerminalSupportsHighIntensityColors: boolean = false;
   TerminalSupportsBold: boolean = true;
 
+{Contains all code pages that can be considered a normal vga font.
+    Note: KOI8-R has line drawing characters in wrong place. Support
+          can perhaps be added, for now we'll let it rest.}
+function is_vga_code_page(CP: TSystemCodePage): Boolean;
+begin
+  case CP of
+    437,850,852,866:
+      result:=true;
+    else
+      result:=false;
+  end;
+end;
+
 function convert_vga_to_acs(ch:char):word;
 
 {Ch contains a character in the VGA character set (i.e. codepage 437).
@@ -262,43 +244,43 @@ begin
   case ch of
     #18:
       convert_vga_to_acs:=word('|');
-    #24, #30: {}
+    #24, #30: {‚Üë‚ñ≤}
       convert_vga_to_acs:=word('^');
-    #25, #31: {}
+    #25, #31: {‚Üì‚ñº}
       convert_vga_to_acs:=word('v');
-    #26, #16: {Never introduce a ctrl-Z ... }
+    #26, #16: {Never introduce a ctrl-Z ... ‚Üí‚ñ∫}
       convert_vga_to_acs:=word('>');
-    {#27,} #17: {}
+    {#27,} #17: {‚Üê‚óÑ}
       convert_vga_to_acs:=word('<');
-    #176, #177, #178: {∞±≤}
+    #176, #177, #178: {‚ñë‚ñí‚ñì}
       convert_vga_to_acs:=$f800+word('a');
-    #180, #181, #182, #185: {¥µ∂π}
+    #180, #181, #182, #185: {‚î§‚ï°‚ï¢‚ï£}
       convert_vga_to_acs:=$f800+word('u');
-    #183, #184, #187, #191: {∑∏ªø}
+    #183, #184, #187, #191: {‚ïñ‚ïï‚ïó‚îê}
       convert_vga_to_acs:=$f800+word('k');
-    #188, #189, #190, #217: {ºΩæŸ}
+    #188, #189, #190, #217: {‚ïù‚ïú‚ïõ‚îò}
       convert_vga_to_acs:=$f800+word('j');
-    #192, #200, #211, #212: {¿»”‘}
+    #192, #200, #211, #212: {‚îî‚ïö‚ïô‚ïò}
       convert_vga_to_acs:=$f800+word('m');
-    #193, #202, #207, #208: {¡ œ–}
+    #193, #202, #207, #208: {‚î¥‚ï©‚ïß‚ï®}
       convert_vga_to_acs:=$f800+word('v');
-    #194, #203, #209, #210: {¬À—“}
+    #194, #203, #209, #210: {‚î¨‚ï¶‚ï§‚ï•}
       convert_vga_to_acs:=$f800+word('w');
-    #195, #198, #199, #204: {√∆«Ã}
+    #195, #198, #199, #204: {‚îú‚ïû‚ïü‚ï†}
       convert_vga_to_acs:=$f800+word('t');
-    #196, #205: {ƒÕ}
+    #196, #205: {‚îÄ‚ïê}
       convert_vga_to_acs:=$f800+word('q');
-    #179, #186: {≥∫}
+    #179, #186: {‚îÇ‚ïë}
       convert_vga_to_acs:=$f800+word('x');
-    #197, #206, #215, #216: {≈Œ◊ÿ}
+    #197, #206, #215, #216: {‚îº‚ï¨‚ï´‚ï™}
       convert_vga_to_acs:=$f800+word('n');
-    #201, #213, #214, #218: {…’÷⁄}
+    #201, #213, #214, #218: {‚ïî‚ïí‚ïì‚îå}
       convert_vga_to_acs:=$f800+word('l');
-    #254: { ˛ }
+    #254: { ‚ñ† }
       convert_vga_to_acs:=word('*');
     { Shadows for Buttons }
-    #220  { ‹ },
-    #223: { ﬂ }
+    #220  { ‚ñÑ },
+    #223: { ‚ñÄ }
       convert_vga_to_acs:=$f800+word('a');
     else
       convert_vga_to_acs:=word(ch);
@@ -503,19 +485,9 @@ end;
 
 
 procedure UpdateTTY(Force:boolean);
-type
-  tchattr=packed record
-{$ifdef ENDIAN_LITTLE}
-    ch : char;
-    attr : byte;
-{$else}
-    attr : byte;
-    ch : char;
-{$endif}
-  end;
 var
   outbuf   : array[0..1023+255] of char;
-  chattr   : tchattr;
+  chattr   : tenhancedvideocell;
   skipped  : boolean;
   outptr,
   spaces,
@@ -524,160 +496,28 @@ var
   LastX,LastY,
   SpaceAttr,
   LastAttr : longint;
-  p,pold   : pvideocell;
   LastLineWidth : Longint;
+  p,pold   : penhancedvideocell;
+  LastCharWasDoubleWidth: Boolean;
+  CurCharWidth: Integer;
 
-  function transform_cp437_to_iso01(const st:string):string;
-
-  var i:byte;
-      c:char;
-      converted:word;
-
+  function transform(const hstr:UnicodeString):RawByteString;
   begin
-    transform_cp437_to_iso01:='';
-    for i:=1 to length(st) do
-      begin
-        c:=st[i];
-        case c of
-          #0..#31:
-            converted:=convert_lowascii_to_iso01[c];
-          #128..#255:
-            converted:=convert_cp437_to_iso01[c];
-          else
-            converted:=byte(c);
-        end;
-        if converted and $ff00=$f800 then
-          begin
-            if not in_ACS then
-              begin
-                transform_cp437_to_iso01:=transform_cp437_to_iso01+ACSIn;
-                in_ACS:=true;
-              end;
-            c:=char(converted and $ff);
-          end
-        else
-          if in_ACS then
-            begin
-              transform_cp437_to_iso01:=transform_cp437_to_iso01+ACSOut+
-                                        Attr2Ansi(LastAttr,0);
-              in_ACS:=false;
-            end;
-        transform_cp437_to_iso01:=transform_cp437_to_iso01+c;
-      end;
+    result:=Utf8Encode(hstr);
+    if external_codepage<>CP_UTF8 then
+      SetCodePage(result,external_codepage,True);
   end;
 
-  function transform_cp850_to_iso01(const st:string):string;
-
-  var i:byte;
-      c:char;
-      converted:word;
-
-  begin
-    transform_cp850_to_iso01:='';
-    for i:=1 to length(st) do
-      begin
-        c:=st[i];
-        case c of
-          #0..#31:
-            converted:=convert_lowascii_to_iso01[c];
-          #128..#255:
-            converted:=convert_cp850_to_iso01[c];
-          else
-            converted:=byte(c);
-        end;
-        if converted and $ff00=$f800 then
-          begin
-            if not in_ACS then
-              begin
-                transform_cp850_to_iso01:=transform_cp850_to_iso01+ACSIn;
-                in_ACS:=true;
-              end;
-          end
-        else
-          if in_ACS then
-            begin
-              transform_cp850_to_iso01:=transform_cp850_to_iso01+ACSOut+
-                                        Attr2Ansi(LastAttr,0);
-              in_ACS:=false;
-            end;
-        c:=char(converted and $ff);
-        transform_cp850_to_iso01:=transform_cp850_to_iso01+c;
-      end;
-  end;
-
-  function transform_linuxlowascii_to_vga(const st:string):string;
-
-  var i:byte;
-      c:char;
-      converted:word;
-
-  begin
-    transform_linuxlowascii_to_vga:='';
-    for i:=1 to length(st) do
-      begin
-        c:=st[i];
-        case c of
-          #0..#31:
-            converted:=convert_linuxlowascii_to_vga[c];
-          else
-            converted:=byte(c);
-        end;
-        c:=char(converted and $ff);
-        transform_linuxlowascii_to_vga:=transform_linuxlowascii_to_vga+c;
-      end;
-  end;
-
-  function transform_cp437_to_UTF8(const st:string): string;
-  var i:byte;
-      c : char;
-      converted : WideChar;
-      s : WideString;
-  begin
-    s := '';
-    for i:=1 to length(st) do
-      begin
-        c:=st[i];
-        case c of
-          #0..#31:
-            converted:=convert_lowascii_to_UTF8[c];
-          #127..#255:
-            converted:=convert_cp437_to_UTF8[c];
-          else
-          begin
-            converted := #0;
-            converted := c;
-          end;
-        end;
-        s := s + converted;
-      end;
-    transform_cp437_to_UTF8 := Utf8Encode(s);  
-  end;
-  
-  function transform(const hstr:string):string;
-
-  begin
-    case convert of
-      cv_linuxlowascii_to_vga:
-        transform:=transform_linuxlowascii_to_vga(hstr);
-      cv_cp437_to_iso01:
-        transform:=transform_cp437_to_iso01(hstr);
-      cv_cp850_to_iso01:
-        transform:=transform_cp850_to_iso01(hstr);
-      cv_cp437_to_UTF8:
-      	transform:=transform_cp437_to_UTF8(hstr);
-      else
-        transform:=hstr;
-    end;
-  end;
-
-  procedure outdata(hstr:string);
+  procedure outdata(hstr:rawbytestring);
 
   begin
    If Length(HStr)>0 Then
    Begin
     while (eol>0) do
      begin
-       hstr:=#13#10+hstr;
+       outbuf[outptr]:=#13;
+       outbuf[outptr+1]:=#10;
+       inc(outptr,2);
        dec(eol);
      end;
 {    if (convert=cv_vga_to_acs) and (ACSIn<>'') and (ACSOut<>'') then
@@ -744,8 +584,8 @@ begin
   OutPtr:=0;
   Eol:=0;
   skipped:=true;
-  p:=PVideoCell(VideoBuf);
-  pold:=PVideoCell(OldVideoBuf);
+  p:=PEnhancedVideoCell(@EnhancedVideoBuf[0]);
+  pold:=PEnhancedVideoCell(@OldEnhancedVideoBuf[0]);
 { init Attr, X,Y and set autowrap off }
   SendEscapeSeq(#27'[0;40;37m'#27'[?7l'{#27'[H'} );
 //  1.0.x: SendEscapeSeq(#27'[m'{#27'[H'});
@@ -759,56 +599,75 @@ begin
      LastLineWidth:=ScreenWidth;
      If (y=ScreenHeight) And (Console=ttyFreeBSD) {And :am: is on} Then
       LastLineWidth:=ScreenWidth-2;
+     LastCharWasDoubleWidth:=False;
      for x:=1 to LastLineWidth do
       begin
-        if (not force) and (p^=pold^) then
-         begin
-           if (Spaces>0) then
-            OutSpaces;
-           skipped:=true;
-         end
+        if LastCharWasDoubleWidth then
+         LastCharWasDoubleWidth:=false
         else
-         begin
-           if skipped then
-            begin
-              OutData(XY2Ansi(x,y,LastX,LastY));
-              LastX:=x;
-              LastY:=y;
-              skipped:=false;
-            end;
-           chattr:=tchattr(p^);
-{           if chattr.ch in [#0,#255] then
-            chattr.ch:=' ';}
-           if chattr.ch=' ' then
-            begin
-              if Spaces=0 then
-               SpaceAttr:=chattr.Attr;
-              if (chattr.attr and $f0)=(spaceattr and $f0) then
-               chattr.Attr:=SpaceAttr
-              else
-               begin
-                 OutSpaces;
-                 SpaceAttr:=chattr.Attr;
-               end;
-              inc(Spaces);
-            end
-           else
-            begin
-              if (Spaces>0) then
-               OutSpaces;
-{              if ord(chattr.ch)<32 then
+          begin
+            CurCharWidth := ExtendedGraphemeClusterDisplayWidth(p^.ExtendedGraphemeCluster);
+            if (not force) and (p^=pold^) and
+              ((CurCharWidth <= 1) or (x=LastLineWidth) or (p[1]=pold[1])) then
+             begin
+               if (Spaces>0) then
+                OutSpaces;
+               skipped:=true;
+               if CurCharWidth = 2 then
+                 LastCharWasDoubleWidth:=true;
+             end
+            else
+             begin
+               if skipped then
                 begin
-                  Chattr.Attr:= $ff xor Chattr.Attr;
-                  ChAttr.ch:=chr(ord(chattr.ch)+ord('A')-1);
-                end;}
-              if LastAttr<>chattr.Attr then
-               OutClr(chattr.Attr);
-              OutData(transform(chattr.ch));
-              LastX:=x+1;
-              LastY:=y;
-            end;
-           p^:=tvideocell(chattr);
-         end;
+                  OutData(XY2Ansi(x,y,LastX,LastY));
+                  LastX:=x;
+                  LastY:=y;
+                  skipped:=false;
+                end;
+               chattr:=p^;
+    {           if chattr.ch in [#0,#255] then
+                chattr.ch:=' ';}
+               if chattr.ExtendedGraphemeCluster=' ' then
+                begin
+                  if Spaces=0 then
+                   SpaceAttr:=chattr.Attribute;
+                  if (chattr.Attribute and $f0)=(spaceattr and $f0) then
+                   chattr.Attribute:=SpaceAttr
+                  else
+                   begin
+                     OutSpaces;
+                     SpaceAttr:=chattr.Attribute;
+                   end;
+                  inc(Spaces);
+                end
+               else
+                begin
+                  if (Spaces>0) then
+                   OutSpaces;
+    {              if ord(chattr.ch)<32 then
+                    begin
+                      Chattr.Attr:= $ff xor Chattr.Attr;
+                      ChAttr.ch:=chr(ord(chattr.ch)+ord('A')-1);
+                    end;}
+                  if LastAttr<>chattr.Attribute then
+                   OutClr(chattr.Attribute);
+                  OutData(transform(chattr.ExtendedGraphemeCluster));
+                  if CurCharWidth=2 then
+                   begin
+                    LastX:=x+2;
+                    LastCharWasDoubleWidth:=True;
+                   end
+                  else
+                   begin
+                     LastX:=x+1;
+                     LastCharWasDoubleWidth:=False;
+                   end;
+                  LastY:=y;
+                end;
+               //p^:=chattr;
+             end;
+          end;
         inc(p);
         inc(pold);
       end;
@@ -821,24 +680,24 @@ begin
    end;
   eol:=0;
  {if am in capabilities? Then}
-  if (Console=ttyFreeBSD) and (Plongint(p)^<>plongint(pold)^) Then
+  if (Console=ttyFreeBSD) and (p^<>pold^) Then
    begin
     OutData(XY2Ansi(ScreenWidth,ScreenHeight,LastX,LastY));
     OutData(#8);
     {Output last char}
-    chattr:=tchattr(p[1]);
-    if LastAttr<>chattr.Attr then
-     OutClr(chattr.Attr);
-    OutData(transform(chattr.ch));
+    chattr:=p[1];
+    if LastAttr<>chattr.Attribute then
+     OutClr(chattr.Attribute);
+    OutData(transform(chattr.ExtendedGraphemeCluster));
     inc(LastX);
 //    OutData(XY2Ansi(ScreenWidth-1,ScreenHeight,LastX,LastY));
 //   OutData(GetTermString(Insert_character));
     OutData(#8+#27+'[1@');
 
-    chattr:=tchattr(p^);
-    if LastAttr<>chattr.Attr then
-     OutClr(chattr.Attr);
-    OutData(transform(chattr.ch));
+    chattr:=p^;
+    if LastAttr<>chattr.Attribute then
+     OutClr(chattr.Attribute);
+    OutData(transform(chattr.ExtendedGraphemeCluster));
     inc(LastX);
    end;
   OutData(XY2Ansi(CursorX+1,CursorY+1,LastX,LastY));
@@ -958,58 +817,37 @@ begin
   TCSetAttr(1,TCSANOW,tio);
 end;
 
-function UTF8Enabled: Boolean;
-var
-  lang:string;
-begin
-  {$ifdef BEOS}
-  UTF8Enabled := true;
-  exit;
-  {$endif}
-  lang:=upcase(fpgetenv('LANG'));
-  UTF8Enabled := (Pos('.UTF-8', lang) > 0) or (Pos('.UTF8', lang) > 0);
-end;
-
 procedure decide_codepages;
 
 var s:string;
 
 begin
-  if external_codepage in vga_codepages then
+  if is_vga_code_page(external_codepage) then
     begin
       {Possible override...}
       s:=upcase(fpgetenv('CONSOLEFONT_CP'));
       if s='CP437' then
-        external_codepage:=cp437
+        external_codepage:=437
       else if s='CP850' then
-        external_codepage:=cp850;
+        external_codepage:=850;
     end;
   {A non-vcsa Linux console can display most control characters, but not all.}
-  if {$ifdef linux}(console<>ttyLinux) and{$endif}
-     (cur_term_strings=@term_codes_linux) then
-    convert:=cv_linuxlowascii_to_vga;
   case external_codepage of
-    iso01:               {West Europe}
-      begin
-        internal_codepage:=cp850;
-        convert:=cv_cp850_to_iso01;
-      end;
-    iso02:               {East Europe}
-      internal_codepage:=cp852;
-    iso05:               {Cyrillic}
-      internal_codepage:=cp866;
-    utf8:
-      begin
-        internal_codepage:=cp437;
-        convert:=cv_cp437_to_UTF8;
-      end;
+    CP_ISO01:            {West Europe}
+      CurrentLegacy2EnhancedTranslationCodePage:=850;
+    CP_ISO02:            {East Europe}
+      CurrentLegacy2EnhancedTranslationCodePage:=852;
+    CP_ISO05:            {Cyrillic}
+      CurrentLegacy2EnhancedTranslationCodePage:=866;
+    CP_UTF8:
+      CurrentLegacy2EnhancedTranslationCodePage:=437;
     else
-      if internal_codepage in vga_codepages then
-        internal_codepage:=external_codepage
+      if is_vga_code_page(external_codepage) then
+        CurrentLegacy2EnhancedTranslationCodePage:=external_codepage
       else
         {We don't know how to convert to the external codepage. Use codepage
          437 in the hope that the actual font has similarity to codepage 437.}
-        internal_codepage:=cp437;
+        CurrentLegacy2EnhancedTranslationCodePage:=437;
   end;
 end;
 
@@ -1074,11 +912,11 @@ begin
 {$endif linux}
      Console:=TTyNetwork;                 {Default: Network or other vtxxx tty}
      cur_term_strings:=@term_codes_vt100; {Default: vt100}
-     external_codepage:=iso01;            {Default: ISO-8859-1}
+     external_codepage:=CP_ISO01;         {Default: ISO-8859-1}
      if UTF8Enabled then
-       external_codepage:=utf8;
+       external_codepage:=CP_UTF8;
    {$ifdef linux}
-     if (vcs_device>=0) and (external_codepage<>utf8) then
+     if (vcs_device>=0) and (external_codepage<>CP_UTF8) then
        begin
          str(vcs_device,s);
          fname:='/dev/vcsa'+s;
@@ -1087,7 +925,7 @@ begin
          if ttyfd<>-1 then
            begin
              console:=ttylinux;
-             external_codepage:=cp437;  {VCSA defaults to codepage 437.}
+             external_codepage:=437;  {VCSA defaults to codepage 437.}
            end
          else
            if try_grab_vcsa then
@@ -1096,7 +934,7 @@ begin
                if ttyfd<>-1 then
                  begin
                    console:=ttylinux;
-                   external_codepage:=cp437;  {VCSA defaults to codepage 437.}
+                   external_codepage:=437;  {VCSA defaults to codepage 437.}
                  end;
              end;
        end;
@@ -1142,16 +980,16 @@ begin
 {$endif}
         if cur_term_strings=@term_codes_linux then
           begin
-            if external_codepage<>utf8 then
+            if external_codepage<>CP_UTF8 then
               begin
                 {Enable the VGA character set (codepage 437,850,....)}
                 fpwrite(stdoutputhandle,font_vga,sizeof(font_vga));
-                external_codepage:=cp437;  {Now default to codepage 437.}
+                external_codepage:=437;  {Now default to codepage 437.}
               end;
           end
         else
           begin
-            if external_codepage<>utf8 then
+            if external_codepage<>CP_UTF8 then
               begin
                 {No VGA font  :(  }
                 fpwrite(stdoutputhandle,font_lat1,sizeof(font_lat1));
@@ -1244,7 +1082,7 @@ begin
 
          { if we're in utf8 mode, we didn't change the font, so
            no need to restore anything }
-         if external_codepage<>utf8 then
+         if external_codepage<>CP_UTF8 then
          begin
            {Enable the character set set through setfont}
            fpwrite(stdoutputhandle,font_custom,3);
@@ -1279,6 +1117,8 @@ end;
 
 
 procedure SysUpdateScreen(Force: Boolean);
+var
+  I: Integer;
 begin
 {$ifdef linux}
   if console=ttylinux then
@@ -1286,7 +1126,8 @@ begin
   else
 {$endif}
     updateTTY(force);
-  move(VideoBuf^,OldVideoBuf^,VideoBufSize);
+  for I := Low(EnhancedVideoBuf) to High(EnhancedVideoBuf) do
+    OldEnhancedVideoBuf[I] := EnhancedVideoBuf[I];
 end;
 
 
@@ -1364,7 +1205,8 @@ end;
 
 Const
   SysVideoDriver : TVideoDriver = (
-    InitDriver : @SysInitVideo;
+    InitDriver : nil;
+    InitEnhancedDriver: @SysInitVideo;
     DoneDriver : @SysDoneVideo;
     UpdateScreen : @SysUpdateScreen;
     UpdateScreenArea : Nil;
@@ -1376,6 +1218,10 @@ Const
     GetCursorType : @SysGetCursorType;
     SetCursorType : @SysSetCursorType;
     GetCapabilities : @SysGetCapabilities;
+    GetActiveCodePage : Nil;
+    ActivateCodePage : Nil;
+    GetSupportedCodePageCount : Nil;
+    GetSupportedCodePage : Nil;
   );
 
 initialization

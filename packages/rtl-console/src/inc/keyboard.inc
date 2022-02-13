@@ -82,6 +82,68 @@ begin
 end;
 
 
+{ Converts an Extended 101/102-Keyboard function scan code (as returned by int
+  16h, AH=10h/11h) to a standard 101/102-Keyboard function scan code (as would
+  be returned by int 16h, AH=00h/01h). However, keys that are not returned by
+  the standard keyboard function (e.g. F11, F12, etc.) are still let through.
+  Only those that return different codes are converted. }
+function ConvertExtendedToStandardScanCode(ScanCode: Word): Word;
+begin
+  if (ScanCode and $FF)=$E0 then
+    ConvertExtendedToStandardScanCode:=ScanCode and $FF00
+  else
+    case ScanCode of
+      { Numpad Enter -> Regular Enter }
+      $E00D:
+        ConvertExtendedToStandardScanCode:=$1C0D;
+      { Ctrl + Numpad Enter -> Ctrl + Regular Enter }
+      $E00A:
+        ConvertExtendedToStandardScanCode:=$1C0A;
+      { Numpad '/' -> Regular '/' }
+      $E02F:
+        ConvertExtendedToStandardScanCode:=$352F;
+      else
+        ConvertExtendedToStandardScanCode:=ScanCode;
+    end;
+end;
+
+
+function ConvertEnhancedToLegacyShiftState(const ShiftState: TEnhancedShiftState): Byte;
+begin
+  ConvertEnhancedToLegacyShiftState:=0;
+  if essAlt in ShiftState then
+    ConvertEnhancedToLegacyShiftState:=ConvertEnhancedToLegacyShiftState or kbAlt;
+  if essCtrl in ShiftState then
+    ConvertEnhancedToLegacyShiftState:=ConvertEnhancedToLegacyShiftState or kbCtrl;
+  if essShift in ShiftState then
+    begin
+      if ([essLeftShift,essRightShift]*ShiftState)=[] then
+        ConvertEnhancedToLegacyShiftState:=ConvertEnhancedToLegacyShiftState or kbShift
+      else
+        begin
+          if essLeftShift in ShiftState then
+            ConvertEnhancedToLegacyShiftState:=ConvertEnhancedToLegacyShiftState or kbLeftShift;
+          if essRightShift in ShiftState then
+            ConvertEnhancedToLegacyShiftState:=ConvertEnhancedToLegacyShiftState or kbRightShift;
+        end;
+    end;
+  { AltGr triggers both kbAlt and kbCtrl in the legacy shift state }
+  if essAltGr in ShiftState then
+    ConvertEnhancedToLegacyShiftState:=ConvertEnhancedToLegacyShiftState or (kbAlt or kbCtrl);
+end;
+
+
+function ConvertToLegacyKeyEvent(const KeyEvent: TEnhancedKeyEvent): TKeyEvent;
+begin
+  if KeyEvent=NilEnhancedKeyEvent then
+    ConvertToLegacyKeyEvent:=0
+  else
+    ConvertToLegacyKeyEvent:=(kbPhys shl 24) or
+      ConvertExtendedToStandardScanCode(KeyEvent.VirtualScanCode) or
+      (ConvertEnhancedToLegacyShiftState(KeyEvent.ShiftState) shl 16);
+end;
+
+
 function GetKeyEvent: TKeyEvent;
 
 begin
@@ -93,6 +155,8 @@ begin
     end;
   If Assigned(CurrentKeyBoardDriver.GetKeyEvent) Then
     GetKeyEvent:=CurrentKeyBoardDriver.GetKeyEvent()
+  else if Assigned(CurrentKeyboardDriver.GetEnhancedKeyEvent) then
+    GetKeyEvent:=ConvertToLegacyKeyEvent(CurrentKeyboardDriver.GetEnhancedKeyEvent())
   else
     GetKeyEvent:=0;
 end;
@@ -110,6 +174,8 @@ begin
     // PollKeyEvent procedure
     // to avoid problems if that procedure is called directly PM
     end
+  else if Assigned(CurrentKeyboardDriver.PollEnhancedKeyEvent) then
+    PollKeyEvent:=ConvertToLegacyKeyEvent(CurrentKeyboardDriver.PollEnhancedKeyEvent())
   else
     PollKeyEvent:=0;
 end;
@@ -152,6 +218,94 @@ begin
     TranslateKeyEventUnicode:=CurrentKeyBoardDriver.TranslateKeyEventUnicode(KeyEvent)
   else
     TranslateKeyEventUnicode:=DefaultTranslateKeyEventUnicode(KeyEvent);
+end;
+
+function ConvertToEnhancedKeyEvent(KeyEvent: TKeyEvent): TEnhancedKeyEvent;
+var
+  TranslatedKeyEvent: TKeyEvent;
+  ShiftState: Byte;
+begin
+  ConvertToEnhancedKeyEvent:=NilEnhancedKeyEvent;
+  if KeyEvent=0 then
+    exit;
+  ConvertToEnhancedKeyEvent.ShiftState:=[];
+  ShiftState:=GetKeyEventShiftState(KeyEvent);
+  if (kbAlt and ShiftState)<>0 then
+    Include(ConvertToEnhancedKeyEvent.ShiftState,essAlt);
+  if (kbCtrl and ShiftState)<>0 then
+    Include(ConvertToEnhancedKeyEvent.ShiftState,essCtrl);
+  if (kbShift and ShiftState)<>0 then
+    begin
+      Include(ConvertToEnhancedKeyEvent.ShiftState,essShift);
+      if (kbLeftShift and ShiftState)<>0 then
+        Include(ConvertToEnhancedKeyEvent.ShiftState,essLeftShift);
+      if (kbRightShift and ShiftState)<>0 then
+        Include(ConvertToEnhancedKeyEvent.ShiftState,essRightShift);
+    end;
+  case GetKeyEventFlags(KeyEvent) of
+    kbASCII:
+      ConvertToEnhancedKeyEvent.AsciiChar:=GetKeyEventChar(KeyEvent);
+    kbUniCode:
+      ConvertToEnhancedKeyEvent.UnicodeChar:=WideChar(GetKeyEventUniCode(KeyEvent));
+    kbFnKey:
+      ConvertToEnhancedKeyEvent.VirtualKeyCode:=GetKeyEventCode(KeyEvent);
+    kbPhys:
+      ConvertToEnhancedKeyEvent.VirtualScanCode:=KeyEvent and $ffff;
+  end;
+  TranslatedKeyEvent:=TranslateKeyEvent(KeyEvent);
+  case GetKeyEventFlags(TranslatedKeyEvent) of
+    kbASCII:
+      ConvertToEnhancedKeyEvent.AsciiChar:=GetKeyEventChar(TranslatedKeyEvent);
+    kbUniCode:
+      ConvertToEnhancedKeyEvent.UnicodeChar:=WideChar(GetKeyEventUniCode(TranslatedKeyEvent));
+    kbFnKey:
+      ConvertToEnhancedKeyEvent.VirtualKeyCode:=GetKeyEventCode(TranslatedKeyEvent);
+    kbPhys:
+      ConvertToEnhancedKeyEvent.VirtualScanCode:=TranslatedKeyEvent and $ffff;
+  end;
+  { todo: set ConvertToEnhancedKeyEvent.Flags }
+  if (ConvertToEnhancedKeyEvent.UnicodeChar=WideChar(0)) and
+     (ConvertToEnhancedKeyEvent.AsciiChar>=#0) and
+     (ConvertToEnhancedKeyEvent.AsciiChar<=#127) then
+    ConvertToEnhancedKeyEvent.UnicodeChar:=WideChar(ConvertToEnhancedKeyEvent.AsciiChar);
+  { todo: maybe also convert extended ASCII (>=#128) codes to Unicode as well
+    (according to the console code page) }
+end;
+
+function DefaultGetEnhancedKeyEvent: TEnhancedKeyEvent;
+begin
+  DefaultGetEnhancedKeyEvent:=ConvertToEnhancedKeyEvent(GetKeyEvent);
+end;
+
+function GetEnhancedKeyEvent: TEnhancedKeyEvent;
+begin
+  if Assigned(CurrentKeyBoardDriver.GetEnhancedKeyEvent) then
+    GetEnhancedKeyEvent:=CurrentKeyBoardDriver.GetEnhancedKeyEvent()
+  else
+    GetEnhancedKeyEvent:=DefaultGetEnhancedKeyEvent;
+end;
+
+function DefaultPollEnhancedKeyEvent: TEnhancedKeyEvent;
+begin
+  DefaultPollEnhancedKeyEvent:=ConvertToEnhancedKeyEvent(PollKeyEvent);
+end;
+
+function PollEnhancedKeyEvent: TEnhancedKeyEvent;
+begin
+  if Assigned(CurrentKeyBoardDriver.PollEnhancedKeyEvent) then
+    PollEnhancedKeyEvent:=CurrentKeyBoardDriver.PollEnhancedKeyEvent()
+  else
+    PollEnhancedKeyEvent:=DefaultPollEnhancedKeyEvent;
+end;
+
+operator = (const a, b: TEnhancedKeyEvent) res: Boolean;
+begin
+  res:=(a.VirtualKeyCode = b.VirtualKeyCode) and
+       (a.VirtualScanCode = b.VirtualScanCode) and
+       (a.UnicodeChar = b.UnicodeChar) and
+       (a.AsciiChar = b.AsciiChar) and
+       (a.ShiftState = b.ShiftState) and
+       (a.Flags = b.Flags);
 end;
 
 type

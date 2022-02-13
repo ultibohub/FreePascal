@@ -454,7 +454,7 @@ interface
 
        { all PPC ABIs that use a TOC register to address globals }
        abis_ppc_toc = [
-         abi_powerpc_sysv,abi_powerpc_aix,abi_powerpc_elfv2
+         {$ifdef powerpc64}abi_powerpc_sysv,{$endif}abi_powerpc_aix,abi_powerpc_elfv2
        ];
 
        { pointer checking (requires special code in FPC_CHECKPOINTER,

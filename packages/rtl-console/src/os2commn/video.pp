@@ -22,7 +22,7 @@ interface
 implementation
 
 uses
-  DosCalls, VioCalls, Mouse;
+  DosCalls, VioCalls, Mouse, graphemebreakproperty, eastasianwidth, charset;
 
 {$i video.inc}
 
@@ -427,18 +427,23 @@ end;
 
 Const
   SysVideoDriver : TVideoDriver = (
-    InitDriver        : @SysInitVideo;
-    DoneDriver        : @SysDoneVideo;
-    UpdateScreen      : @SysUpdateScreen;
-    UpdateScreenArea  : nil;
-    ClearScreen       : @SysClearScreen;
-    SetVideoMode      : @SysSetVideoMode;
-    GetVideoModeCount : @SysGetVideoModeCount;
-    GetVideoModeData  : @SysGetVideoModedata;
-    SetCursorPos      : @SysSetCursorPos;
-    GetCursorType     : @SysGetCursorType;
-    SetCursorType     : @SysSetCursorType;
-    GetCapabilities   : @SysGetCapabilities
+    InitDriver                : @SysInitVideo;
+    InitEnhancedDriver        : nil;
+    DoneDriver                : @SysDoneVideo;
+    UpdateScreen              : @SysUpdateScreen;
+    UpdateScreenArea          : nil;
+    ClearScreen               : @SysClearScreen;
+    SetVideoMode              : @SysSetVideoMode;
+    GetVideoModeCount         : @SysGetVideoModeCount;
+    GetVideoModeData          : @SysGetVideoModedata;
+    SetCursorPos              : @SysSetCursorPos;
+    GetCursorType             : @SysGetCursorType;
+    SetCursorType             : @SysSetCursorType;
+    GetCapabilities           : @SysGetCapabilities;
+    GetActiveCodePage         : nil;
+    ActivateCodePage          : nil;
+    GetSupportedCodePageCount : nil;
+    GetSupportedCodePage      : nil;
   );
 
 procedure TargetEntry;

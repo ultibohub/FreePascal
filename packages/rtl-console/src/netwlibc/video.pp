@@ -22,7 +22,7 @@ interface
 implementation
 
 uses
-  Libc;
+  Libc,graphemebreakproperty,eastasianwidth,charset;
 
 {$i video.inc}
 
@@ -162,18 +162,23 @@ end;
 
 Const
   SysVideoDriver : TVideoDriver = (
-  InitDriver        : @SysInitVideo;
-  DoneDriver        : @SysDoneVideo;
-  UpdateScreen      : @SysUpdateScreen;
-  UpdateScreenArea  : Nil;
-  ClearScreen       : Nil;
-  SetVideoMode      : @SysSetVideoMode;
-  GetVideoModeCount : @SysGetVideoModeCount;
-  GetVideoModeData  : @SysGetVideoModedata;
-  SetCursorPos      : @SysSetCursorPos;
-  GetCursorType     : @SysGetCursorType;
-  SetCursorType     : @SysSetCursorType;
-  GetCapabilities   : @SysGetCapabilities
+  InitDriver                : @SysInitVideo;
+  InitEnhancedDriver        : Nil;
+  DoneDriver                : @SysDoneVideo;
+  UpdateScreen              : @SysUpdateScreen;
+  UpdateScreenArea          : Nil;
+  ClearScreen               : Nil;
+  SetVideoMode              : @SysSetVideoMode;
+  GetVideoModeCount         : @SysGetVideoModeCount;
+  GetVideoModeData          : @SysGetVideoModedata;
+  SetCursorPos              : @SysSetCursorPos;
+  GetCursorType             : @SysGetCursorType;
+  SetCursorType             : @SysSetCursorType;
+  GetCapabilities           : @SysGetCapabilities;
+  GetActiveCodePage         : Nil;
+  ActivateCodePage          : Nil;
+  GetSupportedCodePageCount : Nil;
+  GetSupportedCodePage      : Nil;
 );
 
 

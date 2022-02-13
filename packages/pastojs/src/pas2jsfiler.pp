@@ -493,7 +493,10 @@ const
     'RightShift',
     'Enumerator',
     'In',
-    'Initialize'
+    'Initialize',
+    'Finalize',
+    'AddRef',
+    'Copy'
     );
 
   PCUProcedureModifierNames: array[TProcedureModifier] of string = (
@@ -565,7 +568,8 @@ const
     'NewInst',
     'FreeInst',
     'VMT',
-    'ConstInh'
+    'ConstInh',
+    'UseFields'
     );
 
   PCUResolverWithExprScopeFlagNames: array[TPasWithExprScopeFlag] of string = (
