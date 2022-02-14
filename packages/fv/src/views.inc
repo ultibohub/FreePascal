@@ -61,7 +61,7 @@ USES
    {$ENDIF}
 
    Objects, {$ifdef FV_UNICODE}UFVCommon,UDrivers,GraphemeBreakProperty{$else}FVCommon,Drivers{$endif}, fvconsts, { GFV standard units }
-   Video;
+   {$IFDEF OS_ULTIBO}ConsoleVideo{$ELSE}Video{$ENDIF};
 
 
 {***************************************************************************}
@@ -1344,11 +1344,11 @@ begin
         G:=p^.owner;
         if G=Nil then { top view }
          begin
-           Video.SetCursorPos(cur.x,cur.y);
+           {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorPos(cur.x,cur.y);
            if (state and sfCursorIns)<>0 then
-             Video.SetCursorType(crBlock)
+             {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorType(crBlock)
            else
-             Video.SetCursorType(crUnderline);
+             {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorType(crUnderline);
            exit;
          end;
         if (G^.state and sfVisible)=0 then
@@ -1358,7 +1358,7 @@ begin
          break;
       end; { while }
    end; { if }
-  Video.SetCursorType(crHidden);
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorType(crHidden);
 end;
 
 

@@ -68,7 +68,7 @@ USES
      {$ENDIF}
    {$ENDIF}
    Dos,
-   Video,
+   {$IFDEF OS_ULTIBO}ConsoleVideo{$ELSE}Video{$ENDIF},
 {$ifdef FV_UNICODE}
    UFVCommon, {Memory,}                                { GFV standard units }
 {$else FV_UNICODE}
@@ -370,7 +370,7 @@ CONST
                                 IMPLEMENTATION
 {<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}
 
-uses    Mouse{,Resource};
+uses    {$IFDEF OS_ULTIBO}ConsoleMouse{$ELSE}Mouse{$ENDIF}{,Resource};
 
 resourcestring  sVideoFailed='Video initialization failed.';
                 sTypeExitOnReturn='Type EXIT to return...';
@@ -954,12 +954,12 @@ begin
    Warning: InitScreen calls DetectVideo which
     resets ScreenMode to old value, call it after
     video mode was changed instead of before }
-  Video.SetVideoMode(Mode);
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(Mode);
 
   { Update ScreenMode to new value }
   InitScreen;
-  ScreenWidth:=Video.ScreenWidth;
-  ScreenHeight:=Video.ScreenHeight;
+  ScreenWidth:={$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ScreenWidth;
+  ScreenHeight:={$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ScreenHeight;
 {$ifdef FV_UNICODE}
   Buffer := UViews.PVideoBuf(EnhancedVideoBuf);
 {$else FV_UNICODE}
@@ -1084,8 +1084,8 @@ BEGIN
    Inherited Init;                                            { Call ancestor }
    InitMsgBox;
    { init mouse and cursor }
-   Video.SetCursorType(crHidden);
-   Mouse.SetMouseXY(1,1);
+   {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorType(crHidden);
+   {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}SetMouseXY(1,1);
 END;
 
 {--TApplication-------------------------------------------------------------}
@@ -1168,7 +1168,7 @@ BEGIN                                                 { Compatability only }
   drivers.initkeyboard;
   drivers.initvideo;
 {$endif FV_UNICODE}
-  Video.SetCursorType(crHidden);
+  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorType(crHidden);
   InitScreen;
   InitEvents;
   InitSysError;

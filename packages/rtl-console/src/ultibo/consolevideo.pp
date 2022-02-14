@@ -22,7 +22,8 @@ interface
 implementation
 
 uses
- GlobalConst,GlobalConfig,GlobalTypes,Console,Font,Default8x16,SysUtils;
+ GlobalConst,GlobalConfig,GlobalTypes,Console,Font,Default8x16,SysUtils,
+ graphemebreakproperty,eastasianwidth,charset;
 
 {$i video.inc}
 
@@ -416,18 +417,23 @@ end;
 
 const
  SysVideoDriver : TVideoDriver = (
-  InitDriver : @SysInitVideo;
-  DoneDriver : @SysDoneVideo;
-  UpdateScreen : @SysUpdateScreen;
-  UpdateScreenArea : nil;
-  ClearScreen : @SysClearScreen;
-  SetVideoMode : @SysSetVideoMode;
-  GetVideoModeCount : @SysGetVideoModeCount;
-  GetVideoModeData : @SysGetVideoModeData;
-  SetCursorPos : @SysSetCursorPos;
-  GetCursorType : @SysGetCursorType;
-  SetCursorType : @SysSetCursorType;
-  GetCapabilities : @SysGetCapabilities
+  InitDriver                : @SysInitVideo;
+  InitEnhancedDriver        : Nil;
+  DoneDriver                : @SysDoneVideo;
+  UpdateScreen              : @SysUpdateScreen;
+  UpdateScreenArea          : Nil;
+  ClearScreen               : Nil;
+  SetVideoMode              : @SysSetVideoMode;
+  GetVideoModeCount         : @SysGetVideoModeCount;
+  GetVideoModeData          : @SysGetVideoModeData;
+  SetCursorPos              : @SysSetCursorPos;
+  GetCursorType             : @SysGetCursorType;
+  SetCursorType             : @SysSetCursorType;
+  GetCapabilities           : @SysGetCapabilities;
+  GetActiveCodePage         : Nil;
+  ActivateCodePage          : Nil;
+  GetSupportedCodePageCount : Nil;
+  GetSupportedCodePage      : Nil;
  );
 
 initialization

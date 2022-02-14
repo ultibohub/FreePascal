@@ -420,7 +420,7 @@ CONST
                                 IMPLEMENTATION
 {<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}
 USES
-  Video;
+  {$IFDEF OS_ULTIBO}ConsoleVideo{$ELSE}Video{$ENDIF};
 
 CONST
 {$ifdef FV_UNICODE}
