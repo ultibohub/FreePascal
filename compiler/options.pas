@@ -3979,7 +3979,7 @@ begin
   foundfn:=fn;
   check_configfile:=true;
   { retrieve configpath }
-  configpath:=FixPath(GetEnvironmentVariable('PPC_CONFIG_PATH'),false);
+  configpath:=FixPath(GetEnvironmentVariable('ULTIBO_CONFIG_PATH'),false); //PPC_CONFIG_PATH //Ultibo
 {$ifdef Unix}
   if configpath='' then
    configpath:=ExpandFileName(FixPath(exepath+'../etc/',false));
@@ -3994,30 +3994,33 @@ begin
   if not FileExists(fn) then
    begin
 {$ifdef Unix}
-     hs:=GetEnvironmentVariable('HOME');
-     if (hs<>'') and CfgFileExists(FixPath(hs,false)+'.'+fn) then
-      foundfn:=FixPath(hs,false)+'.'+fn
-     else
+     // Don't allow shared FPC config paths //Ultibo
+     //hs:=GetEnvironmentVariable('HOME');
+     //if (hs<>'') and CfgFileExists(FixPath(hs,false)+'.'+fn) then
+     // foundfn:=FixPath(hs,false)+'.'+fn
+     //else
 {$endif}
       if CfgFileExists(configpath+fn) then
        foundfn:=configpath+fn
      else
 {$ifdef WINDOWS}
-       if (GetEnvironmentVariable('USERPROFILE')<>'') and CfgFileExists(FixPath(GetEnvironmentVariable('USERPROFILE'),false)+fn) then
-         foundfn:=FixPath(GetEnvironmentVariable('USERPROFILE'),false)+fn
-     else
-       if (GetEnvironmentVariable('ALLUSERSPROFILE')<>'') and CfgFileExists(FixPath(GetEnvironmentVariable('ALLUSERSPROFILE'),false)+fn) then
-         foundfn:=FixPath(GetEnvironmentVariable('ALLUSERSPROFILE'),false)+fn
-     else
+     // Don't allow shared FPC config paths //Ultibo
+     //if (GetEnvironmentVariable('USERPROFILE')<>'') and CfgFileExists(FixPath(GetEnvironmentVariable('USERPROFILE'),false)+fn) then
+     //    foundfn:=FixPath(GetEnvironmentVariable('USERPROFILE'),false)+fn
+     //else
+     //  if (GetEnvironmentVariable('ALLUSERSPROFILE')<>'') and CfgFileExists(FixPath(GetEnvironmentVariable('ALLUSERSPROFILE'),false)+fn) then
+     //    foundfn:=FixPath(GetEnvironmentVariable('ALLUSERSPROFILE'),false)+fn
+     //else
 {$endif WINDOWS}
 {$ifndef Unix}
       if CfgFileExists(exepath+fn) then
        foundfn:=exepath+fn
      else
 {$else}
-      if CfgFileExists('/etc/'+fn) then
-       foundfn:='/etc/'+fn
-     else
+     // Don't allow shared FPC config paths //Ultibo
+     //if CfgFileExists('/etc/'+fn) then
+     //  foundfn:='/etc/'+fn
+     //else
 {$endif}
       check_configfile:=false;
    end;
