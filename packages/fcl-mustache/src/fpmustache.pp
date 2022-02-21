@@ -28,6 +28,7 @@ Type
   TMustacheString = UTF8String;
   TMustacheChar = AnsiChar;
   TMustacheContext = class;
+  TMustacheBlockOverrideList = class;
 
   TMustacheOutput = Class(TObject)
   Public
@@ -51,7 +52,7 @@ Type
 
   { TMustacheElement }
 
-  TMustacheElementType = (metRoot,metComment,metText,metVariable,metSection,metInvertedSection,metPartial);
+  TMustacheElementType = (metRoot,metComment,metText,metVariable,metSection,metInvertedSection,metPartial,metParametricPartial,metBlock);
 
   TMustacheElement = Class(TObject)
   private
@@ -71,7 +72,7 @@ Type
     // Add a child. Parent always owns child
     Procedure AddChild(aChild : TMustacheElement); virtual;
     // Render the text for this element
-    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False); virtual; abstract;
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); virtual; abstract;
     // Position in template
     Property Position : Integer Read FPosition;
     // Parent element
@@ -118,9 +119,15 @@ Type
   Public
     Destructor Destroy; override;
     Procedure AddChild(aChild : TMustacheElement); override;
-    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False); override;
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); override;
   end;
 
+  { TMustacheBlockElement }
+
+  TMustacheBlockElement = Class(TMustacheParentElement)
+  Public
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); override;
+  end;
 
   { TMustacheTextElement }
 
@@ -131,7 +138,7 @@ Type
     Procedure SetData(Const aData : TMustacheString) ; override;
     Function GetData : TMustacheString; override;
   Public
-    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False); override;
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); override;
   end;
 
   { TMustacheVariableElement }
@@ -142,7 +149,7 @@ Type
   Protected
     Procedure SetData(Const aData : TMustacheString); override;
   Public
-    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False); override;
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); override;
     Property NoUnescape : Boolean Read FNoUnescape;
   end;
 
@@ -150,12 +157,12 @@ Type
 
   TMustacheSectionElement = Class(TMustacheParentElement)
   Public
-    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False); override;
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); override;
   end;
 
   { TMustachePartialElement }
 
-  TMustachePartialElement = Class(TMustacheElement)
+  TMustachePartialElement = Class(TMustacheParentElement)
   Private
     FPrefix : TMustacheString;
     FPartialName : TMustacheString;
@@ -169,7 +176,7 @@ Type
   Public
     Destructor Destroy; override;
     Procedure AddChild(aChild: TMustacheElement); override;
-    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False); override;
+    Procedure Render(aContext : TMustacheContext; aOutput : TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil; const aPrefix : String = ''; aLast : Boolean = False); override;
     Property Partial : TMustacheElement Read FPartial;
   end;
 
@@ -178,6 +185,18 @@ Type
   TMustachePartialList = Class(TMustacheParentElement)
   Public
     Function FindPartial(aName : TMustacheString) : TMustacheElement;
+  end;
+
+  { TMustacheBlockOverrideList }
+
+  TMustacheBlockOverrideList = Class
+  Private
+    FBlocks: TMustacheElementArray;
+    FCount: Integer;
+  Public
+    Procedure Push(aBlock: TMustacheElement);
+    Procedure Pop;
+    Function FindFirst(aBlockName: TMustacheString): TMustacheElement;
   end;
 
   { TMustacheParser }
@@ -202,11 +221,8 @@ Type
     Procedure DoParse(aParent : TMustacheElement; Const aTemplate, aStart, aStop : TMustacheString); virtual;
     // Called to get the template of a partial. The template is parsed, and the result added to the partials list.
     Function GetPartial(const aName : TMustacheString) : TMustacheString; virtual;
-    // Auxuliary functions for the peculiar whitespace handling of Mustache specs...
-    function EndsOnWhiteSpace(aElement: TMustacheElement): Boolean; virtual;
-    function GetEndingWhiteSpace(aElement: TMustacheElement): TMustacheString; virtual;
+    // Extract new start/stop tag markers
     procedure ExtractStartStop(const aName: TMustacheString; out aStart, aStop: TMustacheString); virtual;
-    procedure TrimEndingWhiteSpace(aElement: TMustacheElement); virtual;
   Public
     // Create a new parser.
     Constructor Create(aTemplate : TMustacheString = '';aStart: TMustacheString='';aStop: TMustacheString = ''); virtual;
@@ -333,6 +349,7 @@ Resourcestring
   SErrInvalidDelimiter = 'Invalid set delimiter: %s';
   SErrInvalidDelimiterValue = 'Invalid set delimiter %s value: %s in "%s"';
   SErrNoPartials = 'No partials list';
+  SErrNotABlockType = 'Class %s is not a block type.';
 
   // SErrPartialNotFound = 'Partial "%s" not found.';
   SStartTag = 'Start';
@@ -357,6 +374,40 @@ begin
     end;
 end;
 
+{ TMustacheBlockOverrideList }
+
+procedure TMustacheBlockOverrideList.Push(aBlock: TMustacheElement);
+var
+  Len: Integer;
+begin
+  if aBlock.ElementType <> metBlock then
+    Raise EMustache.CreateFmt(SErrNotABlockType, [aBlock.ClassName]);
+  Len := Length(FBlocks);
+  if (FCount >= Len) then
+    SetLength(FBlocks, Len + ListGrowCount);
+  FBlocks[FCount] := aBlock;
+  Inc(FCount);
+end;
+
+procedure TMustacheBlockOverrideList.Pop;
+begin
+  Dec(FCount);
+  FBlocks[FCount] := nil; // do not free; does not own blocks
+end;
+
+function TMustacheBlockOverrideList.FindFirst(aBlockName: TMustacheString): TMustacheElement;
+var
+  I: Integer;
+begin
+  Result := nil;
+  for I:=0 to FCount-1 do
+    if FBlocks[I].Data = aBlockName then
+    begin
+      Result := FBlocks[I];
+      Break;
+    end;
+end;
+
 { TMustachePartialElement }
 
 function TMustachePartialElement.GetData: TMustacheString;
@@ -371,17 +422,21 @@ end;
 
 procedure TMustachePartialElement.AddChild(aChild: TMustacheElement);
 begin
-  If (FPartial<>Nil) and (aChild<>Nil) then
-    Raise EMustache.Create('Cannot set partial twice');
-  FPartial:=aChild;
+  if FPartial = nil then
+    FPartial := aChild
+  else
+    inherited AddChild(aChild);
 end;
 
 procedure TMustachePartialElement.Dump(aList: Tstrings;
   aIndent: TMustacheString; aDumpChildren: Boolean);
+var
+  PartialIndex: Integer;
 begin
+  PartialIndex := aList.Count;  // save index, because inherited Dump may dump children
   inherited Dump(aList, aIndent, aDumpChildren);
   if Prefix<>'' then
-    aList[aList.Count-1]:=aList[aList.Count-1]+' Prefix: "'+Prefix+'"';
+    aList[PartialIndex]:=aList[PartialIndex]+' Prefix: "'+Prefix+'"';
 end;
 
 function TMustachePartialElement.GetPrefix: TMustacheString;
@@ -395,17 +450,37 @@ begin
 end;
 
 procedure TMustachePartialElement.Render(aContext: TMustacheContext;
-  aOutput: TMustacheOutput; const aPrefix : String = ''; aLast : Boolean = False);
+  aOutput: TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil;
+  const aPrefix : String = ''; aLast : Boolean = False);
+
+Var
+  I,
+  OverrideCount: Integer;
 
 begin
-  FPartial.Render(aContext,aOutput,Prefix);
+  OverrideCount := 0;
+  if ElementType = metParametricPartial then
+  begin
+    if aBlockOverrides = Nil then
+      raise EMustache.Create('Parametric Partial elements need an instance of TMustacheBlockOverrideList');
+    for I:=0 to ChildCount-1 do
+      if Children[I].ElementType = metBlock then
+      begin
+        aBlockOverrides.Push(Children[I]);
+        Inc(OverrideCount);
+      end;
+  end;
+
+  FPartial.Render(aContext,aOutput,aBlockOverrides,Prefix);
+
+  for I:=1 to OverrideCount do
+    aBlockOverrides.Pop;
 end;
 
 destructor TMustachePartialElement.Destroy;
 begin
   inherited Destroy;
 end;
-
 
 { TMustache }
 
@@ -481,10 +556,18 @@ end;
 
 procedure TMustache.Render(aContext: TMustacheContext; aOutput: TMustacheOutput);
 
+Var
+  BlockOverrides: TMustacheBlockOverrideList;
+
 begin
   if not Assigned(Compiled) then
     Compile;
-  Compiled.Render(aContext,aOutput);
+  BlockOverrides := TMustacheBlockOverrideList.Create;
+  try
+    Compiled.Render(aContext,aOutput,BlockOverrides);
+  finally
+    BlockOverrides.Free;
+  end;
 end;
 
 function TMustache.Render(aContext: TMustacheContext): TMustacheString;
@@ -704,7 +787,8 @@ end;
 { TMustacheSectionElement }
 
 procedure TMustacheSectionElement.Render(aContext: TMustacheContext;
-  aOutput: TMustacheOutput; const aPrefix: String; aLast : Boolean = False);
+  aOutput: TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil;
+  const aPrefix: String = ''; aLast : Boolean = False);
 
 Var
   L : TMustacheSectionType;
@@ -714,15 +798,15 @@ begin
    if ElementType=metInvertedSection then
      begin
      if L=mstNone then
-       inherited Render(aContext, aOutput,aPrefix);
+       inherited Render(aContext, aOutput, aBlockOverrides, aPrefix);
      end
    else
      Case L of
      mstSingle :
-        inherited Render(aContext, aOutput);
+        inherited Render(aContext, aOutput, aBlockOverrides);
      mstList :
         while aContext.MoveNextSectionItem(Name) do
-          inherited Render(aContext, aOutput,aPrefix);
+          inherited Render(aContext, aOutput, aBlockOverrides, aPrefix);
      end;
   if L<>mstNone then
     aContext.PopSection(Name);
@@ -822,7 +906,8 @@ begin
 end;
 
 procedure TMustacheTextElement.Render(aContext: TMustacheContext;
-  aOutput: TMustacheOutput; const aPrefix: String; aLast : Boolean = False);
+  aOutput: TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil;
+  const aPrefix: String = ''; aLast : Boolean = False);
 
 Var
   S : String;
@@ -870,7 +955,8 @@ begin
 end;
 
 procedure TMustacheVariableElement.Render(aContext: TMustacheContext;
-  aOutput: TMustacheOutput; const aPrefix: String; aLast : Boolean = False);
+  aOutput: TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil;
+  const aPrefix: String = ''; aLast : Boolean = False);
 
 Var
   aValue : TMustacheString;
@@ -961,55 +1047,6 @@ begin
   DoParse(aParent,FTemplate,StartTag, StopTag);
 end;
 
-function TMustacheParser.EndsOnWhiteSpace(aElement: TMustacheElement): Boolean;
-
-Var
-  I : Integer;
-  S : TMustacheString;
-
-begin
-  // if on standalone line, the entire line must be removed, see specs comments.standalone
-  Result:=(aElement.ElementType=metText);
-  s:=aElement.Data;
-  I:=Length(S);
-  While Result and (I>0) do
-     begin
-     if S[i] in [#13,#10] then
-       Break;
-     Result:=(S[I]=' ');
-     Dec(i);
-     end;
-  Result:=Result and ((I>0) or (aElement.Position=1));
-end;
-
-function TMustacheParser.GetEndingWhiteSpace(aElement: TMustacheElement): TMustacheString;
-
-Var
-  S : TMustacheString;
-  I : Integer;
-
-begin
-  s:=aElement.Data;
-  I:=Length(S);
-  While (I>0) and (S[I]=' ') do
-     Dec(i);
-  Result:=Copy(S,I+1);
-end;
-
-procedure TMustacheParser.TrimEndingWhiteSpace(aElement: TMustacheElement);
-
-Var
-  I : Integer;
-  S : TMustacheString;
-
-begin
-  s:=aElement.Data;
-  I:=Length(S);
-  While (I>0) and (S[I]=' ') do
-     Dec(i);
-  aElement.Data:=Copy(S,1,I);
-end;
-
 Function TMustacheParser.CreateDefault(aParent : TMustacheElement; aPosition : Integer;Const aName : String) : TMustacheElement;
 
 begin
@@ -1025,42 +1062,78 @@ Var
   aLen,clStop, lStart,lStop, NewPos, Current, Total : Integer;
   aName,cStart,cStop,R : TMustacheString;
   C: TMustacheChar;
-  IsWhiteSpace : Boolean;
-  Partial,WhiteSpaceEl : TMustacheELement;
+  IsStandalone: Boolean;
+  PartialPrefix: TMustacheString;
+  Partial : TMustacheELement;
 
-  Function CheckWhiteSpace : Boolean;
-
+  function IsPartialTag: Boolean;
   begin
-    WhiteSpaceEl:=Nil;
-    With CurrParent do
-      begin
-      Result:=(ChildCount=0) or EndsOnWhiteSpace(Children[ChildCount-1]);
-      if Result and (ChildCount>0) then
-         WhiteSpaceEl:=Children[ChildCount-1];
-      end;
+    Result := (NewPos + lStart <= Total) and (aTemplate[NewPos + lStart] in ['>','<']);
   end;
 
-  Procedure FinishWhiteSpace(Full : Boolean = true);
-  Var
-    I : Integer;
+  // check if the current tag occurs standalone on a line
+  function CheckStandalone: Boolean;
+  var
+    I,
+    pStop: Integer;
   begin
-    I:=NewPos;
-    While IsWhiteSpace and (I+clStop<=Total) do
-      begin
-      C:=aTemplate[I+clStop];
-      if (C in [#13,#10]) then
+    // a tag is considered standalone if it is on a line that consists of:
+    // - zero or more spaces
+    // - one or more non-variable tags
+    // - zero or more spaces
+
+    // get start of current line
+    I := NewPos;
+    while (I > 1) and (aTemplate[I - 1] <> #10) do
+      Dec(I);
+
+    // skip zero or more spaces
+    while (I <= Total) and (aTemplate[I] = ' ') do
+      Inc(I);
+
+    // skip one or more non-variable tags
+    repeat
+      pStop := Pos(cStop, aTemplate, I + lStart + 1);
+      if (Copy(aTemplate, I, lStart) = cStart) and (pStop > 0)
+        and (aTemplate[I + lStart] in ['=','#','!','^','>','/','<','$']) then
+        I := pStop + lStop
+      else
         Break;
-      isWhiteSpace:=aTemplate[I+clStop]=' ';
-      I:=I+1;
-      end;
-    if isWhiteSpace then
-      begin
-      While (I<=Total) and (aTemplate[I+clStop] in [#13,#10]) do
-        Inc(I);
-      NewPos:=I;
-      if Assigned(WhiteSpaceEl) and full then
-        TrimEndingWhiteSpace(WhiteSpaceEl);
-      end;
+    until False;
+
+    // skip zero or more spaces
+    while (I <= Total) and (aTemplate[I] = ' ') do
+      Inc(I);
+
+    // now end of line must be reached if tag is standalone
+    Result := (I > Total) or (aTemplate[I] = #10) or (Copy(aTemplate, I, 2) = #13#10);
+  end;
+
+  function WhiteSpaceRightPos(const S: TMustacheString): Integer;
+  var
+    I: Integer;
+  begin
+    I := Length(S);
+    while (I > 0) and (S[I] = ' ') do
+      Dec(I);
+
+    Result := I + 1;
+  end;
+
+  function CurrentIsWhitespace: Boolean;
+  begin
+    Result := (Current <= Total) and (aTemplate[Current] in [' ',#13,#10]);
+  end;
+
+  procedure SkipRestOfLine;
+  var
+    EndOfLine: Integer;
+  begin
+    EndOfLine := Pos(#10, aTemplate, Current);
+    if EndOfLine = 0 then
+      Current := Total + 1
+    else
+      Current := EndOfLine + 1;
   end;
 
 begin
@@ -1073,15 +1146,24 @@ begin
   Total:=Length(aTemplate);
   While (Current<=Total) do
     begin
-    C:=Template[Current];
+    PartialPrefix := '';
     NewPos:=Pos(cStart,aTemplate,Current);
+    IsStandalone := CheckStandalone;
     if NewPos=0 then
       NewPos:=Total+1;
     // Stash what we have till now.
     if NewPos>Current then
       begin
       R:=Copy(aTemplate,Current,NewPos-Current);
-      CreateElement(metText,currParent,Current).SetData(R);
+      if IsStandalone then
+        if IsPartialTag then
+          // keep R intact; copy trailing whitespace to PartialPrefix
+          PartialPrefix := Copy(R, WhiteSpaceRightPos(R))
+        else
+          // remove trailing whitespace from R
+          R := Copy(R, 1, WhiteSpaceRightPos(R) - 1);
+      if R <> '' then
+        CreateElement(metText,currParent,Current).SetData(R);
       Current:=NewPos;
       end;
     if Current<Total then
@@ -1094,20 +1176,15 @@ begin
       if (aName='') then
         Raise EMustache.CreateFmt(SErrEmptyTag,[cStart,Current]);
       C:=aName[1];
-      if C in ['=','#','^','/','!','>'] then
+      if C in ['=','#','^','/','!','>','<','$'] then
         aName:=Copy(aName,2,Length(aName)-1);
       clStop:=Lstop; // Can change.
       case C of
         '=' :
           begin
-          IsWhiteSpace:=CheckWhiteSpace;
-          if IsWhiteSpace then
-            FinishWhiteSpace;
           ExtractStartStop(aName,cStart,cStop);
           lStart:=Length(cStart);
           lStop:=Length(cStop);
-          //R:=Copy(aTemplate,newPos+clStop);
-          //Writeln(R);
           end;
         '{' :
           begin
@@ -1122,31 +1199,21 @@ begin
           end;
         '#' :
           begin
-          IsWhiteSpace:=CheckWhiteSpace;
           CurrParent:=CreateElement(metSection,currParent,Current);
           CurrParent.SetData(aName);
-          if IsWhiteSpace then
-            FinishWhiteSpace;
           end;
         '!' :
           begin
-          IsWhiteSpace:=CheckWhiteSpace;
           CreateElement(metComment,currParent,Current).SetData(aName);
-          if IsWhiteSpace then
-            FinishWhiteSpace;
           end;
         '^' :
           begin
-          IsWhiteSpace:=CheckWhiteSpace;
           CurrParent:=CreateElement(metInvertedSection,currParent,Current);
           CurrParent.SetData(aName);
-          if IsWhiteSpace then
-            FinishWhiteSpace;
           end;
-        '>' :
+        '>','<' :
           begin
           // Find or create compiled partial;
-          IsWhiteSpace:=CheckWhiteSpace;
           aName:=Trim(aName);
           if not Assigned(Partials) then
             Raise EMustache.Create(SErrNoPartials);
@@ -1158,32 +1225,44 @@ begin
             DoParse(Partial,GetPartial(aName),FStartTag,FStopTag);
             end;
           // Create reference and insert into current tree
-          With CreateElement(metPartial,currParent,Current) do
+          if C='>' then // normal partial, no children, no end tag
+            With CreateElement(metPartial,currParent,Current) do
+              begin
+              AddChild(Partial);
+              Data:=aName;
+              Prefix := PartialPrefix;
+              end
+          else // parametric partial, may have children, end tag must follow
             begin
-            AddChild(Partial);
-            Data:=aName;
-            if isWhitespace and assigned(WhiteSpaceEl) then
-              Prefix:=GetEndingWhiteSpace(WhiteSpaceEl);
+            CurrParent:=CreateElement(metParametricPartial,currParent,Current);
+            With CurrParent do
+              begin
+              AddChild(Partial);
+              Data:=aName;
+              Prefix := PartialPrefix;
+              end;
             end;
-          if IsWhiteSpace then
-            FinishWhiteSpace(False);
+          end;
+        '$' :
+          begin
+          CurrParent:=CreateElement(metBlock,currParent,Current);
+          CurrParent.SetData(aName);
           end;
         '/' :
           begin
-          IsWhiteSpace:=CheckWhiteSpace;
-          if Not (CurrParent.ElementType in [metSection,metInvertedSection]) then
+          if Not (CurrParent.ElementType in [metSection,metInvertedSection,metParametricPartial,metBlock]) then
             Raise EMustache.CreateFmt(SErrNoSectionToClose,[aName,Current])
           else if (CurrParent.Data<>Trim(aName)) then
             Raise EMustache.CreateFmt(SErrSectionClose,[currParent.Data,CurrParent.Position,aName,Current])
           else
             currParent:=currParent.Parent;
-          if IsWhiteSpace then
-            FinishWhiteSpace;
           end
       else
         CreateDefault(CurrParent,Current,aName);
       end;
       Current:=NewPos+clStop;
+      if IsStandalone and CurrentIsWhitespace then
+        SkipRestOfLine;
       end;
     end;
   if CurrParent<>aParent then
@@ -1255,14 +1334,36 @@ begin
 end;
 
 procedure TMustacheParentElement.Render(aContext: TMustacheContext;
-  aOutput: TMustacheOutput; const aPrefix: String; aLast : Boolean = False);
+  aOutput: TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil;
+  const aPrefix: String = ''; aLast : Boolean = False);
 
 Var
   I : integer;
 
 begin
   For I:=0 to ChildCount-1 do
-    Children[I].Render(aContext,aOutPut,aPrefix,I=ChildCount-1);
+    Children[I].Render(aContext,aOutPut,aBlockOverrides,aPrefix,I=ChildCount-1);
+end;
+
+{ TMustacheBlockElement }
+
+procedure TMustacheBlockElement.Render(aContext: TMustacheContext;
+  aOutput: TMustacheOutput; aBlockOverrides : TMustacheBlockOverrideList = Nil;
+  const aPrefix: String = ''; aLast : Boolean = False);
+
+Var
+  I : integer;
+  BlockToRender : TMustacheElement;
+
+begin
+  if aBlockOverrides = Nil then
+    Raise EMustache.Create('Block elements need an instance of TMustacheBlockOverrideList');
+  BlockToRender:=aBlockOverrides.FindFirst(Self.Data);
+  if BlockToRender=nil then
+    BlockToRender:=Self;
+
+  For I:=0 to BlockToRender.ChildCount-1 do
+    BlockToRender.Children[I].Render(aContext,aOutPut,aBlockOverrides,aPrefix,I=BlockToRender.ChildCount-1);
 end;
 
 { TMustacheElement }
@@ -1336,5 +1437,7 @@ begin
   TMustacheParser.SetDefaultTypeClass(metSection,TMustacheSectionElement);
   TMustacheParser.SetDefaultTypeClass(metInvertedSection,TMustacheSectionElement);
   TMustacheParser.SetDefaultTypeClass(metPartial,TMustachePartialElement);
+  TMustacheParser.SetDefaultTypeClass(metParametricPartial,TMustachePartialElement);
+  TMustacheParser.SetDefaultTypeClass(metBlock,TMustacheBlockElement);
 end.
 

@@ -94,13 +94,19 @@ end;
 
 procedure tlinkerwasi.SetDefaultInfo;
 begin
-  Info.DllCmd[1] := 'wasm-ld $SONAME $GCSECTIONS $MAP -o $EXE';
-  //Info.DllCmd[2] := 'wasmtool --exportrename $INPUT $EXE';
+  with Info do
+    begin
+      ExeCmd[1] := 'wasm-ld $SONAME $GCSECTIONS $MAP -o $EXE';
+      DllCmd[1] := 'wasm-ld $SONAME $GCSECTIONS $MAP -o $EXE';
+    end;
 end;
 
 procedure tlinkerwasi.InitSysInitUnitName;
 begin
-  sysinitunit:='si_prc';
+  if current_module.islibrary then
+    sysinitunit:='si_dll'
+  else
+    sysinitunit:='si_prc';
 end;
 
 function tlinkerwasi.MakeExecutable:boolean;
@@ -130,7 +136,7 @@ begin
     GCSectionsStr:='';
 
   SoNameStr:='';
-  SplitBinCmd(Info.DllCmd[1],binstr,cmdstr);
+  SplitBinCmd(Info.ExeCmd[1],binstr,cmdstr);
   Replace(cmdstr,'$EXE',maybequoted(current_module.exefilename));
 
   tmp := TCmdStrListItem(ObjectFiles.First);
@@ -160,11 +166,6 @@ begin
   Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
   success:=DoExec(FindUtil(utilsprefix+binstr),cmdstr,true,false);
 
-  //SplitBinCmd(Info.DllCmd[2],binstr,cmdstr);
-  //Replace(cmdstr,'$INPUT',current_module.objfilename );
-  //Replace(cmdstr,'$EXE',maybequoted(current_module.exefilename));
-  //DoExec(FindUtil(utilsprefix+binstr),cmdstr,false,false);
-
   MakeExecutable:=success;
 end;
 
@@ -181,8 +182,14 @@ var
   tmp : TCmdStrListItem;
   tempFileName : ansistring;
 begin
-  //Result := true;
-  //Result:=inherited MakeSharedLibrary;
+  Result:=false;
+  if not(cs_link_nolink in current_settings.globalswitches) then
+    Message1(exec_i_linking,current_module.sharedlibfilename);
+
+  { Create some replacements }
+  mapstr:='';
+  if (cs_link_map in current_settings.globalswitches) then
+    mapstr:='-Map '+maybequoted(ChangeFileExt(current_module.sharedlibfilename,'.map'));
   if (cs_link_smart in current_settings.globalswitches) and
      create_smartlink_sections then
    GCSectionsStr:='--gc-sections'
@@ -191,7 +198,7 @@ begin
 
   SoNameStr:='';
   SplitBinCmd(Info.DllCmd[1],binstr,cmdstr);
-  Replace(cmdstr,'$EXE',maybequoted(current_module.exefilename));
+  Replace(cmdstr,'$EXE',maybequoted(current_module.sharedlibfilename));
 
   tmp := TCmdStrListItem(ObjectFiles.First);
   while Assigned(tmp) do begin
@@ -199,10 +206,10 @@ begin
     tmp := TCmdStrListItem(tmp.Next);
   end;
 
-  if HasExports then
-    cmdstr := cmdstr + ' --export-dynamic'; //' --export-dynamic';
+//  if HasExports then
+//    cmdstr := cmdstr + ' --export-dynamic'; //' --export-dynamic';
 
-  cmdstr := cmdstr + ' --no-entry --allow-undefined';
+  cmdstr := cmdstr + ' --no-entry';
 
   if (cs_link_strip in current_settings.globalswitches) then
    begin
@@ -215,16 +222,10 @@ begin
   //Replace(cmdstr,'$INIT',InitStr);
   //Replace(cmdstr,'$FINI',FiniStr);
   Replace(cmdstr,'$SONAME',SoNameStr);
-  //Replace(cmdstr,'$MAP',mapstr);
+  Replace(cmdstr,'$MAP',mapstr);
   //Replace(cmdstr,'$LTO',ltostr);
   Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
-  writeln(utilsprefix+binstr,' ',cmdstr);
   success:=DoExec(FindUtil(utilsprefix+binstr),cmdstr,true,false);
-
-  //SplitBinCmd(Info.DllCmd[2],binstr,cmdstr);
-  //Replace(cmdstr,'$INPUT',current_module.objfilename );
-  //Replace(cmdstr,'$EXE',maybequoted(current_module.exefilename));
-  //DoExec(FindUtil(utilsprefix+binstr),cmdstr,false,false);
 
   MakeSharedLibrary:=success;
 end;

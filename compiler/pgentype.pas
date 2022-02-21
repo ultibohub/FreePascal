@@ -49,8 +49,10 @@ type
     genname : string;
     sym : tsym;
     symtable : tsymtable;
+    forwarddef : tdef;
     constructor create;
     destructor destroy;override;
+    function getcopy:tspecializationcontext;
   end;
 
 
@@ -71,6 +73,30 @@ begin
     dispose(pfileposinfo(poslist[i]));
   poslist.free;
   inherited destroy;
+end;
+
+function tspecializationcontext.getcopy:tspecializationcontext;
+var
+  posinfo : pfileposinfo;
+  i : longint;
+begin
+  result:=tspecializationcontext.create;
+  for i:=0 to paramlist.count-1 do
+    begin
+      result.paramlist.add(paramlist[i]);
+    end;
+  for i:=0 to poslist.count-1 do
+    begin
+      new(posinfo);
+      posinfo^:=pfileposinfo(poslist[i])^;
+      result.poslist.add(posinfo);
+    end;
+  result.prettyname:=prettyname;
+  result.specializename:=specializename;
+  result.genname:=genname;
+  result.sym:=sym;
+  result.symtable:=symtable;
+  result.forwarddef:=forwarddef;
 end;
 
 end.

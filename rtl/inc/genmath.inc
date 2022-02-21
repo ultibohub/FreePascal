@@ -1757,10 +1757,15 @@ end;
 
 
 {$ifndef FPC_SYSTEM_HAS_FRAC}
-    function fpc_frac_real(d : ValReal) : ValReal;compilerproc;
-    begin
-       result := d - Int(d);
-    end;
+function fpc_frac_real(d : ValReal) : ValReal;compilerproc;
+  begin
+    { Nan or +/-Inf }
+    if (float64high(d) and $7ff00000)=$7ff00000 then
+      { return NaN }
+      result := (d-d)/0.0 
+    else
+      result := d - Int(d);
+  end;
 {$endif}
 
 

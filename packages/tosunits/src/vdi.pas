@@ -864,12 +864,16 @@ begin
   _contrl[0]:=5;
   _contrl[1]:=0;
   _contrl[3]:=1;
+  _contrl[4]:=0;
   _contrl[5]:=27;
   _contrl[6]:=handle;
 
   vdi;
 
-  v_orient:=_intout[0];
+  if _contrl[4]<>0 then
+    v_orient:=_intout[0]
+  else
+    v_orient:=0;
 end;
 
 function v_copies(handle, count: smallint): smallint;
@@ -878,12 +882,16 @@ begin
   _contrl[0]:=5;
   _contrl[1]:=0;
   _contrl[3]:=1;
+  _contrl[4]:=0;
   _contrl[5]:=28;
   _contrl[6]:=handle;
 
   vdi;
 
-  v_copies:=_intout[0];
+  if _contrl[4]<>0 then
+    v_copies:=_intout[0]
+  else
+    v_copies:=0;
 end;
 
 procedure v_tray(handle, tray: smallint);
@@ -904,12 +912,16 @@ begin
   _contrl[0]:=5;
   _contrl[1]:=0;
   _contrl[3]:=1;
+  _contrl[4]:=0;
   _contrl[5]:=37;
   _contrl[6]:=handle;
 
   vdi;
 
-  v_page_size:=_intout[0];
+  if _contrl[4]<>0 then
+    v_page_size:=_intout[0]
+  else
+    v_page_size:=0;
 end;
 
 function vs_palette(handle, palette: smallint): smallint;
@@ -949,6 +961,8 @@ begin
   _contrl[6]:=handle;
 
   vdi;
+
+  vs_mute:=_intout[0];
 end;
 
 procedure vt_resolution(handle, xres, yres: smallint;
@@ -1929,8 +1943,6 @@ end;
 
 function vsm_choice(handle: smallint; out choice: smallint): smallint;
 begin
-  _intin[0]:=choice;
-
   _contrl[0]:=30;
   _contrl[1]:=0;
   _contrl[3]:=0;
@@ -2293,6 +2305,8 @@ begin
   char_height:=_ptsout[1];
   cell_width:=_ptsout[2];
   cell_height:=_ptsout[3];
+
+  vst_point:=_intout[0];
 end;
 
 procedure vsl_ends(handle, beg_style, end_style: smallint);
@@ -2918,8 +2932,7 @@ begin
   advy:=PLongint(@_intout[4])^;
   xoff:=PLongint(@_intout[6])^;
   yoff:=PLongint(@_intout[8])^;
-  if (bitmap <> nil) then
-    bitmap:=PPointer(@_intout[10])^;
+  bitmap:=PPointer(@_intout[10])^;
 end;
 
 
@@ -2928,7 +2941,7 @@ var len: longint;
 begin
   len:=string_to_vdi(str, @_intin[0]);
   _ptsin[0]:=x;
-  _ptsin[0]:=y;
+  _ptsin[1]:=y;
   _contrl[0]:=241;
   _contrl[1]:=1;
   _contrl[3]:=len;

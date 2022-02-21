@@ -31,7 +31,7 @@ interface
       { global }
       globtype,
       { symtable }
-      symsym,symdef,
+      symsym,symdef,symtype,
       { pass_1 }
       node;
 
@@ -47,6 +47,7 @@ interface
     procedure property_dec;
     procedure resourcestring_dec(out had_generic:boolean);
     procedure parse_rttiattributes(var rtti_attrs_def:trtti_attribute_list);
+    function parse_forward_declaration(sym:tsym;gentypename,genorgtypename:tidstring;genericdef:tdef;generictypelist:tfphashobjectlist;out newtype:ttypesym):tdef;
 
 implementation
 
@@ -58,7 +59,7 @@ implementation
        globals,tokens,verbose,widestr,constexp,
        systems,aasmdata,fmodule,compinnr,
        { symtable }
-       symconst,symbase,symtype,symcpu,symcreat,defutil,defcmp,symtable,
+       symconst,symbase,symcpu,symcreat,defutil,defcmp,symtable,
        { pass 1 }
        ninl,ncon,nobj,ngenutil,nld,nmem,ncal,pass_1,
        { parser }
@@ -566,6 +567,70 @@ implementation
       end;
 
 
+    function parse_forward_declaration(sym:tsym;gentypename,genorgtypename:tidstring;genericdef:tdef;generictypelist:tfphashobjectlist;out newtype:ttypesym):tdef;
+      var
+        wasforward : boolean;
+        objecttype : tobjecttyp;
+        gendef : tstoreddef;
+      begin
+        newtype:=nil;
+        wasforward:=false;
+        if ((token=_CLASS) or
+            (token=_INTERFACE) or
+            (token=_DISPINTERFACE) or
+            (token=_OBJCCLASS) or
+            (token=_OBJCPROTOCOL) or
+            (token=_OBJCCATEGORY)) and
+           (assigned(ttypesym(sym).typedef)) and
+           is_implicit_pointer_object_type(ttypesym(sym).typedef) and
+           (oo_is_forward in tobjectdef(ttypesym(sym).typedef).objectoptions) then
+         begin
+           wasforward:=true;
+           objecttype:=odt_none;
+           case token of
+             _CLASS :
+               objecttype:=default_class_type;
+             _INTERFACE :
+               case current_settings.interfacetype of
+                 it_interfacecom:
+                   objecttype:=odt_interfacecom;
+                 it_interfacecorba:
+                   objecttype:=odt_interfacecorba;
+                 it_interfacejava:
+                   objecttype:=odt_interfacejava;
+               end;
+             _DISPINTERFACE :
+               objecttype:=odt_dispinterface;
+             _OBJCCLASS,
+             _OBJCCATEGORY :
+               objecttype:=odt_objcclass;
+             _OBJCPROTOCOL :
+               objecttype:=odt_objcprotocol;
+             else
+               internalerror(200811072);
+           end;
+           consume(token);
+           if assigned(genericdef) then
+             gendef:=tstoreddef(genericdef)
+           else
+             { determine the generic def in case we are in a nested type
+               of a specialization }
+             gendef:=determine_generic_def(gentypename);
+           { we can ignore the result, the definition is modified }
+           object_dec(objecttype,genorgtypename,newtype,gendef,generictypelist,tobjectdef(ttypesym(sym).typedef),ht_none);
+           if wasforward and
+             (tobjectdef(ttypesym(sym).typedef).objecttype<>objecttype) then
+             Message1(type_e_forward_interface_type_does_not_match,tobjectdef(ttypesym(sym).typedef).GetTypeName);
+           newtype:=ttypesym(sym);
+           result:=newtype.typedef;
+         end
+        else
+          begin
+            message1(parser_h_type_redef,genorgtypename);
+            result:=generrordef;
+          end;
+      end;
+
     { From http://clang.llvm.org/docs/LanguageExtensions.html#objective-c-features :
       To determine whether a method has an inferred related result type, the first word in the camel-case selector
       (e.g., “init” in “initWithObjects”) is considered, and the method will have a related result type if its return
@@ -613,52 +678,6 @@ implementation
 
     procedure types_dec(in_structure: boolean;out had_generic:boolean;var rtti_attrs_def: trtti_attribute_list);
 
-      function determine_generic_def(const name:tidstring):tstoreddef;
-        var
-          hashedid : THashedIDString;
-          pd : tprocdef;
-          sym : tsym;
-        begin
-          result:=nil;
-          { check whether this is a declaration of a type inside a
-            specialization }
-          if assigned(current_structdef) and
-              (df_specialization in current_structdef.defoptions) then
-            begin
-              if not assigned(current_structdef.genericdef) or
-                  not (current_structdef.genericdef.typ in [recorddef,objectdef]) then
-                internalerror(2011052301);
-              hashedid.id:=name;
-              { we could be inside a method of the specialization
-                instead of its declaration, so check that first (as
-                local nested types aren't allowed we don't need to
-                walk the symtablestack to find the localsymtable) }
-              if symtablestack.top.symtabletype=localsymtable then
-                begin
-                  { we are in a method }
-                  if not assigned(symtablestack.top.defowner) or
-                      (symtablestack.top.defowner.typ<>procdef) then
-                    internalerror(2011120701);
-                  pd:=tprocdef(symtablestack.top.defowner);
-                  if not assigned(pd.genericdef) or (pd.genericdef.typ<>procdef) then
-                    internalerror(2011120702);
-                  sym:=tsym(tprocdef(pd.genericdef).localst.findwithhash(hashedid));
-                end
-              else
-                sym:=nil;
-              if not assigned(sym) or not (sym.typ=typesym) then
-                begin
-                  { now search in the declaration of the generic }
-                  sym:=tsym(tabstractrecorddef(current_structdef.genericdef).symtable.findwithhash(hashedid));
-                  if not assigned(sym) or not (sym.typ=typesym) then
-                    internalerror(2011052302);
-                end;
-              { use the corresponding type in the generic's symtable as
-                genericdef for the specialized type }
-              result:=tstoreddef(ttypesym(sym).typedef);
-            end;
-        end;
-
       procedure finalize_class_external_status(od: tobjectdef);
         begin
           if  [oo_is_external,oo_is_forward] <= od.objectoptions then
@@ -679,12 +698,10 @@ implementation
          defpos,storetokenpos : tfileposinfo;
          old_block_type : tblock_type;
          old_checkforwarddefs: TFPObjectList;
-         objecttype : tobjecttyp;
          first,
          isgeneric,
          isunique,
-         istyperenaming,
-         wasforward: boolean;
+         istyperenaming : boolean;
          generictypelist : tfphashobjectlist;
          localgenerictokenbuf : tdynamicarray;
          p:tnode;
@@ -738,14 +755,6 @@ implementation
                generictypelist:=parse_generic_parameters(true);
                consume(_RSHARPBRACKET);
 
-               { we are not freeing the type parameters, so register them }
-               for i:=0 to generictypelist.count-1 do
-                 begin
-                    tstoredsym(generictypelist[i]).register_sym;
-                    if tstoredsym(generictypelist[i]).typ=typesym then
-                      tstoreddef(ttypesym(generictypelist[i]).typedef).register_def;
-                 end;
-
                str(generictypelist.Count,s);
                gentypename:=typename+'$'+s;
                genorgtypename:=orgtypename+'$'+s;
@@ -777,7 +786,7 @@ implementation
 
            { is the type already defined? -- must be in the current symtable,
              not in a nested symtable or one higher up the stack -> don't
-             use searchsym & frinds! }
+             use searchsym & friends! }
            sym:=tsym(symtablestack.top.find(gentypename));
            newtype:=nil;
            { found a symbol with this name? }
@@ -791,60 +800,23 @@ implementation
                    (sp_generic_dummy in sym.symoptions)
                  ) then
                begin
-                 wasforward:=false;
-                 if ((token=_CLASS) or
-                     (token=_INTERFACE) or
-                     (token=_DISPINTERFACE) or
-                     (token=_OBJCCLASS) or
-                     (token=_OBJCPROTOCOL) or
-                     (token=_OBJCCATEGORY)) and
-                    (assigned(ttypesym(sym).typedef)) and
-                    is_implicit_pointer_object_type(ttypesym(sym).typedef) and
-                    (oo_is_forward in tobjectdef(ttypesym(sym).typedef).objectoptions) then
-                  begin
-                    wasforward:=true;
-                    objecttype:=odt_none;
-                    case token of
-                      _CLASS :
-                        objecttype:=default_class_type;
-                      _INTERFACE :
-                        case current_settings.interfacetype of
-                          it_interfacecom:
-                            objecttype:=odt_interfacecom;
-                          it_interfacecorba:
-                            objecttype:=odt_interfacecorba;
-                          it_interfacejava:
-                            objecttype:=odt_interfacejava;
-                        end;
-                      _DISPINTERFACE :
-                        objecttype:=odt_dispinterface;
-                      _OBJCCLASS,
-                      _OBJCCATEGORY :
-                        objecttype:=odt_objcclass;
-                      _OBJCPROTOCOL :
-                        objecttype:=odt_objcprotocol;
-                      else
-                        internalerror(200811072);
-                    end;
-                    consume(token);
-                    { determine the generic def in case we are in a nested type
-                      of a specialization }
-                    gendef:=determine_generic_def(gentypename);
-                    { we can ignore the result, the definition is modified }
-                    object_dec(objecttype,genorgtypename,newtype,gendef,generictypelist,tobjectdef(ttypesym(sym).typedef),ht_none);
-                    if wasforward and
-                      (tobjectdef(ttypesym(sym).typedef).objecttype<>objecttype) then
-                      Message1(type_e_forward_interface_type_does_not_match,tobjectdef(ttypesym(sym).typedef).GetTypeName);
-                    newtype:=ttypesym(sym);
-                    hdef:=newtype.typedef;
-                  end
-                 else
-                  message1(parser_h_type_redef,genorgtypename);
+                 hdef:=parse_forward_declaration(sym,gentypename,genorgtypename,nil,generictypelist,newtype);
                end;
             end;
            { no old type reused ? Then insert this new type }
            if not assigned(newtype) then
             begin
+              if isgeneric then
+                begin
+                  { we are not freeing the type parameters, so register them }
+                  for i:=0 to generictypelist.count-1 do
+                    begin
+                       tstoredsym(generictypelist[i]).register_sym;
+                       if tstoredsym(generictypelist[i]).typ=typesym then
+                         tstoreddef(ttypesym(generictypelist[i]).typedef).register_def;
+                    end;
+                end;
+
               { insert the new type first with an errordef, so that
                 referencing the type before it's really set it
                 will give an error (PFV) }
@@ -1171,6 +1143,16 @@ implementation
                tstoreddef(hdef).generictokenbuf:=localgenerictokenbuf;
                { Generic is never a type renaming }
                hdef.typesym:=newtype;
+               { reusing a forward declared type also reuses the type parameters,
+                 so free them if they haven't been used }
+               for i:=0 to generictypelist.count-1 do
+                 begin
+                   if (tstoredsym(generictypelist[i]).typ=typesym) and
+                       not ttypesym(generictypelist[i]).typedef.is_registered then
+                     ttypesym(generictypelist[i]).typedef.free;
+                   if not tstoredsym(generictypelist[i]).is_registered then
+                     tstoredsym(generictypelist[i]).free;
+                 end;
                generictypelist.free;
              end;
 

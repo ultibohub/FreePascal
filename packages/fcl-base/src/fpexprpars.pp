@@ -715,7 +715,7 @@ Type
   end;
 
   { TFPExpressionParser }
-
+  TIdentifierEvent = Procedure (Sender : TObject; Const aIdentifier : String; var aIdent : TFPExprIdentifierDef) of object;
   TFPExpressionParser = class(TComponent)
   private
     FBuiltIns: TBuiltInCategories;
@@ -725,6 +725,9 @@ Type
     FIdentifiers : TFPExprIdentifierDefs;
     FHashList : TFPHashObjectlist;
     FDirty : Boolean;
+    FOnExtractIdentifier : TIdentifierEvent;
+    FExtractIdentifiers : TStrings;
+    FUnknownIdentifier : TFPExprIdentifierDef;
     procedure CheckEOF;
     function GetAsBoolean: Boolean;
     function GetAsDateTime: TDateTime;
@@ -732,10 +735,12 @@ Type
     function GetAsCurrency: Currency;
     function GetAsInteger: Int64;
     function GetAsString: String;
+    function GetExtractingIdentifiers: Boolean;
     function MatchNodes(Todo, Match: TFPExprNode): TFPExprNode;
     procedure CheckNodes(var Left, Right: TFPExprNode);
     procedure SetBuiltIns(const AValue: TBuiltInCategories);
     procedure SetIdentifiers(const AValue: TFPExprIdentifierDefs);
+    procedure AddIdentifierToStrings(Sender : TObject; Const aIdentifier : String; var ID : TFPExprIdentifierDef);
   Protected
     procedure ParserError(Msg: String);
     procedure SetExpression(const AValue: String); virtual;
@@ -758,12 +763,15 @@ Type
     Property Scanner : TFPExpressionScanner Read FScanner;
     Property ExprNode : TFPExprNode Read FExprNode;
     Property Dirty : Boolean Read FDirty;
+    Property ExtractingIdentifiers : Boolean Read GetExtractingIdentifiers;
   public
     Constructor Create(AOwner :TComponent); override;
     Destructor Destroy; override;
     Function IdentifierByName(const AName : ShortString) : TFPExprIdentifierDef; virtual;
     Procedure Clear;
     Procedure EvaluateExpression(Out Result : TFPExpressionResult);
+    Procedure ExtractIdentifierNames(Const aExpression : String; aList : TStringList); overload;
+    Procedure ExtractIdentifierNames(Const aExpression : String; aCallback : TIdentifierEvent); overload;
     function ExtractNode(var N: TFPExprNode): Boolean;
     Function Evaluate : TFPExpressionResult;
     Function ResultType : TResultType;
@@ -856,6 +864,7 @@ var
   FileFormatSettings: TFormatSettings;
 
 Resourcestring
+  SErrCannotRecursivelyExtractIdentifiers = 'Cannot recursively extract identifiers';
   SBadQuotes        = 'Unterminated string';
   SUnknownDelimiter = 'Unknown delimiter character: "%s"';
   SErrUnknownCharacter = 'Unknown character at pos %d: "%s"';
@@ -879,7 +888,6 @@ Resourcestring
   SErrNoNegation = 'Cannot negate expression of type %s : %s';
   SErrNoNOTOperation = 'Cannot perform "not" on expression of type %s: %s';
   SErrTypesDoNotMatch = 'Type mismatch: %s<>%s for expressions "%s" and "%s".';
-  SErrTypesIncompatible = 'Incompatible types: %s<>%s for expressions "%s" and "%s".';
   SErrNoNodeToCheck = 'Internal error: No node to check !';
   SInvalidNodeType = 'Node type (%s) not in allowed types (%s) for expression: %s';
   SErrUnterminatedExpression = 'Badly terminated expression. Found token at position %d : %s';
@@ -889,7 +897,6 @@ Resourcestring
   SErrInvalidArgumentType = 'Invalid type for argument %d: Expected %s, got %s';
   SErrInvalidResultType = 'Invalid result type: %s';
   SErrNotVariable = 'Identifier %s is not a variable';
-  SErrInactive = 'Operation not allowed while an expression is active';
   SErrIFNeedsBoolean = 'First argument to IF must be of type boolean: %s';
   SErrCaseNeeds3 = 'Case statement needs to have at least 4 arguments';
   SErrCaseEvenCount = 'Case statement needs to have an even number of arguments';
@@ -1592,6 +1599,13 @@ begin
   FIdentifiers.Assign(AValue)
 end;
 
+procedure TFPExpressionParser.AddIdentifierToStrings(Sender: TObject; const aIdentifier: String; var ID : TFPExprIdentifierDef);
+begin
+  ID:=Nil;
+  If Assigned(FExtractIdentifiers) then
+    FExtractIdentifiers.Add(aIdentifier);
+end;
+
 procedure TFPExpressionParser.EvaluateExpression(Out Result: TFPExpressionResult);
 begin
   If (FExpression='') then
@@ -1599,6 +1613,48 @@ begin
   if not Assigned(FExprNode) then
     ParserError(SErrInExpression);
   FExprNode.GetNodeValue(Result);
+end;
+
+
+Procedure TFPExpressionParser.ExtractIdentifierNames(Const aExpression : String; aCallback : TIdentifierEvent); overload;
+
+
+Var
+  N : TFPExprNode;
+  OldExpr : String;
+
+begin
+  if Assigned(Self.FOnExtractIdentifier) then
+    ParserError(SErrCannotRecursivelyExtractIdentifiers);
+  N:=Nil;
+  FOnExtractIdentifier:=aCallBack;
+  try
+    // for safety
+    FreeAndNil(FUnknownIdentifier);
+    // Save old data
+    OldExpr:=Expression;
+    ExtractNode(N);
+    // Parse
+   Expression:=aExpression;
+  finally
+    FOnExtractIdentifier:=Nil;
+    FreeAndNil(FUnknownIdentifier);
+    FExpression:=OldExpr;
+    FExprNode:=N;
+  end;
+end;
+
+procedure TFPExpressionParser.ExtractIdentifierNames(const aExpression: String; aList: TStringList);
+
+begin
+   if Assigned(FExtractIdentifiers) then
+     ParserError(SErrCannotRecursivelyExtractIdentifiers);
+   FExtractIdentifiers:=aList;
+   try
+     ExtractIdentifierNames(aExpression,@AddIdentifierToStrings);
+   finally
+     FExtractIdentifiers:=Nil;
+   end;
 end;
 
 function TFPExpressionParser.ExtractNode(Var N : TFPExprNode) : Boolean;
@@ -1710,6 +1766,11 @@ begin
   EvaluateExpression(Res);
   CheckResultType(Res,rtString);
   Result:=Res.ResString;
+end;
+
+function TFPExpressionParser.GetExtractingIdentifiers: Boolean;
+begin
+  Result:=Assigned(FOnExtractIdentifier);
 end;
 
 {
@@ -1849,7 +1910,8 @@ begin
       GetToken;
       CheckEOF;
       Right:=Level4;
-      CheckNodes(Result,Right);
+      if Not ExtractingIdentifiers then
+        CheckNodes(Result,Right);
       Case tt of
         ttPlus  : Result:=TFPAddOperation.Create(Result,Right);
         ttMinus : Result:=TFPSubtractOperation.Create(Result,Right);
@@ -1879,7 +1941,8 @@ begin
       tt:=TokenType;
       GetToken;
       Right:=Level5;
-      CheckNodes(Result,Right);
+      if Not ExtractingIdentifiers then
+        CheckNodes(Result,Right);
       Case tt of
         ttMul : Result:=TFPMultiplyOperation.Create(Result,Right);
         ttDiv : Result:=TFPDivideOperation.Create(Result,Right);
@@ -1962,6 +2025,7 @@ Var
   ID : TFPExprIdentifierDef;
   Args : TExprArgumentArray;
   AI : Integer;
+  S : String;
 
 begin
 {$ifdef debugexpr}  Writeln('Primitive : ',TokenName(TokenType),': ',CurrentToken);{$endif debugexpr}
@@ -1991,9 +2055,25 @@ begin
     IFC:=TokenType=ttCase;
     if Not (IFF or IFC) then
       begin
-      ID:=self.IdentifierByName(CurrentToken);
+      S:=CurrentToken;
+      ID:=self.IdentifierByName(S);
       If (ID=Nil) then
-        ParserError(Format(SErrUnknownIdentifier,[CurrentToken]))
+        begin
+        if Assigned(FOnExtractIdentifier) then
+          begin
+          // Call only once in case of stringlist.
+          If Not (Assigned(FExtractIdentifiers) and (FExtractIdentifiers.IndexOf(S)<>-1)) then
+            FOnExtractIdentifier(Self,S,ID);
+          if (ID=Nil) then
+            begin
+            if not Assigned(FUnknownIdentifier) then
+              FUnknownIdentifier:=TFPExprIdentifierDef.Create(Nil);
+            ID:=FUnknownIdentifier;
+            end;
+          end
+        else
+          ParserError(Format(SErrUnknownIdentifier,[S]))
+        end
       end;
     // Determine number of arguments
     if Iff then
@@ -2072,7 +2152,8 @@ begin
     FExprNode:=Level1;
     If (TokenType<>ttEOF) then
       ParserError(Format(SErrUnterminatedExpression,[Scanner.Pos,CurrentToken]));
-    FExprNode.Check;
+    if not ExtractingIdentifiers then
+      FExprNode.Check;
     end
   else
     FExprNode:=Nil;
