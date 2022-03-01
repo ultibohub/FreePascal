@@ -14,7 +14,6 @@
 
 unit ssockets;
 
-
 interface
 
 uses
@@ -210,7 +209,7 @@ type
   Public
     Procedure Bind; Override;
     Constructor Create(APort: Word);
-    Constructor Create(const aHost: string; const APort: Word; AHAndler : TSocketHandler = Nil);
+    Constructor Create(const aHost: string; const APort: Word; AHandler : TSocketHandler = Nil);
     Property Port : Word Read FPort;
     Property Host : string Read FHost;
   end;
@@ -273,7 +272,6 @@ type
     Property FileName : String Read FFileName;
   end;
 {$endif}
-
 
 Implementation
 
@@ -849,7 +847,7 @@ begin
   Result:=fpSetSockOpt(FSocket,ALevel,AOptName,@optval,optlen)<>-1;
 end;
 
-Function TInetServer.GetConnection : TSocketStream;
+function TInetServer.GetConnection: TSocketStream;
 
 var
   NewSocket : longint;
@@ -858,7 +856,10 @@ begin
   Result:=Nil;
   NewSocket:=Accept;
   if (NewSocket<0) then
-    Raise ESocketError.Create(seAcceptFailed,[Socket,SocketError]);
+    if not FAccepting then
+      exit
+    else
+      Raise ESocketError.Create(seAcceptFailed,[Socket,SocketError]);
   If FAccepting and DoConnectQuery(NewSocket) Then
     Result:=SockToStream(NewSocket)
   else
@@ -903,7 +904,7 @@ begin
           Stream:=Nil;
         if Assigned(Stream) then
           begin
-          Inc (NoConnections);
+          Inc(NoConnections);
           DoConnect(Stream);
           end;
       except
@@ -1050,13 +1051,14 @@ end;
     TInetServer
   ---------------------------------------------------------------------}
 
-Constructor TInetServer.Create(APort: Word);
+constructor TInetServer.Create(APort: Word);
 
 begin
   Create('0.0.0.0', aPort);
 end;
 
-Constructor TInetServer.Create(const aHost: string; const APort: Word; AHAndler : TSocketHandler = Nil);
+constructor TInetServer.Create(const aHost: string; const APort: Word;
+  AHandler: TSocketHandler);
 
 Var S : longint;
 
@@ -1069,7 +1071,7 @@ begin
   Inherited Create(S,AHandler);
 end;
 
-Procedure TInetServer.Bind;
+procedure TInetServer.Bind;
 
 begin
   Faddr.sin_family := AF_INET;
@@ -1080,7 +1082,7 @@ begin
   FBound:=True;
 end;
 
-Function  TInetServer.SockToStream (ASocket : Longint) : TSocketStream;
+function TInetServer.SockToStream(ASocket: Longint): TSocketStream;
 Var
   H : TSocketHandler;
   A : Boolean;
@@ -1107,7 +1109,7 @@ begin
     ShutDownH;
 end;
 
-Function TInetServer.Accept : Longint;
+function TInetServer.Accept: Longint;
 
 Var
   L : longint;

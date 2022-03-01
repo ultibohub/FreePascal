@@ -866,6 +866,11 @@ interface
 {$ifndef DISABLE_FAST_OVERLOAD_PATCH}
           seenmarker : pointer; // used for filtering in tcandidate
 {$endif}
+{$ifdef symansistr}
+         section: ansistring;
+{$else symansistr}
+         section: pshortstring;
+{$endif}
           constructor create(level:byte;doregister:boolean);virtual;
           constructor ppuload(ppufile:tcompilerppufile);
           destructor  destroy;override;
