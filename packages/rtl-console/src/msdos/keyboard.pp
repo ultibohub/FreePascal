@@ -41,6 +41,18 @@ begin
       if regs.ax<>$1200 then
         keyboard_type:=$10;
     end;
+  regs.ax:=$6601;
+  msdos(regs);
+  if (regs.flags and fCarry) = 0 then
+     CurrentLegacy2EnhancedKeyEventTranslationCodePage:=regs.bx;
+end;
+
+
+function SysGetShiftState: Byte;
+begin
+  SysGetShiftState:=(mem[$40:$17] and %1100) or
+                   ((mem[$40:$17] and %0010) shr 1) or
+                   ((mem[$40:$17] and %0001) shl 1);
 end;
 
 
@@ -53,7 +65,7 @@ begin
   intr($16,regs);
   if (regs.al=$e0) and (regs.ah<>0) then
    regs.al:=0;
-  SysGetKeyEvent:=(kbPhys shl 24) or regs.ax or ((mem[$40:$17] and $f) shl 16);
+  SysGetKeyEvent:=(kbPhys shl 24) or regs.ax or (longint(SysGetShiftState) shl 16);
 end;
 
 
@@ -67,13 +79,7 @@ begin
    exit(0);
   if (regs.al=$e0) and (regs.ah<>0) then
    regs.al:=0;
-  SysPollKeyEvent:=(kbPhys shl 24) or regs.ax or ((mem[$40:$17] and $f) shl 16);
-end;
-
-
-function SysGetShiftState: Byte;
-begin
-  SysGetShiftState:=(mem[$40:$17] and $f);
+  SysPollKeyEvent:=(kbPhys shl 24) or regs.ax or (longint(SysGetShiftState) shl 16);
 end;
 
 
