@@ -817,7 +817,7 @@ begin
         inc(Src);
       end;
     end;
-  '''','#':  // string constant
+  '''','#','`':  // string constant
     while true do
       case Src^ of
       #0: break;
@@ -830,7 +830,15 @@ begin
       '''':
         begin
         inc(Src);
-        while not (Src^ in ['''',#0]) do
+        while not (Src^ in ['''',#0,#10,#13]) do
+          inc(Src);
+        if Src^='''' then
+          inc(Src);
+        end;
+      '`':
+        begin
+        inc(Src);
+        while not (Src^ in ['`',#0]) do
           inc(Src);
         if Src^='''' then
           inc(Src);
@@ -1155,7 +1163,7 @@ begin
 
   TPasFunctionType(Result).ResultEl :=
     TPasResultElement(CreateElement(TPasResultElement, AResultName, ResultParent,
-    visDefault, ASrcPos, TypeParams));
+                                    visDefault, ASrcPos, TypeParams));
 end;
 
 function TPasTreeContainer.FindElementFor(const AName: String;
@@ -2322,11 +2330,13 @@ begin
     ok:=true;
   finally
     if not ok then
+      begin
       if Result<>nil then
         begin
         Result.Release{$IFDEF CheckPasTreeRefCount}('CreateElement'){$ENDIF};
         Result:=nil;
         end;
+      end;
   end;
 end;
 
@@ -2350,27 +2360,36 @@ end;
 function TPasParser.ParseVarType(Parent : TPasElement = Nil): TPasType;
 var
   NamePos: TPasSourcePos;
+  ok: Boolean;
 begin
-  NextToken;
-  case CurToken of
-    tkProcedure:
-      begin
-        Result := TPasProcedureType(CreateElement(TPasProcedureType, '', Parent));
-        ParseProcedureOrFunction(Result, TPasProcedureType(Result), ptProcedure, True);
-        if CurToken = tkSemicolon then
-          UngetToken;        // Unget semicolon
-      end;
-    tkFunction:
-      begin
-        Result := CreateFunctionType('', 'Result', Parent, False, CurSourcePos);
-        ParseProcedureOrFunction(Result, TPasFunctionType(Result), ptFunction, True);
-        if CurToken = tkSemicolon then
-          UngetToken;        // Unget semicolon
-      end;
-  else
-    NamePos:=CurSourcePos;
-    UngetToken;
-    Result := ParseType(Parent,NamePos);
+  Result:=nil;
+  ok:=false;
+  try
+    NextToken;
+    case CurToken of
+      tkProcedure:
+        begin
+          Result := TPasProcedureType(CreateElement(TPasProcedureType, '', Parent));
+          ParseProcedureOrFunction(Result, TPasProcedureType(Result), ptProcedure, True);
+          if CurToken = tkSemicolon then
+            UngetToken;        // Unget semicolon
+        end;
+      tkFunction:
+        begin
+          Result := CreateFunctionType('', 'Result', Parent, False, CurSourcePos);
+          ParseProcedureOrFunction(Result, TPasFunctionType(Result), ptFunction, True);
+          if CurToken = tkSemicolon then
+            UngetToken;        // Unget semicolon
+        end;
+    else
+      NamePos:=CurSourcePos;
+      UngetToken;
+      Result := ParseType(Parent,NamePos);
+    end;
+    ok:=true;
+  finally
+    if (not ok) and (Result<>nil) then
+      Result.Release{$IFDEF CheckPasTreeRefCount}('CreateElement'){$ENDIF};
   end;
 end;
 

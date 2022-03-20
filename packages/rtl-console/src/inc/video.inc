@@ -23,22 +23,112 @@ const
 
 operator = (const a,b : TEnhancedVideoCell) res: Boolean;
 begin
-  res:=(a.Attribute=b.Attribute) and (a.ExtendedGraphemeCluster = b.ExtendedGraphemeCluster);
+  res:=(a.FForegroundColor=b.FForegroundColor) and
+       (a.FBackgroundColor=b.FBackgroundColor) and
+       (a.EnhancedVideoAttributes=b.EnhancedVideoAttributes) and
+       (a.ExtendedGraphemeCluster=b.ExtendedGraphemeCluster);
 end;
 
 function TEnhancedVideoCell.GetAttribute: Byte;
+var
+  EVA: TEnhancedVideoAttributes;
+  Fg,Bg,Attr: Byte;
+  tmpB: Byte;
 begin
-  GetAttribute := Byte(FAttributes);
+  EVA := EnhancedVideoAttributes;
+  Fg := FForegroundColor and $0F;
+  Bg := FBackgroundColor and $0F;
+  if ScreenColor then
+  begin
+    { display underlined as cyan }
+    if (EVA*[evaUnderlined,evaDoublyUnderlined])<>[] then
+      Fg := 3;
+    { display italicized as green }
+    if evaItalicized in EVA then
+      Fg := 2;
+    if evaInverse in EVA then
+    begin
+      tmpB := Fg;
+      Fg := Bg;
+      Bg := tmpB;
+    end;
+    if evaFaint in EVA then
+      Fg := 8;
+    if evaBold in EVA then
+      Fg := Fg or 8;
+    if evaInvisible in EVA then
+      Fg := Bg;
+  end
+  else
+  begin
+    if evaInverse in EVA then
+    begin
+      tmpB := Fg;
+      Fg := Bg;
+      Bg := tmpB;
+    end;
+    { foreground color 1 is underline on MDA }
+    if (EVA*[evaUnderlined,evaDoublyUnderlined])<>[] then
+      Fg := (Fg and 8) + 1;
+    if evaBold in EVA then
+      Fg := Fg or 8;
+    if evaInvisible in EVA then
+    begin
+      { on MDA white on white background doesn't work as invisible, only black
+        on black is possible }
+      Fg := 0;
+      Bg := 0;
+    end;
+  end;
+  Attr := (Fg and $0F) or Byte((Bg and $07) shl 4);
+  if (EVA*[evaBlinkSlow,evaBlinkFast])<>[] then
+    Attr := Attr or $80;
+  GetAttribute := Attr;
 end;
 
 procedure TEnhancedVideoCell.SetAttribute(Attr: Byte);
 begin
-  FAttributes := (FAttributes and $FF00) or Attr;
+  FForegroundColor := Attr and $0F;
+  FBackgroundColor := (Attr shr 4) and $07;
+  if (Attr and $80) <> 0 then
+    EnhancedVideoAttributes := [evaBlinkSlow]
+  else
+    EnhancedVideoAttributes := [];
+end;
+
+function TEnhancedVideoCell.GetEnhancedVideoAttributes: TEnhancedVideoAttributes;
+begin
+  GetEnhancedVideoAttributes := TEnhancedVideoAttributes(Word(FInternalAttributes and $7FFF));
+end;
+
+procedure TEnhancedVideoCell.SetEnhancedVideoAttributes(AEnhancedVideoAttributes: TEnhancedVideoAttributes);
+begin
+  FInternalAttributes := (FInternalAttributes and $8000) or (Word(AEnhancedVideoAttributes) and $7FFF);
+end;
+
+function TEnhancedVideoCell.GetForegroundColor: Byte;
+begin
+  GetForegroundColor := FForegroundColor;
+end;
+
+procedure TEnhancedVideoCell.SetForegroundColor(AForegroundColor: Byte);
+begin
+  FForegroundColor := AForegroundColor;
+end;
+
+function TEnhancedVideoCell.GetBackgroundColor: Byte;
+begin
+  GetBackgroundColor := FBackgroundColor;
+end;
+
+procedure TEnhancedVideoCell.SetBackgroundColor(ABackgroundColor: Byte);
+begin
+  FBackgroundColor := ABackgroundColor;
 end;
 
 function TEnhancedVideoCell.GetExtendedGraphemeCluster: UnicodeString;
 begin
-  if (FAttributes and $8000) = 0 then
+  if (FInternalAttributes and $8000) = 0 then
     GetExtendedGraphemeCluster := EGC_SingleChar
   else
     GetExtendedGraphemeCluster := UnicodeString(EGC_WideStr);
@@ -48,18 +138,18 @@ procedure TEnhancedVideoCell.SetExtendedGraphemeCluster(const AExtendedGraphemeC
 begin
   if Length(AExtendedGraphemeCluster) = 1 then
   begin
-    if (FAttributes and $8000) <> 0 then
+    if (FInternalAttributes and $8000) <> 0 then
     begin
-      FAttributes := FAttributes and $7FFF;
+      FInternalAttributes := FInternalAttributes and $7FFF;
       UnicodeString(EGC_WideStr) := '';
     end;
     EGC_SingleChar := AExtendedGraphemeCluster[1];
   end
   else
   begin
-    if (FAttributes and $8000) = 0 then
+    if (FInternalAttributes and $8000) = 0 then
     begin
-      FAttributes := FAttributes or $8000;
+      FInternalAttributes := FInternalAttributes or $8000;
       EGC_WideStr := nil;
     end;
     UnicodeString(EGC_WideStr) := AExtendedGraphemeCluster;
@@ -68,12 +158,14 @@ end;
 
 class operator TEnhancedVideoCell.Initialize(var evc: TEnhancedVideoCell);
 begin
-  evc.FAttributes := 0;
+  evc.FInternalAttributes := 0;
+  evc.ForegroundColor := 0;
+  evc.BackgroundColor := 0;
 end;
 
 class operator TEnhancedVideoCell.Finalize(var evc: TEnhancedVideoCell);
 begin
-  if (evc.FAttributes and $8000) <> 0 then
+  if (evc.FInternalAttributes and $8000) <> 0 then
     UnicodeString(evc.EGC_WideStr) := '';
 end;
 
@@ -81,14 +173,16 @@ Procedure fpc_UnicodeStr_Incr_Ref(S : Pointer); external name 'FPC_UNICODESTR_IN
 
 class operator TEnhancedVideoCell.AddRef(var evc: TEnhancedVideoCell);
 begin
-  if (evc.FAttributes and $8000) <> 0 then
+  if (evc.FInternalAttributes and $8000) <> 0 then
     fpc_UnicodeStr_Incr_Ref(evc.EGC_WideStr);
 end;
 
 class operator TEnhancedVideoCell.Copy(constref aSrc: TEnhancedVideoCell; var aDst: TEnhancedVideoCell);
 begin
   aDst.ExtendedGraphemeCluster := aSrc.ExtendedGraphemeCluster;
-  aDst.Attribute := aSrc.Attribute;
+  aDst.EnhancedVideoAttributes := aSrc.EnhancedVideoAttributes;
+  aDst.FForegroundColor := aSrc.FForegroundColor;
+  aDst.FBackgroundColor := aSrc.FBackgroundColor;
 end;
 
 Const

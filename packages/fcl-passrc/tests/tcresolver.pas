@@ -890,6 +890,12 @@ type
     Procedure TestProcType_InsideFunction;
     Procedure TestProcType_PassProcToUntyped;
 
+    // anonymous procedure type
+    Procedure TestProcTypeAnonymous_FunctionFunctionFail;
+    Procedure TestProcTypeAnonymous_ResultTypeFail;
+    Procedure TestProcTypeAnonymous_ArgumentFail;
+    Procedure TestProcTypeAnonymous_PropertyFail;
+
     // pointer
     Procedure TestPointer;
     Procedure TestPointer_AnonymousSetFail;
@@ -15542,63 +15548,64 @@ end;
 procedure TTestResolver.TestProcTypesAssignObjFPC;
 begin
   StartProgram(false);
-  Add('type');
-  Add('  TProcedure = procedure;');
-  Add('  TFunctionInt = function:longint;');
-  Add('  TFunctionIntFunc = function:TFunctionInt;');
-  Add('  TFunctionIntFuncFunc = function:TFunctionIntFunc;');
-  Add('function GetNumber: longint;');
-  Add('begin');
-  Add('  Result:=3;');
-  Add('end;');
-  Add('function GetNumberFunc: TFunctionInt;');
-  Add('begin');
-  Add('  Result:=@GetNumber;');
-  Add('end;');
-  Add('function GetNumberFuncFunc: TFunctionIntFunc;');
-  Add('begin');
-  Add('  Result:=@GetNumberFunc;');
-  Add('end;');
-  Add('var');
-  Add('  i: longint;');
-  Add('  f: TFunctionInt;');
-  Add('  ff: TFunctionIntFunc;');
-  Add('begin');
-  Add('  i:=GetNumber; // omit ()');
-  Add('  i:=GetNumber();');
-  Add('  i:=GetNumberFunc()();');
-  Add('  i:=GetNumberFuncFunc()()();');
-  Add('  if i=GetNumberFunc()() then ;');
-  Add('  if GetNumberFunc()()=i then ;');
-  Add('  if i=GetNumberFuncFunc()()() then ;');
-  Add('  if GetNumberFuncFunc()()()=i then ;');
-  Add('  f:=nil;');
-  Add('  if f=nil then ;');
-  Add('  if nil=f then ;');
-  Add('  if Assigned(f) then ;');
-  Add('  f:=f;');
-  Add('  f:=@GetNumber;');
-  Add('  f:=GetNumberFunc; // not in Delphi');
-  Add('  f:=GetNumberFunc(); // not in Delphi');
-  Add('  f:=GetNumberFuncFunc()();');
-  Add('  if f=f then ;');
-  Add('  if i=f then ;');
-  Add('  if i=f() then ;');
-  Add('  if f()=i then ;');
-  Add('  if f()=f() then ;');
-  Add('  if f=@GetNumber then ;');
-  Add('  if @GetNumber=f then ;');
-  Add('  if f=GetNumberFunc then ;');
-  Add('  if f=GetNumberFunc() then ;');
-  Add('  if f=GetNumberFuncFunc()() then ;');
-  Add('  ff:=nil;');
-  Add('  if ff=nil then ;');
-  Add('  if nil=ff then ;');
-  Add('  ff:=ff;');
-  Add('  if ff=ff then ;');
-  Add('  ff:=@GetNumberFunc;');
-  Add('  ff:=GetNumberFuncFunc; // not in Delphi');
-  Add('  ff:=GetNumberFuncFunc();');
+  Add([
+  'type',
+  '  TProcedure = procedure;',
+  '  TFunctionInt = function:longint;',
+  '  TFunctionIntFunc = function:TFunctionInt;',
+  '  TFunctionIntFuncFunc = function:TFunctionIntFunc;',
+  'function GetNumber: longint;',
+  'begin',
+  '  Result:=3;',
+  'end;',
+  'function GetNumberFunc: TFunctionInt;',
+  'begin',
+  '  Result:=@GetNumber;',
+  'end;',
+  'function GetNumberFuncFunc: TFunctionIntFunc;',
+  'begin',
+  '  Result:=@GetNumberFunc;',
+  'end;',
+  'var',
+  '  i: longint;',
+  '  f: TFunctionInt;',
+  '  ff: TFunctionIntFunc;',
+  'begin',
+  '  i:=GetNumber; // omit ()',
+  '  i:=GetNumber();',
+  '  i:=GetNumberFunc()();',
+  '  i:=GetNumberFuncFunc()()();',
+  '  if i=GetNumberFunc()() then ;',
+  '  if GetNumberFunc()()=i then ;',
+  '  if i=GetNumberFuncFunc()()() then ;',
+  '  if GetNumberFuncFunc()()()=i then ;',
+  '  f:=nil;',
+  '  if f=nil then ;',
+  '  if nil=f then ;',
+  '  if Assigned(f) then ;',
+  '  f:=f;',
+  '  f:=@GetNumber;',
+  '  f:=GetNumberFunc; // not in Delphi',
+  '  f:=GetNumberFunc(); // not in Delphi',
+  '  f:=GetNumberFuncFunc()();',
+  '  if f=f then ;',
+  '  if i=f then ;',
+  '  if i=f() then ;',
+  '  if f()=i then ;',
+  '  if f()=f() then ;',
+  '  if f=@GetNumber then ;',
+  '  if @GetNumber=f then ;',
+  '  if f=GetNumberFunc then ;',
+  '  if f=GetNumberFunc() then ;',
+  '  if f=GetNumberFuncFunc()() then ;',
+  '  ff:=nil;',
+  '  if ff=nil then ;',
+  '  if nil=ff then ;',
+  '  ff:=ff;',
+  '  if ff=ff then ;',
+  '  ff:=@GetNumberFunc;',
+  '  ff:=GetNumberFuncFunc; // not in Delphi',
+  '  ff:=GetNumberFuncFunc();']);
   ParseProgram;
 end;
 
@@ -16518,6 +16525,55 @@ begin
     end;
     aMarker:=aMarker^.Next;
     end;
+end;
+
+procedure TTestResolver.TestProcTypeAnonymous_FunctionFunctionFail;
+begin
+  StartProgram(false);
+  Add([
+  'var',
+  '  f: function:function:longint;',
+  'begin']);
+  CheckResolverException('Cannot nest anonymous functional type',
+    nCannotNestAnonymousX);
+end;
+
+procedure TTestResolver.TestProcTypeAnonymous_ResultTypeFail;
+begin
+  StartProgram(false);
+  Add([
+  'function Fly: procedure;',
+  'begin',
+  'end;',
+  'begin']);
+  CheckResolverException('Cannot nest anonymous procedural type',
+    nCannotNestAnonymousX);
+end;
+
+procedure TTestResolver.TestProcTypeAnonymous_ArgumentFail;
+begin
+  StartProgram(false);
+  Add([
+  'procedure Fly(p: procedure);',
+  'begin',
+  'end;',
+  'begin']);
+  CheckResolverException('Cannot nest anonymous procedural type',
+    nCannotNestAnonymousX);
+end;
+
+procedure TTestResolver.TestProcTypeAnonymous_PropertyFail;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TObject = class',
+  '    FProc: procedure;',
+  '    property Proc: procedure read FProc;',
+  '  end;',
+  'begin']);
+  CheckParserException('Expected ";" at token "Identifier read" in file afile.pp at line 5 column 30',
+    nParserExpectTokenError);
 end;
 
 procedure TTestResolver.TestPointer;

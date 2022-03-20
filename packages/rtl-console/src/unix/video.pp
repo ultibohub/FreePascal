@@ -365,117 +365,92 @@ end;
 
 const  ansitbl:array[0..7] of char='04261537';
 
-{$ifdef disabled}
-Function Attr2Ansi(Attr,OAttr:byte):string;
-{
-  Convert Attr to an Ansi String, the Optimal code is calculate
-  with use of the old OAttr
-}
+function attr2ansi(Fg,Bg:byte;Attr:TEnhancedVideoAttributes;OFg,OBg:byte;OAttr:TEnhancedVideoAttributes):string;
+const
+  AttrOnOffStr: array [TEnhancedVideoAttribute, Boolean] of string = (
+    ('22;','1;'),
+    ('22;','2;'),
+    ('23;','3;'),
+    ('24;','4;'),
+    ('25;','5;'),
+    ('25;','6;'),
+    ('27;','7;'),
+    ('28;','8;'),
+    ('29;','9;'),
+    ('24;','21;'));
 var
-  hstr : string[16];
-  OFg,OBg,Fg,Bg:byte;
+  tmpS: string;
+  A: TEnhancedVideoAttribute;
+begin
+  attr2ansi:=#27'[';
 
-  procedure AddSep(ch:char);
+  if Attr<>OAttr then
   begin
-    if length(hstr)>0 then
-     hstr:=hstr+';';
-    hstr:=hstr+ch;
+    { turn off old attributes first }
+    for A := Low(TEnhancedVideoAttribute) to High(TEnhancedVideoAttribute) do
+      if (not (A in Attr)) and (A in OAttr) then
+        attr2ansi:=attr2ansi+AttrOnOffStr[A,False];
+    { then, turn on new attributes }
+    for A := Low(TEnhancedVideoAttribute) to High(TEnhancedVideoAttribute) do
+      if (A in Attr) and (not (A in OAttr)) then
+        attr2ansi:=attr2ansi+AttrOnOffStr[A,True];
   end;
 
-begin
-  if Attr=OAttr then
-   begin
-     Attr2Ansi:='';
-     exit;
-   end;
-  Hstr:='';
-  Fg:=Attr and $f;
-  Bg:=Attr shr 4;
-  OFg:=OAttr and $f;
-  OBg:=OAttr shr 4;
-{  This resets colours to their defaults, the problem is we don't know what
-  the default is, i.e. it can either be white on black or back on white or
-  even something totally different. This causes undesired colour schemes
-  in the IDE on some terminals.
-  if (OFg<>7) or (Fg=7) or ((OFg>7) and (Fg<8)) or ((OBg>7) and (Bg<8)) then
-   begin
-     hstr:='0';
-     OFg:=7;
-     OBg:=0;
-   end;}
-  if (Fg>7) and (OFg<8) then
-   begin
-     AddSep('1');
-     OFg:=OFg or 8;
-   end;
-  if (Bg and 8)<>(OBg and 8) then
-   begin
-     AddSep('5');
-     OBg:=OBg or 8;
-   end;
-  if (Fg<>OFg) then
-   begin
-     AddSep('3');
-     hstr:=hstr+AnsiTbl[fg and 7];
-   end;
-  if (Bg<>OBg) then
-   begin
-     AddSep('4');
-     hstr:=hstr+AnsiTbl[bg and 7];
-   end;
-  if hstr='0' then
-   hstr:='';
-  Attr2Ansi:=#27'['+hstr+'m';
-end;
-{$endif}
-
-function attr2ansi(attr,oattr:byte):string;
-
-var OFg,OBg,Fg,Bg:byte;
-
-begin
-  Fg:=Attr and $f;
-  Bg:=Attr shr 4;
-  OFg:=OAttr and $f;
-  OBg:=OAttr shr 4;
-  attr2ansi:=#27'[';
-  if TerminalSupportsBold then
-    if fg and 8<>0 then
-      begin
-        {Enable bold if not yet on.}
-        if ofg and 8=0 then
-          attr2ansi:=attr2ansi+'1;';
-      end
-    else
-      {Disable bold if on.}
-      if ofg and 8<>0 then
-        attr2ansi:=attr2ansi+'22;';
-  if bg and 8<>0 then
+  if (Fg > 15) or (Bg > 15) then
     begin
-      {Enable bold if not yet on.}
-      if obg and 8=0 then
-        attr2ansi:=attr2ansi+'5;';
+      if Fg<>OFg then
+        begin
+          if TerminalSupportsBold and (ofg and 8<>0) then
+            attr2ansi:=attr2ansi+'22;';
+          Str(Fg,tmpS);
+          attr2ansi:=attr2ansi+'38;5;'+tmpS+';';
+        end;
+      if Bg<>OBg then
+        begin
+          Str(Bg,tmpS);
+          attr2ansi:=attr2ansi+'48;5;'+tmpS+';';
+        end;
     end
   else
-    {Disable bold if on.}
-    if obg and 8<>0 then
-      attr2ansi:=attr2ansi+'25;';
-
-  if TerminalSupportsHighIntensityColors then
-  begin
-    if fg and 15<>ofg and 15 then
-      if fg and 8<>0 then
-        attr2ansi:=attr2ansi+'9'+ansitbl[fg and 7]+';'
+    begin
+      if TerminalSupportsBold then
+        if fg and 8<>0 then
+          begin
+            {Enable bold if not yet on.}
+            if ofg and 8=0 then
+              attr2ansi:=attr2ansi+'1;';
+          end
+        else
+          {Disable bold if on.}
+          if ofg and 8<>0 then
+            attr2ansi:=attr2ansi+'22;';
+      if bg and 8<>0 then
+        begin
+          {Enable bold if not yet on.}
+          if obg and 8=0 then
+            attr2ansi:=attr2ansi+'5;';
+        end
       else
-        attr2ansi:=attr2ansi+'3'+ansitbl[fg and 7]+';';
-  end
-  else
-  begin
-    if fg and 7<>ofg and 7 then
-      attr2ansi:=attr2ansi+'3'+ansitbl[fg and 7]+';';
-  end;
-  if bg and 7<>obg and 7 then
-     attr2ansi:=attr2ansi+'4'+ansitbl[bg and 7]+';';
+        {Disable bold if on.}
+        if obg and 8<>0 then
+          attr2ansi:=attr2ansi+'25;';
+
+      if TerminalSupportsHighIntensityColors then
+      begin
+        if fg and 15<>ofg and 15 then
+          if fg and 8<>0 then
+            attr2ansi:=attr2ansi+'9'+ansitbl[fg and 7]+';'
+          else
+            attr2ansi:=attr2ansi+'3'+ansitbl[fg and 7]+';';
+      end
+      else
+      begin
+        if fg and 7<>ofg and 7 then
+          attr2ansi:=attr2ansi+'3'+ansitbl[fg and 7]+';';
+      end;
+      if bg and 7<>obg and 7 then
+         attr2ansi:=attr2ansi+'4'+ansitbl[bg and 7]+';';
+    end;
 
   if attr2ansi[length(attr2ansi)]=';' then
     attr2ansi[length(attr2ansi)]:='m'
@@ -493,9 +468,11 @@ var
   spaces,
   eol,
   x,y,
-  LastX,LastY,
-  SpaceAttr,
-  LastAttr : longint;
+  LastX,LastY : longint;
+  SpaceFg, SpaceBg : byte;
+  SpaceAttr: TEnhancedVideoAttributes;
+  LastFg, LastBg : byte;
+  LastAttr: TEnhancedVideoAttributes;
   LastLineWidth : Longint;
   p,pold   : penhancedvideocell;
   LastCharWasDoubleWidth: Boolean;
@@ -540,19 +517,21 @@ var
     end;
   end;
 
-  procedure OutClr(c:byte);
+  procedure OutClr(Fg,Bg:byte;Attr:TEnhancedVideoAttributes);
   begin
-    if c=LastAttr then
+    if (Fg=LastFg) and (Bg=LastBg) and (Attr=LastAttr) then
      exit;
-    OutData(Attr2Ansi(c,LastAttr));
-    LastAttr:=c;
+    OutData(Attr2Ansi(Fg,Bg,Attr,LastFg,LastBg,LastAttr));
+    LastFg:=Fg;
+    LastBg:=Bg;
+    LastAttr:=Attr;
   end;
 
   procedure OutSpaces;
   begin
     if (Spaces=0) then
      exit;
-    OutClr(SpaceAttr);
+    OutClr(SpaceFg,SpaceBg,SpaceAttr);
     OutData(Space(Spaces));
     LastX:=x;
     LastY:=y;
@@ -589,12 +568,16 @@ begin
 { init Attr, X,Y and set autowrap off }
   SendEscapeSeq(#27'[0;40;37m'#27'[?7l'{#27'[H'} );
 //  1.0.x: SendEscapeSeq(#27'[m'{#27'[H'});
-  LastAttr:=7;
+  LastFg:=7;
+  LastBg:=0;
+  LastAttr:=[];
   LastX:=-1;
   LastY:=-1;
   for y:=1 to ScreenHeight do
    begin
-     SpaceAttr:=0;
+     SpaceFg:=0;
+     SpaceBg:=0;
+     SpaceAttr:=[];
      Spaces:=0;
      LastLineWidth:=ScreenWidth;
      If (y=ScreenHeight) And (Console=ttyFreeBSD) {And :am: is on} Then
@@ -631,13 +614,19 @@ begin
                if chattr.ExtendedGraphemeCluster=' ' then
                 begin
                   if Spaces=0 then
-                   SpaceAttr:=chattr.Attribute;
-                  if (chattr.Attribute and $f0)=(spaceattr and $f0) then
-                   chattr.Attribute:=SpaceAttr
+                   begin
+                     SpaceFg:=chattr.ForegroundColor;
+                     SpaceBg:=chattr.BackgroundColor;
+                     SpaceAttr:=chattr.EnhancedVideoAttributes;
+                   end;
+                  if (chattr.BackgroundColor=SpaceBg) and (chattr.EnhancedVideoAttributes=SpaceAttr) then
+                   chattr.ForegroundColor:=SpaceFg
                   else
                    begin
                      OutSpaces;
-                     SpaceAttr:=chattr.Attribute;
+                     SpaceFg:=chattr.ForegroundColor;
+                     SpaceBg:=chattr.BackgroundColor;
+                     SpaceAttr:=chattr.EnhancedVideoAttributes;
                    end;
                   inc(Spaces);
                 end
@@ -650,8 +639,8 @@ begin
                       Chattr.Attr:= $ff xor Chattr.Attr;
                       ChAttr.ch:=chr(ord(chattr.ch)+ord('A')-1);
                     end;}
-                  if LastAttr<>chattr.Attribute then
-                   OutClr(chattr.Attribute);
+                  if (LastFg<>chattr.ForegroundColor) or (LastBg<>chattr.BackgroundColor) or (LastAttr<>chattr.EnhancedVideoAttributes) then
+                   OutClr(chattr.ForegroundColor,chattr.BackgroundColor,chattr.EnhancedVideoAttributes);
                   OutData(transform(chattr.ExtendedGraphemeCluster));
                   if CurCharWidth=2 then
                    begin
@@ -686,8 +675,8 @@ begin
     OutData(#8);
     {Output last char}
     chattr:=p[1];
-    if LastAttr<>chattr.Attribute then
-     OutClr(chattr.Attribute);
+    if (LastFg<>chattr.ForegroundColor) or (LastBg<>chattr.BackgroundColor) or (LastAttr<>chattr.EnhancedVideoAttributes) then
+     OutClr(chattr.ForegroundColor,chattr.BackgroundColor,chattr.EnhancedVideoAttributes);
     OutData(transform(chattr.ExtendedGraphemeCluster));
     inc(LastX);
 //    OutData(XY2Ansi(ScreenWidth-1,ScreenHeight,LastX,LastY));
@@ -695,8 +684,8 @@ begin
     OutData(#8+#27+'[1@');
 
     chattr:=p^;
-    if LastAttr<>chattr.Attribute then
-     OutClr(chattr.Attribute);
+    if (LastFg<>chattr.ForegroundColor) or (LastBg<>chattr.BackgroundColor) or (LastAttr<>chattr.EnhancedVideoAttributes) then
+     OutClr(chattr.ForegroundColor,chattr.BackgroundColor,chattr.EnhancedVideoAttributes);
     OutData(transform(chattr.ExtendedGraphemeCluster));
     inc(LastX);
    end;
@@ -970,8 +959,8 @@ begin
     if cur_term_strings=@term_codes_beos then
     begin
       TerminalSupportsBold := false;
-      TerminalSupportsHighIntensityColors := false;      
-    end;  
+      TerminalSupportsHighIntensityColors := false;
+    end;
     if cur_term_strings=@term_codes_freebsd then
       console:=ttyFreeBSD;
 {$ifdef linux}
@@ -1019,10 +1008,10 @@ begin
      if Console<>ttylinux then
       begin
    {$endif}
+        SendEscapeSeqNdx(enter_ca_mode);
         SendEscapeSeqNdx(cursor_home);
         SendEscapeSeqNdx(cursor_normal);
         SendEscapeSeqNdx(cursor_visible_underline);
-        SendEscapeSeqNdx(enter_ca_mode);
         SetCursorType(crUnderLine);
         If Console=ttyFreeBSD Then
           SendEscapeSeqNdx(exit_am_mode);
@@ -1070,11 +1059,11 @@ begin
   else
    begin
 {$endif}
-     SendEscapeSeqNdx(exit_ca_mode);
      SendEscapeSeqNdx(cursor_home);
      SendEscapeSeqNdx(cursor_normal);
      SendEscapeSeqNdx(cursor_visible_underline);
      SendEscapeSeq(#27'[H');
+     SendEscapeSeqNdx(exit_ca_mode);
      if cur_term_strings=@term_codes_linux then
        begin
          {Executed in case ttylinux is false (i.e. no vcsa), but

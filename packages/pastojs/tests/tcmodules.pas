@@ -323,6 +323,7 @@ type
     Procedure TestStringConst;
     Procedure TestStringConst_InvalidUTF16;
     Procedure TestStringConstSurrogate;
+    Procedure TestStringConst_Multiline;
     Procedure TestString_Length;
     Procedure TestString_Compare;
     Procedure TestString_SetLength;
@@ -846,6 +847,7 @@ type
     Procedure TestRTTI_Double;
     Procedure TestRTTI_ProcType;
     Procedure TestRTTI_ProcType_ArgFromOtherUnit;
+    Procedure TestRTTI_ProcTypeAnonymous;
     Procedure TestRTTI_EnumAndSetType;
     Procedure TestRTTI_EnumRange;
     Procedure TestRTTI_AnonymousEnumType;
@@ -8727,6 +8729,36 @@ begin
     ]),
     LinesToStr([
     '$mod.s="😊";'
+    ]));
+end;
+
+procedure TTestModule.TestStringConst_Multiline;
+begin
+  StartProgram(false);
+  Add([
+  '{$modeswitch multilinestrings}',
+  'const',
+  '  a = ``;',
+  '  b = `',
+  'line`;',
+  '  c = `Single`;',
+  '  d = ````;',
+  '  e = `abc``xyz`;',
+  '  f = `first''line',
+  '       second''line`#10;',
+  'begin',
+  '']);
+  ConvertProgram;
+  CheckSource('TestStringConst_Multiline',
+    LinesToStr([
+    'this.a = "";',
+    'this.b = "\nline";',
+    'this.c = "Single";',
+    'this.d = "`";',
+    'this.e = "abc`xyz";',
+    'this.f = "first''line\n       second''line\n";',
+    '']),
+    LinesToStr([
     ]));
 end;
 
@@ -30395,6 +30427,50 @@ begin
     '});',
     '$impl.p = null;',
     '']) );
+end;
+
+procedure TTestModule.TestRTTI_ProcTypeAnonymous;
+begin
+  WithTypeInfo:=true;
+  StartProgram(false);
+  Add(['var',
+  '  ProcA: procedure;',
+  '  MethodB: procedure of object;',
+  '  ProcC: procedure; varargs;',
+  '  ProcD: procedure(i: longint; const j: string; var c: char; out d: double);',
+  '  ProcE: function: nativeint;',
+  '  p: pointer;',
+  'begin',
+  '  p:=typeinfo(proca);']);
+  ConvertProgram;
+  CheckSource('TestRTTI_ProcTypeAnonymous',
+    LinesToStr([ // statements
+    'this.$rtti.$ProcVar("ProcA$a", {',
+    '  procsig: rtl.newTIProcSig([])',
+    '});',
+    'this.ProcA = null;',
+    'this.$rtti.$MethodVar("MethodB$a", {',
+    '  procsig: rtl.newTIProcSig([]),',
+    '  methodkind: 0',
+    '});',
+    'this.MethodB = null;',
+    'this.$rtti.$ProcVar("ProcC$a", {',
+    '  procsig: rtl.newTIProcSig([], null, 2)',
+    '});',
+    'this.ProcC = null;',
+    'this.$rtti.$ProcVar("ProcD$a", {',
+    '  procsig: rtl.newTIProcSig([["i", rtl.longint], ["j", rtl.string, 2], ["c", rtl.char, 1], ["d", rtl.double, 4]])',
+    '});',
+    'this.ProcD = null;',
+    'this.$rtti.$ProcVar("ProcE$a", {',
+    '  procsig: rtl.newTIProcSig([], rtl.nativeint)',
+    '});',
+    'this.ProcE = null;',
+    'this.p = null;',
+    '']),
+    LinesToStr([ // $mod.$main
+    '$mod.p = $mod.$rtti["ProcA$a"];',
+    '']));
 end;
 
 procedure TTestModule.TestRTTI_EnumAndSetType;
