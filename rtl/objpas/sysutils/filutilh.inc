@@ -45,6 +45,7 @@ Type
 {$endif}
 {$ifdef ULTIBO}
     {$define SEARCHREC_USEFINDDATA}
+    {$define SYMLINKREC_USEFINDDATA}
     TFindData = TWin32FindDataA;
 {$endif ULTIBO}
 
