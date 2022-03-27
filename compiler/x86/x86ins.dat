@@ -3634,50 +3634,48 @@ xmmreg_mz,xmmreg,xmmreg_er                \334\350\352\362\370\1\x58\75\120     
 xmmreg_mz,xmmreg,mem32                    \333\350\362\370\1\x58\75\120             AVX,SANDYBRIDGE,T1S
 xmmreg_mz,xmmreg,xmmreg_er                \333\350\362\370\1\x58\75\120             AVX,SANDYBRIDGE
 
-
-
 [VADDSUBPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg,ymmreg,ymmrm                  \361\362\364\370\1\xD0\75\120        AVX,SANDYBRIDGE
 xmmreg,xmmreg,xmmrm                  \361\362\370\1\xD0\75\120            AVX,SANDYBRIDGE
 
 [VADDSUBPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg,ymmreg,ymmrm                  \334\362\364\370\1\xD0\75\120        AVX,SANDYBRIDGE
 xmmreg,xmmreg,xmmrm                  \334\362\370\1\xD0\75\120            AVX,SANDYBRIDGE
 
 [VAESDEC]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                       \350\361\362\371\1\xDE\75\120             AVX512,TFV
 ymmreg,ymmreg,ymmrm                       \350\361\362\364\371\1\xDE\75\120         AVX,SANDYBRIDGE,TFV
 zmmreg,zmmreg,zmmrm                       \350\351\361\371\1\xDE\75\120             AVX512,TFV
 
 
 [VAESDECLAST]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                       \350\361\362\371\1\xDF\75\120             AVX512,TFV
 ymmreg,ymmreg,ymmrm                       \350\361\362\364\371\1\xDF\75\120         AVX,SANDYBRIDGE,TFV
 zmmreg,zmmreg,zmmrm                       \350\351\361\371\1\xDF\75\120             AVX512,TFV
 
 [VAESENC]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                       \350\361\362\371\1\xDC\75\120             AVX512,TFV
 ymmreg,ymmreg,ymmrm                       \350\361\362\364\371\1\xDC\75\120         AVX,SANDYBRIDGE,TFV
 zmmreg,zmmreg,zmmrm                       \350\351\361\371\1\xDC\75\120             AVX512,TFV
 
 [VAESENCLAST]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                       \350\361\362\371\1\xDD\75\120             AVX512,TFV
 ymmreg,ymmreg,ymmrm                       \350\361\362\364\371\1\xDD\75\120         AVX,SANDYBRIDGE,TFV
 zmmreg,zmmreg,zmmrm                       \350\351\361\371\1\xDD\75\120             AVX512,TFV
 
 
 [VAESIMC]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg,xmmrm                         \361\362\371\1\xDB\110               AVX,SANDYBRIDGE
 
 [VAESKEYGENASSIST]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 xmmreg,xmmrm,imm8                    \361\362\372\1\xDF\110\26            AVX,SANDYBRIDGE
 
 [VANDNPD]
@@ -3725,31 +3723,31 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\370\1\x54\75\120             
 
 
 [VBLENDPD]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x0D\75\120\27         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x0D\75\120\27     AVX,SANDYBRIDGE
 
 [VBLENDPS]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x0C\75\120\27         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x0C\75\120\27     AVX,SANDYBRIDGE
 
 [VBLENDVPD]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm,xmmreg           \361\362\372\1\x4B\75\120\367        AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,ymmreg           \361\362\364\372\1\x4B\75\120\367    AVX,SANDYBRIDGE
 
 [VBLENDVPS]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm,xmmreg           \361\362\372\1\x4A\75\120\367        AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,ymmreg           \361\362\364\372\1\x4A\75\120\367    AVX,SANDYBRIDGE
 
 [VBROADCASTF128]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 ymmreg,mem128                        \361\362\364\371\1\x1A\110           AVX,SANDYBRIDGE
 
 [VBROADCASTSD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 ymmreg_mz,mem64                           \350\352\361\362\364\371\1\x19\110        AVX,SANDYBRIDGE,T1S
 ymmreg_mz,xmmreg                          \350\352\361\362\364\371\1\x19\110        AVX2
 zmmreg_mz,mem64                           \350\351\352\361\371\1\x19\110            AVX512,T1S
@@ -3758,7 +3756,7 @@ zmmreg_mz,xmmreg                          \350\351\352\361\371\1\x19\110        
 
 
 [VBROADCASTSS]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem32                           \350\361\362\371\1\x18\110                AVX,SANDYBRIDGE,T1S
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x18\110                AVX2
 ymmreg_mz,mem32                           \350\361\362\364\371\1\x18\110            AVX,SANDYBRIDGE,T1S
@@ -3769,322 +3767,322 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x18\110            
 
 
 [VCMPEQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0     AVX,SANDYBRIDGE
 
 [VCMPLTPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1     AVX,SANDYBRIDGE
 
 [VCMPLEPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x2         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x2     AVX,SANDYBRIDGE
 
 [VCMPUNORDPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x3         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x3     AVX,SANDYBRIDGE
 
 [VCMPNEQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x4         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x4     AVX,SANDYBRIDGE
 
 [VCMPNLTPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x5         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x5     AVX,SANDYBRIDGE
 
 [VCMPNLEPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x6         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x6     AVX,SANDYBRIDGE
 
 [VCMPORDPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x7         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x7     AVX,SANDYBRIDGE
 
 [VCMPEQ_UQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x8         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x8     AVX,SANDYBRIDGE
 
 [VCMPNGEPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x9         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x9     AVX,SANDYBRIDGE
 
 [VCMPNGTPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0A         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0A     AVX,SANDYBRIDGE
 
 [VCMPFALSEPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0B         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0B     AVX,SANDYBRIDGE
 
 [VCMPNEQ_OQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0C         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0C     AVX,SANDYBRIDGE
 
 [VCMPGEPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0D         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0D     AVX,SANDYBRIDGE
 
 [VCMPGTPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0E         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0E     AVX,SANDYBRIDGE
 
 [VCMPTRUEPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x0F         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x0F     AVX,SANDYBRIDGE
 
 [VCMPEQ_OSPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x10         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x10     AVX,SANDYBRIDGE
 
 [VCMPLT_OQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x11         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x11     AVX,SANDYBRIDGE
 
 [VCMPLE_OQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x12         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x12     AVX,SANDYBRIDGE
 
 [VCMPUNORD_SPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x13         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x13     AVX,SANDYBRIDGE
 
 [VCMPNEQ_USPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x14         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x14     AVX,SANDYBRIDGE
 
 [VCMPNLT_UQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x15         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x15     AVX,SANDYBRIDGE
 
 [VCMPNLE_UQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x16         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x16     AVX,SANDYBRIDGE
 
 [VCMPORD_SPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x17         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x17     AVX,SANDYBRIDGE
 
 [VCMPEQ_USPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x18         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x18     AVX,SANDYBRIDGE
 
 [VCMPNGE_UQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x19         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x19     AVX,SANDYBRIDGE
 
 [VCMPNGT_UQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1A         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1A     AVX,SANDYBRIDGE
 
 [VCMPFALSE_OSPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1B         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1B     AVX,SANDYBRIDGE
 
 [VCMPNEQ_OSPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1C         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1C     AVX,SANDYBRIDGE
 
 [VCMPGE_OQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1D         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1D     AVX,SANDYBRIDGE
 
 [VCMPGT_OQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1E         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1E     AVX,SANDYBRIDGE
 
 [VCMPTRUE_USPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \362\370\1\xC2\75\120\1\x1F         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \362\364\370\1\xC2\75\120\1\x1F     AVX,SANDYBRIDGE
 
 [VCMPEQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0     AVX,SANDYBRIDGE
 
 [VCMPLTPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1     AVX,SANDYBRIDGE
 
 [VCMPLEPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x2         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x2     AVX,SANDYBRIDGE
 
 [VCMPUNORDPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x3         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x3     AVX,SANDYBRIDGE
 
 [VCMPNEQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x4         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x4     AVX,SANDYBRIDGE
 
 [VCMPNLTPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x5         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x5     AVX,SANDYBRIDGE
 
 [VCMPNLEPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x6         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x6     AVX,SANDYBRIDGE
 
 [VCMPORDPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x7         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x7     AVX,SANDYBRIDGE
 
 [VCMPEQ_UQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x8         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x8     AVX,SANDYBRIDGE
 
 [VCMPNGEPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x9         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x9     AVX,SANDYBRIDGE
 
 [VCMPNGTPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0A         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0A     AVX,SANDYBRIDGE
 
 [VCMPFALSEPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0B         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0B     AVX,SANDYBRIDGE
 
 [VCMPNEQ_OQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0C         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0C     AVX,SANDYBRIDGE
 
 [VCMPGEPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0D         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0D     AVX,SANDYBRIDGE
 
 [VCMPGTPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0E         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0E     AVX,SANDYBRIDGE
 
 [VCMPTRUEPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x0F         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x0F     AVX,SANDYBRIDGE
 
 [VCMPEQ_OSPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x10         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x10     AVX,SANDYBRIDGE
 
 [VCMPLT_OQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x11         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x11     AVX,SANDYBRIDGE
 
 [VCMPLE_OQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x12         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x12     AVX,SANDYBRIDGE
 
 [VCMPUNORD_SPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x13         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x13     AVX,SANDYBRIDGE
 
 [VCMPNEQ_USPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x14         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x14     AVX,SANDYBRIDGE
 
 [VCMPNLT_UQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x15         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x15     AVX,SANDYBRIDGE
 
 [VCMPNLE_UQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x16         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x16     AVX,SANDYBRIDGE
 
 [VCMPORD_SPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x17         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x17     AVX,SANDYBRIDGE
 
 [VCMPEQ_USPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x18         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x18     AVX,SANDYBRIDGE
 
 [VCMPNGE_UQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x19         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x19     AVX,SANDYBRIDGE
 
 [VCMPNGT_UQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1A         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1A     AVX,SANDYBRIDGE
 
 [VCMPFALSE_OSPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1B         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1B     AVX,SANDYBRIDGE
 
 [VCMPNEQ_OSPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1C         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1C     AVX,SANDYBRIDGE
 
 [VCMPGE_OQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1D         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1D     AVX,SANDYBRIDGE
 
 [VCMPGT_OQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1E         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1E     AVX,SANDYBRIDGE
 
 [VCMPTRUE_USPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm             \361\362\370\1\xC2\75\120\1\x1F         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1F     AVX,SANDYBRIDGE
 
@@ -4095,7 +4093,7 @@ ymmreg,ymmreg,ymmrm             \361\362\364\370\1\xC2\75\120\1\x1F     AVX,SAND
 ;
 
 [VCMPPD]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 kreg_m,xmmreg,xmmrm,imm8                  \350\352\361\370\1\xC2\75\120\27          AVX512,TFV
 kreg_m,xmmreg,bmem64,imm8                 \350\352\361\370\1\xC2\75\120\27          AVX512,TFV
 kreg_m,ymmreg,ymmrm,imm8                  \350\352\361\364\370\1\xC2\75\120\27      AVX512,TFV
@@ -4107,7 +4105,7 @@ xmmreg,xmmreg,xmmrm,imm8                  \361\362\370\1\xC2\75\120\27          
 ymmreg,ymmreg,ymmrm,imm8                  \361\362\364\370\1\xC2\75\120\27          AVX,SANDYBRIDGE
 
 [VCMPPS]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 kreg_m,xmmreg,xmmrm,imm8                  \350\370\1\xC2\75\120\27                  AVX512,TFV
 kreg_m,xmmreg,bmem32,imm8                 \350\370\1\xC2\75\120\27                  AVX512,TFV
 kreg_m,ymmreg,ymmrm,imm8                  \350\364\370\1\xC2\75\120\27              AVX512,TFV
@@ -4119,14 +4117,14 @@ xmmreg,xmmreg,xmmrm,imm8                  \362\370\1\xC2\75\120\27              
 ymmreg,ymmreg,ymmrm,imm8                  \362\364\370\1\xC2\75\120\27              AVX,SANDYBRIDGE
 
 [VCMPSD]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 kreg_m,xmmreg,mem64,imm8                  \334\350\352\370\1\xC2\75\120\27          AVX512,T1S
 kreg_m,xmmreg,xmmreg_sae,imm8             \334\350\352\370\1\xC2\75\120\27          AVX512
 xmmreg,xmmreg,xmmreg,imm8                 \334\362\370\1\xC2\75\120\27              AVX,SANDYBRIDGE
 xmmreg,xmmreg,mem64,imm8                  \334\362\370\1\xC2\75\120\27              AVX,SANDYBRIDGE
 
 [VCMPSS]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 kreg_m,xmmreg,mem32,imm8                  \333\350\370\1\xC2\75\120\27              AVX512,T1S
 kreg_m,xmmreg,xmmreg_sae,imm8             \333\350\370\1\xC2\75\120\27              AVX512
 xmmreg,xmmreg,xmmrm,imm8                  \336\333\362\370\1\xC2\75\120\27          AVX,SANDYBRIDGE
@@ -4334,20 +4332,20 @@ xmmreg_mz,xmmreg,mem32                    \333\350\362\370\1\x5E\75\120         
 xmmreg_mz,xmmreg,xmmreg_er                \333\350\362\370\1\x5E\75\120             AVX,SANDYBRIDGE
 
 [VDPPD]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x41\75\120\27         AVX,SANDYBRIDGE
 
 [VDPPS]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x40\75\120\27         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x40\75\120\27     AVX,SANDYBRIDGE
 
 [VEXTRACTF128]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 xmmrm,ymmreg,imm8                    \361\362\364\372\1\x19\101\26        AVX,SANDYBRIDGE
 
 [VEXTRACTPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 mem32,xmmreg,imm8                         \350\361\362\372\1\x17\101\26             AVX,SANDYBRIDGE,T1S
 reg32,xmmreg,imm8                         \350\361\362\372\1\x17\101\26             AVX,SANDYBRIDGE
 reg64,xmmreg,imm8                         \350\361\362\372\1\x17\101\26             AVX512
@@ -4363,46 +4361,46 @@ xmmreg,xmmreg,xmmrm                  \334\362\370\1\x7C\75\120            AVX,SA
 ymmreg,ymmreg,ymmrm                  \334\362\364\370\1\x7C\75\120        AVX,SANDYBRIDGE
 
 [VHSUBPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\370\1\x7D\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\370\1\x7D\75\120        AVX,SANDYBRIDGE
 
 [VHSUBPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \334\362\370\1\x7D\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \334\362\364\370\1\x7D\75\120        AVX,SANDYBRIDGE
 
 [VINSERTF128]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 ymmreg,ymmreg,xmmrm,imm8             \361\362\364\372\1\x18\75\120\27     AVX,SANDYBRIDGE
 
 [VINSERTPS]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,mem32,imm8                  \350\361\362\372\1\x21\75\120\27          AVX,SANDYBRIDGE,T1S
 xmmreg,xmmreg,xmmreg,imm8                 \350\361\362\372\1\x21\75\120\27          AVX,SANDYBRIDGE
 
 [VLDDQU]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg,mem128                        \334\362\370\1\xF0\110               AVX,SANDYBRIDGE
 ymmreg,mem256                        \334\362\364\370\1\xF0\110           AVX,SANDYBRIDGE
 
 [VLDMXCSR]
-(Ch_All)
+(Ch_Rop1)
 mem32                                \362\370\1\xAE\202                   AVX,SANDYBRIDGE
 
 [VMASKMOVDQU]
-(Ch_All)
+(Ch_Rop1, Ch_Rop2, Ch_WMemEDI)
 xmmreg,xmmreg                        \361\362\370\1\xF7\110               AVX,SANDYBRIDGE
 
 [VMASKMOVPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 mem256,ymmreg,ymmreg                 \361\362\364\371\1\x2F\75\102        AVX,SANDYBRIDGE
 mem128,xmmreg,xmmreg                 \361\362\371\1\x2F\75\102            AVX,SANDYBRIDGE
 ymmreg,ymmreg,mem256                 \361\362\364\371\1\x2D\75\120        AVX,SANDYBRIDGE
 xmmreg,xmmreg,mem128                 \361\362\371\1\x2D\75\120            AVX,SANDYBRIDGE
 
 [VMASKMOVPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 mem256,ymmreg,ymmreg                 \361\362\364\371\1\x2E\75\102        AVX,SANDYBRIDGE
 mem128,xmmreg,xmmreg                 \361\362\371\1\x2E\75\102            AVX,SANDYBRIDGE
 ymmreg,ymmreg,mem256                 \361\362\364\371\1\x2C\75\120        AVX,SANDYBRIDGE
@@ -4513,7 +4511,7 @@ xmmrm,xmmreg                         \333\362\370\1\x7F\101               AVX,SA
 ymmrm,ymmreg                         \333\362\364\370\1\x7F\101           AVX,SANDYBRIDGE
 
 [VMOVHLPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmreg                      \350\362\370\1\x12\75\120                 AVX,SANDYBRIDGE
 
 [VMOVHPD]
@@ -4543,14 +4541,14 @@ xmmreg,xmmreg,mem64                       \350\362\370\1\x12\75\120             
 
 
 [VMOVMSKPD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 reg32,ymmreg                         \361\362\364\370\1\x50\110           AVX,SANDYBRIDGE
 reg64,xmmreg                         \361\362\370\1\x50\110               AVX,SANDYBRIDGE
 reg32,xmmreg                         \361\362\370\1\x50\110               AVX,SANDYBRIDGE
 reg64,ymmreg                         \361\362\364\370\1\x50\110           AVX,SANDYBRIDGE
 
 [VMOVMSKPS]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 reg32,ymmreg                         \362\364\370\1\x50\110               AVX,SANDYBRIDGE
 reg64,xmmreg                         \362\370\1\x50\110                   AVX,SANDYBRIDGE
 reg32,xmmreg                         \362\370\1\x50\110                   AVX,SANDYBRIDGE
@@ -4603,14 +4601,14 @@ xmmreg_mz,xmmreg,xmmreg                   \334\350\352\362\370\1\x10\75\120     
 
 
 [VMOVSHDUP]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,xmmrm                           \333\350\362\370\1\x16\110                AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmrm                           \333\350\362\364\370\1\x16\110            AVX,SANDYBRIDGE,TFVM
 zmmreg_mz,zmmrm                           \333\350\351\370\1\x16\110                AVX512,TFVM
 
 
 [VMOVSLDUP]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,xmmrm                           \333\350\362\370\1\x12\110                AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmrm                           \333\350\362\364\370\1\x12\110            AVX,SANDYBRIDGE,TFVM
 zmmreg_mz,zmmrm                           \333\350\351\370\1\x12\110                AVX512,TFVM
@@ -4646,7 +4644,7 @@ zmmreg_mz,zmmrm                           \350\351\370\1\x10\110                
 
 
 [VMPSADBW]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x42\75\120\27         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x42\75\120\27     AVX2
 
@@ -4706,14 +4704,14 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\370\1\x56\75\120             
 
 
 [VPABSB]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,xmmrm                           \350\361\362\371\1\x1C\110                AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmrm                           \350\361\362\364\371\1\x1C\110            AVX2,TFVM
 zmmreg_mz,zmmrm                           \350\351\361\371\1\x1C\110                AVX512,TFVM
 
 
 [VPABSD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,xmmrm                           \350\361\362\371\1\x1E\110                AVX,SANDYBRIDGE,TFV
 xmmreg_mz,bmem32                          \350\361\371\1\x1E\110                    AVX512,TFV
 ymmreg_mz,ymmrm                           \350\361\362\364\371\1\x1E\110            AVX2,TFV
@@ -4723,14 +4721,14 @@ zmmreg_mz,bmem32                          \350\351\361\371\1\x1E\110            
 
 
 [VPABSW]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,xmmrm                           \350\361\362\371\1\x1D\110                AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmrm                           \350\361\362\364\371\1\x1D\110            AVX2,TFVM
 zmmreg_mz,zmmrm                           \350\351\361\371\1\x1D\110                AVX512,TFVM
 
 
 [VPACKSSDW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x6B\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\370\1\x6B\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x6B\75\120         AVX2,TFV
@@ -4740,14 +4738,14 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\370\1\x6B\75\120         
 
 
 [VPACKSSWB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x63\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x63\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\x63\75\120             AVX512,TFVM
 
 
 [VPACKUSDW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x2B\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x2B\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x2B\75\120         AVX2,TFV
@@ -4757,21 +4755,21 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x2B\75\120         
 
 
 [VPACKUSWB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x67\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x67\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\x67\75\120             AVX512,TFVM
 
 
 [VPADDB]
-(Ch_All)
+(Ch_Rop1, Ch_Rop2, Ch_Wop3)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xFC\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xFC\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xFC\75\120             AVX512,TFVM
 
 
 [VPADDD]
-(Ch_All)
+(Ch_Rop1, Ch_Rop2, Ch_Wop3)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xFE\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\370\1\xFE\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xFE\75\120         AVX2,TFV
@@ -4826,7 +4824,7 @@ zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xFD\75\120         
 
 
 [VPALIGNR]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm,imm8               \350\361\362\372\1\x0F\75\120\27          AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm,imm8               \350\361\362\364\372\1\x0F\75\120\27      AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm,imm8               \350\351\361\372\1\x0F\75\120\27          AVX512,TFVM
@@ -4843,38 +4841,38 @@ xmmreg,xmmreg,xmmrm                  \361\362\370\1\xDF\75\120            AVX,SA
 ymmreg,ymmreg,ymmrm                  \361\362\364\370\1\xDF\75\120        AVX2
 
 [VPAVGB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xE0\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xE0\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xE0\75\120             AVX512,TFVM
 
 
 [VPAVGW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xE3\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xE3\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xE3\75\120             AVX512,TFVM
 
 
 [VPBLENDVB]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm,xmmreg           \361\362\372\1\x4C\75\120\367        AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,ymmreg           \361\362\364\372\1\x4C\75\120\367    AVX2
 
 [VPBLENDW]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x0E\75\120\27         AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x0E\75\120\27     AVX2
 
 [VPCLMULQDQ]
-(Ch_All, Ch_None)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm,imm8                  \350\361\362\372\1\x44\75\120\27          AVX,SANDYBRIDGE,TFV
 ymmreg,ymmreg,ymmrm,imm8                  \350\361\364\372\1\x44\75\120\27          AVX512,TFV
 zmmreg,zmmreg,zmmrm,imm8                  \350\351\361\372\1\x44\75\120\27          AVX512,TFV
 
 
 [VPCMPEQB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\361\370\1\x74\75\120                 AVX512,TFVM
 kreg_m,ymmreg,ymmrm                       \350\361\364\370\1\x74\75\120             AVX512,TFVM
 kreg_m,zmmreg,zmmrm                       \350\351\361\370\1\x74\75\120             AVX512,TFVM
@@ -4883,7 +4881,7 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\370\1\x74\75\120         
 
 
 [VPCMPEQD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\361\370\1\x76\75\120                 AVX512,TFV
 kreg_m,xmmreg,bmem32                      \350\361\370\1\x76\75\120                 AVX512,TFV
 kreg_m,ymmreg,ymmrm                       \350\361\364\370\1\x76\75\120             AVX512,TFV
@@ -4895,7 +4893,7 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\370\1\x76\75\120         
 
 
 [VPCMPEQQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\352\361\371\1\x29\75\120             AVX512,TFV
 kreg_m,xmmreg,bmem64                      \350\352\361\371\1\x29\75\120             AVX512,TFV
 kreg_m,ymmreg,ymmrm                       \350\352\361\364\371\1\x29\75\120         AVX512,TFV
@@ -4907,7 +4905,7 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\371\1\x29\75\120         
 
 
 [VPCMPEQW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\361\370\1\x75\75\120                 AVX512,TFVM
 kreg_m,ymmreg,ymmrm                       \350\361\364\370\1\x75\75\120             AVX512,TFVM
 kreg_m,zmmreg,zmmrm                       \350\351\361\370\1\x75\75\120             AVX512,TFVM
@@ -4916,15 +4914,15 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\370\1\x75\75\120         
 
 
 [VPCMPESTRI]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmrm,imm8                    \361\362\372\1\x61\110\26            AVX,SANDYBRIDGE
 
 [VPCMPESTRM]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmrm,imm8                    \361\362\372\1\x60\110\26            AVX,SANDYBRIDGE
 
 [VPCMPGTB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\361\370\1\x64\75\120                 AVX512,TFVM
 kreg_m,ymmreg,ymmrm                       \350\361\364\370\1\x64\75\120             AVX512,TFVM
 kreg_m,zmmreg,zmmrm                       \350\351\361\370\1\x64\75\120             AVX512,TFVM
@@ -4933,7 +4931,7 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\370\1\x64\75\120         
 
 
 [VPCMPGTD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\361\370\1\x66\75\120                 AVX512,TFV
 kreg_m,xmmreg,bmem32                      \350\361\370\1\x66\75\120                 AVX512,TFV
 kreg_m,ymmreg,ymmrm                       \350\361\364\370\1\x66\75\120             AVX512,TFV
@@ -4945,7 +4943,7 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\370\1\x66\75\120         
 
 
 [VPCMPGTQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\352\361\371\1\x37\75\120             AVX512,TFV
 kreg_m,xmmreg,bmem64                      \350\352\361\371\1\x37\75\120             AVX512,TFV
 kreg_m,ymmreg,ymmrm                       \350\352\361\364\371\1\x37\75\120         AVX512,TFV
@@ -4957,7 +4955,7 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\371\1\x37\75\120         
 
 
 [VPCMPGTW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 kreg_m,xmmreg,xmmrm                       \350\361\370\1\x65\75\120                 AVX512,TFVM
 kreg_m,ymmreg,ymmrm                       \350\361\364\370\1\x65\75\120             AVX512,TFVM
 kreg_m,zmmreg,zmmrm                       \350\351\361\370\1\x65\75\120             AVX512,TFVM
@@ -4966,19 +4964,19 @@ ymmreg,ymmreg,ymmrm                       \361\362\364\370\1\x65\75\120         
 
 
 [VPCMPISTRI]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmrm,imm8                    \361\362\372\1\x63\110\26            AVX,SANDYBRIDGE
 
 [VPCMPISTRM]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmrm,imm8                    \361\362\372\1\x62\110\26            AVX,SANDYBRIDGE
 
 [VPERM2F128]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x06\75\120\27     AVX,SANDYBRIDGE
 
 [VPERMILPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\352\361\362\371\1\x0D\75\120         AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem64                   \350\352\361\371\1\x0D\75\120             AVX512,TFV
 xmmreg_mz,xmmrm,imm8                      \350\352\361\362\372\1\x05\110\26         AVX,SANDYBRIDGE,TFV
@@ -4994,7 +4992,7 @@ zmmreg_mz,bmem64,imm8                     \350\351\352\361\372\1\x05\110\26     
 
 
 [VPERMILPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x0C\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x0C\75\120                 AVX512,TFV
 xmmreg_mz,xmmrm,imm8                      \350\361\362\372\1\x04\110\26             AVX,SANDYBRIDGE,TFV
@@ -5010,7 +5008,7 @@ zmmreg_mz,bmem32,imm8                     \350\351\361\372\1\x04\110\26         
 
 
 [VPEXTRB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 mem8,xmmreg,imm8                          \350\361\362\372\1\x14\101\26             AVX,SANDYBRIDGE,T1S
 reg16,xmmreg,imm8                         \350\361\372\1\x14\101\26                 AVX512
 reg32,xmmreg,imm8                         \350\361\362\372\1\x14\101\26             AVX,SANDYBRIDGE
@@ -5019,17 +5017,17 @@ reg8,xmmreg,imm8                          \350\361\372\1\x14\101\26             
 
 
 [VPEXTRD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 rm32,xmmreg,imm8                          \350\361\362\372\1\x16\101\26             AVX,SANDYBRIDGE,T1S
 
 
 [VPEXTRQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 rm64,xmmreg,imm8                          \350\352\361\362\363\372\1\x16\101\26     AVX,SANDYBRIDGE,T1S
 
 
 [VPEXTRW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 mem16,xmmreg,imm8                         \350\361\362\372\1\x15\101\26             AVX,SANDYBRIDGE,T1S
 reg16,xmmreg,imm8                         \350\361\362\372\1\x15\101\26             AVX,SANDYBRIDGE
 reg16,xmmreg,imm8                         \350\361\362\370\1\xC5\110\26             AVX,SANDYBRIDGE
@@ -5040,84 +5038,84 @@ reg64,xmmreg,imm8                         \350\361\362\370\1\xC5\110\26         
 
 
 [VPHADDD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x02\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x02\75\120        AVX2
 
 [VPHADDSW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x03\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x03\75\120        AVX2
 
 [VPHADDW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x01\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x01\75\120        AVX2
 
 [VPHMINPOSUW]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg,xmmrm                         \361\362\371\1\x41\110               AVX,SANDYBRIDGE
 
 [VPHSUBD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x06\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x06\75\120        AVX2
 
 [VPHSUBSW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x07\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x07\75\120        AVX2
 
 [VPHSUBW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x05\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x05\75\120        AVX2
 
 [VPINSRB]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,reg32,imm8                  \350\361\362\372\1\x20\75\120\27          AVX,SANDYBRIDGE
 xmmreg,xmmreg,mem8,imm8                   \350\361\362\372\1\x20\75\120\27          AVX,SANDYBRIDGE,T1S
 
 
 [VPINSRD]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,rm32,imm8                   \350\361\362\372\1\x22\75\120\27          AVX,SANDYBRIDGE,T1S
 
 
 [VPINSRQ]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,rm64,imm8                   \350\352\361\362\363\372\1\x22\75\120\27  AVX,SANDYBRIDGE,T1S
 
 
 [VPINSRW]
-(Ch_All)
+(Ch_Wop4, Ch_Rop3, Ch_Rop2)
 xmmreg,xmmreg,mem16,imm8                  \350\361\362\370\1\xC4\75\120\27          AVX,SANDYBRIDGE,T1S
 xmmreg,xmmreg,reg32,imm8                  \350\361\362\370\1\xC4\75\120\27          AVX,SANDYBRIDGE
 
 
 [VPMADDUBSW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x04\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x04\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x04\75\120             AVX512,TFVM
 
 
 [VPMADDWD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xF5\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xF5\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xF5\75\120             AVX512,TFVM
 
 
 [VPMAXSB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x3C\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x3C\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x3C\75\120             AVX512,TFVM
 
 
 [VPMAXSD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x3D\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x3D\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x3D\75\120         AVX2,TFV
@@ -5127,21 +5125,21 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x3D\75\120         
 
 
 [VPMAXSW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xEE\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xEE\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xEE\75\120             AVX512,TFVM
 
 
 [VPMAXUB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xDE\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xDE\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xDE\75\120             AVX512,TFVM
 
 
 [VPMAXUD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x3F\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x3F\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x3F\75\120         AVX2,TFV
@@ -5151,21 +5149,21 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x3F\75\120         
 
 
 [VPMAXUW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x3E\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x3E\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x3E\75\120             AVX512,TFVM
 
 
 [VPMINSB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x38\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x38\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x38\75\120             AVX512,TFVM
 
 
 [VPMINSD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x39\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x39\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x39\75\120         AVX2,TFV
@@ -5175,21 +5173,21 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x39\75\120         
 
 
 [VPMINSW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xEA\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xEA\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xEA\75\120             AVX512,TFVM
 
 
 [VPMINUB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\xDA\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\xDA\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xDA\75\120             AVX512,TFVM
 
 
 [VPMINUD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x3B\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x3B\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x3B\75\120         AVX2,TFV
@@ -5199,21 +5197,21 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x3B\75\120         
 
 
 [VPMINUW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x3A\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x3A\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x3A\75\120             AVX512,TFVM
 
 
 [VPMOVMSKB]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 reg64,xmmreg                         \361\362\370\1\xD7\110               AVX,SANDYBRIDGE
 reg32,xmmreg                         \361\362\370\1\xD7\110               AVX,SANDYBRIDGE
 reg32,ymmreg                         \361\362\364\370\1\xD7\110           AVX2
 reg64,ymmreg                         \361\362\364\370\1\xD7\110           AVX2
 
 [VPMOVSXBD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem32                           \350\361\362\371\1\x21\110                AVX,SANDYBRIDGE,TQVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x21\110                AVX,SANDYBRIDGE
 ymmreg_mz,mem64                           \350\361\362\364\371\1\x21\110            AVX2,TQVM
@@ -5223,7 +5221,7 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x21\110            
 
 
 [VPMOVSXBQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem16                           \350\361\362\371\1\x22\110                AVX,SANDYBRIDGE,TOVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x22\110                AVX,SANDYBRIDGE
 ymmreg_mz,mem32                           \350\361\362\364\371\1\x22\110            AVX2,TOVM
@@ -5233,7 +5231,7 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x22\110            
 
 
 [VPMOVSXBW]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\361\362\371\1\x20\110                AVX,SANDYBRIDGE,THVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x20\110                AVX,SANDYBRIDGE
 ymmreg_mz,xmmrm                           \350\361\362\364\371\1\x20\110            AVX2,THVM
@@ -5241,7 +5239,7 @@ zmmreg_mz,ymmrm                           \350\351\361\371\1\x20\110            
 
 
 [VPMOVSXDQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\361\362\371\1\x25\110                AVX,SANDYBRIDGE,THVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x25\110                AVX,SANDYBRIDGE
 ymmreg_mz,xmmrm                           \350\361\362\364\371\1\x25\110            AVX2,THVM
@@ -5249,7 +5247,7 @@ zmmreg_mz,ymmrm                           \350\351\361\371\1\x25\110            
 
 
 [VPMOVSXWD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\361\362\371\1\x23\110                AVX,SANDYBRIDGE,THVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x23\110                AVX,SANDYBRIDGE
 ymmreg_mz,xmmrm                           \350\361\362\364\371\1\x23\110            AVX2,THVM
@@ -5257,7 +5255,7 @@ zmmreg_mz,ymmrm                           \350\351\361\371\1\x23\110            
 
 
 [VPMOVSXWQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem32                           \350\361\362\371\1\x24\110                AVX,SANDYBRIDGE,TQVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x24\110                AVX,SANDYBRIDGE
 ymmreg_mz,mem64                           \350\361\362\364\371\1\x24\110            AVX2,TQVM
@@ -5267,7 +5265,7 @@ zmmreg_mz,xmmrm                           \350\351\361\371\1\x24\110            
 
 
 [VPMOVZXBD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem32                           \350\361\362\371\1\x31\110                AVX,SANDYBRIDGE,TQVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x31\110                AVX,SANDYBRIDGE
 ymmreg_mz,mem64                           \350\361\362\364\371\1\x31\110            AVX2,TQVM
@@ -5276,7 +5274,7 @@ zmmreg_mz,xmmrm                           \350\351\361\371\1\x31\110            
 
 
 [VPMOVZXBQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem16                           \350\361\362\371\1\x32\110                AVX,SANDYBRIDGE,TOVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x32\110                AVX,SANDYBRIDGE
 ymmreg_mz,mem32                           \350\361\362\364\371\1\x32\110            AVX2,TOVM
@@ -5286,7 +5284,7 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x32\110            
 
 
 [VPMOVZXBW]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\361\362\371\1\x30\110                AVX,SANDYBRIDGE,THVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x30\110                AVX,SANDYBRIDGE
 ymmreg_mz,xmmrm                           \350\361\362\364\371\1\x30\110            AVX2,THVM
@@ -5294,7 +5292,7 @@ zmmreg_mz,ymmrm                           \350\351\361\371\1\x30\110            
 
 
 [VPMOVZXDQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\361\362\371\1\x35\110                AVX,SANDYBRIDGE,THVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x35\110                AVX,SANDYBRIDGE
 ymmreg_mz,xmmrm                           \350\361\362\364\371\1\x35\110            AVX2,THVM
@@ -5302,7 +5300,7 @@ zmmreg_mz,ymmrm                           \350\351\361\371\1\x35\110            
 
 
 [VPMOVZXWD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\361\362\371\1\x33\110                AVX,SANDYBRIDGE,THVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x33\110                AVX,SANDYBRIDGE
 ymmreg_mz,xmmrm                           \350\361\362\364\371\1\x33\110            AVX2,THVM
@@ -5310,7 +5308,7 @@ zmmreg_mz,ymmrm                           \350\351\361\371\1\x33\110            
 
 
 [VPMOVZXWQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem32                           \350\361\362\371\1\x34\110                AVX,SANDYBRIDGE,TQVM
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x34\110                AVX,SANDYBRIDGE
 ymmreg_mz,mem64                           \350\361\362\364\371\1\x34\110            AVX2,TQVM
@@ -5383,7 +5381,7 @@ xmmreg,xmmreg,xmmrm                  \361\362\370\1\xEB\75\120            AVX,SA
 ymmreg,ymmreg,ymmrm                  \361\362\364\370\1\xEB\75\120        AVX2
 
 [VPSADBW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                       \350\361\362\370\1\xF6\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg,ymmreg,ymmrm                       \350\361\362\364\370\1\xF6\75\120         AVX2,TFVM
 zmmreg,zmmreg,zmmrm                       \350\351\361\370\1\xF6\75\120             AVX512,TFVM
@@ -5397,7 +5395,7 @@ zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x00\75\120         
 
 
 [VPSHUFD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 xmmreg_mz,xmmrm,imm8                      \350\361\362\370\1\x70\110\26             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,bmem32,imm8                     \350\361\370\1\x70\110\26                 AVX512,TFV
 ymmreg_mz,ymmrm,imm8                      \350\361\362\364\370\1\x70\110\26         AVX2,TFV
@@ -5407,31 +5405,31 @@ zmmreg_mz,bmem32,imm8                     \350\351\361\370\1\x70\110\26         
 
 
 [VPSHUFHW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 xmmreg_mz,xmmrm,imm8                      \333\350\362\370\1\x70\110\26             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmrm,imm8                      \333\350\362\364\370\1\x70\110\26         AVX2,TFVM
 zmmreg_mz,zmmrm,imm8                      \333\350\351\370\1\x70\110\26             AVX512,TFVM
 
 
 [VPSHUFLW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2)
 xmmreg_mz,xmmrm,imm8                      \334\350\362\370\1\x70\110\26             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmrm,imm8                      \334\350\362\364\370\1\x70\110\26         AVX2,TFVM
 zmmreg_mz,zmmrm,imm8                      \334\350\351\370\1\x70\110\26             AVX512,TFVM
 
 
 [VPSIGNB]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x08\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x08\75\120        AVX2
 
 [VPSIGND]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x0A\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x0A\75\120        AVX2
 
 [VPSIGNW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,xmmrm                  \361\362\371\1\x09\75\120            AVX,SANDYBRIDGE
 ymmreg,ymmreg,ymmrm                  \361\362\364\371\1\x09\75\120        AVX2
 
@@ -5629,19 +5627,19 @@ zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\xF9\75\120         
 
 
 [VPTEST]
-(Ch_All)
+(Ch_Rop2, Ch_Rop1, Ch_WCarryFlag, Ch_WZeroFlag)
 ymmreg,ymmrm                         \361\362\364\371\1\x17\110           AVX,SANDYBRIDGE
 xmmreg,xmmrm                         \361\362\371\1\x17\110               AVX,SANDYBRIDGE
 
 [VPUNPCKHBW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x68\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x68\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\x68\75\120             AVX512,TFVM
 
 
 [VPUNPCKHDQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x6A\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\370\1\x6A\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x6A\75\120         AVX2,TFV
@@ -5651,7 +5649,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\370\1\x6A\75\120         
 
 
 [VPUNPCKHQDQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\352\361\362\370\1\x6D\75\120         AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem64                   \350\352\361\370\1\x6D\75\120             AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\352\361\362\364\370\1\x6D\75\120     AVX2,TFV
@@ -5661,21 +5659,21 @@ zmmreg_mz,zmmreg,bmem64                   \350\351\352\361\370\1\x6D\75\120     
 
 
 [VPUNPCKHWD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x69\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x69\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\x69\75\120             AVX512,TFVM
 
 
 [VPUNPCKLBW]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x60\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x60\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\x60\75\120             AVX512,TFVM
 
 
 [VPUNPCKLDQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x62\75\120             AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\370\1\x62\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x62\75\120         AVX2,TFV
@@ -5685,7 +5683,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\370\1\x62\75\120         
 
 
 [VPUNPCKLQDQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\352\361\362\370\1\x6C\75\120         AVX,SANDYBRIDGE,TFV
 xmmreg_mz,xmmreg,bmem64                   \350\352\361\370\1\x6C\75\120             AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\352\361\362\364\370\1\x6C\75\120     AVX2,TFV
@@ -5695,7 +5693,7 @@ zmmreg_mz,zmmreg,bmem64                   \350\351\352\361\370\1\x6C\75\120     
 
 
 [VPUNPCKLWD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\370\1\x61\75\120             AVX,SANDYBRIDGE,TFVM
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\370\1\x61\75\120         AVX2,TFVM
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\370\1\x61\75\120             AVX512,TFVM
@@ -5707,12 +5705,12 @@ xmmreg,xmmreg,xmmrm                  \361\362\370\1\xEF\75\120            AVX,SA
 ymmreg,ymmreg,ymmrm                  \361\362\364\370\1\xEF\75\120        AVX2
 
 [VRCPPS]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg,xmmrm                         \362\370\1\x53\110                   AVX,SANDYBRIDGE
 ymmreg,ymmrm                         \362\364\370\1\x53\110               AVX,SANDYBRIDGE
 
 [VRCPSS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,mem32                  \333\362\370\1\x53\75\120            AVX,SANDYBRIDGE
 xmmreg,xmmreg,xmmreg                 \333\362\370\1\x53\75\120            AVX,SANDYBRIDGE
 
@@ -5839,12 +5837,12 @@ xmmreg_mz,xmmreg,mem32                    \333\350\362\370\1\x5C\75\120         
 
 
 [VTESTPD]
-(Ch_All)
+(Ch_Rop2, Ch_Rop1, Ch_WCarryFlag, Ch_WZeroFlag)
 xmmreg,xmmrm                         \361\362\371\1\x0F\110               AVX,SANDYBRIDGE
 ymmreg,ymmrm                         \361\362\364\371\1\x0F\110           AVX,SANDYBRIDGE
 
 [VTESTPS]
-(Ch_All)
+(Ch_Rop2, Ch_Rop1, Ch_WCarryFlag, Ch_WZeroFlag)
 ymmreg,ymmrm                         \361\362\364\371\1\x0E\110           AVX,SANDYBRIDGE
 xmmreg,xmmrm                         \361\362\371\1\x0E\110               AVX,SANDYBRIDGE
 
@@ -6041,7 +6039,7 @@ ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x02\75\120\27     AVX2
 xmmreg,xmmreg,xmmrm,imm8             \361\362\372\1\x02\75\120\27         AVX2
 
 [VPBROADCASTB]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem8                            \350\361\362\371\1\x78\110                AVX2,T1S
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x78\110                AVX2
 xmmreg_mz,reg16                           \350\361\371\1\x7A\110                    AVX512
@@ -6063,7 +6061,7 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x78\110            
 
 
 [VPBROADCASTD]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem32                           \350\361\362\371\1\x58\110                AVX2,T1S
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x58\110                AVX2
 xmmreg_mz,reg32                           \350\361\371\1\x7C\110                    AVX512
@@ -6076,7 +6074,7 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x58\110            
 
 
 [VPBROADCASTQ]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem64                           \350\352\361\362\371\1\x59\110            AVX2,T1S
 xmmreg_mz,xmmreg                          \350\352\361\362\371\1\x59\110            AVX2
 xmmreg_mz,reg64                           \350\352\361\371\1\x7C\110                AVX512
@@ -6089,7 +6087,7 @@ zmmreg_mz,xmmreg                          \350\351\352\361\371\1\x59\110        
 
 
 [VPBROADCASTW]
-(Ch_All)
+(Ch_Wop2, Ch_Rop1)
 xmmreg_mz,mem16                           \350\361\362\371\1\x79\110                AVX2,T1S
 xmmreg_mz,xmmreg                          \350\361\362\371\1\x79\110                AVX2
 xmmreg_mz,reg16                           \350\361\371\1\x7B\110                    AVX512
@@ -6108,11 +6106,11 @@ zmmreg_mz,xmmreg                          \350\351\361\371\1\x79\110            
 
 
 [VPERM2I128]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg,ymmreg,ymmrm,imm8             \361\362\364\372\1\x46\75\120\27     AVX2
 
 [VPERMD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x36\75\120         AVX2,TFV
 ymmreg_mz,ymmreg,bmem32                   \350\361\364\371\1\x36\75\120             AVX512,TFV
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x36\75\120             AVX512,TFV
@@ -6120,7 +6118,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x36\75\120         
 
 
 [VPERMPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg_mz,ymmrm,imm8                      \350\352\361\362\363\364\372\1\x01\110\26 AVX2,TFV
 ymmreg_mz,bmem64,imm8                     \350\352\361\364\372\1\x01\110\26         AVX512,TFV
 zmmreg_mz,zmmrm,imm8                      \350\351\352\361\372\1\x01\110\26         AVX512,TFV
@@ -6132,7 +6130,7 @@ zmmreg_mz,zmmreg,bmem64                   \350\351\352\361\371\1\x16\75\120     
 
 
 [VPERMPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x16\75\120         AVX2,TFV
 ymmreg_mz,ymmreg,bmem32                   \350\361\364\371\1\x16\75\120             AVX512,TFV
 zmmreg_mz,zmmreg,zmmrm                    \350\351\361\371\1\x16\75\120             AVX512,TFV
@@ -6140,7 +6138,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x16\75\120         
 
 
 [VPERMQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 ymmreg_mz,ymmrm,imm8                      \350\352\361\362\363\364\372\1\x00\110\26 AVX2,TFV
 ymmreg_mz,bmem64,imm8                     \350\352\361\364\372\1\x00\110\26         AVX512,TFV
 zmmreg_mz,zmmrm,imm8                      \350\351\352\361\372\1\x00\110\26         AVX512,TFV
@@ -6152,21 +6150,21 @@ zmmreg_mz,zmmreg,bmem64                   \350\351\352\361\371\1\x36\75\120     
 
 
 [VPMASKMOVD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,mem128                 \361\362\371\1\x8C\75\120            AVX2
 mem128,xmmreg,xmmreg                 \361\362\371\1\x8E\75\102            AVX2
 ymmreg,ymmreg,mem256                 \361\362\364\371\1\x8C\75\120        AVX2
 mem256,ymmreg,ymmreg                 \361\362\364\371\1\x8E\75\102        AVX2
 
 [VPMASKMOVQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmmreg,mem128                 \361\362\363\371\1\x8C\75\120        AVX2
 mem128,xmmreg,xmmreg                 \361\362\363\371\1\x8E\75\102        AVX2
 mem256,ymmreg,ymmreg                 \361\362\363\364\371\1\x8E\75\102    AVX2
 ymmreg,ymmreg,mem256                 \361\362\363\364\371\1\x8C\75\120    AVX2
 
 [VPSLLVD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x47\75\120             AVX2,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x47\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x47\75\120         AVX2,TFV
@@ -6176,7 +6174,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x47\75\120         
 
 
 [VPSLLVQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\352\361\362\363\371\1\x47\75\120     AVX2,TFV
 xmmreg_mz,xmmreg,bmem64                   \350\352\361\371\1\x47\75\120             AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\352\361\362\363\364\371\1\x47\75\120 AVX2,TFV
@@ -6186,7 +6184,7 @@ zmmreg_mz,zmmreg,bmem64                   \350\351\352\361\371\1\x47\75\120     
 
 
 [VPSRAVD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x46\75\120             AVX2,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x46\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x46\75\120         AVX2,TFV
@@ -6196,7 +6194,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x46\75\120         
 
 
 [VPSRLVD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\361\362\371\1\x45\75\120             AVX2,TFV
 xmmreg_mz,xmmreg,bmem32                   \350\361\371\1\x45\75\120                 AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\361\362\364\371\1\x45\75\120         AVX2,TFV
@@ -6206,7 +6204,7 @@ zmmreg_mz,zmmreg,bmem32                   \350\351\361\371\1\x45\75\120         
 
 
 [VPSRLVQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg_mz,xmmreg,xmmrm                    \350\352\361\362\363\371\1\x45\75\120     AVX2,TFV
 xmmreg_mz,xmmreg,bmem64                   \350\352\361\371\1\x45\75\120             AVX512,TFV
 ymmreg_mz,ymmreg,ymmrm                    \350\352\361\362\363\364\371\1\x45\75\120 AVX2,TFV
@@ -6216,7 +6214,7 @@ zmmreg_mz,zmmreg,bmem64                   \350\351\352\361\371\1\x45\75\120     
 
 
 [VGATHERDPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem32,xmmreg                      \361\362\363\371\1\x92\76\110             AVX2
 xmmreg_m,xmem32                           \350\352\361\371\1\x92\110                AVX512,T1S
 ymmreg,xmem32,ymmreg                      \361\362\363\364\371\1\x92\76\110         AVX2        I
@@ -6226,7 +6224,7 @@ zmmreg_m,ymem32                           \350\351\352\361\371\1\x92\110        
 
 
 [VGATHERDPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem32,xmmreg                      \361\362\371\1\x92\76\110                 AVX2
 xmmreg_m,xmem32                           \350\361\371\1\x92\110                    AVX512,T1S
 ymmreg,ymem32,ymmreg                      \361\362\364\371\1\x92\76\110             AVX2
@@ -6235,7 +6233,7 @@ zmmreg_m,zmem32                           \350\351\361\371\1\x92\110            
 
 
 [VGATHERQPD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem64,xmmreg                      \361\362\363\371\1\x93\76\110             AVX2
 xmmreg_m,xmem64                           \350\352\361\371\1\x93\110                AVX512,T1S
 ymmreg,ymem64,ymmreg                      \361\362\363\364\371\1\x93\76\110         AVX2
@@ -6244,7 +6242,7 @@ zmmreg_m,zmem64                           \350\351\352\361\371\1\x93\110        
 
 
 [VGATHERQPS]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem32,xmmreg                      \361\362\371\1\x93\76\110                 AVX2
 xmmreg,ymem32,xmmreg                      \361\362\364\371\1\x93\76\110             AVX2
 xmmreg_m,xmem32                           \350\361\371\1\x93\110                    AVX512,T1S
@@ -6253,7 +6251,7 @@ ymmreg_m,zmem32                           \350\351\361\371\1\x93\110            
 
 
 [VPGATHERDD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem32,xmmreg                      \361\362\371\1\x90\76\110                 AVX2
 xmmreg_m,xmem32                           \350\361\371\1\x90\110                    AVX512,T1S
 ymmreg,ymem32,ymmreg                      \361\362\364\371\1\x90\76\110             AVX2
@@ -6262,7 +6260,7 @@ zmmreg_m,zmem32                           \350\351\361\371\1\x90\110            
 
 
 [VPGATHERDQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem64,xmmreg                      \361\362\363\371\1\x90\76\110             AVX2
 xmmreg_m,xmem64                           \350\352\361\371\1\x90\110                AVX512,T1S
 ymmreg,xmem64,ymmreg                      \361\362\363\364\371\1\x90\76\110         AVX2
@@ -6270,7 +6268,7 @@ ymmreg_m,xmem64                           \350\352\361\364\371\1\x90\110        
 zmmreg_m,ymem64                           \350\351\352\361\371\1\x90\110            AVX512,T1S
 
 [VPGATHERQD]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem32,xmmreg                      \361\362\371\1\x91\76\110                 AVX2
 xmmreg,ymem32,xmmreg                      \361\362\364\371\1\x91\76\110             AVX2
 xmmreg_m,xmem32                           \350\361\371\1\x91\110                    AVX512,T1S
@@ -6279,7 +6277,7 @@ ymmreg_m,zmem32                           \350\351\361\371\1\x91\110            
 
 
 [VPGATHERQQ]
-(Ch_All)
+(Ch_Wop3, Ch_Rop2, Ch_Rop1)
 xmmreg,xmem64,xmmreg                      \361\362\363\371\1\x91\76\110             AVX2
 xmmreg_m,xmem64                           \350\352\361\371\1\x91\110                AVX512,T1S
 ymmreg,ymem64,ymmreg                      \361\362\363\364\371\1\x91\76\110         AVX2

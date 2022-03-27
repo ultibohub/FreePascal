@@ -1612,6 +1612,7 @@ type
     procedure AddType(El: TPasType); virtual;
     procedure AddArrayType(El: TPasArrayType; TypeParams: TFPList); virtual;
     procedure AddRecordType(El: TPasRecordType; TypeParams: TFPList); virtual;
+    procedure AddRecordVariant(El: TPasVariant); virtual;
     procedure AddClassType(El: TPasClassType; TypeParams: TFPList); virtual;
     procedure AddVariable(El: TPasVariable); virtual;
     procedure AddResourceString(El: TPasResString); virtual;
@@ -12065,6 +12066,9 @@ procedure TPasResolver.DeanonymizeType(El: TPasType);
       List.Add(El);
       end;
     El.AddRef{$IFDEF CheckPasTreeRefCount}(aID){$ENDIF};
+    {$IFDEF VerbosePasResolver}
+    if El.Parent<>NewParent then writeln('TPasResolver.DeanonymizeType.InsertInFront OldParent=',GetObjName(El.Parent),' -> ',GetObjPath(NewParent));
+    {$ENDIF}
     El.Parent:=NewParent;
   end;
 
@@ -12254,10 +12258,26 @@ end;
 procedure TPasResolver.AddRecordType(El: TPasRecordType; TypeParams: TFPList);
 var
   Scope: TPasRecordScope;
+  C: TClass;
 begin
   {$IFDEF VerbosePasResolver}
   writeln('TPasResolver.AddRecordType ',GetObjName(El),' Parent=',GetObjName(El.Parent));
   {$ENDIF}
+  C:=El.Parent.ClassType;
+  if (El.Name='') then
+    begin
+    // anonymous record
+    if (C=TPasVariable)
+        or (C=TPasConst)
+        or (C=TPasVariant) then
+      // ok
+    else
+      RaiseMsg(20220321224331,nCannotNestAnonymousX,sCannotNestAnonymousX,['record'],El);
+    if TypeParams<>nil then
+      RaiseNotYetImplemented(20220322220743,El);
+    DeanonymizeType(El);
+    end;
+
   if TypeParams<>nil then
     begin
     El.SetGenericTemplates(TypeParams);
@@ -12278,7 +12298,7 @@ begin
     FPendingForwardProcs.Add(El); // check forward declarations at the end
   end;
 
-  if El.Parent.ClassType<>TPasVariant then
+  if C<>TPasVariant then
     begin
     Scope:=TPasRecordScope(PushScope(El,ScopeClass_Record));
     Scope.VisibilityContext:=El;
@@ -12290,6 +12310,11 @@ begin
       AddGenericTemplateIdentifiers(TypeParams,Scope);
       end;
     end;
+end;
+
+procedure TPasResolver.AddRecordVariant(El: TPasVariant);
+begin
+  if El=nil then ;
 end;
 
 procedure TPasResolver.AddClassType(El: TPasClassType; TypeParams: TFPList);
@@ -21212,9 +21237,10 @@ begin
       end
     else if AClass=TPasRecordType then
       AddRecordType(TPasRecordType(El),TypeParams)
+    else if AClass=TPasVariant then
+      AddRecordVariant(TPasVariant(El))
     else if AClass=TPasClassType then
       AddClassType(TPasClassType(El),TypeParams)
-    else if AClass=TPasVariant then
     else if AClass.InheritsFrom(TPasProcedure) then
       AddProcedure(TPasProcedure(El),TypeParams)
     else if AClass=TPasResultElement then
