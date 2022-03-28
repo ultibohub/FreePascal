@@ -630,6 +630,8 @@ resourcestring
   SCollationNotFound = 'Collation not found : "%s".';
 
 implementation
+uses
+  unicodenumtable; //Ultibo // Dummy unit for build compatibility 
 
 type
 
