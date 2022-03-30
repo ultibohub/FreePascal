@@ -630,8 +630,10 @@ resourcestring
   SCollationNotFound = 'Collation not found : "%s".';
 
 implementation
+{$ifdef ULTIBO}
 uses
   unicodenumtable; //Ultibo // Dummy unit for build compatibility 
+{$endif ULTIBO}
 
 type
 
