@@ -38,6 +38,9 @@ Type
   { TCSSUtils }
 
   TCSSUtils = class(TComponent)
+  private
+    FExtraScannerOptions: TCSSScannerOptions;
+  published
     Procedure ExtractClassNames(Const aFileName : String; aList : TStrings);
     Procedure ExtractClassNames(Const aStream : TStream; aList : TStrings);
     Procedure ExtractClassNames(Const aElement : TCSSElement; aList : TStrings);
@@ -45,6 +48,7 @@ Type
     Function ExtractClassNames(Const aStream : TStream) : TStringDynArray;
     Function ExtractClassNames(Const aElement : TCSSElement) : TStringDynArray;
     Procedure Minimize(aInput,aOutput : TStream);
+    Property ExtraScannerOptions : TCSSScannerOptions Read FExtraScannerOptions Write FExtraScannerOptions;
   end;
 
 implementation
@@ -102,7 +106,7 @@ Var
 
 begin
   aElement:=Nil;
-  aParser:=TCSSParser.Create(aStream);
+  aParser:=TCSSParser.Create(aStream,ExtraScannerOptions);
   try
     aElement:=aParser.Parse;
     ExtractClassNames(aElement,aList);
@@ -180,7 +184,7 @@ begin
         S:=' '
       else
         S:='';
-      writeln(GetEnumName(TypeInfo(TCSSTOKEN),Ord(aToken)),' -> S : >',S,'<');
+      // writeln(GetEnumName(TypeInfo(TCSSTOKEN),Ord(aToken)),' -> S : >',S,'<');
       if S<>'' then
         aOutput.WriteBuffer(S[1],length(S));
       aPreviousToken:=aToken;

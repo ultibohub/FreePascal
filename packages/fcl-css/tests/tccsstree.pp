@@ -123,8 +123,26 @@ type
     Procedure TestUNICODERANGE;
   end;
 
+  { TCSSTreeOtherTest }
+
+  TCSSTreeOtherTest = Class(TBaseCSSTreeTest)
+  Published
+    Procedure TestStringToIdentifier;
+  end;
 
 implementation
+
+{ TCSSTreeOtherTest }
+
+procedure TCSSTreeOtherTest.TestStringToIdentifier;
+begin
+  AssertEquals('Normal','abc',StringToIdentifier('abc'));
+  AssertEquals('dash','-abc',StringToIdentifier('-abc'));
+  AssertEquals('dashdash','--abc',StringToIdentifier('--abc'));
+  AssertEquals('Underscore','abc_d',StringToIdentifier('abc_d'));
+  AssertEquals('Numerical','abc_1',StringToIdentifier('abc_1'));
+  AssertEquals('Weird','abc\(1\)',StringToIdentifier('abc(1)'));
+end;
 
 { TCSSTreeVisitorTest }
 
@@ -396,9 +414,9 @@ end;
 
 procedure TCSSTreeAsStringTest.TestPSEUDOCLASS;
 begin
-  TCSSClassNameElement(CreateElement(TCSSClassNameElement)).Value:=':abc';
+  TCSSPseudoClassElement(CreateElement(TCSSPseudoClassElement)).Value:=':abc';
   AssertEquals('Value',':abc',Element.AsString);
-  TCSSClassNameElement(CreateElement(TCSSClassNameElement)).Value:='::abc';
+  TCSSPseudoClassElement(CreateElement(TCSSPseudoClassElement)).Value:='::abc';
   AssertEquals('Value','::abc',Element.AsString);
 end;
 
@@ -787,6 +805,6 @@ begin
 end;
 
 initialization
-  RegisterTests([TCSSTreeTypeTest,TCSSTreeAsStringTest,TCSSTreeVisitorTest]);
+  RegisterTests([TCSSTreeTypeTest,TCSSTreeAsStringTest,TCSSTreeVisitorTest,TCSSTreeOtherTest]);
 end.
 

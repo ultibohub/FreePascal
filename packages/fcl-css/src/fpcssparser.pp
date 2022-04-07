@@ -14,7 +14,7 @@
  **********************************************************************}
 unit fpCSSParser;
 
-{$mode ObjFPC}{$H+}
+{ $mode ObjFPC}{$H+}
 
 { $DEFINE debugparser}
 
@@ -37,6 +37,7 @@ Type
     FPeekToken : TCSSToken;
     FPeekTokenString : UTF8String;
     FFreeScanner : Boolean;
+    FRuleLevel : Integer;
     function CreateElement(aClass: TCSSElementClass): TCSSElement;
     class function GetAppendElement(aList: TCSSListElement): TCSSElement;
     function GetAtEOF: Boolean;
@@ -72,7 +73,7 @@ Type
     Property CurrentLine : Integer Read GetCurLine;
     Property CurrentPos : Integer Read GetCurPos;
   Public
-    Constructor Create(AInput: TStream);
+    Constructor Create(AInput: TStream; ExtraScannerOptions : TCSSScannerOptions = []);
     Constructor Create(AScanner : TCSSScanner); virtual;
     Destructor Destroy; override;
     Function Parse : TCSSElement;
@@ -194,10 +195,11 @@ begin
     Result:=0;
 end;
 
-constructor TCSSParser.Create(AInput: TStream);
+constructor TCSSParser.Create(AInput: TStream; ExtraScannerOptions : TCSSScannerOptions = []);
 begin
   FInput:=AInput;
   Create(TCSSScanner.Create(FInput));
+  FScanner.Options:=FScanner.Options+ExtraScannerOptions;
   FFreeScanner:=True;
 end;
 
@@ -237,9 +239,16 @@ Var
   Term : TCSSTokens;
   aLast : TCSSToken;
   aList : TCSSListElement;
+  {$ifdef debugparser}
+  aAt : String;
+  {$endif}
 
 begin
-//  Writeln('Parse rule. IsAt:',IsAt);
+  Inc(FRuleLevel);
+{$ifdef debugparser}
+  aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
+  Writeln('Parse @ rule');
+{$endif}
   Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
   aRule:=TCSSAtRuleElement(CreateElement(TCSSAtRuleElement));
   TCSSAtRuleElement(aRule).AtKeyWord:=CurrentTokenString;
@@ -266,6 +275,8 @@ begin
       Consume(ctkRBRACE);
       end;
     Result:=aRule;
+{$ifdef debugparser}  Writeln('Done Parse @ rule ',aAt); {$endif}
+    Inc(FRuleLevel);
   except
     aRule.Free;
     Raise;
@@ -283,7 +294,7 @@ function TCSSParser.ParseExpression: TCSSElement;
 
 Const
   RuleTokens =
-       [ctkIDENTIFIER,ctkCLASSNAME,ctkHASH,ctkINTEGER,
+       [ctkIDENTIFIER,ctkCLASSNAME,ctkHASH,ctkINTEGER, ctkPSEUDO,ctkPSEUDOFUNCTION,
         ctkDOUBLECOLON,ctkSTAR,ctkTILDE,ctkCOLON,ctkLBRACKET];
 
 begin
@@ -503,12 +514,12 @@ end;
 function TCSSParser.ParsePseudo: TCSSElement;
 
 Var
-  aPseudo : TCSSIdentifierElement;
+  aPseudo : TCSSPseudoClassElement;
   aValue : string;
 
 begin
   aValue:=CurrentTokenString;
-  aPseudo:=TCSSIdentifierElement(CreateElement(TCSSIdentifierElement));
+  aPseudo:=TCSSPseudoClassElement(CreateElement(TCSSPseudoClassElement));
   try
     Consume(ctkPseudo);
     aPseudo.Value:=aValue;
@@ -522,25 +533,33 @@ end;
 function TCSSParser.ParseRuleBody(aRule: TCSSRuleElement; aIsAt: Boolean = false): integer;
 
 Var
-  aDecl : TCSSDeclarationElement;
+  aDecl : TCSSElement;
+
+  Function CheckColon : Boolean;
+  begin
+    Result:=(aDecl is TCSSDeclarationElement);
+    if Result then
+      Result:=TCSSDeclarationElement(aDecl).Colon;
+  end;
 
 begin
   if not (CurrentToken in [ctkRBRACE,ctkSEMICOLON]) then
     begin
-    aDecl:=ParseDeclaration(aIsAt) as TCSSDeclarationElement;
-    if Assigned(aDecl) then
-      aRule.AddChild(aDecl);
+    aDecl:=ParseDeclaration(aIsAt);
+    aRule.AddChild(aDecl);
     end;
   While Not (CurrentToken in [ctkEOF,ctkRBRACE]) do
     begin
-    if aDecl.Colon then
+    if CheckColon then
       While CurrentToken=ctkSEMICOLON do
         Consume(ctkSEMICOLON);
     if Not (CurrentToken in [ctkEOF,ctkRBRACE]) then
       begin
-      aDecl:=ParseDeclaration(aIsAt);
-      if Assigned(aDecl) then
-        aRule.AddChild(aDecl);
+      if CurrentToken=ctkATKEYWORD then
+        aDecl:=ParseAtRule
+      else
+        aDecl:=ParseDeclaration(aIsAt);
+      aRule.AddChild(aDecl);
       end;
     end;
   Result:=aRule.ChildCount;
@@ -554,9 +573,16 @@ Var
   Term : TCSSTokens;
   aLast : TCSSToken;
   aList: TCSSListElement;
+{$IFDEF debugparser}
+  aAt : String;
+{$ENDIF}
 
 begin
-//  Writeln('Parse rule. IsAt:',IsAt);
+  Inc(FRuleLevel);
+{$IFDEF debugparser}
+  aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
+  Writeln('Parse rule. IsAt: ',IsAt,aAt);
+{$ENDIF}
   Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
   if IsAt then
     begin
@@ -585,10 +611,13 @@ begin
       begin
       Consume(ctkLBrace);
       ParseRuleBody(aRule,IsAt);
-      // Writeln('Parsed rule');
       Consume(ctkRBRACE);
       end;
     Result:=aRule;
+    {$IFDEF debugparser}
+    Writeln('Rule started at ',aAt,' done');
+    {$endif}
+    Dec(FRuleLevel);
   except
     aRule.Free;
     Raise;
@@ -624,7 +653,7 @@ Const
   TermSeps = [ctkEquals,ctkPlus,ctkMinus,ctkAnd,ctkLT,ctkDIV,
               ctkStar,ctkTilde,ctkColon, ctkDoubleColon,
               ctkSquared,ctkGT];
-
+  ListTerms = [ctkEOF,ctkLBRACE,ctkATKEYWORD,ctkComma];
 
   function DoBinary(var aLeft : TCSSElement) : TCSSElement;
   var
@@ -644,24 +673,31 @@ Const
     end;
   end;
 
+Var
+  List : TCSSListElement;
+  aFactor : TCSSelement;
+
 begin
-  Result:=Nil;
-  if not AllowRules then
-    Result:=ParseComponentValue
-  else
-    Case CurrentToken of
-      ctkLBRACE : Result:=ParseRule();
-      ctkATKEYWORD : Result:=ParseRule(True);
-    else
-      Result:=ParseComponentValue;
-    end;
-  If Not Assigned(Result) then
-    exit;
+  List:=TCSSListElement(CreateElement(TCSSListElement));
   try
-    While CurrentToken in TermSeps do
-      Result:=DoBinary(Result);
+    aFactor:=Nil;
+    if AllowRules and (CurrentToken in [ctkLBRACE,ctkATKEYWORD]) then
+      aFactor:=ParseRule(CurrentToken=ctkATKEYWORD)
+    else
+      aFactor:=ParseComponentValue;
+    While Assigned(aFactor) do
+      begin
+      While CurrentToken in TermSeps do
+        aFactor:=DoBinary(aFactor);
+      List.AddChild(aFactor);
+      if (CurrentToken in ListTerms) then
+        aFactor:=Nil
+      else
+        aFactor:=ParseComponentValue
+      end;
+    Result:=GetAppendElement(List);
   except
-    Result.Free;
+    List.Free;
     Raise;
   end;
 end;
@@ -796,6 +832,7 @@ begin
     L:=Length(aName);
     if (L>0) and (aName[L]='(') then
       aName:=Copy(aName,1,L-1);
+    aCall.Name:=aName;
     if CurrentToken=ctkPSEUDOFUNCTION then
       Consume(ctkPSEUDOFUNCTION)
     else
