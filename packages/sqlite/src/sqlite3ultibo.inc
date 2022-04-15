@@ -1,7 +1,7 @@
 {
 Ultibo SQLite OS interface include file.
 
-Copyright (C) 2016 - SoftOz Pty Ltd.
+Copyright (C) 2022 - SoftOz Pty Ltd.
 
 Arch
 ====
