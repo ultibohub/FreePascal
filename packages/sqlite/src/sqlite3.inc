@@ -59,6 +59,8 @@ const
 
 {
   Header converted from Sqlite version 3.14.2
+  
+  Updated for SQLite version 3.15.2 (Ultibo)
 }
 
 //SQLITE_EXTERN const char sqlite3_version[];
@@ -247,6 +249,9 @@ const
   SQLITE_SYNC_FULL          = $00003;
   SQLITE_SYNC_DATAONLY      = $00010;
 
+  {$IFDEF ULTIBO}
+  SQLITE_DEFAULT_SECTOR_SIZE = 4096;
+  {$ENDIF}
 
 type
   psqlite3_io_methods = ^sqlite3_io_methods;
@@ -256,6 +261,33 @@ type
     pMethods: psqlite3_io_methods;  (* Methods for an open file *)
   end;
 
+  {$IFDEF ULTIBO}
+  sqlite3_io_methods = record
+     {Version 1 methods}
+     iVersion           : cint;
+     xClose             : function(id: psqlite3_file): cint; cdecl;
+     xRead              : function(id: psqlite3_file; pBuf: pointer; iAmt: cint; iOfst: sqlite3_int64): cint; cdecl;
+     xWrite             : function(id: psqlite3_file; pBuf: pointer; iAmt: cint; iOfst: sqlite3_int64): cint; cdecl;
+     xTruncate          : function(id: psqlite3_file; size: sqlite3_int64): cint; cdecl;
+     xSync              : function(id: psqlite3_file; flags: cint): cint; cdecl;
+     xFileSize          : function(id: psqlite3_file; pSize: psqlite3_int64): cint; cdecl;
+     xLock              : function(id: psqlite3_file; locktype: cint): cint; cdecl;
+     xUnlock            : function(id: psqlite3_file; locktype: cint): cint; cdecl;
+     xCheckReservedLock : function(id: psqlite3_file; pResOut: pcint): cint; cdecl;
+     xFileControl       : function(id: psqlite3_file; op: cint; pArg: pointer): cint; cdecl;
+     xSectorSize        : function(id: psqlite3_file): cint; cdecl;
+     xDeviceCharacteristics: function(id: psqlite3_file): cint; cdecl;
+     {Version 2 or later methods}
+     xShmMap     : function(id: psqlite3_file; iPg: cint; pgsz: cint; pp: ppointer): cint; cdecl;
+     xShmLock    : function(id: psqlite3_file; offset: cint; n: cint; flags: cint): cint; cdecl;
+     xShmBarrier : procedure(id: psqlite3_file); cdecl;
+     xShmUnmap   : function(id: psqlite3_file; deleteFlag: cint): cint; cdecl;
+     {Version 3 or later methods}
+     xFetch   : function(id: psqlite3_file; iOfst: sqlite3_int64; iAmt: cint; pp: ppointer): cint; cdecl;
+     xUnfetch : function(id: psqlite3_file; iOfst: sqlite3_int64; p: pointer): cint; cdecl;
+     {Additional methods may be added in future releases}
+  end;
+  {$ELSE}
   sqlite3_io_methods = record
      iVersion          : cint;
      Close             : function(f: psqlite3_file): cint; stdcall;
@@ -280,6 +312,7 @@ type
      (* Methods above are valid for version 3 *)
      (* Additional methods may be added in future releases *)
   end;
+  {$ENDIF}
 
 const
   SQLITE_FCNTL_LOCKSTATE           = 1;
@@ -309,6 +342,9 @@ const
   SQLITE_FCNTL_RBU                 = 26;
   SQLITE_FCNTL_VFS_POINTER         = 27;
   SQLITE_FCNTL_JOURNAL_POINTER     = 28;
+  {$IFDEF ULTIBO}
+  SQLITE_FCNTL_WIN32_GET_HANDLE    = 29;
+  {$ENDIF}
 
   (* deprecated names *)
   SQLITE_GET_LOCKPROXYFILE    = SQLITE_FCNTL_GET_LOCKPROXYFILE;
@@ -319,8 +355,52 @@ type
   psqlite3_mutex = ^sqlite3_mutex;
   sqlite3_mutex = record end;
 
+  {$IFDEF ULTIBO}
+  psqlite3_mutex_methods = ^sqlite3_mutex_methods;
+  sqlite3_mutex_methods = record
+    xMutexInit    : function(): cint; cdecl;
+    xMutexEnd     : function(): cint; cdecl;
+    xMutexAlloc   : function(n: cint): psqlite3_mutex; cdecl;
+    xMutexFree    : procedure(mtx: psqlite3_mutex); cdecl; 
+    xMutexEnter   : procedure(mtx: psqlite3_mutex); cdecl;
+    xMutexTry     : function(mtx: psqlite3_mutex): cint; cdecl;
+    xMutexLeave   : procedure(mtx: psqlite3_mutex); cdecl;
+    xMutexHeld    : function(mtx: psqlite3_mutex): cint; cdecl;
+    xMutexNotheld : function(mtx: psqlite3_mutex): cint; cdecl;
+  end;
+  {$ENDIF}
+
 type
   psqlite3_vfs = ^sqlite3_vfs;
+  {$IFDEF ULTIBO}
+  sqlite3_vfs = record
+    {Version 1 methods}
+    iVersion      : cint;          (* Structure version number *)
+    szOsFile      : cint;          (* Size of subclassed sqlite3_file *)
+    mxPathname    : cint;          (* Maximum file pathname length *)
+    pNext         : psqlite3_vfs;  (* Next registered VFS *)
+    zName         : pansichar;     (* Name of this virtual file system *)
+    pAppData      : ppointer;      (* Pointer to application-specific *)
+    xOpen         : function(vfs: psqlite3_vfs; zName: pansichar; f: psqlite3_file; flags: cint; pOutFlags: pcint): cint; cdecl;
+    xDelete       : function(vfs: psqlite3_vfs; zName: pansichar; syncDir: cint): cint; cdecl;
+    xAccess       : function(vfs: psqlite3_vfs; zName: pansichar; flags: cint; pResOut: pcint): cint; cdecl;
+    xFullPathname : function(vfs: psqlite3_vfs; zName: pansichar; nOut: cint; zOut: pansichar): cint; cdecl;
+    xDlOpen       : function(vfs: psqlite3_vfs; zFilename: pansichar): pointer; cdecl;
+    xDlError      : procedure(vfs: psqlite3_vfs; nByte: cint; zErrMsg: pansichar); cdecl;
+    xDlSym        : function(vfs: psqlite3_vfs; addr: pointer; zSymbol: pansichar): pointer; cdecl;
+    xDlClose      : procedure(vfs: psqlite3_vfs; addr: pointer); cdecl;
+    xRandomness   : function(vfs: psqlite3_vfs; nByte: cint; zOut: pansichar): cint; cdecl;
+    xSleep        : function(vfs: psqlite3_vfs; microseconds: cint): cint; cdecl;    
+    xCurrentTime  : function(vfs: psqlite3_vfs; time: pcdouble): cint; cdecl;
+    xGetLastError : function(vfs: psqlite3_vfs; code: cint; msg: pansichar): cint; cdecl;
+    {Version 2 or later methods}
+    xCurrentTimeInt64 : function(vfs: psqlite3_vfs; time: psqlite3_int64): cint; cdecl; 	
+    {Version 3 or later methods}
+    xSetSystemCall  : function(vfs: psqlite3_vfs; zName: pansichar; sqlite3_syscall_ptr : pointer) : cint; cdecl;
+    xGetSystemCall  : function(vfs: psqlite3_vfs; zName: pansichar) : pointer; cdecl;
+    xNextSystemCall : function(vfs: psqlite3_vfs; zName: pansichar) : pansichar; cdecl;
+  end;
+  {$ELSE}
   sqlite3_vfs = record
     iVersion     : cint;          (* Structure version number *)
     szOsFile     : cint;          (* Size of subclassed sqlite3_file *)
@@ -345,6 +425,7 @@ type
     xGetSystemCall : function(vfs: psqlite3_vfs; zName: pansichar) : pointer; cdecl;
     xNextSystemCall : function(vfs: psqlite3_vfs; zName: pansichar) : pansichar; cdecl;
   end;
+  {$ENDIF}
 
 const
   SQLITE_ACCESS_EXISTS    = 0;
@@ -387,6 +468,18 @@ var
 {$ENDIF}
 
 Type
+{$IFDEF ULTIBO}
+sqlite3_mem_methods = record
+  xMalloc   : function(size : cint) : pointer;cdecl;
+  xFree     : procedure(p : pointer); cdecl;
+  xRealloc  : function(p : pointer;size : cint) : pointer;cdecl;
+  xSize     : function(p : pointer) : cint; cdecl;
+  xRoundup  : function(size : cint) : cint; cdecl;
+  xInit     : function(p : pointer): cint; cdecl;
+  xShutdown : procedure(p : pointer); cdecl;
+  pAppData  : pointer;
+end;
+{$ELSE}
 sqlite3_mem_methods = record
   xMalloc : function(size : cint) : pointer;cdecl;
   xFree : procedure(p : pointer); cdecl;
@@ -397,6 +490,7 @@ sqlite3_mem_methods = record
   xShutdown : procedure(p : pointer); cdecl;
   pAppData: pointer;
 end;
+{$ENDIF}
 Tsqlite3_mem_methods = sqlite3_mem_methods;
 
 Const
@@ -1072,9 +1166,15 @@ const
   SQLITE_MUTEX_STATIC_MASTER    = 2;
   SQLITE_MUTEX_STATIC_MEM       = 3;  (* sqlite3_malloc() *)
   SQLITE_MUTEX_STATIC_MEM2      = 4;  (* sqlite3_release_memory() *)
+  {$IFDEF ULTIBO}
+  SQLITE_MUTEX_STATIC_OPEN      = 4;  (* sqlite3BtreeOpen() *)
+  {$ENDIF}
   SQLITE_MUTEX_STATIC_PRNG      = 5;  (* sqlite3_random() *)
   SQLITE_MUTEX_STATIC_LRU       = 6;  (* lru page list *)
   SQLITE_MUTEX_STATIC_LRU2      = 7;  (* lru page list *)
+  {$IFDEF ULTIBO}
+  SQLITE_MUTEX_STATIC_PMEM      = 7;  (* sqlite3PageMalloc() *)
+  {$ENDIF}
   SQLITE_MUTEX_STATIC_APP1      = 8;  (* For use by application *)
   SQLITE_MUTEX_STATIC_APP2      = 9;  (* For use by application *)
   SQLITE_MUTEX_STATIC_APP3      = 10; (* For use by application *)
@@ -1185,6 +1285,9 @@ Const
 function InitializeSqliteANSI(const LibraryName: AnsiString = ''): Integer; //needed as TLibraryLoadFunction
 function InitializeSqlite(const LibraryName: UnicodeString = ''): Integer;
 function TryInitializeSqlite(const LibraryName: Unicodestring = ''): Integer;
+{$IFDEF ULTIBO}
+function ReleaseSqlite: Integer;
+{$ENDIF}
 procedure ReleaseSqlite; //needed as TLibraryUnLoadFunction
 
 function InitialiseSQLite: Integer; deprecated;
@@ -1474,6 +1577,24 @@ begin
   result:=InitializeSqlite(LibraryName);
 end;
 
+{$IFDEF ULTIBO}
+function  ReleaseSQLite:integer;
+begin
+  if InterlockedDecrement(RefCount) <= 0 then
+  begin
+    if SQLiteLibraryHandle <> NilHandle then
+      UnloadLibrary(SQLiteLibraryHandle);
+    SQLiteLibraryHandle := NilHandle;
+    SQLiteLoadedLibrary := '';
+    RefCount := 0;
+  end;
+end;
+
+procedure ReleaseSQLite;
+begin
+  ReleaseSQLite;
+end;
+{$ELSE}
 procedure ReleaseSQLite;
 begin
   if InterlockedDecrement(RefCount) <= 0 then
@@ -1485,6 +1606,7 @@ begin
     RefCount := 0;
   end;
 end;
+{$ENDIF}
 
 {$ENDIF}
 
