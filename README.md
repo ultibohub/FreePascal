@@ -1,10 +1,16 @@
 # FPC Source code repository
 
-## Ultibo Edition (Work in Progress)
+## Ultibo Edition
 
-This repository is not in use, we are currently working on an upgrade to FreePascal 3.2.2 (3.3.1) but it is not ready for use yet.
+This repository contains the Ultibo Edition of the Free Pascal compiler which is currently based on FreePascal 3.2.2 (3.3.1).
 
-Please continue to use the current [FPC](https://github.com/ultibohub/FPC) repository until this update is released.
+You can choose from either the [Stable](https://github.com/ultibohub/FreePascal/tree/ultibo-3.2.2), [Fixes](https://github.com/ultibohub/FreePascal/tree/ultibo-3.2) or [Main](https://github.com/ultibohub/FreePascal/tree/ultibo) branches.
+
+In addition to this repository the [Ultibo core](https://github.com/ultibohub/Core) RTL is also required in order to build the sources.
+
+For all information on developing with Ultibo, building the source and getting started please see the [Ultibo.org website](https://ultibo.org)
+
+To obtain a prepackaged installer for Windows or an install script for Linux please see the Ultibo [downloads page](https://ultibo.org/download/)
 
 ## Synopsis
 This repository contains the sources of the [Free Pascal](https://www.freepascal.org/) compiler distribution.
