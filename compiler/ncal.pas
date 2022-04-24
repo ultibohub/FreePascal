@@ -3867,20 +3867,29 @@ implementation
                      ensure that it is }
                    procdefinition.register_def;
                    if procdefinition.is_specialization and (procdefinition.typ=procdef) then
-                     maybe_add_pending_specialization(procdefinition);
+                     maybe_add_pending_specialization(procdefinition,candidates.para_anon_syms);
 
                    candidates.free;
                  end; { end of procedure to call determination }
              end;
 
-            { check for hints (deprecated etc) }
             if procdefinition.typ = procdef then
-              check_hints(tprocdef(procdefinition).procsym,tprocdef(procdefinition).symoptions,tprocdef(procdefinition).deprecatedmsg);
+              begin
+                { check for hints (deprecated etc) }
+                check_hints(tprocdef(procdefinition).procsym,tprocdef(procdefinition).symoptions,tprocdef(procdefinition).deprecatedmsg);
 
-            { add reference to corresponding procsym; may not be the one
-              originally found/passed to the constructor because of overloads }
-            if procdefinition.typ = procdef then
-              addsymref(tprocdef(procdefinition).procsym,procdefinition);
+                { add reference to corresponding procsym; may not be the one
+                  originally found/passed to the constructor because of overloads }
+                addsymref(tprocdef(procdefinition).procsym,procdefinition);
+
+                { ensure that the generic is considered as used as for an
+                  implicit specialization must only be called after the final
+                  overload was picked }
+                if assigned(tprocdef(procdefinition).genericdef) and
+                    assigned(tprocdef(tprocdef(procdefinition).genericdef).procsym) and
+                    (tprocdef(tprocdef(procdefinition).genericdef).procsym.refs=0) then
+                  addsymref(tprocdef(tprocdef(procdefinition).genericdef).procsym);
+              end;
 
             { add needed default parameters }
             if (paralength<procdefinition.maxparacount) then

@@ -195,6 +195,7 @@ unit aoptcpu;
                   Result:=OptPass1Sub(p);
                 A_Jcc:
                   Result:=OptPass1Jcc(p);
+                A_MOVDQA,
                 A_MOVAPD,
                 A_MOVAPS,
                 A_MOVUPD,
@@ -282,6 +283,21 @@ unit aoptcpu;
           else
             ;
         end;
+        { If this flag is set, force another run of pass 1 even if p wasn't
+          changed }
+        if aoc_ForceNewIteration in OptsToCheck then
+          begin
+            Exclude(OptsToCheck, aoc_ForceNewIteration);
+
+            if not Result then
+              begin
+                if not (p.typ in SkipInstr) then
+                  UpdateUsedRegs(p);
+
+                p := tai(p.Next);
+                Result := True;
+              end;
+          end;
       end;
 
 

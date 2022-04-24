@@ -4894,6 +4894,8 @@ implementation
                 R_SUBQ,
                 R_SUBMMWHOLE:
                   result:=taicpu.op_reg_ref(A_MOVQ,S_NO,r,tmpref);
+                R_SUBMMX:
+                  result:=taicpu.op_reg_ref(A_MOVDQA,S_NO,r,tmpref);
                 else
                   internalerror(2005060404);
               end;
