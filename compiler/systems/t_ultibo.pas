@@ -920,7 +920,7 @@ begin
       ct_rpizero:begin
         { Create kernel image }
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel.img',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel.img',true,false);
         
         {Add kernel trailer}
         if success then
@@ -934,7 +934,7 @@ begin
       ct_rpizero2w:begin
         { Create kernel image }
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel7.img',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel7.img',true,false);
           
         {Add kernel trailer}
         if success then
@@ -946,7 +946,7 @@ begin
       ct_rpi400:begin
         { Create kernel image }
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel7l.img',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel7l.img',true,false);
           
         {Add kernel trailer}
         if success then
@@ -957,20 +957,20 @@ begin
       ct_qemuvpb:begin
         { Create kernel image }
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel.bin',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel.bin',true,false);
        end;
       ct_qemurpia,
       ct_qemurpizero:begin
         { Create kernel image (Note: In 32-bit mode a QEMU image will NOT boot on a real Raspbery Pi and vice versa)}
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel.qimg',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel.qimg',true,false);
        end;
       ct_qemurpi2b,
       ct_qemurpi3a,
       ct_qemurpi3b:begin
         { Create kernel image (Note: In 32-bit mode a QEMU image will NOT boot on a real Raspbery Pi and vice versa)}
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel7.qimg',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel7.qimg',true,false);
        end;
      end;  
      {$endif ARM}
@@ -986,7 +986,7 @@ begin
       ct_rpizero2w:begin
         { Create kernel image }
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel8.img',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel8.img',true,false);
           
         {Add kernel trailer}
         if success then
@@ -997,13 +997,13 @@ begin
       ct_qemuvpb:begin
         { Create kernel image }
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel64.bin',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel64.bin',true,false);
        end;
       ct_qemurpi3a,
       ct_qemurpi3b:begin
         { Create kernel image (Note: In 64-bit mode a QEMU image should boot on a real Raspbery Pi and vice versa)}
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
-          ChangeFileExt(current_module.exefilename,'.elf')+' kernel8.img',true,false);
+          maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel8.img',true,false);
         
         {Note: Kernel trailer is no longer honoured by latest Raspberry Pi firmware}
        end;
