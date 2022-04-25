@@ -69,6 +69,10 @@ const
   FT_FACE_FLAG_MULTIPLE_MASTERS = 1 shl 8;
   FT_FACE_FLAG_GLYPH_NAMES = 1 shl 9;
   FT_FACE_FLAG_EXTERNAL_STREAM = 1 shl 10;
+  FT_FACE_FLAG_HINTER = 1 shl 11;
+  FT_FACE_FLAG_CID_KEYED = 1 shl 12;
+  FT_FACE_FLAG_TRICKY = 1 shl 13;
+  FT_FACE_FLAG_COLOR = 1 shl 14;
 
   FT_STYLE_FLAG_ITALIC = 1 shl 0;
   FT_STYLE_FLAG_BOLD = 1 shl 1;
@@ -360,6 +364,17 @@ type
 
 // Macro
 function FT_IS_SCALABLE(face: PFT_Face): boolean;
+function FT_HAS_HORIZONTAL (face: PFT_Face) : boolean;
+function FT_HAS_VERTICAL (face: PFT_Face) : boolean;
+function FT_HAS_KERNING (face: PFT_Face) : boolean;
+function FT_IS_SFNT (face: PFT_Face) : boolean;
+function FT_IS_FIXED_WIDTH (face: PFT_Face) : boolean;
+function FT_HAS_FIXED_SIZES (face: PFT_Face) : boolean;
+function FT_HAS_GLYPH_NAMES (face: PFT_Face) : boolean;
+function FT_HAS_MULTIPLE_MASTERS (face: PFT_Face) : boolean;
+function FT_IS_CID_KEYED (face: PFT_Face) : boolean;
+function FT_IS_TRICKY (face: PFT_Face) : boolean;
+function FT_HAS_COLOR (face: PFT_Face) : boolean;
 
 {$IFNDEF DYNAMIC}
 
@@ -453,9 +468,63 @@ procedure ReleaseFreetype;
 implementation
 
 function FT_IS_SCALABLE(face: PFT_Face): boolean;
-
 begin
-  Result := (face^.face_flags and FT_FACE_FLAG_SCALABLE) = 1;
+  Result := (face^.face_flags and FT_FACE_FLAG_SCALABLE) <> 0;
+end;
+
+function FT_HAS_HORIZONTAL (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_HORIZONTAL) <> 0;
+end;
+
+function FT_HAS_VERTICAL (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_VERTICAL) <> 0;
+end;
+
+function FT_HAS_KERNING (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_KERNING) <> 0;
+end;
+
+function FT_IS_SFNT (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_SFNT) <> 0;
+end;
+
+function FT_IS_FIXED_WIDTH (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_FIXED_WIDTH) <> 0;
+end;
+
+function FT_HAS_FIXED_SIZES (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_FIXED_SIZES) <> 0;
+end;
+
+function FT_HAS_GLYPH_NAMES (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_GLYPH_NAMES) <> 0;
+end;
+
+function FT_HAS_MULTIPLE_MASTERS (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_MULTIPLE_MASTERS) <> 0;
+end;
+
+function FT_IS_CID_KEYED (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_CID_KEYED) <> 0;
+end;
+
+function FT_IS_TRICKY (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_TRICKY) <> 0;
+end;
+
+function FT_HAS_COLOR (face: PFT_Face) : boolean;
+begin
+  Result := (face^.face_flags and FT_FACE_FLAG_COLOR) <> 0;
 end;
 
 {$IFDEF DYNAMIC}
