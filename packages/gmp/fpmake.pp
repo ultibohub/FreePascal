@@ -29,6 +29,7 @@ begin
     P.SourcePath.Add('src');
 
     T:=P.Targets.AddUnit('gmp.pas');
+    T:=P.Targets.AddUnit('libgmp.pp');
 
     P.Sources.AddExampleFiles('examples/*',P.Directory,false,'.');
 

@@ -482,7 +482,7 @@ type
 
     function HexDig(Ch: REChar): integer;
 
-    function UnQuoteChar(var APtr: PRegExprChar): REChar;
+    function UnQuoteChar(var APtr, AEnd: PRegExprChar): REChar;
 
     // the lowest level
     function ParseAtom(var FlagParse: integer): PRegExprChar;
@@ -817,7 +817,7 @@ uses
 const
   // TRegExpr.VersionMajor/Minor return values of these constants:
   REVersionMajor = 1;
-  REVersionMinor = 153;
+  REVersionMinor = 155;
 
   OpKind_End = REChar(1);
   OpKind_MetaClass = REChar(2);
@@ -3411,7 +3411,7 @@ begin
   end;
 end;
 
-function TRegExpr.UnQuoteChar(var APtr: PRegExprChar): REChar;
+function TRegExpr.UnQuoteChar(var APtr, AEnd: PRegExprChar): REChar;
 var
   Ch: REChar;
 begin
@@ -3432,7 +3432,7 @@ begin
       begin // \cK => code for Ctrl+K
         Result := #0;
         Inc(APtr);
-        if APtr >= fRegexEnd then
+        if APtr >= AEnd then
           Error(reeNoLetterAfterBSlashC);
         Ch := APtr^;
         case Ch of
@@ -3448,7 +3448,7 @@ begin
       begin // \x: hex char
         Result := #0;
         Inc(APtr);
-        if APtr >= fRegexEnd then
+        if APtr >= AEnd then
         begin
           Error(reeNoHexCodeAfterBSlashX);
           Exit;
@@ -3457,7 +3457,7 @@ begin
         begin // \x{nnnn} //###0.936
           repeat
             Inc(APtr);
-            if APtr >= fRegexEnd then
+            if APtr >= AEnd then
             begin
               Error(reeNoHexCodeAfterBSlashX);
               Exit;
@@ -3481,7 +3481,7 @@ begin
           Result := REChar(HexDig(APtr^));
           // HexDig will cause Error if bad hex digit found
           Inc(APtr);
-          if APtr >= fRegexEnd then
+          if APtr >= AEnd then
           begin
             Error(reeNoHexCodeAfterBSlashX);
             Exit;
@@ -3692,7 +3692,7 @@ begin
                 Exit;
               end;
               Inc(regParse);
-              RangeEnd := UnQuoteChar(regParse);
+              RangeEnd := UnQuoteChar(regParse, fRegexEnd);
             end;
 
             // special handling for Russian range a-YA, add 2 ranges: a-ya and A-YA
@@ -3763,7 +3763,7 @@ begin
               else
               {$ENDIF}
               begin
-                TempChar := UnQuoteChar(regParse);
+                TempChar := UnQuoteChar(regParse, fRegexEnd);
                 // False if '-' is last char in []
                 DashForRange :=
                   (regParse + 2 < fRegexEnd) and
@@ -4206,7 +4206,7 @@ begin
             end;
           {$ENDIF}
         else
-          EmitExactly(UnQuoteChar(regParse));
+          EmitExactly(UnQuoteChar(regParse, fRegexEnd));
         end; { of case }
         Inc(regParse);
       end;
@@ -5745,10 +5745,11 @@ var
     APtr := p;
   end;
 
-  procedure FindSubstGroupIndex(var p: PRegExprChar; var Idx: integer);
+  procedure FindSubstGroupIndex(var p: PRegExprChar; var Idx: integer; var NumberFound: boolean);
   begin
     Idx := ParseVarName(p);
-    if (Idx >= 0) and (Idx <= High(GrpIndexes)) then
+    NumberFound := (Idx >= 0) and (Idx <= High(GrpIndexes));
+    if NumberFound then
       Idx := GrpIndexes[Idx];
   end;
 
@@ -5759,6 +5760,7 @@ var
   p, p0, p1, ResultPtr: PRegExprChar;
   ResultLen, n: integer;
   Ch, QuotedChar: REChar;
+  GroupFound: boolean;
 begin
   // Check programm and input string
   if not IsProgrammOk then
@@ -5780,11 +5782,13 @@ begin
     Ch := p^;
     Inc(p);
     n := -1;
+    GroupFound := False;
     if Ch = SubstituteGroupChar then
-      FindSubstGroupIndex(p, n);
-    if n >= 0 then
+      FindSubstGroupIndex(p, n, GroupFound);
+    if GroupFound then
     begin
-      Inc(ResultLen, GrpEnd[n] - GrpStart[n]);
+      if n >= 0 then
+        Inc(ResultLen, GrpEnd[n] - GrpStart[n]);
     end
     else
     begin
@@ -5835,12 +5839,18 @@ begin
     Inc(p);
     p1 := p;
     n := -1;
+    GroupFound := False;
     if Ch = SubstituteGroupChar then
-      FindSubstGroupIndex(p, n);
-    if (n >= 0) then
+      FindSubstGroupIndex(p, n, GroupFound);
+    if GroupFound then
     begin
-      p0 := GrpStart[n];
-      p1 := GrpEnd[n];
+      if n >= 0 then
+      begin
+        p0 := GrpStart[n];
+        p1 := GrpEnd[n];
+      end
+      else
+        p1 := p0;
     end
     else
     begin
@@ -5858,7 +5868,7 @@ begin
             begin
               p := p - 1;
               // UnquoteChar expects the escaped char under the pointer
-              QuotedChar := UnQuoteChar(p);
+              QuotedChar := UnQuoteChar(p, TemplateEnd);
               p := p + 1;
               // Skip after last part of the escaped sequence - UnquoteChar stops on the last symbol of it
               p0 := @QuotedChar;
