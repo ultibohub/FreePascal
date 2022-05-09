@@ -5,7 +5,7 @@ unit fpjwarsa;
 interface
 
 uses
-  Classes, SysUtils, basenenc, fpjwt, fprsa, fpsha256, fpsha512;
+  Classes, SysUtils, basenenc, fpjwt, fprsa, fpsha256, fpsha512, fphashutils;
 
 Type
 
@@ -44,7 +44,148 @@ Type
     function ComputeASNHash(const Value: TBytes): TBytes; override;
   end;
 
+  { TJWTSignerRSAPSS }
+
+  TJWTSignerRSAPSS = Class(TJWTSigner)
+  Public
+    Class function AlgorithmName : String; override;
+    Class procedure GetHashFunc(var HashFunc: TRSAHashFuncInfo); virtual; abstract;
+    Function CreateSignature(aJWT : TJWT; aPrivateKey : TJWTKey) : String; override;
+    Function Verify(const aJWT : String; aPublicKey : TJWTKey) : Boolean; override; overload;
+  end;
+  TJWTSignerRSAPSSClass = class of TJWTSignerRSAPSS;
+
+  { TJWTSignerPS256 }
+
+  TJWTSignerPS256 = class(TJWTSignerRSAPSS)
+  public
+    class function AlgorithmName : String; override;
+    class procedure GetHashFunc(var HashFunc: TRSAHashFuncInfo); override;
+  end;
+
+  { TJWTSignerPS384 }
+
+  TJWTSignerPS384 = class(TJWTSignerRSAPSS)
+  public
+    class function AlgorithmName : String; override;
+    class procedure GetHashFunc(var HashFunc: TRSAHashFuncInfo); override;
+  end;
+
+  { TJWTSignerPS512 }
+
+  TJWTSignerPS512 = class(TJWTSignerRSAPSS)
+  public
+    class function AlgorithmName : String; override;
+    class procedure GetHashFunc(var HashFunc: TRSAHashFuncInfo); override;
+  end;
+
 implementation
+
+{ TJWTSignerPS512 }
+
+class function TJWTSignerPS512.AlgorithmName: String;
+begin
+  Result:='PS512';
+end;
+
+class procedure TJWTSignerPS512.GetHashFunc(var HashFunc: TRSAHashFuncInfo);
+begin
+  HashFunc.UseSHA512;
+end;
+
+{ TJWTSignerPS384 }
+
+class function TJWTSignerPS384.AlgorithmName: String;
+begin
+  Result:='PS384';
+end;
+
+class procedure TJWTSignerPS384.GetHashFunc(var HashFunc: TRSAHashFuncInfo);
+begin
+  HashFunc.UseSHA384;
+end;
+
+{ TJWTSignerPS256 }
+
+class function TJWTSignerPS256.AlgorithmName: String;
+begin
+  Result:='PS256';
+end;
+
+class procedure TJWTSignerPS256.GetHashFunc(var HashFunc: TRSAHashFuncInfo);
+begin
+  HashFunc.UseSHA256;
+end;
+
+{ TJWTSignerRSAPSS }
+
+class function TJWTSignerRSAPSS.AlgorithmName: String;
+begin
+  raise Exception.Create('20220503003125 abstract class');
+  Result:='RSAPSS';
+end;
+
+function TJWTSignerRSAPSS.CreateSignature(aJWT: TJWT; aPrivateKey: TJWTKey
+  ): String;
+var
+  aSignInput, aSignature: TBytes;
+  RSA: TRSA;
+  HashFunc: TRSAHashFuncInfo;
+begin
+  Result:='';
+
+  aSignInput:=GetSignInput(aJWT);
+  if length(aSignInput)=0 then
+    raise Exception.Create('20220503003238: missing SignInput');
+
+  GetHashFunc(HashFunc);
+
+  RSACreate(RSA);
+  try
+    RSAInitFromPrivateKeyDER(RSA,aPrivateKey.AsBytes);
+    SetLength(aSignature{%H-},RSA.ModulusLen);
+    if RSASSA_PSS_Sign(RSA,@aSignInput[0],length(aSignInput),@HashFunc,@aSignature[0])<RSA.ModulusLen then
+      raise Exception.Create('20220503003617');
+    Result:=Base64URL.Encode(@aSignature[0],Length(aSignature),False);
+  finally
+    RSAFree(RSA);
+  end;
+end;
+
+function TJWTSignerRSAPSS.Verify(const aJWT: String; aPublicKey: TJWTKey
+  ): Boolean;
+var
+  aHeader, theClaims, aSignature, aSignInput: String;
+  EncryptedHash: TBytes;
+  RSA: TRSA;
+  HashFunc: TRSAHashFuncInfo;
+  r: Int64;
+begin
+  Result:=false;
+  if aJWT='' then exit;
+
+  try
+    if not GetParts(aJWT,aHeader,theClaims,aSignature) then exit;
+    if aSignature='' then exit;
+
+    aSignInput:=aHeader+'.'+theClaims;
+    EncryptedHash:=Base64URL.Decode(aSignature);
+    GetHashFunc(HashFunc);
+
+    // verify hash
+    RSACreate(RSA);
+    try
+      RSAInitFromPublicKeyDER(RSA,aPublicKey.AsBytes);
+      if length(EncryptedHash)<>RSA.ModulusLen then
+        exit;
+      r:=RSASSA_PSS_Verify(RSA,@aSignInput[1],length(aSignInput),@HashFunc,@EncryptedHash[0]);
+      Result:=r=0;
+    finally
+      RSAFree(RSA);
+    end;
+  except
+  end;
+end;
 
 { TJWTSignerRS512 }
 
@@ -130,37 +271,43 @@ begin
   Result:=false;
   if aJWT='' then exit;
 
-  if not GetParts(aJWT,aHeader,theClaims,aSignature) then exit;
-  if aSignature='' then exit;
-
-  EncryptedHash:=Base64URL.Decode(aSignature);
-
-  // decrypt hash
-  RSACreate(RSA);
   try
-    RSAInitFromPublicKeyDER(RSA,aPublicKey.AsBytes);
-    SetLength(DecryptedHash{%H-},length(EncryptedHash));
-    HashLen:=RSADecryptVerify(RSA,@EncryptedHash[0],@DecryptedHash[0],length(DecryptedHash),true);
-    if HashLen<=0 then exit;
-    SetLength(DecryptedHash,HashLen);
-  finally
-    RSAFree(RSA);
+    if not GetParts(aJWT,aHeader,theClaims,aSignature) then exit;
+    if aSignature='' then exit;
+
+    EncryptedHash:=Base64URL.Decode(aSignature);
+
+    // decrypt hash
+    RSACreate(RSA);
+    try
+      RSAInitFromPublicKeyDER(RSA,aPublicKey.AsBytes);
+      SetLength(DecryptedHash{%H-},length(EncryptedHash));
+      HashLen:=RSADecryptVerify(RSA,@EncryptedHash[0],@DecryptedHash[0],length(DecryptedHash),true);
+      if HashLen<=0 then exit;
+      SetLength(DecryptedHash,HashLen);
+    finally
+      RSAFree(RSA);
+    end;
+
+    // hash of header.claims
+    aInput:=aHeader+'.'+theClaims;
+    SetLength(InputBytes{%H-},length(aInput));
+    Move(aInput[1],InputBytes[0],length(aInput));
+    ActualHash:=ComputeASNHash(InputBytes);
+
+    // check decrypted hash and actual hash fit
+    Result:=(length(DecryptedHash)=length(ActualHash))
+      and CompareMem(@DecryptedHash[0],@ActualHash[0],length(DecryptedHash));
+  except
   end;
-
-  // hash of header.claims
-  aInput:=aHeader+'.'+theClaims;
-  SetLength(InputBytes{%H-},length(aInput));
-  Move(aInput[1],InputBytes[0],length(aInput));
-  ActualHash:=ComputeASNHash(InputBytes);
-
-  // check decrypted hash and actual hash fit
-  Result:=(length(DecryptedHash)=length(ActualHash))
-    and CompareMem(@DecryptedHash[0],@ActualHash[0],length(DecryptedHash));
 end;
 
 initialization
   TJWTSignerRS256.Register;
   TJWTSignerRS384.Register;
   TJWTSignerRS512.Register;
+  TJWTSignerPS256.Register;
+  TJWTSignerPS384.Register;
+  TJWTSignerPS512.Register;
 end.
 

@@ -112,8 +112,8 @@ interface
           function  getcopy:TSymtable;
           procedure clear;virtual;
           function  checkduplicate(var s:THashedIDString;sym:TSymEntry):boolean;virtual;
-          procedure insert(sym:TSymEntry;checkdup:boolean=true);virtual;
-          procedure Delete(sym:TSymEntry);virtual;
+          procedure insertsym(sym:TSymEntry;checkdup:boolean=true);virtual;
+          procedure Deletesym(sym:TSymEntry);virtual;
           function  Find(const s:TIDString) : TSymEntry;
           function  FindWithHash(const s:THashedIDString) : TSymEntry;virtual;
           procedure insertdef(def:TDefEntry);virtual;
@@ -344,14 +344,14 @@ implementation
       end;
 
 
-    procedure TSymtable.insert(sym:TSymEntry;checkdup:boolean=true);
+    procedure TSymtable.insertsym(sym:TSymEntry;checkdup:boolean=true);
       var
         hashedid : THashedIDString;
       begin
          if checkdup then
            begin
              if sym.realname[1]='$' then
-               hashedid.id:=Copy(sym.realname,2,255)
+               hashedid.id:=Copy(sym.realname,2,maxidlen+1)
              else
                hashedid.id:=Upper(sym.realname);
              { First check for duplicates, this can change the symbol name
@@ -361,14 +361,18 @@ implementation
          { Now we can insert the symbol, any duplicate entries
            are renamed to an unique (and for users unaccessible) name }
          if sym.realname[1]='$' then
-           sym.ChangeOwnerAndName(SymList,Copy(sym.realname,2,255))
+           sym.ChangeOwnerAndName(SymList,Copy(sym.realname,2,maxidlen+1))
+{$ifdef symansistr}
+         else if length(sym.realname)>maxidlen then
+           sym.ChangeOwnerAndName(SymList,Upper(Copy(sym.realname,1,maxidlen)))
+{$endif}
          else
            sym.ChangeOwnerAndName(SymList,Upper(sym.realname));
          sym.Owner:=self;
       end;
 
 
-    procedure TSymtable.Delete(sym:TSymEntry);
+    procedure TSymtable.Deletesym(sym:TSymEntry);
       begin
         if sym.Owner<>self then
           internalerror(200611121);

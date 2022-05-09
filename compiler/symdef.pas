@@ -1544,15 +1544,17 @@ implementation
              s:=tprocdef(st.defowner).procsym.name;
              s:=s+tprocdef(st.defowner).mangledprocparanames(Length(s));
              if prefix<>'' then
-               prefix:=s+'_'+prefix
+               begin
+                 if length(prefix)>(maxidlen-length(s)-1) then
+                   begin
+                     hash:=0;
+                     hash:=UpdateFnv64(hash,prefix[1],length(prefix));
+                     prefix:='$H'+Base64Mangle(hash);
+                   end;
+                 prefix:=s+'_'+prefix
+               end
              else
                prefix:=s;
-             if length(prefix)>100 then
-               begin
-                 hash:=0;
-                 hash:=UpdateFnv64(hash,prefix[1],length(prefix));
-                 prefix:='$H'+Base64Mangle(hash);
-               end;
              st:=st.defowner.owner;
            end;
           { object/classes symtable, nested type definitions in classes require the while loop }
@@ -1560,6 +1562,12 @@ implementation
            begin
              if not (st.defowner.typ in [objectdef,recorddef]) then
               internalerror(200204174);
+             if length(prefix)>(maxidlen-length(tabstractrecorddef(st.defowner).objname^)-3) then
+               begin
+                 hash:=0;
+                 hash:=UpdateFnv64(hash,prefix[1],length(prefix));
+                 prefix:='$H'+Base64Mangle(hash);
+               end;
              prefix:=tabstractrecorddef(st.defowner).objname^+'_$_'+prefix;
              st:=st.defowner.owner;
            end;
@@ -1596,6 +1604,12 @@ implementation
           result:=result+'$_$'+prefix;
         if suffix<>'' then
           result:=result+'_$$_'+suffix;
+        if length(result)>(maxidlen-1) then
+          begin
+            hash:=0;
+            hash:=UpdateFnv64(hash,result[1],length(result));
+            result:=copy(result,1,maxidlen-(high(Base64OfUint64String)-low(Base64OfUint64String)+1)-2)+'$H'+Base64Mangle(hash);
+          end;
         { the Darwin assembler assumes that all symbols starting with 'L' are local }
         { Further, the Mac OS X 10.5 linker does not consider symbols which do not  }
         { start with '_' as regular symbols (it does not generate N_GSYM entries    }
@@ -1675,11 +1689,11 @@ implementation
 
     procedure tdefawaresymtablestack.add_helpers_and_generics(st:tsymtable;addgenerics:boolean);
       var
-        i: integer;
-        s: string;
+        s: TSymStr;
         list: TFPObjectList;
         def: tdef;
         sym : tsym;
+        i: integer;
       begin
         { search the symtable from first to last; the helper to use will be the
           last one in the list }
@@ -5100,7 +5114,7 @@ implementation
             { avoid hints about unused types (these may only be used for
               typed constant data) }
             ts.increfcount;
-            where.insert(ts);
+            where.insertsym(ts);
           end;
         symtablestack:=oldsymtablestack;
         { don't create RTTI for internal types, these are not exported }
@@ -5123,7 +5137,7 @@ implementation
         else
           pname:=@optionalname;
         sym:=cfieldvarsym.create(pname^,vs_value,def,[]);
-        symtable.insert(sym);
+        symtable.insertsym(sym);
         trecordsymtable(symtable).addfield(sym,vis_hidden);
         result:=sym;
       end;
@@ -5800,7 +5814,7 @@ implementation
                     npvs:=cparavarsym.create('$high'+paraprefix+copy(pvs.name,5,length(pvs.name)),pvs.paranr,pvs.varspez,
                       pvs.vardef,pvs.varoptions);
                   npvs.defaultconstsym:=pvs.defaultconstsym;
-                  tabstractprocdef(result).parast.insert(npvs);
+                  tabstractprocdef(result).parast.insertsym(npvs);
                 end;
               constsym:
                 begin
@@ -7853,7 +7867,7 @@ implementation
                    in the implementation, and they cannot be merged since only
                    the once in the interface must be saved to the ppu/visible
                    from other units }
-            st.insert(psym,false);
+            st.insertsym(psym,false);
           end
         else if (psym.typ<>procsym) then
           internalerror(2009111501);
@@ -7975,7 +7989,7 @@ implementation
                end;
              vmt_field:=cfieldvarsym.create('_vptr$'+objname^,vs_value,voidpointertype,[]);
              hidesym(vmt_field);
-             tObjectSymtable(symtable).insert(vmt_field);
+             tObjectSymtable(symtable).insertsym(vmt_field);
              tObjectSymtable(symtable).addfield(tfieldvarsym(vmt_field),vis_hidden);
              include(objectoptions,oo_has_vmt);
           end;

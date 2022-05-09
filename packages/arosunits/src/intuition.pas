@@ -1732,8 +1732,11 @@ type
   for the various message types.  The meaningful parameter
   packet structure definitions are defined below.}
   PMsg = ^TMsg;
-  TMsg = record
-    MethodID: PtrUInt;
+  TMsg = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
 { Class id strings for Intuition classes.
@@ -1783,44 +1786,59 @@ const
 type
   // OM_NEW and OM_SET
   PopSet = ^TopSet;
-  TopSet = record
-    MethodID: PtrUInt;
+  TopSet = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     ops_AttrList: PTagItem; // new attributes
     ops_GInfo: PGadgetInfo; // always there for gadgets, when SetGadgetAttrs() is used, but will be nil for OM_NEW
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // OM_GET
   PopGet = ^TopGet;
-  TopGet = record
+  TopGet = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
     MethodID,
-    opg_AttrID: PtrUInt;
+    opg_AttrID: LongWord;
     opg_Storage: Pointer;   // may be other types, but 'int' types are all LongWord
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // OM_ADDTAIL
 
   PopAddTail = ^TopAddTail;
-  TopAddTail = record
-    MethodID: PtrUInt;
+  TopAddTail = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     opat_List: PList;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // OM_ADDMEMBER, OM_REMMEMBER
   PopMember = ^TopMember;
-  TopMember = record
-    MethodID: PtrUInt;
+  TopMember = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     opam_Object: PObject_;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
   TopAddMember = TopMember;
   PopAddMember = ^TopAddMember;
 
   // OM_NOTIFY, and OM_UPDATE
   PopUpdate = ^TopUpdate;
-  TopUpdate = record
-    MethodID: PtrUInt;
+  TopUpdate = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     opu_AttrList: PTagItem; // new attributes
     opu_GInfo: PGadgetInfo; // non-nil when SetGadgetAttrs OR notification resulting from gadget input occurs.
     opu_Flags: LongWord;    // defined below (OPUF_*)
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
 { this flag means that the update message is being issued from
@@ -2052,13 +2070,17 @@ type
    GMR_GADGETHIT (see below), if you were hit and 0 otherwise. Note that you
    have to test, if you were hit, no matter if you are disabled or not.}
   PgpHitTest = ^TgpHitTest;
-  TgpHitTest = record
-    MethodID: PtrUInt;         // GM_HITEST or GM_HELPTEST
+  TgpHitTest = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;         // GM_HITEST or GM_HELPTEST
     gpht_GInfo: PGadgetInfo;
     gpht_Mouse: record         // These values are relative to the gadget select box for GM_HITTEST. For
       x: SmallInt;             // GM_HELPTEST they are relative to the bounding box (which is often
       y: SmallInt;             // equal to the select box).
+      pad_align: record end;   // properly pad previous field if applicable
     end;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
   GMR_GADGETHIT = $00000004; // GM_HITTEST hit
@@ -2069,11 +2091,14 @@ const
 type
   // GM_RENDER   This method is invoked to draw the gadget into a rastport.
   PgpRender = ^TgpRender;
-  TgpRender = record
-    MethodID: PtrUInt;        // GM_RENDER
+  TgpRender = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;        // GM_RENDER
     gpr_GInfo: PGadgetInfo;   // gadget context
     gpr_RPort: PRastPort;     // all ready for use
     gpr_Redraw: LongInt;      // might be a "highlight pass" (GREDRAW_*)
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
   // gpr_Redraw. Not all of these values make sense for all gadgets.
@@ -2089,8 +2114,9 @@ type
    GM_GOACTIVE and GM_HANDLEINPUT both use the same structure and return the
    same values, as defined below.}
   PgpInput = ^TgpInput;
-  TgpInput = record
-    MethodID: PtrUInt;        // GM_GOACTIVE or GM_HANDLEINPUT
+  TgpInput = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;        // GM_GOACTIVE or GM_HANDLEINPUT
     gpi_GInfo: PGadgetInfo;   //  gadget context
     gpi_IEvent: PInputEvent;  // Pointer to the InputEvent that caused the method to be invoked.
     gpi_Termination: Pointer; { Pointer to a variable that is to be set by the gadget class, if
@@ -2099,10 +2125,13 @@ type
     gpi_Mouse: record         // This struct defines the current mouse position, relative to the gadgets' bounding box.
       x: SmallInt;
       y: SmallInt;
+      pad_align: record end;  // properly pad previous field if applicable
     end;
     gpi_TabletData: PTabletData; { Pointer to TabletData structure or nil,
          if this input event did not originate from a tablet that is capable of
          sending IESUBCLASS_NEWTABLET events.}
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
   // GM_HANDLEINPUT and GM_GOACTIVE  return code flags. These are actually flags and may be or'ed.
@@ -2119,12 +2148,15 @@ const
 type
   // GM_GOINACTIVE see GM_GOACTIVE for explanation
   PgpGoInactive = ^TgpGoInactive;
-  TgpGoInactive = record
-    MethodID: PtrUInt;         // GM_GOINACTIVE
+  TgpGoInactive = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;         // GM_GOINACTIVE
     gpgi_GInfo: PGadgetInfo;
     gpgi_Abort: LongWord; { Boolean field to indicate, who wanted the gadget to go inactive. If
          this is 1 this method was sent, because intution wants the gadget to
          go inactive, if it is 0, it was the gadget itself that wanted it.}
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
 type
@@ -2134,25 +2166,31 @@ type
     a window. In this method you should re-evaluate the size of yourself. You
     are not allowed to do any rendering operation during this method!}
   PgpLayout = ^TgpLayout;
-  TgpLayout = record
-    MethodID: PtrUInt;       // GM_LAYOUT
+  TgpLayout = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;       // GM_LAYOUT
     gpl_GInfo: PGadgetInfo;
     gpl_Initial: LongWord; {Boolean that indicated, if this method was invoked, when you are added
          to a window (True) or if it is called, because the window was resized
          (False).}
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // GM_DOMAIN
   { This method is invoked to learn about the sizing requirements of your class,
    before an object is created. This is AROS specific.}
   PgpDomain = ^TgpDomain;
-  TgpDomain = record
-    MethodID: PtrUInt;       // GM_DOMAIN
+  TgpDomain = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;       // GM_DOMAIN
     gpd_GInfo: PGadgetInfo;
     gpd_RPort: PRastPort;    // RastPort to calculate dimensions for.
     gpd_Which: LONG;         // what to calculate (GDOMAIN_*)
     gpd_Domain: TIBox;       // Resulting domain
     gpd_Attrs: PTagItem;     // Additional attributes. None defines yet
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
   // gpd_Which
@@ -2275,12 +2313,15 @@ const
 type
   // IM_FRAMEBOX
   PimpFrameBox = ^TimpFrameBox;
-  TimpFrameBox = record
-    MethodID: PtrUInt;
+  TimpFrameBox = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     imp_ContentsBox: PIBox;   // input: relative box of contents
     imp_FrameBox: PIBox;      // output: rel. box of encl frame
     imp_DrInfo: PDrawInfo;    // may be nil
     imp_FrameFlags: LongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
 const
@@ -2288,43 +2329,58 @@ const
 
 type
   PimpPos = ^TimpPos;
-  TimpPos = record
+  TimpPos = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
     X: SmallInt;
     Y: SmallInt;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PimpSize = ^TimpSize;
-  TimpSize = record
+  TimpSize = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
     Width: SmallInt;
     Height: SmallInt;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // IM_DRAW, IM_DRAWFRAME
   PimpDraw = ^TimpDraw;
-  TimpDraw = record
-    MethodID: PtrUInt;
+  TimpDraw = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     imp_RPort: PRastPort;
     imp_Offset: TimpPos;
     imp_State: LongWord;
     imp_DrInfo: PDrawInfo;    // May be nil
     imp_Dimensions: TimpSize; // Only valid for IM_DRAWFRAME
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // IM_ERASE, IM_ERASEFRAME NOTE: This is a subset of TimpDraw
   PimpErase = ^TimpErase;
-  TimpErase = record
-    MethodID: PtrUInt;
+  TimpErase = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     imp_RPort: PRastPort;
     imp_Offset: TimpPos;
     imp_Dimensions: TimpSize; // // Only valid for IM_DRAWFRAME
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   // IM_HITTEST, IM_HITFRAME
   PimpHitTest = ^TimpHitTest;
-  TimpHitTest = record
-    MethodID: PtrUInt;
+  TimpHitTest = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     imp_Point: TimpPos;
     imp_Dimensions: TimpSize; // only valid for IM_HITFRAME
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
 // 'boopsi' pointer class interface
@@ -2559,8 +2615,9 @@ const
 
 type
   PmdpGetDefSizeSysImage = ^TmdpGetDefSizeSysImage;
-  TmdpGetDefSizeSysImage = record
-    MethodID: PtrUInt;
+  TmdpGetDefSizeSysImage = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     mdp_TrueColor: ShortInt;
     mdp_Dri: PDrawInfo;
     mdp_ReferenceFont: PTextFont; // In:
@@ -2569,11 +2626,14 @@ type
     mdp_Width: PLongWord;         // Out
     mdp_Height: PLongWord;        // Out
     mdp_Flags: LongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmdpDrawSysImage = ^TmdpDrawSysImage;
-  TmdpDrawSysImage = record
-    MethodID: PtrUInt;
+  TmdpDrawSysImage = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     mdp_TrueColor: ShortInt;
     mdp_Dri: PDrawInfo;
     mdp_RPort: PRastPort;
@@ -2585,11 +2645,14 @@ type
     mdp_State: LongWord;
     mdp_Flags: LongWord;
     mdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmdpGetMenuSpaces = ^TmdpGetMenuSpaces;
-  TmdpGetMenuSpaces = record
-    MethodID: PtrUInt;
+  TmdpGetMenuSpaces = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     mdp_TrueColor: ShortInt;
     mdp_InnerLeft: LongInt;      // Out
     mdp_InnerTop: LongInt;       // Out
@@ -2601,11 +2664,14 @@ type
     mdp_ItemInnerBottom: LongInt;
     mdp_MinWidth: LongInt;
     mdp_MinHeight: LongInt;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmdpDrawBackground = ^TmdpDrawBackground;
-  TmdpDrawBackground = record
-    MethodID: PtrUInt;
+  TmdpDrawBackground = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     mdp_TrueColor: ShortInt;
     mdp_RPort: PRastPort;
     mdp_X: LongInt;
@@ -2619,11 +2685,14 @@ type
     mdp_Flags: Word;
     mdp_UserBuffer: IPTR;
     mdp_MenuDecorFlags: LongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmdpInitMenu = ^TmdpInitMenu;
-  TmdpInitMenu = record
-    MethodID: PtrUInt;
+  TmdpInitMenu = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     mdp_TrueColor: SmallInt;
     mdp_RPort: PRastPort;
     mdp_Screen: PScreen;
@@ -2634,13 +2703,18 @@ type
     mdp_UserBuffer: IPTR;
     mdp_ScreenUserBuffer: IPTR;
     mdp_MenuDecorFlags: LongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmdpExitMenu = ^TmdpExitMenu;
-  TmdpExitMenu = record
-    MethodID: PtrUInt;
+  TmdpExitMenu = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     mdp_TrueColor: ShortInt;
     mdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
 const
@@ -2700,17 +2774,23 @@ const
 
 type
   PmsGetRootBitMap = ^TmsGetRootBitMap;
-  TmsGetRootBitMap = record
-    MethodID: PtrUInt;
+  TmsGetRootBitMap = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     PixelFormat: LongWord;
     Store: ^PBitMap;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmsQuery3DSupport = ^TmsQuery3DSupport;
-  TmsQuery3DSupport = record
-    MethodID: PtrUInt;
+  TmsQuery3DSupport = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     PixelFormat: LongWord;
     Store: PLongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
   MSQUERY3D_UNKNOWN  = 0; // Unsupported pixelformat or other error
@@ -2719,26 +2799,35 @@ const
   MSQUERY3D_HWDRIVER = 3; // Hardware accelerated 3D available
 type
   PmsGetDefaultGammaTables = ^TmsGetDefaultGammaTables;
-  TmsGetDefaultGammaTables = record
-    MethodID: PtrUInt;
+  TmsGetDefaultGammaTables = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     Red: PByte;         // Optional pointers to 256-byte arrays to fill in
     Green: PByte;
     Blue: PByte;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmsGetDefaultPixelFormat = ^TmsGetDefaultPixelFormat;
-  TmsGetDefaultPixelFormat = record
-    MethodID: PtrUInt;
+  TmsGetDefaultPixelFormat = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     Depth: LongWord;
     Store: PLongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmsGetPointerBounds = ^TmsGetPointerBounds;
-  TmsGetPointerBounds = record
-    MethodID: PtrUInt;
+  TmsGetPointerBounds = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     PointerType: LongWord;
     Width: PLongWord;
     Height: PLongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PmsSetDefaultGammaTables = PmsGetDefaultGammaTables;
@@ -2762,8 +2851,9 @@ const
   SDM_EXITSCREEN           = SDM_Dummy + 8;
 type
   PsdpGetDefSizeSysImage = ^TsdpGetDefSizeSysImage;
-  TsdpGetDefSizeSysImage = record
-    MethodID: PtrUInt;
+  TsdpGetDefSizeSysImage = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     sdp_TrueColor: ShortInt;
     sdp_Dri: PDrawInfo;
     sdp_ReferenceFont: PTextFont; // In:
@@ -2773,11 +2863,14 @@ type
     sdp_Height: PLongWord;        // Out
     sdp_Flags: LongWord;
     sdp_UserBuffer: LongWord;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PsdpDrawSysImage = ^TsdpDrawSysImage;
-  TsdpDrawSysImage = record
-    MethodID: PtrUInt;
+  TsdpDrawSysImage = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     sdp_TrueColor: ShortInt;
     sdp_Dri: PDrawInfo;
     sdp_RPort: PRastPort;
@@ -2789,11 +2882,14 @@ type
     sdp_State: LongWord;
     sdp_Flags: LongWord;
     sdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PsdpDrawScreenBar = ^TsdpDrawScreenBar;
-  TsdpDrawScreenBar = record
-    MethodID: PtrUInt;
+  TsdpDrawScreenBar = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     sdp_TrueColor: ShortInt;
     sdp_Dri: PDrawInfo;
     sdp_Layer: PLayer;
@@ -2801,22 +2897,28 @@ type
     sdp_Screen: PScreen;
     sdp_Flags: LongWord;
     sdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PsdpLayoutScreenGadgets = ^TsdpLayoutScreenGadgets;
-  TsdpLayoutScreenGadgets = record
-    MethodID: PtrUInt;
+  TsdpLayoutScreenGadgets = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     sdp_TrueColor: ShortInt;
     sdp_Dri: PDrawInfo;
     sdp_Layer: PLayer;
     sdp_Gadgets: PGadget;
     sdp_Flags: LongWord;
     sdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PsdpInitScreen = ^TsdpInitScreen;
-  TsdpInitScreen = record
-    MethodID: PtrUInt;
+  TsdpInitScreen = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     sdp_TrueColor: ShortInt;
     sdp_Dri: PDrawInfo;
     sdp_Screen: PScreen;
@@ -2832,13 +2934,18 @@ type
     sdp_WBorRight: ShortInt;
     sdp_WBorBottom: ShortInt;
     sdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PsdpExitScreen = ^TsdpExitScreen;
-  TsdpExitScreen = record
-    MethodID: PtrUInt;
+  TsdpExitScreen = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     sdp_TrueColor: ShortInt;
     sdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
 // ScrDecor LayoutScreenGadgets Flags
@@ -2870,8 +2977,9 @@ const
 
 type
   PwdpGetDefSizeSysImage = ^TwdpGetDefSizeSysImage;
-  TwdpGetDefSizeSysImage = record
-    MethodID: PtrUInt;
+  TwdpGetDefSizeSysImage = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Dri: PDrawInfo;
     wdp_ReferenceFont: PTextFont; // In:
@@ -2881,11 +2989,14 @@ type
     wdp_Height: PLongWord;        // Out
     wdp_Flags: LongWord;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpDrawSysImage = ^TwdpDrawSysImage;
-  TwdpDrawSysImage = record
-    MethodID: PtrUInt;
+  TwdpDrawSysImage = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Dri: PDrawInfo;
     wdp_RPort: PRastPort;
@@ -2897,22 +3008,28 @@ type
     wdp_State: LongWord;
     wdp_Flags: LongWord;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpDrawWinBorder = ^TwdpDrawWinBorder;
-  TwdpDrawWinBorder = record
-    MethodID: PtrUInt;
+  TwdpDrawWinBorder = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Dri: PDrawInfo;
     wdp_Window: PWindow;
     wdp_RPort: PRastPort;
     wdp_Flags: LongWord;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpLayoutBorderGadgets = ^TwdpLayoutBorderGadgets;
-  TwdpLayoutBorderGadgets = record
-    MethodID: PtrUInt;
+  TwdpLayoutBorderGadgets = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Dri: PDrawInfo;
     wdp_Window: PWindow;
@@ -2920,11 +3037,14 @@ type
     wdp_Flags: LongWord;
     wdp_ExtraButtons: LongWord;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpDrawBorderPropBack = ^TwdpDrawBorderPropBack;
-  TwdpDrawBorderPropBack = record
-    MethodID: PtrUInt;
+  TwdpDrawBorderPropBack = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Dri: PDrawInfo;
     wdp_Window: PWindow;
@@ -2935,11 +3055,14 @@ type
     wdp_KnobRect: Prectangle;
     wdp_Flags: LongWord;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpDrawBorderPropKnob = ^TwdpDrawBorderPropKnob;
-  TwdpDrawBorderPropKnob = record
-    MethodID: PtrUInt;
+  TwdpDrawBorderPropKnob = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
+    MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Dri: PDrawInfo;
     wdp_Window: PWindow;
@@ -2949,32 +3072,43 @@ type
     wdp_PropRect: PRectangle;
     wdp_Flags: LongWord;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpInitWindow = ^TwdpInitWindow;
-  TwdpInitWindow = record
+  TwdpInitWindow = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
     MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_UserBuffer: IPTR;
     wdp_Screen: PScreen;
     wdp_ScreenUserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpExitWindow = ^TwdpExitWindow;
-  TwdpExitWindow = record
+  TwdpExitWindow = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
     MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 
   PwdpWindowShape = ^TwdpWindowShape;
-  TwdpWindowShape = record
+  TwdpWindowShape = record  // record with stacked fields
+    {$PUSH}{$IF DEFINED(CPU32)}{$CODEALIGN RECORDMIN=4}{$ELSEIF DEFINED(CPU64)}{$CODEALIGN RECORDMIN=8}{$ENDIF}
     MethodID: LongWord;
     wdp_TrueColor: ShortInt;
     wdp_Window: PWindow;
     wdp_Width: LongInt;
     wdp_Height: LongInt;
     wdp_UserBuffer: IPTR;
+    pad_align: record end; // properly pad previous field if applicable
+    {$POP}
   end;
 const
 // WinDecor DrawWindowBorder Flags
