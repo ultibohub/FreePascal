@@ -27,7 +27,7 @@ interface
 
     uses
       globtype,verbose,cclasses,
-      aasmbase,aasmtai,aasmdata,aasmsym,
+      aasmbase,aasmtai,aasmdata,aasmdef,aasmsym,aasmcnst,
       cpubase,cgbase,cgutils,
       symtype,symdef,symsym,
       llvmbase;
@@ -36,8 +36,10 @@ interface
       { taillvm }
       taillvm = class(tai_cpu_abstract_sym)
         llvmopcode: tllvmop;
+        metadata: tai;
 
         constructor create_llvm(op: tllvmop);
+        destructor Destroy; override;
 
         { e.g. unreachable }
         constructor op_none(op : tllvmop);
@@ -143,6 +145,8 @@ interface
         procedure loadasmlist(opidx: longint; _asmlist: tasmlist);
         procedure loadcallingconvention(opidx: longint; calloption: tproccalloption);
 
+        procedure addinsmetadata(insmeta: tai);
+
         procedure landingpad_add_clause(op: tllvmop; def: tdef; kind: TAsmSymbol);
 
         { register spilling code }
@@ -188,15 +192,20 @@ interface
       { initialisation data, if any }
       initdata: tasmlist;
       namesym: tasmsymbol;
+      { associated Pascal symbol (if any), mainly for debug info generation }
+      sym: tsym;
       def: tdef;
       sec: TAsmSectiontype;
       alignment: shortint;
       flags: taillvmdeclflags;
       secname: TSymStr;
-      constructor createdecl(_namesym: tasmsymbol; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
-      constructor createdef(_namesym: tasmsymbol; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
-      constructor createtls(_namesym: tasmsymbol; _def: tdef; _alignment: shortint);
+      metadata: tai;
+
+      constructor createdecl(_namesym: tasmsymbol; _sym: tsym; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
+      constructor createdef(_namesym: tasmsymbol; _sym: tsym; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
+      constructor createtls(_namesym: tasmsymbol; _sym: tsym; _def: tdef; _alignment: shortint);
       procedure setsecname(const name: TSymStr);
+      procedure addinsmetadata(insmeta: tai);
       destructor destroy; override;
     end;
 
@@ -218,20 +227,25 @@ interface
     end;
 
 
+    TLLVMAsmData = class(TAsmDataDef)
+     fnextmetaid: cardinal;
+    end;
+
 implementation
 
 uses
   cutils, strings,
   symconst,
-  aasmcnst,aasmcpu;
+  aasmcpu;
 
     { taillvmprocdecl }
 
-    constructor taillvmdecl.createdecl(_namesym: tasmsymbol; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
+    constructor taillvmdecl.createdecl(_namesym: tasmsymbol; _sym: tsym; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
       begin
         inherited create;
         typ:=ait_llvmdecl;
         namesym:=_namesym;
+        sym:=_sym;
         def:=_def;
         initdata:=_initdata;
         sec:=_sec;
@@ -241,16 +255,16 @@ uses
       end;
 
 
-    constructor taillvmdecl.createdef(_namesym: tasmsymbol; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
+    constructor taillvmdecl.createdef(_namesym: tasmsymbol; _sym: tsym; _def: tdef; _initdata: tasmlist; _sec: tasmsectiontype; _alignment: shortint);
       begin
-        createdecl(_namesym,_def,_initdata,_sec,_alignment);
+        createdecl(_namesym,_sym,_def,_initdata,_sec,_alignment);
         include(flags,ldf_definition);
       end;
 
 
-    constructor taillvmdecl.createtls(_namesym: tasmsymbol; _def: tdef; _alignment: shortint);
+    constructor taillvmdecl.createtls(_namesym: tasmsymbol; _sym: tsym; _def: tdef; _alignment: shortint);
       begin
-        createdef(_namesym,_def,nil,sec_data,_alignment);
+        createdef(_namesym,_sym,_def,nil,sec_data,_alignment);
         include(flags,ldf_tls);
       end;
 
@@ -262,9 +276,23 @@ uses
         secname:=name;
       end;
 
+    procedure taillvmdecl.addinsmetadata(insmeta: tai);
+      begin
+        insmeta.next:=metadata;
+        metadata:=insmeta;
+      end;
+
 
     destructor taillvmdecl.destroy;
+      var
+        hp: tai;
       begin
+        while assigned(metadata) do
+          begin
+            hp:=tai(metadata.next);
+            metadata.free;
+            metadata:=hp;
+          end;
         initdata.free;
         inherited destroy;
       end;
@@ -307,6 +335,20 @@ uses
         create(a_none);
         llvmopcode:=op;
         typ:=ait_llvmins;
+      end;
+
+
+    destructor taillvm.Destroy;
+      var
+        hp: tai;
+      begin
+        while assigned(metadata) do
+          begin
+            hp:=tai(metadata.next);
+            metadata.free;
+            metadata:=hp;
+          end;
+        inherited;
       end;
 
 
@@ -506,6 +548,12 @@ uses
            callingconvention:=calloption;
            typ:=top_callingconvention;
          end;
+      end;
+
+    procedure taillvm.addinsmetadata(insmeta: tai);
+      begin
+        insmeta.next:=metadata;
+        metadata:=insmeta;
       end;
 
 
@@ -1214,4 +1262,6 @@ uses
         loadparas(1,paras);
       end;
 
+begin
+  casmdata:=TLLVMAsmData;
 end.

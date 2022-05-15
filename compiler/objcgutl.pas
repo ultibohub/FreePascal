@@ -163,6 +163,10 @@ procedure objcreatestringpoolentryintern(p: pchar; len: longint; pooltype: tcons
         { create new entry }
         current_asmdata.getlabel(strlab,alt_data);
         entry^.Data:=strlab;
+
+        { Make sure strlab has a reference }
+        strlab.increfs;
+
         getmem(pc,entry^.keylength+1);
         move(entry^.key^,pc^,entry^.keylength);
         pc[entry^.keylength]:=#0;
@@ -1898,8 +1902,6 @@ procedure MaybeGenerateObjectiveCImageInfo(globalst, localst: tsymtable);
   begin
     if (m_objectivec1 in current_settings.modeswitches) then
       begin
-        cnodeutils.GenerateObjCImageInfo;
-
         { generate rtti for all obj-c classes, protocols and categories
           defined in this module. }
         if not(target_info.system in systems_objc_nfabi) then
