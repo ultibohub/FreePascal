@@ -159,6 +159,34 @@
 -Fu%basepath%/units/$fpctarget/*
 -Fu%basepath%/units/$fpctarget/rtl
 
+#ifdef ULTIBO
+# Search for CPU specific units
+-Fu%basepath%/units/$fpctarget/$fpcsubarch
+-Fu%basepath%/units/$fpctarget/$fpcsubarch/*
+-Fu%basepath%/units/$fpctarget/$fpcsubarch/rtl
+
+#ifdef CPUARMV6
+# Search for CPU specific units
+-Fu%basepath%/units/armv6-ultibo
+-Fu%basepath%/units/armv6-ultibo/*
+-Fu%basepath%/units/armv6-ultibo/rtl
+#endif
+
+#ifdef CPUARMV7A
+# Search for CPU specific units
+-Fu%basepath%/units/armv7-ultibo
+-Fu%basepath%/units/armv7-ultibo/*
+-Fu%basepath%/units/armv7-ultibo/rtl
+#endif
+
+#ifdef CPUARMV8
+# Search for CPU specific units
+-Fu%basepath%/units/armv8-ultibo
+-Fu%basepath%/units/armv8-ultibo/*
+-Fu%basepath%/units/armv8-ultibo/rtl
+#endif
+#endif
+
 #IFDEF FPCAPACHE_1_3
 -Fu%basepath%/units/$fpctarget/httpd13/
 #ELSE
