@@ -47,6 +47,7 @@ interface
       DITemplateValueParameter,
       DINamespace,
       DIGlobalVariable,
+      DIGlobalVariableExpression,
       DISubprogram,
       DILexicalBlock,
       DILexicalBlockFile,
@@ -198,7 +199,10 @@ implementation
 
   function llvm_getmetadatareftypedconst(metadata: tai_llvmbasemetadatanode): tai_simpletypedconst;
     begin
-      result:=tai_simpletypedconst.create(llvm_metadatatype, tai_llvmmetadatareftypedconst.create(metadata));
+      if assigned(metadata) then
+        result:=tai_simpletypedconst.create(llvm_metadatatype, tai_llvmmetadatareftypedconst.create(metadata))
+      else
+        result:=nil
     end;
 
   function llvm_constrainedexceptmodestring: ansistring;
@@ -399,6 +403,7 @@ implementation
       case fkind of
         tspecialisedmetadatanodekind.DICompileUnit,
         tspecialisedmetadatanodekind.DISubprogram,
+        tspecialisedmetadatanodekind.DIGlobalVariable,
         tspecialisedmetadatanodekind.DICompositeType,
         tspecialisedmetadatanodekind.DILexicalBlock,
         tspecialisedmetadatanodekind.DIMacro:
@@ -411,7 +416,7 @@ implementation
         tspecialisedmetadatanodekind.DITemplateTypeParameter,
         tspecialisedmetadatanodekind.DITemplateValueParameter,
         tspecialisedmetadatanodekind.DINamespace,
-        tspecialisedmetadatanodekind.DIGlobalVariable,
+        tspecialisedmetadatanodekind.DIGlobalVariableExpression,
         tspecialisedmetadatanodekind.DILexicalBlockFile,
         tspecialisedmetadatanodekind.DILocation,
         tspecialisedmetadatanodekind.DILocalVariable,

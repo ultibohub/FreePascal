@@ -1199,7 +1199,7 @@ implementation
     procedure tcgprocinfo.OptimizeNodeTree;
       var
         i : integer;
-        RedoDFA: Boolean;
+        RedoDFA, changed: Boolean;
         {RedoDFA : boolean;}
       begin
        { do this before adding the entry code else the tail recursion recognition won't work,
@@ -1210,7 +1210,12 @@ implementation
          do_opttail(code,procdef);
 
        if cs_opt_constant_propagate in current_settings.optimizerswitches then
-         do_optconstpropagate(code);
+         begin
+           changed:=false;
+           repeat
+             do_optconstpropagate(code,changed);
+           until not(changed);
+         end;
 
        if (cs_opt_nodedfa in current_settings.optimizerswitches) and
          { creating dfa is not always possible }
@@ -1220,6 +1225,16 @@ implementation
            dfabuilder.createdfainfo(code);
            include(flags,pi_dfaavailable);
            RedoDFA:=false;
+
+           if cs_opt_constant_propagate in current_settings.optimizerswitches then
+             begin
+               changed:=false;
+               repeat
+                 do_optconstpropagate(code,changed);
+                 if changed then
+                   dfabuilder.redodfainfo(code);
+               until not(changed);
+             end;
 
            if (cs_opt_loopstrength in current_settings.optimizerswitches)
              { our induction variable strength reduction doesn't like

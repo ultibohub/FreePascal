@@ -4449,7 +4449,8 @@ begin
       begin
       // local var
       if (AbsIdent.Parent is TProcedureBody)
-          or (AbsIdent is TPasArgument) then
+          or (AbsIdent is TPasArgument)
+          or (AbsIdent is TPasResultElement) then
         // ok
       else
         begin
@@ -25437,22 +25438,15 @@ var
   procedure PrependClassOrRecName(var Path: string; ClassOrRec: TPasMembersType);
   begin
     if (ClassOrRec.ClassType=TPasClassType) and TPasClassType(ClassOrRec).IsExternal then
-      Prepend(Path,TPasClassType(ClassOrRec).ExternalName)
+      repeat
+        Prepend(Path,TPasClassType(ClassOrRec).ExternalName);
+        if ClassOrRec.Parent.ClassType=TPasClassType then
+          ClassOrRec := ClassOrRec.Parent as TPasClassType
+        else
+          break;
+      until false
     else
       Prepend(Path,CreateGlobalTypePath(ClassOrRec,AContext));
-  end;
-
-  procedure PrependClassOrRecNameFullPath(var Path: string; ClassOrRec: TPasMembersType);
-  begin
-    while True do
-    begin
-      PrependClassOrRecName(Path, ClassOrRec);
-
-      if ClassOrRec.Parent.ClassType=TPasClassType then
-        ClassOrRec := ClassOrRec.Parent as TPasClassType
-      else
-        Break;
-    end;
   end;
 
   function NeedsWithExpr: boolean;
@@ -25673,7 +25667,7 @@ begin
     // an external class -> use the literal
     Result:=TPasClassType(El).ExternalName;
     if El.Parent is TPasMembersType then
-      PrependClassOrRecNameFullPath(Result,TPasMembersType(El.Parent));
+      PrependClassOrRecName(Result,TPasMembersType(El.Parent));
     exit;
     end
   else if NeedsWithExpr then
@@ -25743,7 +25737,7 @@ begin
 
         if Full then
           begin
-          PrependClassOrRecNameFullPath(Result,TPasMembersType(ParentEl));
+          PrependClassOrRecName(Result,TPasMembersType(ParentEl));
           break;
           end;
 

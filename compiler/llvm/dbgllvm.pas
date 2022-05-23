@@ -35,7 +35,7 @@ interface
     uses
       cclasses,globtype,
       cgbase,
-      aasmbase,aasmtai,aasmdata,aasmcnst,aasmllvmmetadata,
+      aasmbase,aasmtai,aasmdata,aasmcnst,aasmllvm,aasmllvmmetadata,
       symbase,symconst,symtype,symdef,symsym,
       finput,
       DbgBase, dbgdwarfconst;
@@ -75,10 +75,15 @@ interface
         flocationmeta: THashSet;
         { lookup table for scope,file -> LLVMMeta info (DILexicalBlockFile, for include files) }
         flexicalblockfilemeta: THashSet;
+        { lookup table for tsym -> taillvmdecl }
+        fsymdecl: THashSet;
 
         fcunode: tai_llvmspecialisedmetadatanode;
         fenums: tai_llvmunnamedmetadatanode;
         fretainedtypes: tai_llvmunnamedmetadatanode;
+        fglobals: tai_llvmunnamedmetadatanode;
+        { reusable empty expression node }
+        femptyexpression: tai_llvmspecialisedmetadatanode;
 
         function absolute_llvm_path(const s:tcmdstr):tcmdstr;
       protected
@@ -95,6 +100,9 @@ interface
         function file_getmetanode(moduleindex: tfileposmoduleindex; fileindex: tfileposfileindex): tai_llvmspecialisedmetadatanode;
         function filepos_getmetanode(const filepos: tfileposinfo; const functionfileinfo: tfileposinfo; const functionscope: tai_llvmspecialisedmetadatanode; nolineinfo: boolean): tai_llvmspecialisedmetadatanode;
         function get_def_metatai(def:tdef): PLLVMMetaDefHashSetItem;
+
+        procedure sym_set_decl(sym: tsym; decl: tai);
+        function sym_get_decl(sym: tsym): taillvmdecl;
 
         procedure appenddef_array_internal(list: TAsmList; fordef: tdef; eledef: tdef; lowrange, highrange: asizeint);
         function getabstractprocdeftypes(list: TAsmList; def:tabstractprocdef): tai_llvmbasemetadatanode;
@@ -118,6 +126,8 @@ interface
         procedure appenddef_variant(list:TAsmList;def:tvariantdef); override;
 
         procedure appendprocdef(list:TAsmList;def:tprocdef);override;
+
+        procedure adddefinitionlocal(dinode: tai_llvmspecialisedmetadatanode; definition, local, usedispflags: boolean; out dispFlags: tsymstr);
 
         function  get_symlist_sym_offset(symlist: ppropaccesslistitem; out sym: tabstractvarsym; out offset: pint): boolean;
         procedure appendsym_var(list:TAsmList;sym:tabstractnormalvarsym);
@@ -145,6 +155,8 @@ interface
 
         procedure ensuremetainit;
         procedure resetfornewmodule;
+
+        procedure collectglobalsyms;
       public
         constructor Create;override;
         destructor Destroy;override;
@@ -162,7 +174,7 @@ implementation
       cpubase,cpuinfo,paramgr,
       fmodule,
       defutil,symtable,symcpu,ppu,
-      llvminfo,llvmbase,aasmllvm
+      llvminfo,llvmbase
       ;
 
 {$push}
@@ -298,6 +310,26 @@ implementation
           end;
       end;
 
+    procedure TDebugInfoLLVM.sym_set_decl(sym: tsym; decl: tai);
+      var
+        entry: PHashSetItem;
+      begin
+        entry:=fsymdecl.FindOrAdd(@sym,sizeof(sym));
+        if assigned(entry^.Data) then
+          internalerror(2022051701);
+        entry^.Data:=decl;
+      end;
+
+    function TDebugInfoLLVM.sym_get_decl(sym: tsym): taillvmdecl;
+      var
+        entry: PHashSetItem;
+      begin
+        result:=nil;
+        entry:=fsymdecl.Find(@sym,sizeof(sym));
+        if assigned(entry) then
+          result:=taillvmdecl(entry^.Data);
+      end;
+
     procedure TDebugInfoLLVM.appenddef_array_internal(list: TAsmList; fordef: tdef; eledef: tdef; lowrange, highrange: asizeint);
       var
         dinode,
@@ -366,7 +398,10 @@ implementation
 
     function TDebugInfoLLVM.def_meta_node(def: tdef): tai_llvmspecialisedmetadatanode;
       begin
-        result:=tai_llvmspecialisedmetadatanode(get_def_metatai(def)^.HashSetItem.Data);
+        if not is_void(def) then
+          result:=tai_llvmspecialisedmetadatanode(get_def_metatai(def)^.HashSetItem.Data)
+        else
+          result:=nil;
       end;
 
     function TDebugInfoLLVM.def_meta_ref(def: tdef): tai_simpletypedconst;
@@ -380,12 +415,15 @@ implementation
 
         fenums:=nil;
         fretainedtypes:=nil;
+        fglobals:=nil;
+        femptyexpression:=nil;
         fcunode:=nil;
 
         ffilemeta:=thashset.Create(10000,true,false);
         flocationmeta:=thashset.Create(10000,true,false);
         flexicalblockfilemeta:=thashset.Create(100,true,false);
         fdefmeta:=TLLVMMetaDefHashSet.Create(10000,true,false);
+        fsymdecl:=thashset.create(10000,true,false);
 
         defnumberlist:=TFPObjectList.create(false);
         deftowritelist:=TFPObjectList.create(false);
@@ -396,7 +434,7 @@ implementation
 
     destructor TDebugInfoLLVM.Destroy;
       begin
-        // don't free fenums/fretainedtypes, they get emitted in the assembler list
+        // don't free fenums/fretainedtypes/fglobals, they get emitted in the assembler list
         ffilemeta.free;
         ffilemeta:=nil;
         flocationmeta.free;
@@ -405,6 +443,8 @@ implementation
         flexicalblockfilemeta:=nil;
         fdefmeta.free;
         fdefmeta:=nil;
+        fsymdecl.free;
+        fsymdecl:=nil;
         defnumberlist.free;
         defnumberlist:=nil;
         deftowritelist.free;
@@ -437,6 +477,8 @@ implementation
           begin
             fenums:=tai_llvmunnamedmetadatanode.create;
             fretainedtypes:=tai_llvmunnamedmetadatanode.create;
+            fglobals:=tai_llvmunnamedmetadatanode.create;
+            femptyexpression:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DIExpression);
             fcunode:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DICompileUnit);
           end;
       end;
@@ -458,6 +500,7 @@ implementation
         flocationmeta.Clear;
         flexicalblockfilemeta.Clear;
         fdefmeta.free;
+        fsymdecl.Clear;
         { one item per def, plus some extra space in case of nested types,
           externally used types etc (it will grow further if necessary) }
         i:=current_module.localsymtable.DefList.count*4;
@@ -470,8 +513,29 @@ implementation
         fcunode:=nil;
         fenums:=nil;
         fretainedtypes:=nil;
+        fglobals:=nil;
+        femptyexpression:=nil;
       end;
 
+    procedure TDebugInfoLLVM.collectglobalsyms;
+      var
+        i: TAsmListType;
+        hp: tai;
+      begin
+        for i in globaldataasmlisttypes do
+          begin
+            if not assigned(current_asmdata.AsmLists[i]) then
+              continue;
+            hp:=tai(current_asmdata.AsmLists[i].First);
+            while assigned(hp) do
+              begin
+                if (hp.typ=ait_llvmdecl) and
+                   assigned(taillvmdecl(hp).sym) then
+                     sym_set_decl(taillvmdecl(hp).sym,hp);
+                hp:=tai(hp.next);
+              end;
+          end;
+      end;
 
     function TDebugInfoLLVM.file_getmetanode(moduleindex: tfileposmoduleindex; fileindex: tfileposfileindex): tai_llvmspecialisedmetadatanode;
       var
@@ -626,6 +690,10 @@ implementation
         ordtype: tordtype;
         dinode: tai_llvmspecialisedmetadatanode;
       begin
+        { nothing, must be referenced as "null" in the using declaration }
+        if is_void(def) then
+          exit;
+
         ordtype:=def.ordtype;
         if ordtype=customint then
           ordtype:=range_to_basetype(def.low,def.high);
@@ -657,8 +725,7 @@ implementation
             end;
           uvoid :
             begin
-              { nothing, must be referenced as "null" in the using declaration }
-              internalerror(2021111501);
+              { checked above }
             end;
           uchar,
           uwidechar :
@@ -1110,6 +1177,9 @@ implementation
         if def.typ=procdef then
           exit;
 
+        if is_void(def) then
+          exit;
+
         refdinode:=def_meta_node(def);
 
         if is_objc_class_or_protocol(def) then
@@ -1152,17 +1222,14 @@ implementation
       procedure adddispflags(dinode: tai_llvmspecialisedmetadatanode; is_definition, is_virtual: boolean);
         var
           dispflags: TSymStr;
+          islocal: boolean;
         begin
+          islocal:=
+            not((po_global in def.procoptions) and
+                (def.parast.symtablelevel<=normal_function_level));
+          adddefinitionlocal(dinode,is_definition,islocal,not(llvmflag_NoDISPFlags in llvmversion_properties[current_settings.llvmversion]),dispflags);
           if llvmflag_NoDISPFlags in llvmversion_properties[current_settings.llvmversion] then
             begin
-              dinode.addboolean('isDefinition',is_definition);
-              if is_definition then
-                begin
-                  dinode.addboolean('isLocal',
-                    not((po_global in def.procoptions) and
-                     (def.parast.symtablelevel<=normal_function_level))
-                  );
-                end;
               if is_virtual then
                 begin
                   if not(po_abstractmethod in def.procoptions) then
@@ -1171,15 +1238,6 @@ implementation
                     dinode.addenum('virtuality','DW_VIRTUALITY_pure_virtual');
                 end;
               exit;
-            end;
-
-          dispflags:='';
-          if is_definition then
-            begin
-              dispflags:='DISPFlagDefinition';
-              if not((po_global in def.procoptions) and
-                     (def.parast.symtablelevel<=normal_function_level)) then
-                dispflags:=dispflags+'|DISPFlagLocalToUnit';
             end;
 
           if is_virtual then
@@ -1351,6 +1409,27 @@ implementation
 *)
         def.dbg_state:=dbg_state_written;
       end;
+
+    procedure TDebugInfoLLVM.adddefinitionlocal(dinode: tai_llvmspecialisedmetadatanode; definition, local, usedispflags: boolean; out dispFlags: tsymstr);
+      begin
+        dispflags:='';
+        if not usedispflags then
+          begin
+            dinode.addboolean('isDefinition',definition);
+            if definition then
+              begin
+                dinode.addboolean('isLocal',local);
+              end;
+            exit;
+          end;
+
+        if definition then
+          begin
+            dispflags:='DISPFlagDefinition';
+            if local then
+              dispflags:=dispflags+'|DISPFlagLocalToUnit';
+          end;
+    end;
 
 
     function TDebugInfoLLVM.get_symlist_sym_offset(symlist: ppropaccesslistitem; out sym: tabstractvarsym; out offset: pint): boolean;
@@ -1735,20 +1814,58 @@ implementation
 
 
     procedure TDebugInfoLLVM.appendsym_staticvar(list:TAsmList;sym:tstaticvarsym);
+      var
+        decl: taillvmdecl;
+        globalvarexpression, globalvar: tai_llvmspecialisedmetadatanode;
+        dispflags: tsymstr;
+        islocal: boolean;
       begin
-        appendsym_var(list,sym);
+        decl:=sym_get_decl(sym);
+        if not assigned(decl) then
+          begin
+            list.concat(tai_comment.create(strpnew('no declaration found for '+sym.mangledname)));
+            exit;
+          end;
+        globalvar:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DIGlobalVariable);
+        list.concat(globalvar);
+
+        globalvarexpression:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DIGlobalVariableExpression);
+        globalvarexpression.addmetadatarefto('var',globalvar);
+        globalvarexpression.addmetadatarefto('expr',femptyexpression);
+        list.concat(globalvarexpression);
+        fglobals.addvalue(llvm_getmetadatareftypedconst(globalvarexpression));
+
+        decl.addinsmetadata(tai_llvmmetadatareferenceoperand.createreferenceto('dbg',globalvarexpression));
+
+        globalvar.addstring('name',symname(sym,false));
+        if not assigned(sym.owner.defowner) then
+          globalvar.addmetadatarefto('scope',fcunode)
+        else
+          globalvar.addmetadatarefto('scope',def_meta_node(tdef(sym.owner.defowner)));
+        try_add_file_metaref(globalvar,sym.fileinfo,false);
+        globalvar.addmetadatarefto('type',def_meta_node(sym.vardef));
+
+        islocal:=not(
+          ((sym.owner.symtabletype = globalsymtable) or
+          (sp_static in sym.symoptions) or
+          (vo_is_public in sym.varoptions))
+        );
+
+        adddefinitionlocal(globalvar,not(vo_is_external in sym.varoptions),islocal,false,dispflags);
+        if dispflags<>'' then
+          globalvar.addenum('spFlags',dispflags);
       end;
 
 
     procedure TDebugInfoLLVM.appendsym_localvar(list:TAsmList;sym:tlocalvarsym);
       begin
-        appendsym_var(list,sym);
+//        appendsym_var(list,sym);
       end;
 
 
     procedure TDebugInfoLLVM.appendsym_paravar(list:TAsmList;sym:tparavarsym);
       begin
-        appendsym_var(list,sym);
+//        appendsym_var(list,sym);
       end;
 
 
@@ -2036,10 +2153,15 @@ implementation
 
     function TDebugInfoLLVM.symdebugname(sym: tsym): TSymStr;
     begin
-      result:=sym.RealName;
-      if (result<>'') and
-         (result[1]='$') then
-        delete(result,1,1);
+      if ds_dwarf_cpp in current_settings.debugswitches then
+        begin
+          result:=sym.RealName;
+          if (result<>'') and
+             (result[1]='$') then
+            delete(result,1,1);
+        end
+      else
+        result:=sym.name
     end;
 
 
@@ -2180,8 +2302,8 @@ implementation
           begin
             fcunode.addmetadatarefto('enums',nil);
             fenums.free;
-            fenums:=nil;
           end;
+        fenums:=nil;
         if fretainedtypes.valuecount<>0 then
           begin
             fcunode.addmetadatarefto('retainedTypes',fretainedtypes);
@@ -2191,8 +2313,22 @@ implementation
           begin
             fcunode.addmetadatarefto('retainedTypes',nil);
             fretainedtypes.free;
-            fretainedtypes:=nil;
           end;
+        fretainedtypes:=nil;
+        if fglobals.valuecount<>0 then
+          begin
+            fcunode.addmetadatarefto('globals',fglobals);
+            current_asmdata.AsmLists[al_dwarf_info].Concat(fglobals);
+          end
+        else
+          begin
+            fcunode.addmetadatarefto('globals',nil);
+            fglobals.free;
+          end;
+        fglobals:=nil;
+        current_asmdata.AsmLists[al_dwarf_info].Concat(femptyexpression);
+        femptyexpression:=nil;
+
         if target_info.system in systems_darwin then
           fcunode.addenum('nameTableKind','GNU');
         current_asmdata.AsmLists[al_dwarf_info].Concat(fcunode);
@@ -2217,6 +2353,7 @@ implementation
 *)
         vardatatype: ttypesym;
       begin
+        ensuremetainit;
         storefilepos:=current_filepos;
         current_filepos:=current_module.mainfilepos;
 
@@ -2224,13 +2361,14 @@ implementation
         if assigned(vardatatype) then
           vardatadef:=trecorddef(vardatatype.typedef);
 
-(*
+        collectglobalsyms;
+
         { write all global/local variables. This will flag all required tdefs  }
         if assigned(current_module.globalsymtable) then
           write_symtable_syms(current_asmdata.asmlists[al_dwarf_info],current_module.globalsymtable);
         if assigned(current_module.localsymtable) then
           write_symtable_syms(current_asmdata.asmlists[al_dwarf_info],current_module.localsymtable);
-*)
+
         { write all procedures and methods. This will flag all required tdefs }
         if assigned(current_module.globalsymtable) then
           write_symtable_procdefs(current_asmdata.asmlists[al_dwarf_info],current_module.globalsymtable);
