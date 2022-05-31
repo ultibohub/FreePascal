@@ -160,6 +160,10 @@ const
   { prefix for names of class helper procsyms added to regular symtables }
   class_helper_prefix = 'CH$';
 
+  { name of the Invoke method of a function reference interface }
+  method_name_funcref_invoke_decl = 'Invoke';
+  method_name_funcref_invoke_find = 'INVOKE';
+
   { tsym.symid value in case the sym has not yet been registered }
   symid_not_registered = -2;
   { tsym.symid value in case the sym has been registered, but not put in a
@@ -214,7 +218,9 @@ type
                               "overridden" with a completely different symbol }
     sp_explicitrename,      { this is used to keep track of type renames created
                               by the user }
-    sp_generic_const
+    sp_generic_const,
+    sp_generic_unnamed_type { type symbol created for an anonymous type during
+                              an implicit function specialization }
   );
   tsymoptions=set of tsymoption;
 
@@ -435,7 +441,9 @@ type
       "varargs" modifier or Mac-Pascal ".." parameter }
     po_variadic,
     { implicitly return same type as the class instance to which the message is sent }
-    po_objc_related_result_type
+    po_objc_related_result_type,
+    { Delphi-style anonymous function }
+    po_anonymous
   );
   tprocoptions=set of tprocoption;
 
@@ -559,7 +567,9 @@ type
     oo_has_class_constructor, { the object/class has a class constructor }
     oo_has_class_destructor,  { the object/class has a class destructor  }
     oo_is_enum_class,     { the class represents an enum (JVM) }
-    oo_has_new_destructor { the object/class declares a destructor (apart from potentially inherting one from the parent) }
+    oo_has_new_destructor,{ the object/class declares a destructor (apart from potentially inherting one from the parent) }
+    oo_is_funcref,        { interface has a single Invoke method that can be directly called }
+    oo_is_invokable       { interface that is invokable like a function }
   );
   tobjectoptions=set of tobjectoption;
 
@@ -755,7 +765,6 @@ type
     itp_1byte,
     itp_emptyrec,
     itp_llvmstruct,
-    itp_vmtdef,
     itp_vmt_tstringmesssagetable,
     itp_vmt_msgint_table_entries,
     itp_vmt_tmethod_name_table,
@@ -909,7 +918,6 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
        '$1byte$',
        '$emptyrec',
        '$llvmstruct$',
-       '$vmtdef$',
        '$vmt_TStringMesssageTable$',
        '$vmt_msgint_table_entries$',
        '$vmt_tmethod_name_table$',
@@ -1099,7 +1107,8 @@ inherited_objectoptions : tobjectoptions = [oo_has_virtual,oo_has_private,oo_has
       'po_is_auto_setter',{po_is_auto_setter}
       'po_noinline',{po_noinline}
       'C-style array-of-const', {po_variadic}
-      'objc-related-result-type' {po_objc_related_result_type}
+      'objc-related-result-type', {po_objc_related_result_type}
+      'po_anonymous' {po_anonymous}
     );
 
 implementation

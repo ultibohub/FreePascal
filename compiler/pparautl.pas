@@ -26,7 +26,7 @@ unit pparautl;
 interface
 
     uses
-      symconst,symdef;
+      symtype,symconst,symdef;
 
     procedure insert_funcret_para(pd:tabstractprocdef);
     procedure insert_parentfp_para(pd:tabstractprocdef);
@@ -52,7 +52,8 @@ interface
       hcc_default_actions_parse=[hcc_check,hcc_insert_hidden_paras];
       PD_VIRTUAL_MUTEXCLPO = [po_interrupt,po_exports,po_overridingmethod,po_inline,po_staticmethod];
 
-    procedure handle_calling_convention(pd:tabstractprocdef;flags:thccflags);
+    { may take procdef, procvardef or defs for which is_funcref is true }
+    procedure handle_calling_convention(pd_or_invkdef:tdef;flags:thccflags);
     function proc_add_definition(var currpd:tprocdef):boolean;
 
     { create "parent frame pointer" record skeleton for procdef, in which local
@@ -65,7 +66,7 @@ implementation
     uses
       globals,globtype,cclasses,cutils,verbose,systems,fmodule,
       tokens,
-      symtype,symbase,symsym,symtable,symutil,defutil,defcmp,blockutl,
+      symbase,symsym,symtable,symutil,defutil,defcmp,blockutl,
 {$ifdef jvm}
       jvmdef,
 {$endif jvm}
@@ -83,12 +84,14 @@ implementation
         if not(pd.proctypeoption in [potype_constructor,potype_destructor]) and
            not is_void(pd.returndef) and
            not (df_generic in pd.defoptions) and
+           { if this was originally an anonymous function then this was already
+             done earlier }
+           not ((pd.typ=procdef) and tprocdef(pd).was_anonymous) and
            paramanager.ret_in_param(pd.returndef,pd) then
          begin
            storepos:=current_tokenpos;
            if pd.typ=procdef then
             current_tokenpos:=tprocdef(pd).fileinfo;
-
 {$if defined(i386)}
            { For left to right add it at the end to be delphi compatible.
              In the case of safecalls with safecal-exceptions support the
@@ -240,7 +243,10 @@ implementation
           begin
              if (pd.typ=procdef) and
                 assigned(tprocdef(pd).struct) and
-                (pd.parast.symtablelevel=normal_function_level) then
+                (
+                  (pd.parast.symtablelevel=normal_function_level) or
+                  (po_anonymous in pd.procoptions)
+                ) then
               begin
                 { static class methods have no hidden self/vmt pointer }
                 if pd.no_self_node then
@@ -285,8 +291,12 @@ implementation
                       vsp:=vs_var;
                     hdef:=selfdef;
                   end;
-                vs:=cparavarsym.create('$self',paranr_self,vsp,hdef,[vo_is_self,vo_is_hidden_para]);
-                pd.parast.insertsym(vs);
+                vs:=tparavarsym(pd.parast.find('self'));
+                if not assigned(vs) or (vs.typ<>paravarsym) or (vs.vardef<>hdef) then
+                  begin
+                    vs:=cparavarsym.create('$self',paranr_self,vsp,hdef,[vo_is_self,vo_is_hidden_para]);
+                    pd.parast.insertsym(vs);
+                  end;
 
                 current_tokenpos:=storepos;
               end;
@@ -505,8 +515,16 @@ implementation
       end;
 
 
-    procedure handle_calling_convention(pd:tabstractprocdef;flags:thccflags);
+    procedure handle_calling_convention(pd_or_invkdef:tdef;flags:thccflags);
+      var
+        pd : tabstractprocdef;
       begin
+        if is_funcref(pd_or_invkdef) then
+          pd:=get_invoke_procdef(tobjectdef(pd_or_invkdef))
+        else if pd_or_invkdef.typ in [procdef,procvardef] then
+          pd:=tabstractprocdef(pd_or_invkdef)
+        else
+          internalerror(2022012502);
         if hcc_check in flags then
           begin
             { set the default calling convention if none provided }

@@ -46,8 +46,9 @@ interface
           cpo_ignoreframepointer,     // ignore frame pointer parameter (for assignment-compatibility of global procedures to nested procvars)
           cpo_compilerproc,
           cpo_rtlproc,
-          cpo_generic                 // two different undefined defs (or a constraint in the forward) alone or in open arrays are
+          cpo_generic,                // two different undefined defs (or a constraint in the forward) alone or in open arrays are
                                       // treated as exactly equal (also in open arrays) if they are owned by their respective procdefs
+          cpo_ignoreself              // ignore Self parameter, but leave other hidden parameters
        );
 
        tcompare_paras_options = set of tcompare_paras_option;
@@ -107,7 +108,9 @@ interface
           tc_array_2_dynarray,
           tc_elem_2_openarray,
           tc_arrayconstructor_2_dynarray,
-          tc_arrayconstructor_2_array
+          tc_arrayconstructor_2_array,
+          tc_anonproc_2_funcref,
+          tc_procvar_2_funcref
        );
 
     function compare_defs_ext(def_from,def_to : tdef;
@@ -150,6 +153,12 @@ interface
     { changed first argument type to pabstractprocdef so that it can also be }
     { used to test compatibility between two pprocvardefs (JM)               }
     function proc_to_procvar_equal(def1:tabstractprocdef;def2:tprocvardef;checkincompatibleuniv: boolean):tequaltype;
+
+    { True if a function can be assigned to a function reference }
+    function proc_to_funcref_equal(def1:tabstractprocdef;def2:tobjectdef):tequaltype;
+
+    { Checks if an funcref interface can be assigned to the other }
+    function funcref_equal(def1,def2:tobjectdef):tequaltype;
 
     { Parentdef is the definition of a method defined in a parent class or interface }
     { Childdef is the definition of a method defined in a child class, interface or  }
@@ -194,6 +203,9 @@ implementation
       begin
         result:=equal_defs(TImplementedInterface(intffrom).IntfDef,TImplementedInterface(intfto).IntfDef);
       end;
+
+
+    function proc_to_funcref_conv(def1:tabstractprocdef;def2:tobjectdef):tequaltype;forward;
 
 
     function compare_defs_ext(def_from,def_to : tdef;
@@ -1765,7 +1777,8 @@ implementation
                    begin
                      { proc -> procvar }
                      if (m_tp_procvar in current_settings.modeswitches) or
-                        (m_mac_procvar in current_settings.modeswitches) then
+                        (m_mac_procvar in current_settings.modeswitches) or
+                        (po_anonymous in tprocdef(def_from).procoptions) then
                       begin
                         subeq:=proc_to_procvar_equal(tprocdef(def_from),tprocvardef(def_to),cdo_warn_incompatible_univ in cdoptions);
                         if subeq>te_incompatible then
@@ -1859,6 +1872,28 @@ implementation
                    doconv:=tc_char_2_string;
                    eq:=te_convert_l2
                  end
+               else if is_funcref(def_to) and
+                   (def_from.typ=procdef) and
+                   (po_anonymous in tprocdef(def_from).procoptions) then
+                 begin
+                   subeq:=proc_to_funcref_conv(tprocdef(def_from),tobjectdef(def_to));
+                   if subeq>te_incompatible then
+                     begin
+                       doconv:=tc_anonproc_2_funcref;
+                       if subeq>te_convert_l5 then
+                         eq:=pred(subeq)
+                       else
+                         eq:=subeq;
+                     end;
+                 end
+               else if is_funcref(def_to) and
+                   is_funcref(def_from) and
+                   not (cdo_equal_check in cdoptions) then
+                 begin
+                   eq:=funcref_equal(tobjectdef(def_from),tobjectdef(def_to));
+                   if eq>=te_equal then
+                     doconv:=tc_equal;
+                 end
                else
                { specific to implicit pointer object types }
                 if is_implicit_pointer_object_type(def_to) then
@@ -1922,6 +1957,19 @@ implementation
                        eq:=te_convert_l1;
                        doconv:=tc_equal;
                      end
+                   else if is_funcref(def_to) and
+                     (def_from.typ in [procdef,procvardef]) then
+                     begin
+                       subeq:=proc_to_funcref_conv(tabstractprocdef(def_from),tobjectdef(def_to));
+                       if subeq>te_incompatible then
+                         begin
+                           doconv:=tc_procvar_2_funcref;
+                           if subeq>te_convert_l5 then
+                             eq:=pred(subeq)
+                           else
+                             eq:=subeq;
+                         end;
+                     end
                    else if (def_from.typ=variantdef) and is_interfacecom_or_dispinterface(def_to) then
                      begin
                      { corbainterfaces not accepted, until we have
@@ -1940,7 +1988,10 @@ implementation
                    }
                    else if (not(target_info.system in systems_jvm) and
                        ((def_from.typ=enumdef) or
-                        (def_from.typ=orddef))) and
+                        (
+                          (def_from.typ=orddef) and
+                          not is_void(def_from)
+                        ))) and
                       (m_delphi in current_settings.modeswitches) and
                       (cdo_explicit in cdoptions) then
                      begin
@@ -2223,13 +2274,69 @@ implementation
     function compare_paras(para1,para2 : TFPObjectList; acp : tcompare_paras_type; cpoptions: tcompare_paras_options):tequaltype;
 
       var
+         i1,i2     : byte;
+
+      procedure skip_args;
+        var
+          skipped : boolean;
+        begin
+          repeat
+            skipped:=false;
+            if cpo_ignorehidden in cpoptions then
+              begin
+                while (i1<para1.count) and
+                      (vo_is_hidden_para in tparavarsym(para1[i1]).varoptions) do
+                  begin
+                    inc(i1);
+                    skipped:=true;
+                  end;
+                while (i2<para2.count) and
+                      (vo_is_hidden_para in tparavarsym(para2[i2]).varoptions) do
+                  begin
+                    inc(i2);
+                    skipped:=true;
+                  end;
+              end;
+            if cpo_ignoreself in cpoptions then
+              begin
+                if (i1<para1.count) and
+                   (vo_is_self in tparavarsym(para1[i1]).varoptions) then
+                  begin
+                    inc(i1);
+                    skipped:=true;
+                  end;
+                if (i2<para2.count) and
+                   (vo_is_self in tparavarsym(para2[i2]).varoptions) then
+                  begin
+                    inc(i2);
+                    skipped:=true;
+                  end;
+              end;
+            if cpo_ignoreframepointer in cpoptions then
+              begin
+                if (i1<para1.count) and
+                   (vo_is_parentfp in tparavarsym(para1[i1]).varoptions) then
+                  begin
+                    inc(i1);
+                    skipped:=true;
+                  end;
+                if (i2<para2.count) and
+                   (vo_is_parentfp in tparavarsym(para2[i2]).varoptions) then
+                  begin
+                    inc(i2);
+                    skipped:=true;
+                  end;
+              end;
+          until not skipped;
+        end;
+
+      var
         currpara1,
         currpara2 : tparavarsym;
         eq,lowesteq : tequaltype;
         hpd       : tprocdef;
         convtype  : tconverttype;
         cdoptions : tcompare_defs_options;
-        i1,i2     : byte;
       begin
          compare_paras:=te_incompatible;
          cdoptions:=[cdo_parameter,cdo_check_operator,cdo_allow_variant,cdo_strict_undefined_check];
@@ -2238,24 +2345,7 @@ implementation
          lowesteq:=high(tequaltype);
          i1:=0;
          i2:=0;
-         if cpo_ignorehidden in cpoptions then
-           begin
-             while (i1<para1.count) and
-                   (vo_is_hidden_para in tparavarsym(para1[i1]).varoptions) do
-               inc(i1);
-             while (i2<para2.count) and
-                   (vo_is_hidden_para in tparavarsym(para2[i2]).varoptions) do
-               inc(i2);
-           end;
-         if cpo_ignoreframepointer in cpoptions then
-           begin
-             if (i1<para1.count) and
-                (vo_is_parentfp in tparavarsym(para1[i1]).varoptions) then
-               inc(i1);
-             if (i2<para2.count) and
-                (vo_is_parentfp in tparavarsym(para2[i2]).varoptions) then
-               inc(i2);
-           end;
+         skip_args;
          while (i1<para1.count) and (i2<para2.count) do
            begin
              eq:=te_incompatible;
@@ -2433,24 +2523,7 @@ implementation
                 lowesteq:=eq;
               inc(i1);
               inc(i2);
-              if cpo_ignorehidden in cpoptions then
-                begin
-                  while (i1<para1.count) and
-                        (vo_is_hidden_para in tparavarsym(para1[i1]).varoptions) do
-                    inc(i1);
-                  while (i2<para2.count) and
-                        (vo_is_hidden_para in tparavarsym(para2[i2]).varoptions) do
-                    inc(i2);
-                end;
-              if cpo_ignoreframepointer in cpoptions then
-                begin
-                  if (i1<para1.count) and
-                     (vo_is_parentfp in tparavarsym(para1[i1]).varoptions) then
-                    inc(i1);
-                  if (i2<para2.count) and
-                     (vo_is_parentfp in tparavarsym(para2[i2]).varoptions) then
-                    inc(i2);
-                end;
+              skip_args;
            end;
          { when both lists are empty then the parameters are equal. Also
            when one list is empty and the other has a parameter with default
@@ -2463,52 +2536,67 @@ implementation
       end;
 
 
-    function proc_to_procvar_equal(def1:tabstractprocdef;def2:tprocvardef;checkincompatibleuniv: boolean):tequaltype;
+    function proc_to_procvar_equal_internal(def1:tabstractprocdef;def2:tabstractprocdef;checkincompatibleuniv,ignoreself: boolean):tequaltype;
       var
         eq: tequaltype;
         po_comp: tprocoptions;
         pa_comp: tcompare_paras_options;
+        captured : tfplist;
+        dstisfuncref : boolean;
       begin
-         proc_to_procvar_equal:=te_incompatible;
+         proc_to_procvar_equal_internal:=te_incompatible;
          if not(assigned(def1)) or not(assigned(def2)) then
            exit;
          { check for method pointer and local procedure pointer:
              a) anything but procvars can be assigned to blocks
-             b) if one is a procedure of object, the other also has to be one
+             b) depending on their captured symbols anonymous functions can be
+                assigned to global, method or nested procvars
+             c) anything can be assigned to function references
+             d) if one is a procedure of object, the other also has to be one
                 ("object static procedure" is equal to procedure as well)
                 (except for block)
-             c) if one is a pure address, the other also has to be one
+             e) if one is a pure address, the other also has to be one
                 except if def1 is a global proc and def2 is a nested procdef
                 (global procedures can be converted into nested procvars)
-             d) if def1 is a nested procedure, then def2 has to be a nested
+             f) if def1 is a nested procedure, then def2 has to be a nested
                 procvar and def1 has to have the po_delphi_nested_cc option
                 or does not use parentfp
-             e) if def1 is a procvar, def1 and def2 both have to be nested or
+             g) if def1 is a procvar, def1 and def2 both have to be nested or
                 non-nested (we don't allow assignments from non-nested to
                 nested procvars to make sure that we can still implement
                 nested procvars using trampolines -- e.g., this would be
                 necessary for LLVM or CIL as long as they do not have support
                 for Delphi-style frame pointer parameter passing) }
-         if is_block(def2) then                                     { a) }
+         if is_block(def2) or                                                           { a) }
+            (po_anonymous in def1.procoptions) or                                       { b) }
+            (
+              (po_is_function_ref in def2.procoptions) and
+              (
+                (def1.typ<>procdef) or
+                not (po_delphi_nested_cc in def1.procoptions)
+              )                                                                         { c) }
+            ) then
            { can't explicitly check against procvars here, because
              def1 may already be a procvar due to a proc_to_procvar;
              this is checked in the type conversion node itself -> ok }
          else if
-            ((def1.is_methodpointer and not (po_staticmethod in def1.procoptions))<> { b) }
+            ((def1.is_methodpointer and not (po_staticmethod in def1.procoptions))<> { d) }
              (def2.is_methodpointer and not (po_staticmethod in def2.procoptions))) or
-            ((def1.is_addressonly<>def2.is_addressonly) and         { c) }
+            ((def1.is_addressonly<>def2.is_addressonly) and         { e) }
              (is_nested_pd(def1) or
               not is_nested_pd(def2))) or
-            ((def1.typ=procdef) and                                 { d) }
+            ((def1.typ=procdef) and                                 { f) }
              is_nested_pd(def1) and
              (not(po_delphi_nested_cc in def1.procoptions) or
               not is_nested_pd(def2))) or
-            ((def1.typ=procvardef) and                              { e) }
+            ((def1.typ=procvardef) and                              { g) }
              (is_nested_pd(def1)<>is_nested_pd(def2))) then
            exit;
          pa_comp:=[cpo_ignoreframepointer];
          if is_block(def2) then
            include(pa_comp,cpo_ignorehidden);
+         if (po_anonymous in def1.procoptions) or ignoreself then
+           include(pa_comp,cpo_ignoreself);
          if checkincompatibleuniv then
            include(pa_comp,cpo_warn_incompatible_univ);
          { check return value and options, methodpointer is already checked }
@@ -2539,9 +2627,120 @@ implementation
                 { in case of non-block to block, we need a type conversion }
                 if (po_is_block in def1.procoptions) <> (po_is_block in def2.procoptions) then
                   eq:=te_convert_l1;
+                { for anonymous functions check whether their captured symbols are
+                  compatible with the target }
+                if po_anonymous in def1.procoptions then
+                  begin
+                    if def1.typ<>procdef then
+                      internalerror(2021052602);
+                    captured:=tprocdef(def1).capturedsyms;
+                    { a function reference can capture anything, but they're
+                      rather expensive, so cheaper overloads are preferred }
+                    dstisfuncref:=assigned(def2.owner) and
+                        assigned(def2.owner.defowner) and
+                        is_funcref(tdef(def2.owner.defowner));
+                    { if no symbol was captured an anonymous function is
+                      compatible to all four types of function pointers, but we
+                      might need to generate its code differently (e.g. get rid
+                      of parentfp parameter for global functions); the order for
+                      this is:
+                        - procedure variable
+                        - method variable
+                        - function reference
+                        - nested procvar }
+                    if not assigned(captured) or (captured.count=0) then
+                      begin
+                        if po_methodpointer in def2.procoptions then
+                          eq:=te_convert_l2
+                        else if po_delphi_nested_cc in def2.procoptions then
+                          eq:=te_convert_l4
+                        else if dstisfuncref then
+                          eq:=te_convert_l3
+                        else
+                          eq:=te_convert_l1
+                      end
+                    { if only a Self was captured then the function is not
+                      compatible to normal function pointers; the order for this
+                      is:
+                        - method variable
+                        - function reference
+                        - nested function }
+                    else if (captured.count=1) and (tsym(pcapturedsyminfo(captured[0])^.sym).typ in [localvarsym,paravarsym]) and
+                         (vo_is_self in tabstractvarsym(pcapturedsyminfo(captured[0])^.sym).varoptions) then
+                      begin
+                        if po_methodpointer in def2.procoptions then
+                          eq:=te_convert_l1
+                        else if po_delphi_nested_cc in def2.procoptions then
+                          eq:=te_convert_l3
+                        else if dstisfuncref then
+                          eq:=te_convert_l2
+                        else
+                          eq:=te_incompatible;
+                      end
+                    { otherwise it's compatible to nested function pointers and
+                      function references }
+                    else
+                      begin
+                        if dstisfuncref then
+                          eq:=te_convert_l1
+                        else if po_delphi_nested_cc in def2.procoptions then
+                          eq:=te_convert_l2
+                        else
+                          eq:=te_incompatible;
+                      end;
+                  end;
               end;
-            proc_to_procvar_equal:=eq;
+            proc_to_procvar_equal_internal:=eq;
           end;
+      end;
+
+
+    function proc_to_procvar_equal(def1:tabstractprocdef;def2:tprocvardef;checkincompatibleuniv: boolean):tequaltype;
+      begin
+        result:=proc_to_procvar_equal_internal(def1,def2,checkincompatibleuniv,false);
+      end;
+
+
+    function proc_to_funcref_conv(def1:tabstractprocdef;def2:tobjectdef):tequaltype;
+      var
+        invoke : tprocdef;
+      begin
+        result:=te_incompatible;
+        if not assigned(def1) or not assigned(def2) then
+          exit;
+        if not is_invokable(def2) then
+          internalerror(2022011601);
+        invoke:=get_invoke_procdef(def2);
+        result:=proc_to_procvar_equal_internal(def1,invoke,false,true);
+      end;
+
+
+    function proc_to_funcref_equal(def1:tabstractprocdef;def2:tobjectdef):tequaltype;
+      begin
+        result:=proc_to_funcref_conv(def1,def2);
+        { as long as the two methods are considered convertible we consider the
+          procdef and the function reference as equal }
+        if result>te_convert_operator then
+          result:=te_equal;
+      end;
+
+
+    function funcref_equal(def1,def2:tobjectdef):tequaltype;
+      var
+        invoke1,
+        invoke2 : tprocdef;
+      begin
+        if not is_funcref(def1) then
+          internalerror(2022010714);
+        if not is_funcref(def2) then
+          internalerror(2022010715);
+        invoke1:=get_invoke_procdef(def1);
+        invoke2:=get_invoke_procdef(def2);
+        result:=proc_to_procvar_equal_internal(invoke1,invoke2,false,true);
+        { as long as the two methods are considered convertible we consider the
+          two function references as equal }
+        if result>te_convert_operator then
+          result:=te_equal;
       end;
 
 
@@ -2657,6 +2856,13 @@ implementation
           begin
             result:=false;
             exit;
+          end;
+
+        if is_funcref(realself) and is_funcref(otherdef) then
+          begin
+            result:=(funcref_equal(tobjectdef(realself),tobjectdef(otherdef))>=te_equal);
+            if result then
+              exit;
           end;
 
         { Objective-C protocols and Java interfaces can use multiple

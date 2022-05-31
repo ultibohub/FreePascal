@@ -382,16 +382,30 @@ interface
     { returns true of def is a methodpointer }
     function is_methodpointer(def : tdef) : boolean;
 
+    { returns true if def is a function reference }
+    function is_funcref(def:tdef):boolean;
+
+    { returns true if def is an invokable interface }
+    function is_invokable(def:tdef):boolean;
+
     { returns true if def is a C "block" }
     function is_block(def: tdef): boolean;
 
     { returns the TTypeKind value of the def }
     function get_typekind(def: tdef): byte;
 
+    { returns the Invoke procdef of a function reference interface }
+    function get_invoke_procdef(def:tobjectdef):tprocdef;
+
+    { returns whether the invokable has an Invoke overload that can be called
+      without arguments }
+    function invokable_has_argless_invoke(def:tobjectdef):boolean;
+
 implementation
 
     uses
        verbose,cutils,
+       symsym,
        cpuinfo;
 
     { returns true, if def uses FPU }
@@ -1894,6 +1908,18 @@ implementation
       end;
 
 
+    function is_funcref(def:tdef):boolean;
+      begin
+        result:=(def.typ=objectdef) and (oo_is_funcref in tobjectdef(def).objectoptions);
+      end;
+
+
+    function is_invokable(def:tdef):boolean;
+      begin
+        result:=(def.typ=objectdef) and (oo_is_invokable in tobjectdef(def).objectoptions);
+      end;
+
+
     function is_block(def: tdef): boolean;
       begin
         result:=(def.typ=procvardef) and (po_is_block in tprocvardef(def).procoptions)
@@ -1996,6 +2022,74 @@ implementation
           else
             result:=tkUnknown;
         end;
+      end;
+
+
+    function get_invoke_procdef(def:tobjectdef):tprocdef;
+      var
+        sym : tsym;
+      begin
+        repeat
+          if not is_invokable(def) then
+            internalerror(2022011701);
+          sym:=tsym(def.symtable.find(method_name_funcref_invoke_find));
+          if assigned(sym) and (sym.typ<>procsym) then
+            sym:=nil;
+          def:=def.childof;
+        until assigned(sym) or not assigned(def);
+        if not assigned(sym) then
+          internalerror(2021041001);
+        if sym.typ<>procsym then
+          internalerror(2021041002);
+        if tprocsym(sym).procdeflist.count=0 then
+          internalerror(2021041003);
+        result:=tprocdef(tprocsym(sym).procdeflist[0]);
+      end;
+
+
+    function invokable_has_argless_invoke(def:tobjectdef):boolean;
+      var
+        i,j : longint;
+        sym : tsym;
+        pd : tprocdef;
+        para : tparavarsym;
+        allok : boolean;
+      begin
+        result:=false;
+        repeat
+          if not is_invokable(def) then
+            internalerror(2022020701);
+          sym:=tsym(def.symtable.find(method_name_funcref_invoke_find));
+          if assigned(sym) and (sym.typ=procsym) then
+            begin
+              for i:=0 to tprocsym(sym).procdeflist.count-1 do
+                begin
+                  pd:=tprocdef(tprocsym(sym).procdeflist[i]);
+                  if (pd.paras.count=0) or
+                      (
+                        (pd.paras.count=1) and
+                        (vo_is_result in tparavarsym(pd.paras[0]).varoptions)
+                      ) then
+                    exit(true);
+                  allok:=true;
+                  for j:=0 to pd.paras.count-1 do
+                    begin
+                      para:=tparavarsym(pd.paras[j]);
+                      if vo_is_hidden_para in para.varoptions then
+                        continue;
+                      if assigned(para.defaultconstsym) then
+                        continue;
+                      allok:=false;
+                      break;
+                    end;
+                  if allok then
+                    exit(true);
+                end;
+              if not (sp_has_overloaded in sym.symoptions) then
+                break;
+            end;
+          def:=def.childof;
+        until not assigned(def);
       end;
 
 end.

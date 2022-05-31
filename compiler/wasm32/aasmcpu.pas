@@ -539,6 +539,14 @@ uses
           a_end_try,
           a_catch_all:
             result:=1;
+          a_i32_trunc_sat_f32_s,
+          a_i32_trunc_sat_f32_u,
+          a_i32_trunc_sat_f64_s,
+          a_i32_trunc_sat_f64_u,
+          a_i64_trunc_sat_f32_s,
+          a_i64_trunc_sat_f32_u,
+          a_i64_trunc_sat_f64_s,
+          a_i64_trunc_sat_f64_u,
           a_memory_size,
           a_memory_grow:
             result:=2;
@@ -882,6 +890,30 @@ uses
                     end;
                   else
                     internalerror(2021092710);
+                end;
+            end;
+          a_memory_init:
+            begin
+              if ops<>1 then
+                internalerror(2022052802);
+              with oper[0]^ do
+                case typ of
+                  top_const:
+                    result:=3+UlebSize(val);
+                  else
+                    internalerror(2022052803);
+                end;
+            end;
+          a_data_drop:
+            begin
+              if ops<>1 then
+                internalerror(2022052804);
+              with oper[0]^ do
+                case typ of
+                  top_const:
+                    result:=2+UlebSize(val);
+                  else
+                    internalerror(2022052805);
                 end;
             end;
           else
@@ -1856,6 +1888,75 @@ uses
                   else
                     internalerror(2021092710);
                 end;
+            end;
+          a_memory_init:
+            begin
+              WriteByte($FC);
+              WriteByte($08);
+              if ops<>1 then
+                internalerror(2022052806);
+              with oper[0]^ do
+                case typ of
+                  top_const:
+                    WriteUleb(val);
+                  else
+                    internalerror(2022052807);
+                end;
+              WriteByte($00);
+            end;
+          a_data_drop:
+            begin
+              WriteByte($FC);
+              WriteByte($09);
+              if ops<>1 then
+                internalerror(2022052808);
+              with oper[0]^ do
+                case typ of
+                  top_const:
+                    WriteUleb(val);
+                  else
+                    internalerror(2022052809);
+                end;
+            end;
+          a_i32_trunc_sat_f32_s:
+            begin
+              WriteByte($FC);
+              WriteByte($00);
+            end;
+          a_i32_trunc_sat_f32_u:
+            begin
+              WriteByte($FC);
+              WriteByte($01);
+            end;
+          a_i32_trunc_sat_f64_s:
+            begin
+              WriteByte($FC);
+              WriteByte($02);
+            end;
+          a_i32_trunc_sat_f64_u:
+            begin
+              WriteByte($FC);
+              WriteByte($03);
+            end;
+          a_i64_trunc_sat_f32_s:
+            begin
+              WriteByte($FC);
+              WriteByte($04);
+            end;
+          a_i64_trunc_sat_f32_u:
+            begin
+              WriteByte($FC);
+              WriteByte($05);
+            end;
+          a_i64_trunc_sat_f64_s:
+            begin
+              WriteByte($FC);
+              WriteByte($06);
+            end;
+          a_i64_trunc_sat_f64_u:
+            begin
+              WriteByte($FC);
+              WriteByte($07);
             end;
           else
             internalerror(2021092624);

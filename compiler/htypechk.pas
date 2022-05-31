@@ -1195,6 +1195,7 @@ implementation
       begin
          if not(m_nested_procvars in current_settings.modeswitches) and
             (from_def.parast.symtablelevel>normal_function_level) and
+            not (po_anonymous in from_def.procoptions) and
             (to_def.typ=procvardef) then
            CGMessage(type_e_cannot_local_proc_to_procvar);
       end;
@@ -2130,6 +2131,18 @@ implementation
                  (m_mac in current_settings.modeswitches) and
                  is_ambiguous_funcret_load(p.left,realprocdef) then
                 tmpeq:=proc_to_procvar_equal(realprocdef,tprocvardef(def_to),false);
+              if tmpeq<>te_incompatible then
+                eq:=tmpeq;
+            end;
+          objectdef :
+            begin
+              tmpeq:=te_incompatible;
+              { in tp/macpas mode proc -> funcref is allowed }
+              if ((m_tp_procvar in current_settings.modeswitches) or
+                  (m_mac_procvar in current_settings.modeswitches)) and
+                 (p.left.nodetype=calln) and
+                 is_invokable(def_to) then
+                tmpeq:=proc_to_funcref_equal(tprocdef(tcallnode(p.left).procdefinition),tobjectdef(def_to));
               if tmpeq<>te_incompatible then
                 eq:=tmpeq;
             end;

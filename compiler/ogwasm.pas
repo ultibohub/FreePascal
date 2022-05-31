@@ -169,7 +169,7 @@ interface
 implementation
 
     uses
-      verbose;
+      verbose,version,globals;
 
     procedure WriteUleb5(d: tdynamicarray; v: uint64);
       var
@@ -259,9 +259,25 @@ implementation
           result:=result or (uint64(b and 127) shl shift);
           inc(shift,7);
         until (b and 128)=0;
+{$ifopt Q+}
+{$define overflowon}
+{$Q-}
+{$endif}
+{$ifopt R+}
+{$define rangeon}
+{$R-}
+{$endif}
         if (b and 64)<>0 then
           result:=result or (high(uint64) shl shift);
       end;
+{$ifdef overflowon}
+{$Q+}
+{$undef overflowon}
+{$endif}
+{$ifdef rangeon}
+{$R+}
+{$undef rangeon}
+{$endif}
 
     procedure AddSleb5(d: tdynamicarray; v: int64);
       var
@@ -1026,7 +1042,7 @@ implementation
                         internalerror(2021092509);
                       objsec.Data.seek(objrel.DataOffset);
                       if TWasmObjSymbol(objrel.symbol).FuncIndex<0 then
-                        internalerror(2022012401)
+                        message1(asmw_e_illegal_unset_index,objrel.symbol.name)
                       else
                         WriteUleb5(objsec.Data,TWasmObjSymbol(objrel.symbol).FuncIndex);
                     end;
@@ -1068,7 +1084,7 @@ implementation
                         internalerror(2021092509);
                       objsec.Data.seek(objrel.DataOffset);
                       if TWasmObjSymbol(objrel.symbol).GlobalIndex<0 then
-                        internalerror(2022012402)
+                        message1(asmw_e_illegal_unset_index,objrel.symbol.name)
                       else
                         WriteUleb5(objsec.Data,TWasmObjSymbol(objrel.symbol).GlobalIndex);
                     end;
@@ -1078,7 +1094,7 @@ implementation
                         internalerror(2021092716);
                       objsec.Data.seek(objrel.DataOffset);
                       if TWasmObjSymbol(objrel.symbol).TagIndex<0 then
-                        internalerror(2022012403)
+                        message1(asmw_e_illegal_unset_index,objrel.symbol.name)
                       else
                         WriteSleb5(objsec.Data,TWasmObjSymbol(objrel.symbol).TagIndex);
                     end;
@@ -1170,7 +1186,10 @@ implementation
                           Inc(relcount^);
                           WriteByte(relout,Ord(R_WASM_MEMORY_ADDR_I32));
                           WriteUleb(relout,objrel.DataOffset+objsec.FileSectionOfs);
-                          WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
+			  if (TWasmObjSymbol(objrel.symbol).SymbolIndex<0) then
+                            message1(asmw_e_illegal_unset_index,objrel.symbol.name)
+                          else
+                            WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
                           WriteSleb(relout,objrel.Addend);  { addend to add to the address }
                         end;
                     end;
@@ -1188,7 +1207,10 @@ implementation
                       Inc(relcount^);
                       WriteByte(relout,Ord(R_WASM_GLOBAL_INDEX_LEB));
                       WriteUleb(relout,objrel.DataOffset+objsec.FileSectionOfs);
-                      WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
+                      if (TWasmObjSymbol(objrel.symbol).SymbolIndex<0) then
+                        message1(asmw_e_illegal_unset_index,objrel.symbol.name)
+                      else
+                        WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
                     end;
                   RELOC_TAG_INDEX_LEB:
                     begin
@@ -1197,7 +1219,10 @@ implementation
                       Inc(relcount^);
                       WriteByte(relout,Ord(R_WASM_TAG_INDEX_LEB));
                       WriteUleb(relout,objrel.DataOffset+objsec.FileSectionOfs);
-                      WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
+                      if (TWasmObjSymbol(objrel.symbol).SymbolIndex<0) then
+                        message1(asmw_e_illegal_unset_index,objrel.symbol.name)
+                      else
+                        WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
                     end;
                   else
                     internalerror(2021092507);
@@ -1472,6 +1497,8 @@ implementation
                           WriteByte(FWasmSections[wsiGlobal],$00);
                           WriteByte(FWasmSections[wsiGlobal],$0B);  { end }
                         end;
+                      else
+                        internalerror(2022052801);
                     end;
                   end;
               end;
@@ -1487,7 +1514,10 @@ implementation
                   begin
                     WriteName(FWasmSections[wsiExport],TWasmObjSymbolExtraData(FData.FObjSymbolsExtraDataList.Find(objsym.Name)).ExportName);
                     WriteByte(FWasmSections[wsiExport],0);  { func }
-                    WriteUleb(FWasmSections[wsiExport],objsym.FuncIndex);
+                    if (objsym.FuncIndex<0) then
+                      message1(asmw_e_illegal_unset_index,objsym.name)
+                    else
+                      WriteUleb(FWasmSections[wsiExport],objsym.FuncIndex);
                   end;
               end;
           end;
@@ -1510,7 +1540,10 @@ implementation
                   WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_WEAK)
                 else
                   internalerror(2021092715);
-                WriteUleb(FWasmSymbolTable,objsym.TagIndex);
+                if (objsym.TagIndex<0) then
+                  message1(asmw_e_illegal_unset_index,objsym.name)
+                else
+                  WriteUleb(FWasmSymbolTable,objsym.TagIndex);
                 if objsym.bind<>AB_EXTERNAL then
                   WriteName(FWasmSymbolTable,objsym.Name);
               end
@@ -1522,7 +1555,10 @@ implementation
                 if objsym.bind=AB_EXTERNAL then
                   begin
                     WriteUleb(FWasmSymbolTable,WASM_SYM_UNDEFINED);
-                    WriteUleb(FWasmSymbolTable,objsym.GlobalIndex);
+                    if (objsym.GlobalIndex<0) then
+                      message1(asmw_e_illegal_unset_index,objsym.name)
+                    else
+                      WriteUleb(FWasmSymbolTable,objsym.GlobalIndex);
                   end
                 else
                   {not implemented yet}
@@ -1536,13 +1572,19 @@ implementation
                 if objsym.ExtraData.ImportModule<>'' then
                   begin
                     WriteUleb(FWasmSymbolTable,WASM_SYM_UNDEFINED or WASM_SYM_EXPLICIT_NAME);
-                    WriteUleb(FWasmSymbolTable,objsym.FuncIndex);
+                    if (objsym.FuncIndex<0) then
+                      message1(asmw_e_illegal_unset_index,objsym.name)
+                    else
+                      WriteUleb(FWasmSymbolTable,objsym.FuncIndex);
                     WriteName(FWasmSymbolTable,objsym.Name);
                   end
                 else
                   begin
                     WriteUleb(FWasmSymbolTable,WASM_SYM_UNDEFINED);
-                    WriteUleb(FWasmSymbolTable,objsym.FuncIndex);
+                    if (objsym.FuncIndex<0) then
+                      message1(asmw_e_illegal_unset_index,objsym.name)
+                    else
+                      WriteUleb(FWasmSymbolTable,objsym.FuncIndex);
                   end;
               end
             else if objsym.typ=AT_FUNCTION then
@@ -1563,7 +1605,10 @@ implementation
                       WriteUleb(FWasmSymbolTable,WASM_SYM_EXPORTED)
                     else
                       WriteUleb(FWasmSymbolTable,0);
-                    WriteUleb(FWasmSymbolTable,objsym.FuncIndex);
+                    if (objsym.FuncIndex<0) then
+                      message1(asmw_e_illegal_unset_index,objsym.name)
+                    else
+                      WriteUleb(FWasmSymbolTable,objsym.FuncIndex);
                   end;
                 WriteName(FWasmSymbolTable,objsym.Name);
               end
@@ -1609,6 +1654,31 @@ implementation
 
         Writer.write(WasmModuleMagic,SizeOf(WasmModuleMagic));
         Writer.write(WasmVersion,SizeOf(WasmVersion));
+
+        if ts_wasm_threads in current_settings.targetswitches then
+          begin
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],4);
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'atomics');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'bulk-memory');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'mutable-globals');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'sign-ext');
+          end;
+
+        { Write the producers section:
+          https://github.com/WebAssembly/tool-conventions/blob/main/ProducersSection.md }
+        WriteUleb(FWasmCustomSections[wcstProducers],2);
+        WriteName(FWasmCustomSections[wcstProducers],'language');
+        WriteUleb(FWasmCustomSections[wcstProducers],1);
+        WriteName(FWasmCustomSections[wcstProducers],'Pascal');
+        WriteName(FWasmCustomSections[wcstProducers],'');
+        WriteName(FWasmCustomSections[wcstProducers],'processed-by');
+        WriteUleb(FWasmCustomSections[wcstProducers],1);
+        WriteName(FWasmCustomSections[wcstProducers],'Free Pascal Compiler (FPC)');
+        WriteName(FWasmCustomSections[wcstProducers],full_version_string+' ['+date_string+'] for '+target_cpu_string+' - '+target_info.shortname);
 
         code_section_nr:=-1;
         data_section_nr:=-1;
@@ -1661,6 +1731,13 @@ implementation
         if segment_count>0 then
           begin
             WriteWasmCustomSection(wcstRelocData);
+            Inc(section_nr);
+          end;
+        WriteWasmCustomSection(wcstProducers);
+        Inc(section_nr);
+        if ts_wasm_threads in current_settings.targetswitches then
+          begin
+            WriteWasmCustomSection(wcstTargetFeatures);
             Inc(section_nr);
           end;
 
@@ -1725,7 +1802,7 @@ implementation
        as_wasm32_wasm_info : tasminfo =
           (
             id     : as_wasm32_wasm;
-            idtxt  : 'OMF';
+            idtxt  : 'WASM';
             asmbin : '';
             asmcmd : '';
             supported_targets : [system_wasm32_embedded,system_wasm32_wasi];

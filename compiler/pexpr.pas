@@ -80,7 +80,7 @@ implementation
        nmat,nadd,nmem,nset,ncnv,ninl,ncon,nld,nflw,nbas,nutils,
        { parser }
        scanner,
-       pbase,pinline,ptype,pgenutil,procinfo,cpuinfo
+       pbase,pinline,ptype,pgenutil,psub,procinfo,cpuinfo
        ;
 
     function sub_expr(pred_level:Toperator_precedence;flags:texprflags;factornode:tnode):tnode;forward;
@@ -984,6 +984,9 @@ implementation
                    end
                  else
                    p1:=load_self_node;
+                 { don't try to call the invokable again }
+                 if is_invokable(tdef(st.defowner)) then
+                   include(p1.flags,nf_load_procvar);
                  { We are calling a member }
                  maybe_load_methodpointer:=true;
                end;
@@ -1016,12 +1019,15 @@ implementation
 
          { When we are expecting a procvar we also need
            to get the address in some cases }
-         if assigned(getprocvardef) then
+         if assigned(getprocvardef) or assigned(getfuncrefdef) then
           begin
             if (block_type=bt_const) or
                getaddr then
              begin
-               aprocdef:=Tprocsym(sym).Find_procdef_byprocvardef(getprocvardef);
+               if assigned(getfuncrefdef) then
+                 aprocdef:=Tprocsym(sym).Find_procdef_byfuncrefdef(getfuncrefdef)
+               else
+                 aprocdef:=Tprocsym(sym).Find_procdef_byprocvardef(getprocvardef);
                getaddr:=true;
              end
             else
@@ -1029,7 +1035,10 @@ implementation
                  (m_mac_procvar in current_settings.modeswitches)) and
                 not(token in [_CARET,_POINT,_LKLAMMER]) then
               begin
-                aprocdef:=Tprocsym(sym).Find_procdef_byprocvardef(getprocvardef);
+                if assigned(getfuncrefdef) then
+                  aprocdef:=Tprocsym(sym).Find_procdef_byfuncrefdef(getfuncrefdef)
+                else
+                  aprocdef:=Tprocsym(sym).Find_procdef_byprocvardef(getprocvardef);
                 if assigned(aprocdef) then
                  getaddr:=true;
               end;
@@ -1056,6 +1065,9 @@ implementation
              if not assigned(aprocdef) and
                 assigned(getprocvardef) then
                aprocdef:=Tprocsym(sym).Find_procdef_byprocvardef(getprocvardef);
+             if not assigned(aprocdef) and
+                assigned(getfuncrefdef) then
+               aprocdef:=Tprocsym(sym).Find_procdef_byfuncrefdef(getfuncrefdef);
 
              { generate a methodcallnode or proccallnode }
              { we shouldn't convert things like @tcollection.load }
@@ -1076,7 +1088,16 @@ implementation
                 else
                   begin
                     typecheckpass(p1);
-                    if (p1.resultdef.typ=objectdef) then
+                    if (p1.resultdef.typ=classrefdef) and
+                       (
+                         assigned(getprocvardef) or
+                         assigned(getfuncrefdef)
+                       ) then
+                      begin
+                        p1:=cloadvmtaddrnode.create(p1);
+                        tloadnode(p2).set_mp(p1);
+                      end
+                    else if (p1.resultdef.typ=objectdef) then
                       { so we can create the correct  method pointer again in case
                         this is a "objectprocvar:=@classname.method" expression }
                       tloadnode(p2).symtable:=tobjectdef(p1.resultdef).symtable
@@ -1178,6 +1199,45 @@ implementation
       end;
 
 
+    procedure handle_funcref(fr:tobjectdef;var p2:tnode);
+      var
+        hp,hp2 : tnode;
+        hpp    : ^tnode;
+        currprocdef : tprocdef;
+      begin
+        if not assigned(fr) then
+          internalerror(2022032401);
+        if not is_invokable(fr) then
+          internalerror(2022032402);
+        if (m_tp_procvar in current_settings.modeswitches) or
+           (m_mac_procvar in current_settings.modeswitches) then
+         begin
+           hp:=p2;
+           hpp:=@p2;
+           while assigned(hp) and
+                 (hp.nodetype=typeconvn) do
+            begin
+              hp:=ttypeconvnode(hp).left;
+              { save orignal address of the old tree so we can replace the node }
+              hpp:=@hp;
+            end;
+           if (hp.nodetype=calln) and
+              { a procvar can't have parameters! }
+              not assigned(tcallnode(hp).left) then
+            begin
+              currprocdef:=tcallnode(hp).symtableprocentry.Find_procdef_byfuncrefdef(fr);
+              if assigned(currprocdef) then
+               begin
+                 hp2:=cloadnode.create_procvar(tprocsym(tcallnode(hp).symtableprocentry),currprocdef,tcallnode(hp).symtableproc);
+                 hp.free;
+                 { replace the old callnode with the new loadnode }
+                 hpp^:=hp2;
+               end;
+            end;
+         end;
+      end;
+
+
     { the following procedure handles the access to a property symbol }
     procedure handle_propertysym(propsym : tpropertysym;st : TSymtable;var p1 : tnode);
       var
@@ -1226,14 +1286,19 @@ implementation
                          consume(_ASSIGNMENT);
                          { read the expression }
                          if propsym.propdef.typ=procvardef then
-                           getprocvardef:=tprocvardef(propsym.propdef);
+                           getprocvardef:=tprocvardef(propsym.propdef)
+                         else if is_invokable(propsym.propdef) then
+                           getfuncrefdef:=tobjectdef(propsym.propdef);
                          p2:=comp_expr([ef_accept_equal]);
                          if assigned(getprocvardef) then
-                           handle_procvar(getprocvardef,p2);
+                           handle_procvar(getprocvardef,p2)
+                         else if assigned(getfuncrefdef) then
+                           handle_funcref(getfuncrefdef,p2);
                          tcallnode(p1).left:=ccallparanode.create(p2,tcallnode(p1).left);
                          { mark as property, both the tcallnode and the real call block }
                          include(p1.flags,nf_isproperty);
                          getprocvardef:=nil;
+                         getfuncrefdef:=nil;
                        end;
                      fieldvarsym :
                        begin
@@ -1361,8 +1426,25 @@ implementation
                                    again,p1,callflags,spezcontext);
                       { we need to know which procedure is called }
                       do_typecheckpass(p1);
+
+                      { We are loading... }
+                      if p1.nodetype=loadn then
+                       begin
+                         { an instance method }
+                         if not (po_classmethod in tloadnode(p1).procdef.procoptions) and
+                             { into a method pointer (not just taking a code address) }
+                             not getaddr and
+                             { and the selfarg is... }
+                             (
+                               { either a record/object/helper type, }
+                               not assigned(tloadnode(p1).left) or
+                               { or a class/metaclass type, or a class reference }
+                               (tloadnode(p1).left.resultdef.typ=classrefdef)
+                             ) then
+                           Message(parser_e_only_class_members_via_class_ref);
+                       end
                       { calling using classref? }
-                      if (
+                      else if (
                             isclassref or
                             (
                               (isobjecttype or
@@ -2292,7 +2374,7 @@ implementation
                  end;
                { procvar.<something> can never mean anything so always
                  try to call it in case it returns a record/object/... }
-               maybe_call_procvar(p1,false);
+               maybe_call_procvar(p1,is_invokable(p1.resultdef) and not is_funcref(p1.resultdef));
 
                if (p1.nodetype=ordconstn) and
                    not is_boolean(p1.resultdef) and
@@ -2763,7 +2845,15 @@ implementation
           else
             begin
               { is this a procedure variable ? }
-              if assigned(p1.resultdef) and
+              if is_invokable(p1.resultdef) and
+                  (token=_LKLAMMER) then
+                begin
+                  if not searchsym_in_class(tobjectdef(p1.resultdef),tobjectdef(p1.resultdef),method_name_funcref_invoke_find,srsym,srsymtable,[]) then
+                    internalerror(2021040202);
+                  include(p1.flags,nf_load_procvar);
+                  do_proc_call(srsym,srsymtable,tabstractrecorddef(p1.resultdef),false,again,p1,[],nil);
+                end
+              else if assigned(p1.resultdef) and
                  (p1.resultdef.typ=procvardef) then
                 begin
                   { Typenode for typecasting or expecting a procvar }
@@ -2771,6 +2861,10 @@ implementation
                      (
                       assigned(getprocvardef) and
                       equal_defs(p1.resultdef,getprocvardef)
+                     ) or
+                     (
+                      assigned(getfuncrefdef) and
+                      equal_defs(p1.resultdef,getfuncrefdef)
                      ) then
                     begin
                       if try_to_consume(_LKLAMMER) then
@@ -3550,6 +3644,8 @@ implementation
          again,
          updatefpos,
          nodechanged  : boolean;
+         oldprocvardef : tprocvardef;
+         oldfuncrefdef : tobjectdef;
       begin
         { can't keep a copy of p1 and compare pointers afterwards, because
           p1 may be freed and reallocated in the same place!  }
@@ -4154,6 +4250,33 @@ implementation
                  p1:=cinlinenode.create(in_objc_protocol_x,false,p1);
                end;
 
+             _PROCEDURE,
+             _FUNCTION:
+               begin
+                 if (block_type=bt_body) and
+                     (m_anonymous_functions in current_settings.modeswitches) then
+                   begin
+                     oldprocvardef:=getprocvardef;
+                     oldfuncrefdef:=getfuncrefdef;
+                     getprocvardef:=nil;
+                     getfuncrefdef:=nil;
+                     pd:=read_proc([rpf_anonymous],nil);
+                     getprocvardef:=oldprocvardef;
+                     getfuncrefdef:=oldfuncrefdef;
+                     { assume that we try to get the address except if certain
+                       tokens follow that indicate a call }
+                     do_proc_call(pd.procsym,pd.owner,nil,not (token in [_POINT,_CARET,_LECKKLAMMER]),
+                                  again,p1,[],nil);
+                   end
+                 else
+                   begin
+                     Message(parser_e_illegal_expression);
+                     p1:=cerrornode.create;
+                     { recover }
+                     consume(token);
+                   end;
+               end
+
              else
                begin
                  Message(parser_e_illegal_expression);
@@ -4735,12 +4858,18 @@ implementation
            _ASSIGNMENT :
              begin
                 consume(_ASSIGNMENT);
-                if assigned(p1.resultdef) and (p1.resultdef.typ=procvardef) then
-                  getprocvardef:=tprocvardef(p1.resultdef);
+                if assigned(p1.resultdef) then
+                  if (p1.resultdef.typ=procvardef) then
+                    getprocvardef:=tprocvardef(p1.resultdef)
+                  else if is_invokable(p1.resultdef) then
+                    getfuncrefdef:=tobjectdef(p1.resultdef);
                 p2:=sub_expr(opcompare,[ef_accept_equal],nil);
                 if assigned(getprocvardef) then
-                  handle_procvar(getprocvardef,p2);
+                  handle_procvar(getprocvardef,p2)
+                else if assigned(getfuncrefdef) then
+                  handle_funcref(getfuncrefdef,p2);
                 getprocvardef:=nil;
+                getfuncrefdef:=nil;
                 p1:=cassignmentnode.create(p1,p2);
              end;
            _PLUSASN :

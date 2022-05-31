@@ -85,3 +85,19 @@ function fpc_wasm32_memory_atomic_wait32(Dest: PLongWord; Expected: LongWord; Ti
 function fpc_wasm32_memory_atomic_wait64(Dest: PQWord; Expected: QWord; Timeout: Int64): LongInt;[internproc:fpc_in_wasm32_memory_atomic_wait64];
 function fpc_wasm32_memory_atomic_notify(Address: Pointer; Count: LongWord): LongWord;[internproc:fpc_in_wasm32_memory_atomic_notify];
 
+function fpc_wasm32_i32_atomic_load8_u(Address: Pointer): LongWord;[internproc:fpc_in_i32_atomic_load8_u];
+function fpc_wasm32_i32_atomic_load16_u(Address: Pointer): LongWord;[internproc:fpc_in_i32_atomic_load16_u];
+function fpc_wasm32_i32_atomic_load(Address: Pointer): LongWord;[internproc:fpc_in_i32_atomic_load];
+function fpc_wasm32_i64_atomic_load8_u(Address: Pointer): QWord;[internproc:fpc_in_i64_atomic_load8_u];
+function fpc_wasm32_i64_atomic_load16_u(Address: Pointer): QWord;[internproc:fpc_in_i64_atomic_load16_u];
+function fpc_wasm32_i64_atomic_load32_u(Address: Pointer): QWord;[internproc:fpc_in_i64_atomic_load32_u];
+function fpc_wasm32_i64_atomic_load(Address: Pointer): QWord;[internproc:fpc_in_i64_atomic_load];
+
+procedure fpc_wasm32_i32_atomic_store8(Dest: PByte; x: LongWord);[internproc:fpc_in_i32_atomic_store8];
+procedure fpc_wasm32_i32_atomic_store16(Dest: PWord; x: LongWord);[internproc:fpc_in_i32_atomic_store16];
+procedure fpc_wasm32_i32_atomic_store(Dest: PLongWord; x: LongWord);[internproc:fpc_in_i32_atomic_store];
+procedure fpc_wasm32_i64_atomic_store8(Dest: PByte; x: QWord);[internproc:fpc_in_i64_atomic_store8];
+procedure fpc_wasm32_i64_atomic_store16(Dest: PWord; x: QWord);[internproc:fpc_in_i64_atomic_store16];
+procedure fpc_wasm32_i64_atomic_store32(Dest: PLongWord; x: QWord);[internproc:fpc_in_i64_atomic_store32];
+procedure fpc_wasm32_i64_atomic_store(Dest: PQWord; x: QWord);[internproc:fpc_in_i64_atomic_store];
+

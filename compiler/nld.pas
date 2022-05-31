@@ -385,10 +385,18 @@ implementation
                      internalerror(200309289);
                    left:=cloadparentfpnode.create(tprocdef(symtable.defowner),lpf_forload);
                    current_procinfo.set_needs_parentfp(tprocdef(symtable.defowner).parast.symtablelevel);
+                   { reference this as a captured symbol }
+                   current_procinfo.add_captured_sym(symtableentry,fileinfo);
                    { reference in nested procedures, variable needs to be in memory }
                    { and behaves as if its address escapes its parent block         }
                    make_not_regable(self,[ra_different_scope]);
-                 end;
+                 end
+               { if this is a nested function and it uses the Self parameter then
+                 consider this as captured as well (needed for anonymous functions) }
+               else if assigned(current_procinfo) and
+                   (vo_is_self in tabstractvarsym(symtableentry).varoptions) and
+                   (symtable.symtablelevel>normal_function_level) then
+                 current_procinfo.add_captured_sym(symtableentry,fileinfo);
                resultdef:=tabstractvarsym(symtableentry).vardef;
 
                { e.g. self for objects is passed as var-parameter on the caller
@@ -541,7 +549,11 @@ implementation
         resultdef:=p;
         { nested procedure? }
         if assigned(p) and
-           is_nested_pd(p) then
+           is_nested_pd(p) and
+           (
+             not (po_anonymous in p.procoptions) or
+             (po_delphi_nested_cc in p.procoptions)
+           ) then
           begin
             if not(m_nested_procvars in current_settings.modeswitches) then
               CGMessage(type_e_cant_take_address_of_local_subroutine)
@@ -552,10 +564,20 @@ implementation
                 left:=cloadparentfpnode.create(tprocdef(p.owner.defowner),lpf_forpara);
               end;
           end
-        { we should never go from nested to non-nested }
+        { we should never go from nested to non-nested (except for an anonymous
+          function which might have been changed to a global function or a
+          method) }
         else if assigned(left) and
                 (left.nodetype=loadparentfpn) then
-          internalerror(2010072201);
+          begin
+            if po_anonymous in p.procoptions then
+              begin
+                left.free;
+                left:=nil;
+              end
+            else
+              internalerror(2010072201);
+          end;
       end;
 
 {*****************************************************************************
@@ -674,7 +696,8 @@ implementation
 
         { tp procvar support, when we don't expect a procvar
           then we need to call the procvar }
-        if (left.resultdef.typ<>procvardef) then
+        if (left.resultdef.typ<>procvardef) and
+            not is_invokable(left.resultdef) then
           maybe_call_procvar(right,true);
 
         { assignments to formaldefs and open arrays aren't allowed }
@@ -808,6 +831,7 @@ implementation
               when trying to assign the result of a procedure, so give
               a better error message, see also #19122 }
             if (left.resultdef.typ<>procvardef) and
+                not is_invokable(left.resultdef) and
               (right.nodetype=calln) and is_void(right.resultdef) then
               CGMessage(type_e_procedures_return_no_value)
             else if nf_internal in flags then

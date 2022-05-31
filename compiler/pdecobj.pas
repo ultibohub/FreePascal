@@ -105,7 +105,7 @@ implementation
         result:=nil;
         consume(_CONSTRUCTOR);
         { must be at same level as in implementation }
-        parse_proc_head(current_structdef,potype_class_constructor,false,nil,nil,pd);
+        parse_proc_head(current_structdef,potype_class_constructor,[],nil,nil,pd);
         if not assigned(pd) then
           begin
             consume(_SEMICOLON);
@@ -130,7 +130,7 @@ implementation
         result:=nil;
         consume(_CONSTRUCTOR);
         { must be at same level as in implementation }
-        parse_proc_head(current_structdef,potype_constructor,false,nil,nil,pd);
+        parse_proc_head(current_structdef,potype_constructor,[],nil,nil,pd);
         if not assigned(pd) then
           begin
             consume(_SEMICOLON);
@@ -244,7 +244,7 @@ implementation
       begin
         result:=nil;
         consume(_DESTRUCTOR);
-        parse_proc_head(current_structdef,potype_class_destructor,false,nil,nil,pd);
+        parse_proc_head(current_structdef,potype_class_destructor,[],nil,nil,pd);
         if not assigned(pd) then
           begin
             consume(_SEMICOLON);
@@ -268,7 +268,7 @@ implementation
       begin
         result:=nil;
         consume(_DESTRUCTOR);
-        parse_proc_head(current_structdef,potype_destructor,false,nil,nil,pd);
+        parse_proc_head(current_structdef,potype_destructor,[],nil,nil,pd);
         if not assigned(pd) then
           begin
             consume(_SEMICOLON);
@@ -342,13 +342,7 @@ implementation
         if find_implemented_interface(current_objectdef,intfdef)<>nil then
           Message1(sym_e_duplicate_id,intfdef.objname^)
         else
-          begin
-            { allocate and prepare the GUID only if the class
-              implements some interfaces. }
-            if current_objectdef.ImplementedInterfaces.count = 0 then
-              current_objectdef.prepareguid;
-            current_objectdef.ImplementedInterfaces.Add(TImplementedInterface.Create(intfdef));
-          end;
+          current_objectdef.register_implemented_interface(intfdef,true);
       end;
 
 
@@ -382,9 +376,7 @@ implementation
         if find_implemented_interface(current_objectdef,intfdef)<>nil then
           Message1(sym_e_duplicate_id,intfdef.objname^)
         else
-          begin
-            current_objectdef.ImplementedInterfaces.Add(TImplementedInterface.Create(intfdef));
-          end;
+          current_objectdef.register_implemented_interface(intfdef,false);
       end;
 
 
@@ -906,6 +898,7 @@ implementation
 
       var
         oldparse_only: boolean;
+        flags : tparse_proc_flags;
       begin
         case token of
           _PROCEDURE,
@@ -917,7 +910,12 @@ implementation
 
               oldparse_only:=parse_only;
               parse_only:=true;
-              result:=parse_proc_dec(is_classdef,astruct,hadgeneric);
+              flags:=[];
+              if is_classdef then
+                include(flags,ppf_classmethod);
+              if hadgeneric then
+                include(flags,ppf_generic);
+              result:=parse_proc_dec(flags,astruct);
 
               { this is for error recovery as well as forward }
               { interface mappings, i.e. mapping to a method  }
@@ -1636,6 +1634,11 @@ implementation
             { parse extended type for helpers }
             if is_objectpascal_helper(current_structdef) then
               parse_extended_type(helpertype);
+
+            if is_interface(current_objectdef) and
+                is_interface(current_objectdef.childof) and
+                (oo_is_invokable in tobjectdef(current_objectdef.childof).objectoptions) then
+              include(current_objectdef.objectoptions,oo_is_invokable);
 
             { parse optional GUID for interfaces }
             parse_guid;

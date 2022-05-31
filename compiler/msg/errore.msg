@@ -1027,11 +1027,11 @@ parser_e_illegal_field_or_method=03181_E_Unknown class field or method identifie
 parser_w_proc_overriding_calling=03182_W_Overriding calling convention "$1" with "$2"
 % There are two directives in the procedure declaration that specify a calling
 % convention. Only the last directive will be used.
-parser_e_no_procvarobj_const=03183_E_Typed constants of the type "procedure of object" can only be initialized with NIL
-% You cannot assign the address of a method to a typed constant which has a
-% 'procedure of object' type, because such a constant requires two addresses:
-% that of the method (which is known at compile time) and that of the object or
-% class instance it operates on (which cannot be known at compile time).
+parser_e_no_procvarobj_const=03183_E_Typed constants of the type "procedure of object" need a Self pointer that's known at compile time
+% In order to initialize a method pointer with a method, the value of the \var{Self}
+% pointer for calling that method at run time must be known at compile time.
+% Thus, a method pointer can be initialized either with \var{Nil}, or with a class
+% method that is accessed via a class type or a class reference type.
 parser_e_default_value_only_one_para=03184_E_Default value can only be assigned to one parameter
 % It is not possible to specify a default value for several parameters at once.
 % The following is invalid:
@@ -2104,7 +2104,7 @@ type_w_array_size_does_not_match_size_of_constant_string=04130_W_The length of t
 #
 # Symtable
 #
-# 05098 is the last used one
+# 05099 is the last used one
 #
 % \section{Symbol handling}
 % This section lists all the messages that concern the handling of symbols.
@@ -2422,6 +2422,9 @@ sym_e_generic_type_param_decl=05097_E_Generic type parameter declared as "$1"
 % is found between a declaration and the definition.
 sym_e_type_must_be_rec_or_object=05098_E_Record or object type expected
 % The variable or expression isn't of the type \var{record} or \var{object}.
+sym_e_symbol_no_capture=05099_E_Symbol "$1" can not be captured
+% The specified symbol can not be captured to be used in a function reference.
+% For example \var{var} or \var{out} parameters can not be captured in that way.
 % \end{description}
 #
 # Codegenerator
@@ -2949,7 +2952,7 @@ asmr_e_a64_regset_too_large=07147_E_Too many registers in register set.
 #
 # Assembler/binary writers
 #
-# 08036 is the last used one
+# 08037 is the last used one
 #
 asmw_f_too_many_asm_files=08000_F_Too many assembler files
 % With smartlinking enabled, there are too many assembler
@@ -3007,6 +3010,7 @@ asmw_e_brxx_out_of_range=08033_E_Asm: conditional branch destination is out of r
 asmw_e_illegal_use_of_rip=08034_E_Asm: RIP cannot be used as index register or with another register in a reference
 asmw_e_seh_invalid_data_size=08035_F_Illegal function size for SEH function
 asmw_e_illegal_use_of_sp=08036_E_Asm: ESP/RSP cannot be used as index register
+asmw_e_illegal_unset_index=08037_E_Wasm32 symbol $1 without index value error
 #
 # Executing linker/assembler
 #
@@ -3949,9 +3953,14 @@ P*2Aas_Assemble using GNU AS
 S*2Aas_Assemble using GNU AS
 s*2Aas_Assemble using GNU AS
 v*2Aas_Assemble using GNU AS
-W*2Abinaryen_Assemble using GNU AS for wasm32 (wasm-as)
-W*2Allvm-mc_Assemble using llvm-mc
-W*2Awabt_Assemble using wasa
+W*2Awasm_Assemble using the internal object writer for wasm32 (experimental)
+W*2Abinaryen_Assemble using GNU AS for wasm32 (wasm-as) (experimental)
+W*2Allvm-mc-10_Assemble using llvm-mc-10
+W*2Allvm-mc-11_Assemble using llvm-mc-11
+W*2Allvm-mc-12_Assemble using llvm-mc-12
+W*2Allvm-mc-13_Assemble using llvm-mc-13
+W*2Allvm-mc_Assemble using llvm-mc (version 14 or later)
+W*2Awabt_Assemble using wasa (experimental)
 x*2Aas_Assemble using GNU AS
 Z*2Asdcc-sdasz80_Assemble using SDCC-SDASZ80
 Z*2Avasm_Assemble using Vasm
@@ -4014,8 +4023,9 @@ J*3CTlowercaseprocstart_  Lowercase the first character of procedure/function/me
 A*3CTthumbinterworking_ Generate Thumb interworking-safe code if possible
 W*3CTnoexceptions_        Disable the exception support. Raising an exception will abort the program.
 W*3CTbfexceptions_        Enable the branchful exception support for WebAssembly
-W*3CTjsexceptions_        Enable the JavaScript-based exception support for WebAssembly
+W*3CTjsexceptions_        Enable the JavaScript-based exception support for WebAssembly (experimental)
 W*3CTwasmexceptions_      Enable the native WebAssembly exceptions support
+W*3CTwasmthreads_         Enable WebAssembly threads support (experimental)
 J*2Cv_Var/out parameter copy-out checking
 A*2CV<x>_Set section threadvar model to <x>
 **2CX_Create also smartlinked library

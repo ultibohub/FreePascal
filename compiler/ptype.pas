@@ -84,7 +84,7 @@ implementation
        nset,ncnv,ncon,nld,
        { parser }
        scanner,
-       pbase,pexpr,pdecsub,pdecvar,pdecobj,pdecl,pgenutil,pparautl
+       pbase,pexpr,pdecsub,pdecvar,pdecobj,pdecl,pgenutil,pparautl,procdefutil
 {$ifdef jvm}
        ,pjvm
 {$endif}
@@ -1562,14 +1562,14 @@ implementation
         end;
 
 
-        function procvar_dec(genericdef:tstoreddef;genericlist:tfphashobjectlist):tdef;
+        function procvar_dec(genericdef:tstoreddef;genericlist:tfphashobjectlist;sym:tsym;doregister:boolean):tdef;
           var
             is_func:boolean;
-            pd:tabstractprocdef;
-            newtype:ttypesym;
+            pd:tprocvardef;
             old_current_genericdef,
             old_current_specializedef: tstoreddef;
             old_parse_generic: boolean;
+            olddef : tdef;
           begin
             old_current_genericdef:=current_genericdef;
             old_current_specializedef:=current_specializedef;
@@ -1577,10 +1577,18 @@ implementation
 
             current_genericdef:=nil;
             current_specializedef:=nil;
+            olddef:=nil;
 
             is_func:=(token=_FUNCTION);
             consume(token);
-            pd:=cprocvardef.create(normal_function_level);
+            pd:=cprocvardef.create(normal_function_level,doregister);
+
+            if assigned(sym) then
+              begin
+                pd.typesym:=sym;
+                olddef:=ttypesym(sym).typedef;
+                ttypesym(sym).typedef:=pd;
+              end;
 
             { usage of specialized type inside its generic template }
             if assigned(genericdef) then
@@ -1609,8 +1617,11 @@ implementation
             if is_func then
               begin
                 consume(_COLON);
+                pd.proctypeoption:=potype_function;
                 pd.returndef:=result_type([stoAllowSpecialization]);
-              end;
+              end
+            else
+              pd.proctypeoption:=potype_procedure;
             if try_to_consume(_OF) then
               begin
                 consume(_OBJECT);
@@ -1625,18 +1636,11 @@ implementation
               end;
             symtablestack.pop(pd.parast);
             tparasymtable(pd.parast).readonly:=false;
-            result:=pd;
             { possible proc directives }
             if parseprocvardir then
               begin
                 if check_proc_directive(true) then
-                  begin
-                    newtype:=ctypesym.create('unnamed',result);
-                    parse_var_proc_directives(tsym(newtype));
-                    newtype.typedef:=nil;
-                    result.typesym:=nil;
-                    newtype.free;
-                  end;
+                  parse_proctype_directives(pd);
                 { Add implicit hidden parameters and function result }
                 handle_calling_convention(pd,hcc_default_actions_intf);
               end;
@@ -1644,6 +1648,14 @@ implementation
             parse_generic:=old_parse_generic;
             current_genericdef:=old_current_genericdef;
             current_specializedef:=old_current_specializedef;
+
+            if assigned(sym) then
+              begin
+                pd.typesym:=nil;
+                ttypesym(sym).typedef:=olddef;
+              end;
+
+            result:=pd;
           end;
 
       const
@@ -1955,7 +1967,7 @@ implementation
             _PROCEDURE,
             _FUNCTION:
               begin
-                def:=procvar_dec(genericdef,genericlist);
+                def:=procvar_dec(genericdef,genericlist,nil,true);
 {$ifdef jvm}
                 jvm_create_procvar_class(name,def);
 {$endif}
@@ -1979,15 +1991,19 @@ implementation
                     end;
                   _REFERENCE:
                     begin
-                      if m_blocks in current_settings.modeswitches then
+                      if current_settings.modeswitches*[m_blocks,m_function_references]<>[] then
                         begin
                           consume(_REFERENCE);
                           consume(_TO);
-                          def:=procvar_dec(genericdef,genericlist);
+                          { don't register the def as a non-cblock function
+                            reference will be converted to an interface }
+                          def:=procvar_dec(genericdef,genericlist,newsym,false);
                           { could be errordef in case of a syntax error }
                           if assigned(def) and
                              (def.typ=procvardef) then
-                            include(tprocvardef(def).procoptions,po_is_function_ref);
+                            begin
+                              include(tprocvardef(def).procoptions,po_is_function_ref);
+                            end;
                         end
                       else
                         expr_type;

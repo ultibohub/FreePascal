@@ -57,7 +57,6 @@ unit procinfo;
           nestedprocs : tlinkedlist;
           { required alignment for this stackframe }
           fstackalignment : longint;
-          procedure addnestedproc(child: tprocinfo);
        public
           { pointer to parent in nested procedures }
           parent : tprocinfo;
@@ -179,11 +178,15 @@ unit procinfo;
           function get_first_nestedproc: tprocinfo;
           function has_nestedprocs: boolean;
           function get_normal_proc: tprocinfo;
+          procedure addnestedproc(child: tprocinfo);
+          function find_nestedproc_by_pd(pd:tprocdef):tprocinfo;
 
           procedure add_local_ref_sym(sym:tsym);
           procedure export_local_ref_syms;
           procedure add_local_ref_def(def:tdef);
           procedure export_local_ref_defs;
+
+          procedure add_captured_sym(sym:tsym;const fileinfo:tfileposinfo);
 
           function create_for_outlining(const basesymname: string; astruct: tabstractrecorddef; potype: tproctypeoption; resultdef: tdef; entrynodeinfo: tnode): tprocinfo;
 
@@ -284,6 +287,22 @@ implementation
         nestedprocs.insert(child);
       end;
 
+    function tprocinfo.find_nestedproc_by_pd(pd:tprocdef):tprocinfo;
+      var
+        pi : tprocinfo;
+      begin
+        if not assigned(nestedprocs) then
+          exit(nil);
+        pi:=tprocinfo(nestedprocs.first);
+        while assigned(pi) do
+          begin
+            if pi.procdef=pd then
+              exit(pi);
+            pi:=tprocinfo(pi.next);
+          end;
+        result:=nil;
+      end;
+
     procedure tprocinfo.updatestackalignment(alignment: longint);
       begin
         fstackalignment:=max(fstackalignment,alignment);
@@ -355,6 +374,11 @@ implementation
               internalerror(2019111801);
             include(tprocdef(def).defoptions,df_has_global_ref);
           end;
+      end;
+
+    procedure tprocinfo.add_captured_sym(sym:tsym;const fileinfo:tfileposinfo);
+      begin
+        procdef.add_captured_sym(sym,fileinfo);
       end;
 
     function tprocinfo.create_for_outlining(const basesymname: string; astruct: tabstractrecorddef; potype: tproctypeoption; resultdef: tdef; entrynodeinfo: tnode): tprocinfo;

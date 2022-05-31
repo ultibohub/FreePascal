@@ -60,7 +60,7 @@ implementation
 {$if defined(i386) or defined(i8086)}
        symcpu,
 {$endif}
-       fmodule,htypechk,
+       fmodule,htypechk,procdefutil,
        { pass 1 }
        node,pass_1,aasmbase,aasmdata,
        ncon,nset,ncnv,nld,nutils,
@@ -647,7 +647,7 @@ implementation
                             procsym :
                               begin
                                  { Create a temporary procvardef to handle parameters }
-                                 storedprocdef:=cprocvardef.create(normal_function_level);
+                                 storedprocdef:=cprocvardef.create(normal_function_level,true);
                                  include(storedprocdef.procoptions,po_methodpointer);
                                  { Return type must be boolean }
                                  storedprocdef.returndef:=pasbool1type;
@@ -886,20 +886,17 @@ implementation
 
 
      function maybe_parse_proc_directives(def:tdef):boolean;
-       var
-         newtype : ttypesym;
        begin
          result:=false;
          { Process procvar directives before = and ; }
-         if (def.typ=procvardef) and
+         if (
+              (def.typ=procvardef) or
+              is_funcref(def)
+            ) and
             (def.typesym=nil) and
             check_proc_directive(true) then
            begin
-              newtype:=ctypesym.create('unnamed',def);
-              parse_var_proc_directives(tsym(newtype));
-              newtype.typedef:=nil;
-              def.typesym:=nil;
-              newtype.free;
+              parse_proctype_directives(def);
               result:=true;
            end;
        end;
@@ -1348,6 +1345,7 @@ implementation
          vs   : tabstractvarsym;
          hdef : tdef;
          i    : longint;
+         flags : thccflags;
          first,
          isgeneric,
          semicoloneaten,
@@ -1357,6 +1355,7 @@ implementation
          deprecatedmsg   : pshortstring;
          old_block_type  : tblock_type;
          sectionname : ansistring;
+         typepos,
          tmp_filepos,
          old_current_filepos     : tfileposinfo;
       begin
@@ -1438,6 +1437,7 @@ implementation
              { read variable type def }
              block_type:=bt_var_type;
              consume(_COLON);
+             typepos:=current_tokenpos;
 
 {$ifdef gpc_mode}
              if (m_gpc in current_settings.modeswitches) and
@@ -1494,9 +1494,32 @@ implementation
                 (symtablestack.top.symtabletype<>parasymtable) then
                begin
                  { Add calling convention for procvar }
-                 if (hdef.typ=procvardef) and
+                 if (
+                      (hdef.typ=procvardef) or
+                      is_funcref(hdef)
+                    ) and
                     (hdef.typesym=nil) then
-                   handle_calling_convention(tprocvardef(hdef),hcc_default_actions_intf);
+                   begin
+                     if po_is_function_ref in tprocvardef(hdef).procoptions then
+                       begin
+                         if not (m_function_references in current_settings.modeswitches) and
+                             not (po_is_block in tprocvardef(hdef).procoptions) then
+                           messagepos(typepos,sym_e_error_in_type_def)
+                         else
+                           begin
+                             if adjust_funcref(hdef,nil,nil) then
+                               { the def was changed, so update it }
+                               for i:=0 to sc.count-1 do
+                                 begin
+                                   vs:=tabstractvarsym(sc[i]);
+                                   vs.vardef:=hdef;
+                                 end;
+                             if current_scanner.replay_stack_depth=0 then
+                               hdef.register_def;
+                           end;
+                       end;
+                     handle_calling_convention(hdef,hcc_default_actions_intf);
+                   end;
                  read_default_value(sc);
                  hasdefaultvalue:=true;
                end
@@ -1508,13 +1531,38 @@ implementation
 
              { Support calling convention for procvars after semicolon }
              if not(hasdefaultvalue) and
-                (hdef.typ=procvardef) and
+                (
+                  (hdef.typ=procvardef) or
+                  is_funcref(hdef)
+                ) and
                 (hdef.typesym=nil) then
                begin
                  { Parse procvar directives after ; }
                  maybe_parse_proc_directives(hdef);
+                 if po_is_function_ref in tprocvardef(hdef).procoptions then
+                   begin
+                     if not (m_function_references in current_settings.modeswitches) and
+                         not (po_is_block in tprocvardef(hdef).procoptions) then
+                       messagepos(typepos,sym_e_error_in_type_def)
+                     else
+                       begin
+                         if adjust_funcref(hdef,nil,nil) then
+                           { the def was changed, so update it }
+                           for i:=0 to sc.count-1 do
+                             begin
+                               vs:=tabstractvarsym(sc[i]);
+                               vs.vardef:=hdef;
+                             end;
+                         if current_scanner.replay_stack_depth=0 then
+                           hdef.register_def;
+                       end;
+                   end;
                  { Add calling convention for procvar }
-                 handle_calling_convention(tprocvardef(hdef),hcc_default_actions_intf);
+                 if hdef.typ=procvardef then
+                   flags:=hcc_default_actions_intf
+                 else
+                   flags:=hcc_default_actions_intf_struct;
+                 handle_calling_convention(hdef,flags);
                  { Handling of Delphi typed const = initialized vars }
                  if (token=_EQ) and
                     not(m_tp7 in current_settings.modeswitches) and
@@ -1631,7 +1679,7 @@ implementation
          hdef,casetype : tdef;
          { maxsize contains the max. size of a variant }
          { startvarrec contains the start of the variant part of a record }
-         maxsize, startvarrecsize : longint;
+         maxsize, startvarrecsize : asizeint;
          usedalign,
          maxalignment,startvarrecalign,
          maxpadalign, startpadalign: shortint;

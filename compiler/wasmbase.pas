@@ -49,13 +49,17 @@ type
   TWasmCustomSectionType = (
     wcstLinking,
     wcstRelocCode,
-    wcstRelocData);
+    wcstRelocData,
+    wcstProducers,
+    wcstTargetFeatures);
 
 const
   WasmCustomSectionName: array [TWasmCustomSectionType] of string =
     ('linking',
      'reloc.CODE',
-     'reloc.DATA');
+     'reloc.DATA',
+     'producers',
+     'target_features');
 
 type
   TWasmRelocationType = (

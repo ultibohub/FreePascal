@@ -1987,8 +1987,10 @@ implementation
 
          { procsym and propertysym have special code
            to override values in inherited classes. For other
-           symbols check for duplicates }
-         if not(sym.typ in [procsym,propertysym]) then
+           symbols check for duplicates (but for internal symbols only in this
+           symtable, not the whole hierarchy) }
+         if not(sym.typ in [procsym,propertysym]) and
+            not (sp_internal in tsym(sym).symoptions) then
            begin
               { but private ids can be reused }
               hsym:=search_struct_member(tobjectdef(defowner),hashedid.id);
@@ -3308,7 +3310,7 @@ implementation
                        ) or
                        (
                         assigned(contextobjdef) and
-                        (contextobjdef.owner.symtabletype in [globalsymtable,staticsymtable,ObjectSymtable,recordsymtable]) and
+                        (contextobjdef.owner.symtabletype in [globalsymtable,staticsymtable,ObjectSymtable,recordsymtable,localsymtable]) and
                         (contextobjdef.owner.iscurrentunit) and
                         def_is_related(contextobjdef,symownerdef)
                        ) or

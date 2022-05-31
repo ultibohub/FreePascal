@@ -109,8 +109,8 @@ type
   { tcpuprocvardef }
 
   tcpuprocvardef = class(ti86procvardef)
-    constructor create(level:byte);override;
-    function getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string):tstoreddef;override;
+    constructor create(level:byte;doregister:boolean);override;
+    function getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string;doregister:boolean):tstoreddef;override;
     function address_type:tdef;override;
     function ofs_address_type:tdef;override;
     function size:asizeint;override;
@@ -134,7 +134,7 @@ type
     procedure Setinterfacedef(AValue: boolean);override;
    public
     constructor create(level:byte;doregister:boolean);override;
-    function getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string):tstoreddef;override;
+    function getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string;doregister:boolean):tstoreddef;override;
     function address_type:tdef;override;
     function ofs_address_type:tdef;override;
     function size:asizeint;override;
@@ -357,7 +357,7 @@ implementation
     end;
 
 
-  function tcpuprocdef.getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string):tstoreddef;
+  function tcpuprocdef.getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string;doregister:boolean):tstoreddef;
     begin
       result:=inherited;
       handle_procdef_copyas(self,is_far,copytyp,tabstractprocdef(result));
@@ -440,15 +440,15 @@ implementation
                              tcpuprocvardef
 ****************************************************************************}
 
-  constructor tcpuprocvardef.create(level: byte);
+  constructor tcpuprocvardef.create(level: byte;doregister:boolean);
     begin
-      inherited create(level);
+      inherited create(level,doregister);
       if current_settings.x86memorymodel in x86_far_code_models then
         procoptions:=procoptions+[po_far];
     end;
 
 
-  function tcpuprocvardef.getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string):tstoreddef;
+  function tcpuprocvardef.getcopyas(newtyp:tdeftyp;copytyp:tproccopytyp;const paraprefix:string;doregister:boolean):tstoreddef;
     begin
       result:=inherited;
       handle_procdef_copyas(self,is_far,copytyp,tabstractprocdef(result));

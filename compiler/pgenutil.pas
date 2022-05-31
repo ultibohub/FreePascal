@@ -80,7 +80,7 @@ uses
   nobj,ncon,ncal,
   { parser }
   scanner,
-  pbase,pexpr,pdecsub,ptype,psub,pparautl,pdecl;
+  pbase,pexpr,pdecsub,ptype,psub,pparautl,pdecl,procdefutil;
 
   type
     tdeftypeset = set of tdeftyp;
@@ -94,7 +94,10 @@ uses
         prettynamepart : ansistring;
         module : tmodule;
       begin
-        module:=find_module_from_symtable(paramtype.owner);
+        if assigned(paramtype.owner) then
+          module:=find_module_from_symtable(paramtype.owner)
+        else
+          module:=current_module;
         if not assigned(module) then
           internalerror(2016112802);
         namepart:='_$'+hexstr(module.moduleid,8)+'$$'+paramtype.unique_id_str;
@@ -680,7 +683,7 @@ uses
         for i:=0 to unnamed_syms.count-1 do
           begin
             sym:=tsym(unnamed_syms[i]);
-            sym.ChangeOwnerAndName(owner.symlist,sym.realname);
+            sym.ChangeOwnerAndName(owner,sym.realname);
           end;
         unnamed_syms.clear;
       end;
@@ -758,6 +761,7 @@ uses
           else
             begin
               newtype:=ctypesym.create(def.fullownerhierarchyname(false)+typName[def.typ]+'$'+def.unique_id_str,def);
+              include(newtype.symoptions,sp_generic_unnamed_type);
               newtype.owner:=def.owner;
               { ensure that there's no warning }
               newtype.refs:=1;
@@ -1579,6 +1583,73 @@ uses
             end;
           end;
 
+        function find_in_hierarchy(def:tdef;generictypelist:tfphashobjectlist):tdef;
+          var
+            paramdef1,
+            paramdef2 : tdef;
+            allequal : boolean;
+            i : longint;
+          begin
+            result:=nil;
+            while assigned(def) do
+              begin
+                if (df_generic in def.defoptions) and (def=genericdef) then
+                  begin
+                    result:=def;
+                    break;
+                  end;
+                { the following happens when a routine with its parent struct
+                  as parameter is specialized as a parameter or result of a
+                  generic function }
+                if (df_specialization in def.defoptions) and (tstoreddef(def).genericdef=genericdef) then
+                  begin
+                    if tstoreddef(def).genericparas.count=generictypelist.count then
+                      begin
+                        allequal:=true;
+                        for i:=0 to generictypelist.count-1 do
+                          begin
+                            if tsym(generictypelist[i]).typ<>tsym(tstoreddef(def).genericparas[i]).typ then
+                              begin
+                                allequal:=false;
+                                break;
+                              end;
+                            if tsym(generictypelist[i]).typ=constsym then
+                              paramdef1:=tconstsym(generictypelist[i]).constdef
+                            else
+                              paramdef1:=ttypesym(generictypelist[i]).typedef;
+                            if tsym(tstoreddef(def).genericparas[i]).typ=constsym then
+                              paramdef2:=tconstsym(tstoreddef(def).genericparas[i]).constdef
+                            else
+                              paramdef2:=ttypesym(tstoreddef(def).genericparas[i]).typedef;
+                            if not equal_defs(paramdef1,paramdef2) then
+                              begin
+                                allequal:=false;
+                                break;
+                              end;
+                            if (tsym(generictypelist[i]).typ=constsym) and
+                                (
+                                  (tconstsym(generictypelist[i]).consttyp<>tconstsym(tstoreddef(def).genericparas[i]).consttyp) or
+                                  not same_constvalue(tconstsym(generictypelist[i]).consttyp,tconstsym(generictypelist[i]).value,tconstsym(tstoreddef(def).genericparas[i]).value)
+                                ) then
+                                begin
+                                  allequal:=false;
+                                  break;
+                                end;
+                          end;
+                        if allequal then
+                          begin
+                            result:=def;
+                            break;
+                          end;
+                      end;
+                  end;
+                if assigned(def.owner) then
+                  def:=tstoreddef(def.owner.defowner)
+                else
+                  def:=nil;
+              end;
+          end;
+
       var
         finalspecializename,
         ufinalspecializename : tidstring;
@@ -1591,6 +1662,7 @@ uses
         tsrsym : ttypesym;
         psym,
         srsym : tsym;
+        flags : thccflags;
         paramdef1,
         paramdef2,
         def : tdef;
@@ -1612,6 +1684,7 @@ uses
         hintsprocessed : boolean;
         pd : tprocdef;
         pdflags : tpdflags;
+        ppflags : tparse_proc_flags;
       begin
         if not assigned(context) then
           internalerror(2015052203);
@@ -1686,60 +1759,12 @@ uses
         if not assigned(result) then
           begin
             def:=current_genericdef;
-            while assigned(def) and (def.typ in [recorddef,objectdef]) do
-              begin
-                if (df_generic in def.defoptions) and (def=genericdef) then
-                  begin
-                    result:=def;
-                    break;
-                  end;
-                { the following happens when a routine with its parent struct
-                  as parameter is specialized as a parameter or result of a
-                  generic function }
-                if (df_specialization in def.defoptions) and (tstoreddef(def).genericdef=genericdef) then
-                  begin
-                    if tstoreddef(def).genericparas.count=generictypelist.count then
-                      begin
-                        allequal:=true;
-                        for i:=0 to generictypelist.count-1 do
-                          begin
-                            if tsym(generictypelist[i]).typ<>tsym(tstoreddef(def).genericparas[i]).typ then
-                              begin
-                                allequal:=false;
-                                break;
-                              end;
-                            if tsym(generictypelist[i]).typ=constsym then
-                              paramdef1:=tconstsym(generictypelist[i]).constdef
-                            else
-                              paramdef1:=ttypesym(generictypelist[i]).typedef;
-                            if tsym(tstoreddef(def).genericparas[i]).typ=constsym then
-                              paramdef2:=tconstsym(tstoreddef(def).genericparas[i]).constdef
-                            else
-                              paramdef2:=ttypesym(tstoreddef(def).genericparas[i]).typedef;
-                            if not equal_defs(paramdef1,paramdef2) then
-                              begin
-                                allequal:=false;
-                                break;
-                              end;
-                            if (tsym(generictypelist[i]).typ=constsym) and
-                                (
-                                  (tconstsym(generictypelist[i]).consttyp<>tconstsym(tstoreddef(def).genericparas[i]).consttyp) or
-                                  not same_constvalue(tconstsym(generictypelist[i]).consttyp,tconstsym(generictypelist[i]).value,tconstsym(tstoreddef(def).genericparas[i]).value)
-                                ) then
-                                begin
-                                  allequal:=false;
-                                  break;
-                                end;
-                          end;
-                        if allequal then
-                          begin
-                            result:=def;
-                            break;
-                          end;
-                      end;
-                  end;
-                def:=tstoreddef(def.owner.defowner);
-              end;
+            if def=genericdef then
+              result:=def
+            else if assigned(current_genericdef) then
+              result:=find_in_hierarchy(current_genericdef,generictypelist);
+            if not assigned(result) and assigned(current_specializedef) then
+              result:=find_in_hierarchy(current_specializedef,generictypelist);
           end;
 
         { decide in which symtable to put the specialization }
@@ -1916,14 +1941,17 @@ uses
                 if genericdef.typ=procdef then
                   begin
                     current_scanner.startreplaytokens(tprocdef(genericdef).genericdecltokenbuf,hmodule.change_endian);
-                    parse_proc_head(tprocdef(genericdef).struct,tprocdef(genericdef).proctypeoption,false,genericdef,generictypelist,pd);
+                    parse_proc_head(tprocdef(genericdef).struct,tprocdef(genericdef).proctypeoption,[],genericdef,generictypelist,pd);
                     if assigned(pd) then
                       begin
                         if assigned(psym) then
                           pd.procsym:=psym
                         else
                           pd.procsym:=srsym;
-                        parse_proc_dec_finish(pd,po_classmethod in tprocdef(genericdef).procoptions,tprocdef(genericdef).struct);
+                        ppflags:=[];
+                        if po_classmethod in tprocdef(genericdef).procoptions then
+                          include(ppflags,ppf_classmethod);
+                        parse_proc_dec_finish(pd,ppflags,tprocdef(genericdef).struct);
                       end;
                     result:=pd;
                   end
@@ -1993,8 +2021,14 @@ uses
                             hintsprocessed:=true;
                         end;
                       if replaydepth>current_scanner.replay_stack_depth then
-                        parse_var_proc_directives(ttypesym(srsym));
-                      handle_calling_convention(tprocvardef(result),hcc_default_actions_intf);
+                        parse_proctype_directives(tprocvardef(result));
+                      if po_is_function_ref in tprocvardef(result).procoptions then
+                        adjust_funcref(result,srsym,nil);
+                      if result.typ=procvardef then
+                        flags:=hcc_default_actions_intf
+                      else
+                        flags:=hcc_default_actions_intf_struct;
+                      handle_calling_convention(result,flags);
                       if not hintsprocessed and (replaydepth>current_scanner.replay_stack_depth) then
                         begin
                           try_consume_hintdirective(ttypesym(srsym).symoptions,ttypesym(srsym).deprecatedmsg);
@@ -2016,7 +2050,6 @@ uses
                         handle_calling_convention(tprocdef(result),hcc_default_actions_intf)
                       else
                         handle_calling_convention(tprocdef(result),hcc_default_actions_impl);
-                      pdflags:=pdflags+[pd_body,pd_implemen];
                       proc_add_definition(tprocdef(result));
                       { for partial specializations we implicitely declare the routine as
                         having its implementation although we'll not specialize it in reality }
@@ -2299,8 +2332,7 @@ uses
                       internalerror(2012101101);
                   basedef:=cobjectdef.create(tobjectdef(basedef).objecttype,defname,tobjectdef(basedef),false);
                   for i:=0 to constraintdata.interfaces.count-1 do
-                    tobjectdef(basedef).implementedinterfaces.add(
-                      timplementedinterface.create(tobjectdef(constraintdata.interfaces[i])));
+                    tobjectdef(basedef).register_implemented_interface(tobjectdef(constraintdata.interfaces[i]),false);
                 end
               else
                 if constraintdata.interfaces.count=1 then
@@ -2649,7 +2681,10 @@ uses
       current_module.extendeddefs:=TFPHashObjectList.create(true);
       current_module.genericdummysyms:=tfphashobjectlist.create(true);
       symtablestack:=tdefawaresymtablestack.create;
-      hmodule:=find_module_from_symtable(genericdef.owner);
+      if not assigned(genericdef.owner) then
+        hmodule:=current_module
+      else
+        hmodule:=find_module_from_symtable(genericdef.owner);
       if hmodule=nil then
         internalerror(200705152);
       { collect all unit syms in the generic's unit as we need to establish
@@ -2746,8 +2781,10 @@ uses
         hmodule : tmodule;
       begin
         result:=true;
-        hmodule:=find_module_from_symtable(def.genericdef.owner);
-        if hmodule=nil then
+        hmodule:=nil;
+        if assigned(def.genericdef) then
+          hmodule:=find_module_from_symtable(def.genericdef.owner)
+        else if not (df_internal in def.defoptions) then
           internalerror(201202041);
         for i:=0 to def.symtable.DefList.Count-1 do
           begin
@@ -2759,7 +2796,11 @@ uses
                  continue;
                { and the body is available already (which is implicitely the
                  case if the generic routine is part of another unit) }
-               if ((hmodule=current_module) or (hmodule.state=ms_compile)) and
+               if (
+                    not assigned(hmodule) or
+                    (hmodule=current_module) or
+                    (hmodule.state=ms_compile)
+                  ) and
                   { may not be assigned in case it's a synthetic procdef that
                     still needs to be generated }
                   assigned(tprocdef(hp).genericdef) and

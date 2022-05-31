@@ -122,9 +122,6 @@ interface
 ************************************************}
 
       { this object is the base for all symbol objects }
-
-      { tsym }
-
       tsym = class(TSymEntry)
       protected
        function registered : boolean;
@@ -146,6 +143,7 @@ interface
          procedure buildderef;virtual;
          procedure deref;virtual;
          procedure ChangeOwner(st:TSymtable);
+         procedure ChangeOwnerAndName(st:TSymtable;const aname:tsymstr);
          procedure IncRefCount;
          procedure IncRefCountBy(AValue : longint);
          procedure MaybeCreateRefList;
@@ -513,8 +511,8 @@ implementation
 
     procedure tdef.ChangeOwner(st:TSymtable);
       begin
-//        if assigned(Owner) then
-//          Owner.DefList.List[i]:=nil;
+        if assigned(Owner) and owner.deflist.OwnsObjects then
+          Owner.DefList.extract(self);
         Owner:=st;
         Owner.DefList.Add(self);
       end;
@@ -683,8 +681,19 @@ implementation
 
     procedure tsym.ChangeOwner(st:TSymtable);
       begin
+        if assigned(owner) and owner.SymList.OwnsObjects then
+          owner.symlist.extract(self);
         Owner:=st;
         inherited ChangeOwner(Owner.SymList);
+      end;
+
+
+    procedure tsym.ChangeOwnerAndName(st:TSymtable;const aname:tsymstr);
+      begin
+        if assigned(owner) and owner.SymList.OwnsObjects then
+          owner.symlist.extract(self);
+        Owner:=st;
+        inherited ChangeOwnerAndName(Owner.SymList,aname);
       end;
 
 

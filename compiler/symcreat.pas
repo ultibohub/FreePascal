@@ -233,6 +233,7 @@ implementation
      var
        oldparse_only: boolean;
        tmpstr: ansistring;
+       flags : tread_proc_flags;
      begin
       if ((status.verbosity and v_debug)<>0) then
         begin
@@ -256,7 +257,10 @@ implementation
       current_scanner.substitutemacro('meth_impl_macro',@str[1],length(str),lineno,fileno);
       current_scanner.readtoken(false);
       { and parse it... }
-      read_proc(is_classdef,usefwpd,false);
+      flags:=[];
+      if is_classdef then
+        include(flags,rpf_classmethod);
+      read_proc(flags,usefwpd);
       parse_only:=oldparse_only;
       { remove the temporary macro input file again }
       current_scanner.closeinputfile;
@@ -353,7 +357,7 @@ implementation
             end;
           { if we get here, we did not find it in the current objectdef ->
             add }
-          childpd:=tprocdef(parentpd.getcopyas(procdef,pc_normal_no_hidden,''));
+          childpd:=tprocdef(parentpd.getcopyas(procdef,pc_normal_no_hidden,'',true));
           { get rid of the import name for inherited virtual class methods,
             it has to be regenerated rather than amended }
           if [po_classmethod,po_virtualmethod]<=childpd.procoptions then
@@ -1159,7 +1163,7 @@ implementation
         parameter names so we don't get issues in the body in case
         we e.g. reference system.initialize and one of the parameters
         is called "system") }
-      result:=tprocdef(pd.getcopyas(procdef,pc_bareproc,'__FPCW_'));
+      result:=tprocdef(pd.getcopyas(procdef,pc_bareproc,'__FPCW_',true));
       { set the mangled name to the wrapper name }
       result.setmangledname(newmangledname);
       { finish creating the copy }
@@ -1432,7 +1436,7 @@ implementation
 
       { prefixing the parameters here is useless, because the new procdef will
         just be an external declaration without a body }
-      newpd:=tprocdef(orgpd.getcopyas(procdef,pc_bareproc,''));
+      newpd:=tprocdef(orgpd.getcopyas(procdef,pc_bareproc,'',true));
       insert_funcret_para(newpd);
       newpd.procoptions:=newpd.procoptions+orgpd.procoptions*[po_external,po_has_importname,po_has_importdll];
       stringdispose(orgpd.import_name);

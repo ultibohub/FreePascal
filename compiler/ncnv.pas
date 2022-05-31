@@ -120,6 +120,8 @@ interface
           function typecheck_elem_2_openarray : tnode; virtual;
           function typecheck_arrayconstructor_to_dynarray : tnode; virtual;
           function typecheck_arrayconstructor_to_array : tnode; virtual;
+          function typecheck_anonproc_2_funcref : tnode; virtual;
+          function typecheck_procvar_2_funcref : tnode; virtual;
        private
           function _typecheck_int_to_int : tnode;
           function _typecheck_cord_to_pointer : tnode;
@@ -153,6 +155,8 @@ interface
           function _typecheck_elem_2_openarray : tnode;
           function _typecheck_arrayconstructor_to_dynarray : tnode;
           function _typecheck_arrayconstructor_to_array : tnode;
+          function _typecheck_anonproc_to_funcref : tnode;
+          function _typecheck_procvar_to_funcref : tnode;
        protected
           function first_int_to_int : tnode;virtual;
           function first_cstring_to_pchar : tnode;virtual;
@@ -323,8 +327,9 @@ implementation
       cutils,verbose,globals,widestr,ppu,
       symconst,symdef,symsym,symcpu,symtable,
       ncon,ncal,nset,nadd,nmem,nmat,nbas,nutils,ninl,nflw,
+      psub,
       cgbase,procinfo,
-      htypechk,blockutl,pass_1,cpuinfo;
+      htypechk,blockutl,pparautl,procdefutil,pass_1,cpuinfo;
 
 
 {*****************************************************************************
@@ -475,7 +480,10 @@ implementation
         procedure do_set(pos : longint);
           begin
             if (pos and not $ff)<>0 then
-             Message(parser_e_illegal_set_expr);
+              begin
+                Message(parser_e_illegal_set_expr);
+                exit;
+              end;
             if pos>constsethi then
              constsethi:=pos;
             if pos<constsetlo then
@@ -2343,6 +2351,18 @@ implementation
       end;
 
 
+    function ttypeconvnode._typecheck_procvar_to_funcref : tnode;
+      begin
+        result:=typecheck_procvar_2_funcref;
+      end;
+
+
+    function ttypeconvnode._typecheck_anonproc_to_funcref : tnode;
+      begin
+        result:=typecheck_anonproc_2_funcref;
+      end;
+
+
     function ttypeconvnode.target_specific_general_typeconv: boolean;
       begin
         result:=false;
@@ -2361,11 +2381,58 @@ implementation
       end;
 
 
+    type
+      tsym_mapping = record
+        oldsym:tsym;
+        newsym:tsym;
+      end;
+      psym_mapping = ^tsym_mapping;
+
+
+    function replace_self_sym(var n:tnode;arg:pointer):foreachnoderesult;
+      var
+        mapping : psym_mapping absolute arg;
+        ld : tloadnode;
+      begin
+        if n.nodetype=loadn then
+          begin
+            ld:=tloadnode(n);
+            if ld.symtableentry=mapping^.oldsym then
+              begin
+                ld.symtableentry:=mapping^.newsym;
+                { make sure that the node is processed again }
+                ld.resultdef:=nil;
+                if assigned(ld.left) then
+                  begin
+                    { no longer loaded through the frame pointer }
+                    ld.left.free;
+                    ld.left:=nil;
+                  end;
+                typecheckpass(n);
+              end;
+          end;
+        result:=fen_true;
+      end;
+
+
     function ttypeconvnode.typecheck_proc_to_procvar : tnode;
+
+      function is_self_sym(sym:tsym):boolean;
+        begin
+          result:=(sym.typ in [localvarsym,paravarsym]) and
+                    (vo_is_self in tabstractvarsym(sym).varoptions);
+        end;
+
       var
         pd : tabstractprocdef;
         copytype : tproccopytyp;
         source: pnode;
+        fpsym,
+        selfsym,
+        sym : tsym;
+        mapping : tsym_mapping;
+        pi : tprocinfo;
+        i : longint;
       begin
         result:=nil;
         pd:=tabstractprocdef(left.resultdef);
@@ -2403,6 +2470,174 @@ implementation
                   end
                 else
                   CGMessage2(type_e_illegal_type_conversion,left.resultdef.typename,resultdef.typename);
+              end
+            else if (pd.typ=procdef) and
+               (po_anonymous in pd.procoptions) then
+              begin
+                if left.nodetype<>loadn then
+                  internalerror(2021062402);
+                { get rid of any potential framepointer loading; if it's necessary
+                  (for a nested procvar for example) it will be added again }
+                if assigned(tloadnode(left).left) and (tloadnode(left).left.nodetype=loadparentfpn) then
+                  begin
+                    tloadnode(left).left.free;
+                    tloadnode(left).left:=nil;
+                    tloadnode(left).resultdef:=nil;
+                  end;
+                if tprocvardef(totypedef).is_methodpointer then
+                  begin
+                    if assigned(tprocdef(pd).capturedsyms) and
+                        (
+                          (tprocdef(pd).capturedsyms.count>1) or
+                          (
+                            (tprocdef(pd).capturedsyms.count=1) and
+                            not is_self_sym(tsym(pcapturedsyminfo(tprocdef(pd).capturedsyms[0])^.sym))
+                          )
+                        ) then
+                      internalerror(2021060801);
+
+                    selfsym:=nil;
+                    fpsym:=nil;
+                    { find the framepointer parameter and an eventual self }
+                    for i:=0 to tprocdef(pd).parast.symlist.count-1 do
+                      begin
+                        sym:=tsym(tprocdef(pd).parast.symlist[i]);
+                        if sym.typ<>paravarsym then
+                          continue;
+                        if vo_is_parentfp in tparavarsym(sym).varoptions then
+                          fpsym:=sym;
+                        if vo_is_self in tparavarsym(sym).varoptions then
+                          selfsym:=sym;
+                        if assigned(fpsym) and assigned(selfsym) then
+                          break;
+                      end;
+
+                    if assigned(fpsym) then
+                      tprocdef(pd).parast.symlist.remove(fpsym);
+
+                    { if we don't have a self parameter already we need to
+                      insert a suitable one }
+
+                    if not assigned(selfsym) then
+                      begin
+                        { replace the self symbol by the new parameter if it was
+                          captured }
+                        if assigned(tprocdef(pd).capturedsyms) and
+                            (tprocdef(pd).capturedsyms.count>0) then
+                          begin
+                            if not assigned(tprocdef(pd).struct) then
+                              { we can't use the captured symbol for the struct as that
+                                might be the self of a type helper, thus we need to find
+                                the parent procinfo that provides the Self }
+                              tprocdef(pd).struct:=current_procinfo.get_normal_proc.procdef.struct;
+                            if not assigned(tprocdef(pd).struct) then
+                              internalerror(2021062204);
+
+                            insert_self_and_vmt_para(pd);
+
+                            mapping.oldsym:=tsym(pcapturedsyminfo(tprocdef(pd).capturedsyms[0])^.sym);
+                            mapping.newsym:=nil;
+
+                            { find the new self parameter }
+                            for i:=0 to tprocdef(pd).parast.symlist.count-1 do
+                              begin
+                                sym:=tsym(tprocdef(pd).parast.symlist[i]);
+                                if (sym.typ=paravarsym) and (vo_is_self in tparavarsym(sym).varoptions) then
+                                  begin
+                                    mapping.newsym:=sym;
+
+                                    break;
+                                  end;
+                              end;
+
+                            if not assigned(mapping.newsym) then
+                              internalerror(2021062202);
+
+                            { the anonymous function can only be a direct child of the
+                              current_procinfo }
+                            pi:=current_procinfo.get_first_nestedproc;
+                            while assigned(pi) do
+                              begin
+                                if pi.procdef=pd then
+                                  break;
+                                pi:=tprocinfo(pi.next);
+                              end;
+
+                            if not assigned(pi) then
+                              internalerror(2021062203);
+
+                            { replace all uses of the captured Self by the new Self
+                              parameter }
+                            foreachnodestatic(pm_preprocess,tcgprocinfo(pi).code,@replace_self_sym,@mapping);
+
+                            mapping.oldsym.free;
+                          end
+                        else
+                          begin
+                            { for a nested function of a method struct is already
+                              set }
+                            if not assigned(tprocdef(pd).struct) then
+                              { simply add a TObject as Self parameter }
+                              tprocdef(pd).struct:=class_tobject;
+
+                            insert_self_and_vmt_para(pd);
+
+                            { there is no self, so load a nil value }
+                            tloadnode(left).set_mp(cnilnode.create);
+                          end;
+                      end;
+
+                    { the anonymous function no longer adheres to the nested
+                      calling convention }
+                    exclude(pd.procoptions,po_delphi_nested_cc);
+
+                    tprocdef(pd).calcparas;
+
+                    if not assigned(tloadnode(left).left) then
+                      tloadnode(left).set_mp(load_self_node);
+                  end
+                else if tprocvardef(totypedef).is_addressonly then
+                  begin
+                    if assigned(tprocdef(pd).capturedsyms) and (tprocdef(pd).capturedsyms.count>0) then
+                      internalerror(2021060802);
+
+                    { remove framepointer and Self parameters }
+                    for i:=tprocdef(pd).parast.symlist.count-1 downto 0 do
+                      begin
+                        sym:=tsym(tprocdef(pd).parast.symlist[i]);
+                        if (sym.typ=paravarsym) and (tparavarsym(sym).varoptions*[vo_is_parentfp,vo_is_self]<>[]) then
+                          tprocdef(pd).parast.symlist.delete(i);
+                      end;
+
+                    { the anonymous function no longer adheres to the nested
+                      calling convention }
+                    exclude(pd.procoptions,po_delphi_nested_cc);
+
+                    { we don't need to look through the existing nodes, cause
+                      the parameter was never used anyway }
+                    tprocdef(pd).calcparas;
+                  end
+                else
+                  begin
+                    { this is a nested function pointer, so ensure that the
+                      anonymous function is handled as such }
+                    if assigned(tprocdef(pd).capturedsyms) and
+                        (tprocdef(pd).capturedsyms.count>0) and
+                        (left.nodetype=loadn) then
+                      begin
+                        tloadnode(left).left:=cloadparentfpnode.create(tprocdef(tloadnode(left).symtable.defowner),lpf_forload);
+
+                        pi:=current_procinfo.get_first_nestedproc;
+                        while assigned(pi) do
+                          begin
+                            if pi.procdef=pd then
+                              break;
+                            pi:=tprocinfo(pi.next);
+                          end;
+
+                        pi.set_needs_parentfp(tprocdef(tloadnode(left).symtable.defowner).parast.symtablelevel);
+                      end;
+                  end;
               end;
             resultdef:=totypedef;
           end
@@ -2420,6 +2655,86 @@ implementation
              copytype:=pc_normal;
            resultdef:=cprocvardef.getreusableprocaddr(pd,copytype);
          end;
+      end;
+
+
+    function ttypeconvnode.typecheck_procvar_2_funcref : tnode;
+      var
+        capturer : tsym;
+        intfdef : tdef;
+        ld,blck,hp : tnode;
+        stmt : tstatementnode;
+      begin
+        result:=nil;
+
+        if not(m_tp_procvar in current_settings.modeswitches) and
+           is_invokable(resultdef) and
+           (left.nodetype=typeconvn) and
+           (ttypeconvnode(left).convtype=tc_proc_2_procvar) and
+           is_methodpointer(left.resultdef) and
+           (po_classmethod in tprocvardef(left.resultdef).procoptions) and
+           not(po_staticmethod in tprocvardef(left.resultdef).procoptions) and
+           (proc_to_funcref_equal(tprocdef(ttypeconvnode(left).left.resultdef),tobjectdef(resultdef))>=te_convert_l1) then
+          begin
+            hp:=left;
+            left:=ttypeconvnode(left).left;
+            if (left.nodetype=loadn) and
+               not assigned(tloadnode(left).left) then
+              tloadnode(left).set_mp(cloadvmtaddrnode.create(ctypenode.create(tdef(tloadnode(left).symtable.defowner))));
+            left:=ctypeconvnode.create_proc_to_procvar(left);
+            ttypeconvnode(left).totypedef:=resultdef;
+            typecheckpass(left);
+            ttypeconvnode(hp).left:=nil;
+            hp.free;
+          end;
+
+        intfdef:=capturer_add_procvar_or_proc(current_procinfo,left,capturer,hp);
+        if assigned(intfdef) then
+          begin
+            if assigned(capturer) then
+              ld:=cloadnode.create(capturer,capturer.owner)
+            else
+              ld:=cnilnode.create;
+            result:=ctypeconvnode.create_internal(
+                      ctypeconvnode.create_internal(
+                        ld,
+                        intfdef),
+                      totypedef);
+            if assigned(hp) then
+              begin
+                blck:=internalstatements(stmt);
+                addstatement(stmt,cassignmentnode.create(hp,left));
+                left:=nil;
+                addstatement(stmt,result);
+                result:=blck;
+              end;
+          end;
+        if not assigned(result) then
+          result:=cerrornode.create;
+      end;
+
+
+    function ttypeconvnode.typecheck_anonproc_2_funcref : tnode;
+      var
+        capturer : tsym;
+        intfdef : tdef;
+        ldnode : tnode;
+      begin
+        intfdef:=capturer_add_anonymous_proc(current_procinfo,tprocdef(left.resultdef),capturer);
+        if assigned(intfdef) then
+          begin
+            if assigned(capturer) then
+              ldnode:=cloadnode.create(capturer,capturer.owner)
+            else
+              ldnode:=cnilnode.create;
+            result:=ctypeconvnode.create_internal(
+                      ctypeconvnode.create_internal(
+                        ldnode,
+                        intfdef),
+                      totypedef);
+          end
+        else
+          result:=cerrornode.create;
       end;
 
 
@@ -2468,7 +2783,9 @@ implementation
           { array_2_dynarray} @ttypeconvnode._typecheck_array_2_dynarray,
           { elem_2_openarray } @ttypeconvnode._typecheck_elem_2_openarray,
           { arrayconstructor_2_dynarray } @ttypeconvnode._typecheck_arrayconstructor_to_dynarray,
-          { arrayconstructor_2_array } @ttypeconvnode._typecheck_arrayconstructor_to_array
+          { arrayconstructor_2_array } @ttypeconvnode._typecheck_arrayconstructor_to_array,
+          { anonproc_2_funcref } @ttypeconvnode._typecheck_anonproc_to_funcref,
+          { procvar_2_funcref } @ttypeconvnode._typecheck_procvar_to_funcref
          );
       type
          tprocedureofobject = function : tnode of object;
@@ -2494,6 +2811,7 @@ implementation
         aprocdef : tprocdef;
         eq : tequaltype;
         cdoptions : tcompare_defs_options;
+        selfnode : tnode;
         newblock: tblocknode;
         newstatement: tstatementnode;
         tempnode: ttempcreatenode;
@@ -2527,7 +2845,15 @@ implementation
           convert on the procvar value. This is used to access the
           fields of a methodpointer }
         if not(nf_load_procvar in flags) and
-           not(resultdef.typ in [procvardef,recorddef,setdef]) then
+           not(resultdef.typ in [procvardef,recorddef,setdef]) and
+           not is_invokable(resultdef) and
+           { in case of interface assignments of invokables they'll be converted
+             to voidpointertype using an internal conversions; we must not call
+             the invokable in that case }
+           not (
+             (nf_internal in flags) and
+             is_invokable(left.resultdef)
+           ) then
           maybe_call_procvar(left,true);
 
         if target_specific_general_typeconv then
@@ -2635,7 +2961,10 @@ implementation
                     use an extra check for them.}
                   if (left.nodetype=calln) and
                      (tcallnode(left).required_para_count=0) and
-                     (resultdef.typ=procvardef) and
+                     (
+                       (resultdef.typ=procvardef) or
+                       is_invokable(resultdef)
+                     ) and
                      (
                       (m_tp_procvar in current_settings.modeswitches) or
                       (m_mac_procvar in current_settings.modeswitches)
@@ -2651,14 +2980,28 @@ implementation
                       end
                      else
                       begin
-                        convtype:=tc_proc_2_procvar;
-                        currprocdef:=Tprocsym(Tcallnode(left).symtableprocentry).Find_procdef_byprocvardef(Tprocvardef(resultdef));
+                        if resultdef.typ=procvardef then
+                          begin
+                            convtype:=tc_proc_2_procvar;
+                            currprocdef:=Tprocsym(Tcallnode(left).symtableprocentry).Find_procdef_byprocvardef(Tprocvardef(resultdef));
+                          end
+                        else
+                          begin
+                            convtype:=tc_procvar_2_funcref;
+                            currprocdef:=tprocsym(tcallnode(left).symtableprocentry).find_procdef_byfuncrefdef(tobjectdef(resultdef));
+                          end;
                         hp:=cloadnode.create_procvar(tprocsym(tcallnode(left).symtableprocentry),
                             tprocdef(currprocdef),tcallnode(left).symtableproc);
                         if (tcallnode(left).symtableprocentry.owner.symtabletype=ObjectSymtable) then
                          begin
-                           if assigned(tcallnode(left).methodpointer) then
-                             tloadnode(hp).set_mp(tcallnode(left).methodpointer.getcopy)
+                           selfnode:=tcallnode(left).methodpointer;
+                           if assigned(selfnode) then
+                            begin
+                              { in case the nodetype is a typen, avoid the internal error
+                                in set_mp and instead let the code error out normally }
+                              if selfnode.nodetype<>typen then
+                                tloadnode(hp).set_mp(selfnode.getcopy)
+                            end
                            else
                              tloadnode(hp).set_mp(load_self_node);
                          end;
@@ -2669,7 +3012,15 @@ implementation
                      { Now check if the procedure we are going to assign to
                        the procvar, is compatible with the procvar's type }
                      if not(nf_explicit in flags) and
-                        (proc_to_procvar_equal(currprocdef,tprocvardef(resultdef),false)=te_incompatible) then
+                        (
+                          (
+                            (resultdef.typ=procvardef) and
+                            (proc_to_procvar_equal(currprocdef,tprocvardef(resultdef),false)=te_incompatible)
+                          ) or (
+                            is_invokable(resultdef) and
+                            (proc_to_funcref_equal(currprocdef,tobjectdef(resultdef))=te_incompatible)
+                          )
+                        ) then
                        IncompatibleTypes(left.resultdef,resultdef)
                      else
                        result:=typecheck_call_helper(convtype);
@@ -3789,7 +4140,11 @@ implementation
          { if we take the address of a nested function, the current function/
            procedure needs a stack frame since it's required to construct
            the nested procvar }
-         if is_nested_pd(tprocvardef(resultdef)) then
+         if is_nested_pd(tprocvardef(resultdef)) and
+            (
+              not (po_anonymous in tprocdef(left.resultdef).procoptions) or
+              (po_delphi_nested_cc in tprocvardef(resultdef).procoptions)
+            ) then
            include(current_procinfo.flags,pi_needs_stackframe);
          if tabstractprocdef(resultdef).is_addressonly then
            expectloc:=LOC_REGISTER
@@ -4157,7 +4512,9 @@ implementation
            nil,
            @ttypeconvnode._first_nothing,
            @ttypeconvnode._first_nothing,
-           @ttypeconvnode._first_nothing
+           @ttypeconvnode._first_nothing,
+           nil,
+           nil
          );
       type
          tprocedureofobject = function : tnode of object;
@@ -4438,7 +4795,9 @@ implementation
            @ttypeconvnode._second_nothing,  { array_2_dynarray }
            @ttypeconvnode._second_elem_to_openarray,  { elem_2_openarray }
            @ttypeconvnode._second_nothing,  { arrayconstructor_2_dynarray }
-           @ttypeconvnode._second_nothing   { arrayconstructor_2_array }
+           @ttypeconvnode._second_nothing,  { arrayconstructor_2_array }
+           @ttypeconvnode._second_nothing,  { anonproc_2_funcref }
+           @ttypeconvnode._second_nothing   { procvar_2_funcref }
          );
       type
          tprocedureofobject = procedure of object;

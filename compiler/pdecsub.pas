@@ -55,6 +55,13 @@ interface
       );
       tpdflags=set of tpdflag;
 
+      tparse_proc_flag=(
+        ppf_classmethod,
+        ppf_generic,
+        ppf_anonymous
+      );
+      tparse_proc_flags=set of tparse_proc_flag;
+
     function  check_proc_directive(isprocvar:boolean):boolean;
 
     function  proc_get_importname(pd:tprocdef):string;
@@ -62,12 +69,12 @@ interface
 
     procedure parse_parameter_dec(pd:tabstractprocdef);
     procedure parse_proc_directives(pd:tabstractprocdef;var pdflags:tpdflags);
-    procedure parse_var_proc_directives(sym:tsym);
-    procedure parse_object_proc_directives(pd:tabstractprocdef);
-    procedure parse_record_proc_directives(pd:tabstractprocdef);
-    function  parse_proc_head(astruct:tabstractrecorddef;potype:tproctypeoption;isgeneric:boolean;genericdef:tdef;generictypelist:tfphashobjectlist;out pd:tprocdef):boolean;
-    function  parse_proc_dec(isclassmethod:boolean;astruct:tabstractrecorddef;isgeneric:boolean):tprocdef;
-    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean;astruct:tabstractrecorddef);
+    procedure parse_proctype_directives(pd_or_invkdef:tdef);
+    procedure parse_object_proc_directives(pd:tprocdef);
+    procedure parse_record_proc_directives(pd:tprocdef);
+    function  parse_proc_head(astruct:tabstractrecorddef;potype:tproctypeoption;flags:tparse_proc_flags;genericdef:tdef;generictypelist:tfphashobjectlist;out pd:tprocdef):boolean;
+    function  parse_proc_dec(flags:tparse_proc_flags;astruct:tabstractrecorddef):tprocdef;
+    procedure parse_proc_dec_finish(pd:tprocdef;flags:tparse_proc_flags;astruct:tabstractrecorddef);
 
     { parse a record method declaration (not a (class) constructor/destructor) }
     function parse_record_method_dec(astruct: tabstractrecorddef; is_classdef: boolean;hadgeneric:boolean): tprocdef;
@@ -212,7 +219,6 @@ implementation
         parseprocvar : tppv;
         locationstr : string;
         paranr : integer;
-        dummytype : ttypesym;
         explicit_paraloc,
         need_array,
         is_univ: boolean;
@@ -336,7 +342,7 @@ implementation
           if parseprocvar<>pv_none then
            begin
              { inline procvar definitions are always nested procvars }
-             pv:=cprocvardef.create(normal_function_level+1);
+             pv:=cprocvardef.create(normal_function_level+1,true);
              if token=_LKLAMMER then
                parse_parameter_dec(pv);
              if parseprocvar=pv_func then
@@ -346,22 +352,16 @@ implementation
                 single_type(pv.returndef,[]);
                 block_type:=bt_var;
               end;
-             hdef:=pv;
              { possible proc directives }
              if check_proc_directive(true) then
-               begin
-                  dummytype:=ctypesym.create('unnamed',hdef);
-                  parse_var_proc_directives(tsym(dummytype));
-                  dummytype.typedef:=nil;
-                  hdef.typesym:=nil;
-                  dummytype.free;
-               end;
+               parse_proctype_directives(pv);
              { Add implicit hidden parameters and function result }
              handle_calling_convention(pv,hcc_default_actions_intf);
 {$ifdef jvm}
              { anonymous -> no name }
              jvm_create_procvar_class('',pv);
 {$endif}
+             hdef:=pv;
            end
           else
           { read type declaration, force reading for value paras }
@@ -524,7 +524,7 @@ implementation
       end;
 
 
-    function parse_proc_head(astruct:tabstractrecorddef;potype:tproctypeoption;isgeneric:boolean;genericdef:tdef;generictypelist:tfphashobjectlist;out pd:tprocdef):boolean;
+    function parse_proc_head(astruct:tabstractrecorddef;potype:tproctypeoption;flags:tparse_proc_flags;genericdef:tdef;generictypelist:tfphashobjectlist;out pd:tprocdef):boolean;
       var
         hs       : string;
         orgsp,sp,orgspnongen,spnongen : TIDString;
@@ -657,7 +657,7 @@ implementation
                     (idtoken=_SPECIALIZE) then
                   hadspecialize:=true;
                 consume(_ID);
-                if (isgeneric or (m_delphi in current_settings.modeswitches)) and
+                if ((ppf_generic in flags) or (m_delphi in current_settings.modeswitches)) and
                     (token in [_LT,_LSHARPBRACKET]) then
                   begin
                     consume(token);
@@ -872,7 +872,24 @@ implementation
 
         if not assigned(genericdef) then
           begin
-            consume_proc_name;
+            if ppf_anonymous in flags then
+              begin
+                checkstack:=symtablestack.stack;
+                while checkstack^.symtable.symtabletype in [withsymtable] do
+                  checkstack:=checkstack^.next;
+                if not (checkstack^.symtable.symtabletype in [localsymtable,staticsymtable]) then
+                  internalerror(2021050101);
+                { generate a unique name for the anonymous function; don't use
+                  something like file position however as this might be inside
+                  an include file that's included multiple times }
+                str(checkstack^.symtable.symlist.count,orgsp);
+                orgsp:='__FPCINTERNAL__Anonymous_'+orgsp;
+                sp:=upper(orgsp);
+                spnongen:=sp;
+                orgspnongen:=orgsp;
+              end
+            else
+              consume_proc_name;
 
             { examine interface map: function/procedure iname.functionname=locfuncname }
             if assigned(astruct) and
@@ -1130,6 +1147,8 @@ implementation
         pd.struct:=astruct;
         pd.procsym:=aprocsym;
         pd.proctypeoption:=potype;
+        if ppf_anonymous in flags then
+          include(pd.procoptions,po_anonymous);
 
         if assigned(genericparams) then
           begin
@@ -1318,7 +1337,7 @@ implementation
       end;
 
 
-    procedure parse_proc_dec_finish(pd:tprocdef;isclassmethod:boolean;astruct:tabstractrecorddef);
+    procedure parse_proc_dec_finish(pd:tprocdef;flags:tparse_proc_flags;astruct:tabstractrecorddef);
       var
         locationstr: string;
         i: integer;
@@ -1401,11 +1420,27 @@ implementation
           potype_procedure:
             begin
               pd.returndef:=voidtype;
-              if isclassmethod then
+              if ppf_classmethod in flags then
                 include(pd.procoptions,po_classmethod);
             end;
           potype_function:
             begin
+              if po_anonymous in pd.procoptions then
+                begin
+                  { allow a different result name for anonymous functions (especially
+                    for modes without Result modeswitch), but for consistency with
+                    operators we allow this in other modes as well }
+                  if token<>_ID then
+                    begin
+                       if not(m_result in current_settings.modeswitches) then
+                         consume(_ID);
+                    end
+                  else
+                    begin
+                      pd.resultname:=stringdup(orgpattern);
+                      consume(_ID);
+                    end;
+                end;
               if try_to_consume(_COLON) then
                begin
                  read_returndef(pd);
@@ -1445,13 +1480,13 @@ implementation
                     consume_all_until(_SEMICOLON);
                   end;
                end;
-              if isclassmethod then
+              if ppf_classmethod in flags then
                include(pd.procoptions,po_classmethod);
             end;
           potype_constructor,
           potype_class_constructor:
             begin
-              if not isclassmethod and
+              if not (ppf_classmethod in flags) and
                  assigned(pd) and
                  assigned(pd.struct) then
                 begin
@@ -1488,7 +1523,7 @@ implementation
               pd.procsym.owner.includeoption(sto_has_operator);
               if pd.parast.symtablelevel>normal_function_level then
                 Message(parser_e_no_local_operator);
-              if isclassmethod then
+              if ppf_classmethod in flags then
                 begin
                   include(pd.procoptions,po_classmethod);
                   { any class operator is also static }
@@ -1588,7 +1623,8 @@ implementation
                 message(parser_e_field_not_allowed_here);
                 consume_all_until(_SEMICOLON);
               end;
-            consume(_SEMICOLON);
+            if not (ppf_anonymous in flags) then
+              consume(_SEMICOLON);
           end;
 
         if locationstr<>'' then
@@ -1599,7 +1635,7 @@ implementation
          end;
       end;
 
-    function parse_proc_dec(isclassmethod:boolean;astruct:tabstractrecorddef;isgeneric:boolean):tprocdef;
+    function parse_proc_dec(flags:tparse_proc_flags;astruct:tabstractrecorddef):tprocdef;
       var
         pd : tprocdef;
         old_block_type : tblock_type;
@@ -1622,11 +1658,11 @@ implementation
           _FUNCTION :
             begin
               consume(_FUNCTION);
-              if parse_proc_head(astruct,potype_function,isgeneric,nil,nil,pd) then
+              if parse_proc_head(astruct,potype_function,flags,nil,nil,pd) then
                 begin
                   { pd=nil when it is a interface mapping }
                   if assigned(pd) then
-                    parse_proc_dec_finish(pd,isclassmethod,astruct)
+                    parse_proc_dec_finish(pd,flags,astruct)
                   else
                     finish_intf_mapping;
                 end
@@ -1642,11 +1678,11 @@ implementation
           _PROCEDURE :
             begin
               consume(_PROCEDURE);
-              if parse_proc_head(astruct,potype_procedure,isgeneric,nil,nil,pd) then
+              if parse_proc_head(astruct,potype_procedure,flags,nil,nil,pd) then
                 begin
                   { pd=nil when it is an interface mapping }
                   if assigned(pd) then
-                    parse_proc_dec_finish(pd,isclassmethod,astruct)
+                    parse_proc_dec_finish(pd,flags,astruct)
                   else
                     finish_intf_mapping;
                 end
@@ -1657,27 +1693,27 @@ implementation
           _CONSTRUCTOR :
             begin
               consume(_CONSTRUCTOR);
-              if isclassmethod then
-                recover:=not parse_proc_head(astruct,potype_class_constructor,false,nil,nil,pd)
+              if ppf_classmethod in flags then
+                recover:=not parse_proc_head(astruct,potype_class_constructor,[],nil,nil,pd)
               else
-                recover:=not parse_proc_head(astruct,potype_constructor,false,nil,nil,pd);
+                recover:=not parse_proc_head(astruct,potype_constructor,[],nil,nil,pd);
               if not recover then
-                parse_proc_dec_finish(pd,isclassmethod,astruct);
+                parse_proc_dec_finish(pd,flags,astruct);
             end;
 
           _DESTRUCTOR :
             begin
               consume(_DESTRUCTOR);
-              if isclassmethod then
-                recover:=not parse_proc_head(astruct,potype_class_destructor,false,nil,nil,pd)
+              if ppf_classmethod in flags then
+                recover:=not parse_proc_head(astruct,potype_class_destructor,[],nil,nil,pd)
               else
-                recover:=not parse_proc_head(astruct,potype_destructor,false,nil,nil,pd);
+                recover:=not parse_proc_head(astruct,potype_destructor,[],nil,nil,pd);
               if not recover then
-                parse_proc_dec_finish(pd,isclassmethod,astruct);
+                parse_proc_dec_finish(pd,flags,astruct);
             end;
         else
           if (token=_OPERATOR) or
-             (isclassmethod and (idtoken=_OPERATOR)) then
+             ((ppf_classmethod in flags) and (idtoken=_OPERATOR)) then
             begin
               { we need to set the block type to bt_body, so that operator names
                 like ">", "=>" or "<>" are parsed correctly instead of e.g.
@@ -1685,10 +1721,10 @@ implementation
               old_block_type:=block_type;
               block_type:=bt_body;
               consume(_OPERATOR);
-              parse_proc_head(astruct,potype_operator,false,nil,nil,pd);
+              parse_proc_head(astruct,potype_operator,[],nil,nil,pd);
               block_type:=old_block_type;
               if assigned(pd) then
-                parse_proc_dec_finish(pd,isclassmethod,astruct)
+                parse_proc_dec_finish(pd,flags,astruct)
               else
                 begin
                   { recover }
@@ -1707,7 +1743,8 @@ implementation
                 message(parser_e_field_not_allowed_here);
                 consume_all_until(_SEMICOLON);
               end;
-            consume(_SEMICOLON);
+            if not (ppf_anonymous in flags) then
+              consume(_SEMICOLON);
           end;
 
         { we've parsed the final semicolon, so stop recording tokens }
@@ -1723,10 +1760,16 @@ implementation
     function parse_record_method_dec(astruct: tabstractrecorddef; is_classdef: boolean;hadgeneric:boolean): tprocdef;
       var
         oldparse_only: boolean;
+        flags : tparse_proc_flags;
       begin
         oldparse_only:=parse_only;
         parse_only:=true;
-        result:=parse_proc_dec(is_classdef,astruct,hadgeneric);
+        flags:=[];
+        if is_classdef then
+          include(flags,ppf_classmethod);
+        if hadgeneric then
+          include(flags,ppf_generic);
+        result:=parse_proc_dec(flags,astruct);
 
         { this is for error recovery as well as forward }
         { interface mappings, i.e. mapping to a method  }
@@ -3391,8 +3434,13 @@ const
                 begin
                   { support "record p : procedure stdcall end;" and
                     "var p : procedure stdcall = nil;" }
-                  if (pd_procvar in pdflags) and
-                     (token in [_END,_RKLAMMER,_EQ]) then
+                  if (
+                      (pd_procvar in pdflags) and
+                       (token in [_END,_RKLAMMER,_EQ])
+                    ) or (
+                      (po_anonymous in pd.procoptions) and
+                      (token in [_BEGIN,_VAR,_CONST,_TYPE,_LABEL,_FUNCTION,_PROCEDURE,_OPERATOR])
+                    ) then
                     break
                   else
                     begin
@@ -3426,32 +3474,23 @@ const
       end;
 
 
-    procedure parse_var_proc_directives(sym:tsym);
+    procedure parse_proctype_directives(pd_or_invkdef:tdef);
       var
         pdflags : tpdflags;
-        pd      : tabstractprocdef;
+        pd : tabstractprocdef;
       begin
+        if is_funcref(pd_or_invkdef) then
+          pd:=get_invoke_procdef(tobjectdef(pd_or_invkdef))
+        else if pd_or_invkdef.typ=procvardef then
+          pd:=tprocvardef(pd_or_invkdef)
+        else
+          internalerror(2022012501);
         pdflags:=[pd_procvar];
-        pd:=nil;
-        case sym.typ of
-          fieldvarsym,
-          staticvarsym,
-          localvarsym,
-          paravarsym :
-            pd:=tabstractprocdef(tabstractvarsym(sym).vardef);
-          typesym :
-            pd:=tabstractprocdef(ttypesym(sym).typedef);
-          else
-            internalerror(2003042617);
-        end;
-        if pd.typ<>procvardef then
-          internalerror(2003042618);
-        { names should never be used anyway }
         parse_proc_directives(pd,pdflags);
       end;
 
 
-    procedure parse_object_proc_directives(pd:tabstractprocdef);
+    procedure parse_object_proc_directives(pd:tprocdef);
       var
         pdflags : tpdflags;
       begin
@@ -3459,7 +3498,7 @@ const
         parse_proc_directives(pd,pdflags);
       end;
 
-    procedure parse_record_proc_directives(pd:tabstractprocdef);
+    procedure parse_record_proc_directives(pd:tprocdef);
       var
         pdflags : tpdflags;
       begin
