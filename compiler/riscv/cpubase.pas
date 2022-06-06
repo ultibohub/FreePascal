@@ -125,7 +125,7 @@ uses
         A_SFENCE_VM,
 
         { pseudo instructions for accessiong control and status registers }
-        A_RDINSTRET,A_RDCYCLE,A_RDTIME,A_CSRR,A_CSRW,A_CSRS,A_CSRC,A_CSRWI,
+        A_RDINSTRET,A_RDINSTRETH,A_RDCYCLE,A_RDCYCLEH,A_RDTIME,A_RDTIMEH,A_CSRR,A_CSRW,A_CSRS,A_CSRC,A_CSRWI,
         A_CSRSI,A_CSRCI
       );
 
@@ -145,6 +145,7 @@ uses
                                   Registers
 *****************************************************************************}
 
+{$ifdef riscv32}
     type
       { Number of registers used for indexing in tables }
       tregisterindex=0..{$i rrv32nor.inc}-1;
@@ -184,6 +185,49 @@ uses
       regdwarf_table : array[tregisterindex] of shortint = (
         {$i rrv32dwa.inc}
       );
+{$endif riscv32}
+
+{$ifdef riscv64}
+    type
+      { Number of registers used for indexing in tables }
+      tregisterindex=0..{$i rrv64nor.inc}-1;
+
+    const
+      maxvarregs = 32-6; { 32 int registers - r0 - stackpointer - r2 - 3 scratch registers }
+      maxfpuvarregs = 28; { 32 fpuregisters - some scratch registers (minimally 2) }
+      { Available Superregisters }
+      {$i rrv64sup.inc}
+
+      { No Subregisters }
+      R_SUBWHOLE=R_SUBNONE;
+
+      { Available Registers }
+      {$i rrv64con.inc}
+
+      { Integer Super registers first and last }
+      first_int_imreg = $20;
+
+      { Float Super register first and last }
+      first_fpu_imreg     = $20;
+
+      { MM Super register first and last }
+      first_mm_imreg     = $20;
+
+{ TODO: Calculate bsstart}
+      regnumber_count_bsstart = 64;
+
+      regnumber_table : array[tregisterindex] of tregister = (
+        {$i rrv64num.inc}
+      );
+
+      regstabs_table : array[tregisterindex] of shortint = (
+        {$i rrv64sta.inc}
+      );
+
+      regdwarf_table : array[tregisterindex] of shortint = (
+        {$i rrv64dwa.inc}
+      );
+{$endif riscv32}
 
 {*****************************************************************************
                                 Conditions
@@ -274,9 +318,17 @@ uses
                                GDB Information
 *****************************************************************************}
 
+{$ifdef riscv32}
       stab_regindex : array[tregisterindex] of shortint = (
         {$i rrv32sta.inc}
       );
+{$endif riscv32}
+
+{$ifdef riscv64}
+      stab_regindex : array[tregisterindex] of shortint = (
+        {$i rrv64sta.inc}
+      );
+{$endif riscv64}
 
 {*****************************************************************************
                           Generic Register names
@@ -389,11 +441,14 @@ uses
     { Checks if Subset is a subset of c (e.g. "less than" is a subset of "less than or equal" }
     function condition_in(const Subset, c: TAsmCond): Boolean;
 
+    function is_extra_reg(const s : string) : tregister;
+
 implementation
 
     uses
       rgbase,verbose;
 
+{$ifdef riscv32}
     const
       std_regname_table : TRegNameTable = (
         {$i rrv32std.inc}
@@ -406,7 +461,22 @@ implementation
       std_regname_index : array[tregisterindex] of tregisterindex = (
         {$i rrv32sri.inc}
       );
+{$endif riscv32}
 
+{$ifdef riscv64}
+    const
+      std_regname_table : TRegNameTable = (
+        {$i rrv64std.inc}
+      );
+
+      regnumber_index : array[tregisterindex] of tregisterindex = (
+        {$i rrv64rni.inc}
+      );
+
+      std_regname_index : array[tregisterindex] of tregisterindex = (
+        {$i rrv64sri.inc}
+      );
+{$endif riscv64}
 
 {*****************************************************************************
                                   Helpers
@@ -529,5 +599,69 @@ implementation
               Result := False;
           end;
       end;
+
+
+    function is_extra_reg(const s: string): tregister;
+      type
+        treg2str = record
+          name : string[4];
+          reg : tregister;
+        end;
+
+      const
+        extraregs : array[0..32] of treg2str = (
+          (name: 'A0'; reg : NR_X10),
+          (name: 'A1'; reg : NR_X11),
+          (name: 'A2'; reg : NR_X12),
+          (name: 'A3'; reg : NR_X13),
+          (name: 'A4'; reg : NR_X14),
+          (name: 'A5'; reg : NR_X15),
+          (name: 'A6'; reg : NR_X16),
+          (name: 'A7'; reg : NR_X17),
+          (name: 'ZERO'; reg : NR_X0),
+          (name: 'RA'; reg : NR_X1),
+          (name: 'SP'; reg : NR_X2),
+          (name: 'GP'; reg : NR_X3),
+          (name: 'TP'; reg : NR_X4),
+          (name: 'T0'; reg : NR_X5),
+          (name: 'T1'; reg : NR_X6),
+          (name: 'T2'; reg : NR_X7),
+          (name: 'S0'; reg : NR_X8),
+          (name: 'FP'; reg : NR_X8),
+          (name: 'S1'; reg : NR_X9),
+          (name: 'S2'; reg : NR_X18),
+          (name: 'S3'; reg : NR_X19),
+          (name: 'S4'; reg : NR_X20),
+          (name: 'S5'; reg : NR_X21),
+          (name: 'S6'; reg : NR_X22),
+          (name: 'S7'; reg : NR_X23),
+          (name: 'S8'; reg : NR_X24),
+          (name: 'S9'; reg : NR_X25),
+          (name: 'S10';reg : NR_X26),
+          (name: 'S11';reg : NR_X27),
+          (name: 'T3'; reg : NR_X28),
+          (name: 'T4'; reg : NR_X29),
+          (name: 'T5'; reg : NR_X30),
+          (name: 'T6'; reg : NR_X31)
+          );
+
+      var
+        i : longint;
+    begin
+      result:=NR_NO;
+      { reg found?
+        possible aliases are always 2 to 4 chars
+      }
+      if not (length(s) in [2..4]) then
+        exit;
+      for i:=low(extraregs) to high(extraregs) do
+        begin
+          if s=extraregs[i].name then
+            begin
+              result:=extraregs[i].reg;
+              exit;
+            end;
+        end;
+    end;
 
 end.

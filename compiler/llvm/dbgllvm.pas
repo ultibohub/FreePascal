@@ -75,15 +75,21 @@ interface
         flocationmeta: THashSet;
         { lookup table for scope,file -> LLVMMeta info (DILexicalBlockFile, for include files) }
         flexicalblockfilemeta: THashSet;
-        { lookup table for tsym -> taillvmdecl }
-        fsymdecl: THashSet;
+        { lookup table for tstaticvarsym -> taillvmdecl }
+        fstaticvarsymdecl: THashSet;
+        { lookup table for local/paravarsym -> metadata }
+        flocalvarsymmeta: THashSet;
 
         fcunode: tai_llvmspecialisedmetadatanode;
         fenums: tai_llvmunnamedmetadatanode;
         fretainedtypes: tai_llvmunnamedmetadatanode;
         fglobals: tai_llvmunnamedmetadatanode;
         { reusable empty expression node }
-        femptyexpression: tai_llvmspecialisedmetadatanode;
+        femptyexpression,
+        { reusable deref node }
+        fderefexpression  : tai_llvmspecialisedmetadatanode;
+
+        fllvm_dbg_addr_pd: tprocdef;
 
         function absolute_llvm_path(const s:tcmdstr):tcmdstr;
       protected
@@ -101,8 +107,10 @@ interface
         function filepos_getmetanode(const filepos: tfileposinfo; const functionfileinfo: tfileposinfo; const functionscope: tai_llvmspecialisedmetadatanode; nolineinfo: boolean): tai_llvmspecialisedmetadatanode;
         function get_def_metatai(def:tdef): PLLVMMetaDefHashSetItem;
 
-        procedure sym_set_decl(sym: tsym; decl: tai);
-        function sym_get_decl(sym: tsym): taillvmdecl;
+        procedure staticvarsym_set_decl(sym: tsym; decl: taillvmdecl);
+        function staticvarsym_get_decl(sym: tsym): taillvmdecl;
+
+        function localvarsym_get_meta(sym: tsym; out is_new: boolean): tai_llvmspecialisedmetadatanode;
 
         procedure appenddef_array_internal(list: TAsmList; fordef: tdef; eledef: tdef; lowrange, highrange: asizeint);
         function getabstractprocdeftypes(list: TAsmList; def:tabstractprocdef): tai_llvmbasemetadatanode;
@@ -157,6 +165,7 @@ interface
         procedure resetfornewmodule;
 
         procedure collectglobalsyms;
+        procedure updatelocalvardbginfo(hp: taillvm; pd: tprocdef; functionscope: tai_llvmspecialisedmetadatanode);
       public
         constructor Create;override;
         destructor Destroy;override;
@@ -310,25 +319,44 @@ implementation
           end;
       end;
 
-    procedure TDebugInfoLLVM.sym_set_decl(sym: tsym; decl: tai);
+    procedure TDebugInfoLLVM.staticvarsym_set_decl(sym: tsym; decl: taillvmdecl);
       var
         entry: PHashSetItem;
       begin
-        entry:=fsymdecl.FindOrAdd(@sym,sizeof(sym));
+        entry:=fstaticvarsymdecl.FindOrAdd(@sym,sizeof(sym));
         if assigned(entry^.Data) then
           internalerror(2022051701);
         entry^.Data:=decl;
       end;
 
-    function TDebugInfoLLVM.sym_get_decl(sym: tsym): taillvmdecl;
+    function TDebugInfoLLVM.staticvarsym_get_decl(sym: tsym): taillvmdecl;
       var
         entry: PHashSetItem;
       begin
         result:=nil;
-        entry:=fsymdecl.Find(@sym,sizeof(sym));
+        entry:=fstaticvarsymdecl.Find(@sym,sizeof(sym));
         if assigned(entry) then
           result:=taillvmdecl(entry^.Data);
       end;
+
+
+    function TDebugInfoLLVM.localvarsym_get_meta(sym: tsym; out is_new: boolean): tai_llvmspecialisedmetadatanode;
+      var
+        entry: PHashSetItem;
+      begin
+        entry:=fstaticvarsymdecl.FindOrAdd(@sym,sizeof(sym));
+        if not assigned(entry^.Data) then
+          begin
+            result:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DILocalVariable);
+            current_asmdata.AsmLists[al_dwarf_info].concat(result);
+            entry^.Data:=result;
+            is_new:=true;
+            exit;
+          end;
+        is_new:=false;
+        result:=tai_llvmspecialisedmetadatanode(entry^.Data);
+      end;
+
 
     procedure TDebugInfoLLVM.appenddef_array_internal(list: TAsmList; fordef: tdef; eledef: tdef; lowrange, highrange: asizeint);
       var
@@ -417,13 +445,14 @@ implementation
         fretainedtypes:=nil;
         fglobals:=nil;
         femptyexpression:=nil;
+        fderefexpression:=nil;
         fcunode:=nil;
 
         ffilemeta:=thashset.Create(10000,true,false);
         flocationmeta:=thashset.Create(10000,true,false);
         flexicalblockfilemeta:=thashset.Create(100,true,false);
         fdefmeta:=TLLVMMetaDefHashSet.Create(10000,true,false);
-        fsymdecl:=thashset.create(10000,true,false);
+        fstaticvarsymdecl:=thashset.create(10000,true,false);
 
         defnumberlist:=TFPObjectList.create(false);
         deftowritelist:=TFPObjectList.create(false);
@@ -443,8 +472,10 @@ implementation
         flexicalblockfilemeta:=nil;
         fdefmeta.free;
         fdefmeta:=nil;
-        fsymdecl.free;
-        fsymdecl:=nil;
+        fstaticvarsymdecl.free;
+        fstaticvarsymdecl:=nil;
+        flocalvarsymmeta.free;
+        flocalvarsymmeta:=nil;
         defnumberlist.free;
         defnumberlist:=nil;
         deftowritelist.free;
@@ -473,12 +504,16 @@ implementation
 
     procedure TDebugInfoLLVM.ensuremetainit;
       begin
+        if not assigned(fllvm_dbg_addr_pd) then
+          fllvm_dbg_addr_pd:=search_system_proc('llvm_dbg_addr');
         if not assigned(fenums) then
           begin
             fenums:=tai_llvmunnamedmetadatanode.create;
             fretainedtypes:=tai_llvmunnamedmetadatanode.create;
             fglobals:=tai_llvmunnamedmetadatanode.create;
             femptyexpression:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DIExpression);
+            fderefexpression:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DIExpression);
+            fderefexpression.addenum('','DW_OP_deref');
             fcunode:=tai_llvmspecialisedmetadatanode.create(tspecialisedmetadatanodekind.DICompileUnit);
           end;
       end;
@@ -500,7 +535,7 @@ implementation
         flocationmeta.Clear;
         flexicalblockfilemeta.Clear;
         fdefmeta.free;
-        fsymdecl.Clear;
+        fstaticvarsymdecl.Clear;
         { one item per def, plus some extra space in case of nested types,
           externally used types etc (it will grow further if necessary) }
         i:=current_module.localsymtable.DefList.count*4;
@@ -515,6 +550,7 @@ implementation
         fretainedtypes:=nil;
         fglobals:=nil;
         femptyexpression:=nil;
+        fderefexpression:=nil;
       end;
 
     procedure TDebugInfoLLVM.collectglobalsyms;
@@ -531,11 +567,65 @@ implementation
               begin
                 if (hp.typ=ait_llvmdecl) and
                    assigned(taillvmdecl(hp).sym) then
-                     sym_set_decl(taillvmdecl(hp).sym,hp);
+                     staticvarsym_set_decl(taillvmdecl(hp).sym,taillvmdecl(hp));
                 hp:=tai(hp.next);
               end;
           end;
       end;
+
+
+    procedure TDebugInfoLLVM.updatelocalvardbginfo(hp: taillvm; pd: tprocdef; functionscope: tai_llvmspecialisedmetadatanode);
+      var
+        opindex, callparaindex: longint;
+        paras: tfplist;
+        sympara,
+        exprpara: pllvmcallpara;
+        sym: tabstractnormalvarsym;
+        dilocalvar: tai_llvmspecialisedmetadatanode;
+        isnewlocalvardi,
+        deref: boolean;
+      begin
+        { not really clean since hardcoding the structure of the call
+          instruction's procdef encoding, but quick }
+        if (hp.oper[taillvm.callpdopernr]^.def.typ<>pointerdef) or
+           (tpointerdef(hp.oper[taillvm.callpdopernr]^.def).pointeddef<>fllvm_dbg_addr_pd) then
+          exit;
+        deref:=false;
+
+        sympara:=hp.getcallpara(1);
+        exprpara:=hp.getcallpara(2);
+
+        if sympara^.val.typ<>top_local then
+          internalerror(2022052613);
+        sym:=tabstractnormalvarsym(sympara^.val.localsym);
+        dilocalvar:=localvarsym_get_meta(sym,isnewlocalvardi);
+        sympara^.loadtai(llvm_getmetadatareftypedconst(dilocalvar));
+        if isnewlocalvardi then
+          begin
+            dilocalvar.addstring('name',symname(sym,false));
+            if sym.typ=paravarsym then
+              begin
+                dilocalvar.addint64('arg',tparavarsym(sym).paranr);
+                if paramanager.push_addr_param(sym.varspez,sym.vardef,pd.proccalloption) then
+                  deref:=true;
+              end;
+            dilocalvar.addmetadatarefto('scope',functionscope);
+            try_add_file_metaref(dilocalvar,sym.fileinfo,false);
+            dilocalvar.addmetadatarefto('type',def_meta_node(sym.vardef));
+          end
+        else
+          begin
+            if (sym.typ=paravarsym) and
+               paramanager.push_addr_param(sym.varspez,sym.vardef,pd.proccalloption) then
+              deref:=true;
+          end;
+
+        if not deref then
+          exprpara^.loadtai(llvm_getmetadatareftypedconst(femptyexpression))
+        else
+          exprpara^.loadtai(llvm_getmetadatareftypedconst(fderefexpression));
+      end;
+
 
     function TDebugInfoLLVM.file_getmetanode(moduleindex: tfileposmoduleindex; fileindex: tfileposfileindex): tai_llvmspecialisedmetadatanode;
       var
@@ -1832,7 +1922,7 @@ implementation
         dispflags: tsymstr;
         islocal: boolean;
       begin
-        decl:=sym_get_decl(sym);
+        decl:=staticvarsym_get_decl(sym);
         if not assigned(decl) then
           begin
             list.concat(tai_comment.create(strpnew('no declaration found for '+sym.mangledname)));
@@ -2340,6 +2430,8 @@ implementation
         fglobals:=nil;
         current_asmdata.AsmLists[al_dwarf_info].Concat(femptyexpression);
         femptyexpression:=nil;
+        current_asmdata.AsmLists[al_dwarf_info].Concat(fderefexpression);
+        fderefexpression:=nil;
 
         if target_info.system in systems_darwin then
           fcunode.addenum('nameTableKind','GNU');
@@ -2476,6 +2568,7 @@ implementation
         hp: tai;
         functionscope,
         positionmeta: tai_llvmspecialisedmetadatanode;
+        pd: tprocdef;
         procdeffileinfo: tfileposinfo;
         nolineinfolevel : longint;
         firstline: boolean;
@@ -2490,12 +2583,16 @@ implementation
            end;
         if not assigned(hp) then
           exit;
-        procdeffileinfo:=tprocdef(taillvmdecl(hp).def).fileinfo;
+        pd:=tprocdef(taillvmdecl(hp).def);
+        procdeffileinfo:=pd.fileinfo;
         { might trigger for certain kinds of internally generated code }
         if procdeffileinfo.fileindex=0 then
           exit;
 
-        functionscope:=def_meta_node(taillvmdecl(hp).def);
+        flocalvarsymmeta.free;
+        flocalvarsymmeta:=THashSet.Create((pd.localst.SymList.count+pd.parast.SymList.count)*4+1,true,false);
+
+        functionscope:=def_meta_node(pd);
 
         nolineinfolevel:=0;
         hp:=tai(hp.next);
@@ -2542,6 +2639,9 @@ implementation
                   end;
                 if assigned(positionmeta) then
                   taillvm(hp).addinsmetadata(tai_llvmmetadatareferenceoperand.createreferenceto('dbg',positionmeta));
+                if (cs_debuginfo in current_settings.moduleswitches) and
+                   (taillvm(hp).llvmopcode=la_call) then
+                  updatelocalvardbginfo(taillvm(hp),pd,functionscope);
               end;
             hp:=tai(hp.next);
           end;

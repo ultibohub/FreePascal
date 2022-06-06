@@ -28,6 +28,9 @@ unit fpmkunit;
 
 Interface
 
+{$ifdef CPULLVM}
+  {$define LLVM_INTERFACE_PROBLEM}
+{$endif CPULLVM}
 {$IFDEF MORPHOS}
  {$DEFINE NO_UNIT_PROCESS}
  {$DEFINE NO_THREADING}
@@ -10132,12 +10135,14 @@ Initialization
   GetPluginManager.RegisterPlugin(TfpmResolvePackagePathsPlugin);
 
 Finalization
+{$ifndef LLVM_INTERFACE_PROBLEM}
   FreeAndNil(CustomFpMakeCommandlineValues);
   FreeAndNil(CustomFpmakeCommandlineOptions);
   FreeAndNil(DefInstaller);
   FreeAndNil(GlobalDictionary);
   FreeAndNil(Defaults);
   FreeAndNil(GPluginManager);
+{$endif ndef LLVM_INTERFACE_PROBLEM}
 end.
 
 

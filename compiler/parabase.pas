@@ -41,8 +41,8 @@ unit parabase;
        PCGParaLocation = ^TCGParaLocation;
        TCGParaLocation = record
          Next : PCGParaLocation;
-         Size : TCGSize; { size of this location }
          Def  : tdef;
+         Size : TCGSize; { size of this location }
          Loc  : TCGLoc;
 {$ifdef llvm}
          { The following fields are used to determine the name and handling of
@@ -65,6 +65,8 @@ unit parabase;
                stored in a temp with this register as base address }
              LOC_REGISTER:  (reg: tregister);
              LOC_CONSTANT:  (value: int64);
+             { for debug info }
+             LOC_CREFERENCE: (localsym: tsym);
          end;
 {$endif llvm}
          case TCGLoc of

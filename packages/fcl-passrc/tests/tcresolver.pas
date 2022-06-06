@@ -431,6 +431,7 @@ type
     Procedure TestProcOverloadObjFPCUnitWithoutOverloadMod;
     Procedure TestProcOverloadDelphiWithObjFPC;
     Procedure TestProcOverloadDelphiOverride;
+    Procedure TestProcOverloadDelphiOverrideOne;
     Procedure TestProcDuplicate;
     Procedure TestNestedProc;
     Procedure TestNestedProc_ResultString;
@@ -935,10 +936,12 @@ type
     Procedure TestResourcestringPassVarArgFail;
 
     // hints
-    Procedure TestHint_ElementHints;
+    Procedure TestHint_ElementHintModifiers;
     Procedure TestHint_ElementHintsMsg;
     Procedure TestHint_ElementHintsAlias;
     Procedure TestHint_ElementHints_WarnOff_SymbolDeprecated;
+    Procedure TestHint_ClassElementHints;
+    Procedure TestHint_UsesHints;
     Procedure TestHint_Garbage;
 
     // helpers
@@ -7085,6 +7088,45 @@ begin
   ParseProgram;
 end;
 
+procedure TTestResolver.TestProcOverloadDelphiOverrideOne;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class',
+  '    constructor Create(b: boolean); virtual;',
+  '  end;',
+  '  TBird = class',
+  '    // add first an overload',
+  '    constructor Create(w: word); overload;',
+  '    // and then override the previous',
+  '    constructor Create(b: boolean); override; overload;',
+  '  end;',
+  '  TEagle = class(TBird)',
+  '    constructor Create(b: boolean); override; overload;',
+  '  end;',
+  'constructor TObject.Create(b: boolean);',
+  'begin',
+  'end;',
+  'constructor TBird.Create(w: word);',
+  'begin',
+  'end;',
+  'constructor TBird.Create(b: boolean);',
+  'begin',
+  'end;',
+  'constructor TEagle.Create(b: boolean);',
+  'begin',
+  'end;',
+  'begin',
+  '  TBird.Create(false);',
+  '  TBird.Create(2);',
+  '  TEagle.Create(true);',
+  '  TEagle.Create(3);',
+  '']);
+  ParseProgram;
+end;
+
 procedure TTestResolver.TestProcDuplicate;
 begin
   StartProgram(false);
@@ -9832,12 +9874,15 @@ begin
   '  end;',
   '  TBird = class(TObject)',
   '  public',
-  '    procedure Fly(b: boolean); override; overload;',
-  '    procedure Fly(c: word); override; overload;',
+  '    procedure Fly(b: boolean); override;',
+  '    procedure Fly(c: word); override;',
+  '    procedure Fly(s: string); overload;',
   '  end;',
   'procedure TBird.Fly(b: boolean);',
   'begin end;',
   'procedure TBird.Fly(c: word);',
+  'begin end;',
+  'procedure TBird.Fly(s: string);',
   'begin end;',
   'var',
   '  b: TBird;',
@@ -17154,7 +17199,7 @@ begin
   CheckResolverException(sVariableIdentifierExpected,nVariableIdentifierExpected);
 end;
 
-procedure TTestResolver.TestHint_ElementHints;
+procedure TTestResolver.TestHint_ElementHintModifiers;
 begin
   StartProgram(false);
   Add([
@@ -17164,12 +17209,14 @@ begin
   '  TPlatform = longint platform;',
   '  TExperimental = longint experimental;',
   '  TUnimplemented = longint unimplemented;',
+  '  TExperimentalPlatform = boolean experimental platform;',
   'var',
   '  vDeprecated: TDeprecated;',
   '  vLibrary: TLibrary;',
   '  vPlatform: TPlatform;',
   '  vExperimental: TExperimental;',
   '  vUnimplemented: TUnimplemented;',
+  '  vExperimentalPlatform: TExperimentalPlatform;',
   'begin',
   '']);
   ParseProgram;
@@ -17178,6 +17225,8 @@ begin
   CheckResolverHint(mtWarning,nSymbolXIsNotPortable,'Symbol "TPlatform" is not portable');
   CheckResolverHint(mtWarning,nSymbolXIsExperimental,'Symbol "TExperimental" is experimental');
   CheckResolverHint(mtWarning,nSymbolXIsNotImplemented,'Symbol "TUnimplemented" is not implemented');
+  CheckResolverHint(mtWarning,nSymbolXIsExperimental,'Symbol "TExperimentalPlatform" is experimental');
+  CheckResolverHint(mtWarning,nSymbolXIsNotPortable,'Symbol "TExperimentalPlatform" is not portable');
   CheckResolverUnexpectedHints;
 end;
 
@@ -17243,6 +17292,53 @@ begin
   '  if i=3 then ;']);
   ParseProgram;
   CheckResolverUnexpectedHints(true);
+end;
+
+procedure TTestResolver.TestHint_ClassElementHints;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TObject = class',
+  '    FWing: word experimental;',
+  '    property Wing: word read FWing; platform; experimental;',
+  '    procedure Fly; library;',
+  '  end;',
+  'procedure TObject.Fly;',
+  'begin',
+  '  if Wing=3 then ;',
+  'end;',
+  'var',
+  '  Bird: TObject;',
+  'begin',
+  '  Bird.Fly;',
+  '']);
+  ParseProgram;
+  CheckResolverHint(mtWarning,nSymbolXIsExperimental,'Symbol "FWing" is experimental');
+  CheckResolverHint(mtWarning,nSymbolXIsNotPortable,'Symbol "Wing" is not portable');
+  CheckResolverHint(mtWarning,nSymbolXIsExperimental,'Symbol "Wing" is experimental');
+  CheckResolverHint(mtWarning,nSymbolXBelongsToALibrary,'Symbol "Fly" belongs to a library');
+  CheckResolverUnexpectedHints;
+end;
+
+procedure TTestResolver.TestHint_UsesHints;
+var
+  Src: String;
+begin
+  Src:='{$mode objfpc}';
+  Src+='unit unit2 experimental platform;'+LineEnding;
+  Src+='interface'+LineEnding;
+  Src+='implementation'+LineEnding;
+  Src+='end.'+LineEnding;
+  AddModuleWithSrc('unit2',Src);
+
+  StartProgram(true);
+  Add([
+  'uses unit2;',
+  'begin']);
+  ParseProgram;
+  CheckResolverHint(mtWarning,nSymbolXIsExperimental,'Symbol "unit2" is experimental');
+  CheckResolverHint(mtWarning,nSymbolXIsNotPortable,'Symbol "unit2" is not portable');
 end;
 
 procedure TTestResolver.TestHint_Garbage;

@@ -108,7 +108,7 @@ interface
         function getopcodestr(hp: taillvm): TSymStr;
         function getopstr(const o:toper; refwithalign: boolean) : TSymStr;
         procedure writetaioper(ai: tai);
-        procedure writeparas(const paras: tfplist);
+        procedure writeparas(const paras: tfplist; asmblock: boolean);
         procedure WriteAsmRegisterAllocationClobbers(list: tasmlist);
       end;
 
@@ -329,7 +329,8 @@ implementation
       end;
 
 
-   procedure TLLVMInstrWriter.writeparas(const paras: tfplist);
+   procedure TLLVMInstrWriter.writeparas(const paras: tfplist; asmblock: boolean);
+
      var
        hp: tai;
        para: pllvmcallpara;
@@ -346,13 +347,22 @@ implementation
            if i<>0 then
              owner.writer.AsmWrite(', ');
            para:=pllvmcallpara(paras[i]);
+           if (lcp_metadata in para^.flags) and
+              (para^.def<>llvm_metadatatype) then
+             begin
+               owner.writer.AsmWrite('metadata ')
+             end;
            owner.writer.AsmWrite(llvmencodetypename(para^.def));
            if para^.valueext<>lve_none then
              owner.writer.AsmWrite(llvmvalueextension2str[para^.valueext]);
-           if para^.byval then
-             owner.writer.AsmWrite(' byval');
-           if para^.sret then
-             owner.writer.AsmWrite(' sret');
+           if lcp_byval in para^.flags then
+             owner.writer.AsmWrite(llvmparatypeattr(' byval',para^.def,true));
+           if lcp_sret in para^.flags then
+             owner.writer.AsmWrite(llvmparatypeattr(' sret',para^.def,true));
+           if asmblock and
+              (llvmflag_opaque_ptr_transition in llvmversion_properties[current_settings.llvmversion]) and
+              (para^.def.typ=pointerdef) then
+             owner.writer.AsmWrite(llvmparatypeattr(' elementtype',para^.def,true));
            { For byval, this means "alignment on the stack" and of the passed source data.
              For other pointer parameters, this means "alignment of the passed source data" }
            if (para^.alignment<>std_param_align) or
@@ -361,32 +371,34 @@ implementation
                owner.writer.AsmWrite(' align ');
                owner.writer.AsmWrite(tostr(abs(para^.alignment)));
              end;
-           case para^.typ of
+           case para^.val.typ of
              top_reg:
                begin
                  owner.writer.AsmWrite(' ');
-                 owner.writer.AsmWrite(getregisterstring(para^.register));
+                 owner.writer.AsmWrite(getregisterstring(para^.val.register));
                end;
              top_ref:
                begin
                  owner.writer.AsmWrite(' ');
-                 owner.writer.AsmWrite(llvmasmsymname(para^.sym));
+                 owner.writer.AsmWrite(llvmasmsymname(para^.val.sym));
                end;
              top_const:
                begin
                  owner.writer.AsmWrite(' ');
-                 owner.writer.AsmWrite(tostr(para^.value));
+                 owner.writer.AsmWrite(tostr(para^.val.value));
                end;
              top_tai:
                begin
                  tmpinline:=1;
                  tmpasmblock:=false;
-                 hp:=para^.ai;
+                 hp:=para^.val.ai;
                  if para^.def<>llvm_metadatatype then
                    metadatakind:=mk_none
                  else
                    metadatakind:=mk_normal;
+                 inc(owner.fdecllevel);
                  owner.WriteTai(false,false,metadatakind,tmpinline,tmpasmblock,hp);
+                 dec(owner.fdecllevel);
                end;
              { empty records }
              top_undef:
@@ -494,7 +506,7 @@ implementation
            end;
          top_para:
            begin
-             writeparas(o.paras);
+             writeparas(o.paras,false);
              result:='';
            end;
          top_tai:
@@ -597,7 +609,7 @@ implementation
             owner.writer.AsmWrite('~{memory},~{fpsr},~{flags}');
             WriteAsmRegisterAllocationClobbers(taillvm(hp).oper[0]^.asmlist);
             owner.writer.AsmWrite('"');
-            writeparas(taillvm(hp).oper[1]^.paras);
+            writeparas(taillvm(hp).oper[1]^.paras,true);
             done:=true;
           end;
         la_load,
@@ -1264,8 +1276,11 @@ implementation
               else
                 first:=false;
               specialised_element:=tllvmspecialisedmetaitem(element);
-              writer.AsmWrite(specialised_element.itemname);
-              writer.AsmWrite(': ');
+              if specialised_element.itemname<>'' then
+                begin
+                  writer.AsmWrite(specialised_element.itemname);
+                  writer.AsmWrite(': ');
+                end;
               case specialised_element.itemkind of
                 lsmik_boolean:
                   metadatakind:=mk_specialised_bool;

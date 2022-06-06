@@ -14,6 +14,10 @@
  **********************************************************************}
 
 {$mode objfpc}
+{$IF FPC_FULLVERSION>=30301}
+{$modeswitch FUNCTIONREFERENCES}
+{$define FPC_HAS_REFERENCE_PROCEDURE}
+{$endif}
 
 unit Classes;
 
