@@ -1013,9 +1013,7 @@ begin
   FreeAndNil(FScanner);
   FreeAndNil(FFileResolver);
   FreeAndNil(FPasResolver);
-  if FPasModule<>nil then
-    FPasModule.ReleaseUsedUnits;
-  ReleaseAndNil(TPasElement(FPasModule){$IFDEF CheckPasTreeRefCount},'CreateElement'{$ENDIF});
+  FPasModule:=nil;
   inherited Destroy;
 end;
 
@@ -3045,6 +3043,7 @@ end;
 
 procedure TPas2jsCompiler.CreateResourceSupport;
 begin
+  FreeAndNil(FResources);
   Case FResourceMode of
     rmNone : FResources:=TNoResources.Create(FS);
     rmHTML : FResources:=THTMLResourceLinkHandler.Create(FS);
@@ -4311,6 +4310,7 @@ destructor TPas2jsCompiler.Destroy;
 
   procedure FreeStuff;
   begin
+    FreeAndNil(FResources);
     FreeAndNil(FImports);
     FreeAndNil(FResourceStrings);
     FreeAndNil(FNamespaces);
@@ -4896,7 +4896,7 @@ begin
   if FHasShownLogo then exit;
   FHasShownLogo:=true;
   WriteVersionLine;
-  Log.LogPlain('Copyright (c) 2021 Free Pascal team.');
+  Log.LogPlain('Copyright (c) 2022 Free Pascal team.');
   if coShowInfos in Options then
     WriteEncoding;
 end;

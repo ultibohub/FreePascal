@@ -1420,7 +1420,7 @@ begin
          write('Nil');
        deref_symid :
          begin
-           idx:=pdata[i] shl 24 or pdata[i+1] shl 16 or pdata[i+2] shl 8 or pdata[i+3];
+           idx:=BEtoN(unaligned(PInt32(@pdata[i{..i+3}])^));
            inc(i,4);
            write(['SymId ',idx]);
            if Ref <> nil then
@@ -1428,7 +1428,7 @@ begin
          end;
        deref_defid :
          begin
-           idx:=pdata[i] shl 24 or pdata[i+1] shl 16 or pdata[i+2] shl 8 or pdata[i+3];
+           idx:=BEtoN(unaligned(PInt32(@pdata[i{..i+3}])^));
            inc(i,4);
            write(['DefId ',idx]);
            if Ref <> nil then
@@ -1436,7 +1436,7 @@ begin
          end;
        deref_unit :
          begin
-           idx:=pdata[i] shl 8 or pdata[i+1];
+           idx:=BEtoN(unaligned(PUint16(@pdata[i{..i+1}])^));
            inc(i,2);
            write(['Unit ',idx]);
            if Ref <> nil then

@@ -532,11 +532,6 @@ begin
     FreeAndNil(FRestAnalyzer);
     RestParser.Free;
     RestScanner.Free;
-    if (RestResolver<>nil) and (RestResolver.RootElement<>nil) then
-      begin
-      RestResolver.RootElement.ReleaseUsedUnits;
-      RestResolver.RootElement.Release{$IFDEF CheckPasTreeRefCount}('CreateElement'){$ENDIF};
-      end;
     RestResolver.Free; // free parser before resolver
     RestFileResolver.Free;
 
@@ -2170,8 +2165,8 @@ end;
 procedure TCustomTestPrecompile.CheckRestoredImplAssign(const Path: string;
   Orig, Rest: TPasImplAssign; Flags: TPCCheckFlags);
 begin
-  CheckRestoredElement(Path+'.left',Orig.left,Rest.left,Flags);
-  CheckRestoredElement(Path+'.right',Orig.right,Rest.right,Flags);
+  CheckRestoredElement(Path+'.left',Orig.Left,Rest.Left,Flags);
+  CheckRestoredElement(Path+'.right',Orig.Right,Rest.Right,Flags);
 end;
 
 procedure TCustomTestPrecompile.CheckRestoredImplSimple(const Path: string;

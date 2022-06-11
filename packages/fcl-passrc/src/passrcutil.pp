@@ -81,6 +81,7 @@ function TSrcContainer.CreateElement(AClass: TPTreeElement;
   const ASourceFilename: String; ASourceLinenumber: Integer): TPasElement;
 begin
   Result:=AClass.Create(AName,AParent);
+  FOwnedElements.Add(Result);
   Result.Visibility:=AVisibility;
   Result.SourceFilename:=ASourceFileName;
   Result.SourceLinenumber:=ASourceLineNumber;
@@ -115,7 +116,7 @@ begin
   FreeAndNil(FScanner);
   FreeAndNil(FContainer);
   FreeAndNil(FResolver);
-  FreeAndNil(FModule);
+  FModule:=nil;
 end;
 
 procedure TPasSrcAnalysis.CheckParser;
@@ -221,20 +222,20 @@ end;
 procedure TPasSrcAnalysis.GetInterfaceUnits(List: TStrings);
 begin
   Parse;
-  GetUses(Fmodule.InterfaceSection,List);
+  GetUses(FModule.InterfaceSection,List);
 end;
 
 procedure TPasSrcAnalysis.GetImplementationUnits(List: TStrings);
 begin
   Parse;
-  GetUses(Fmodule.ImplementationSection,List);
+  GetUses(FModule.ImplementationSection,List);
 end;
 
 procedure TPasSrcAnalysis.GetUsedUnits(List: TStrings);
 begin
   Parse;
-  GetUses(Fmodule.InterfaceSection,List);
-  GetUses(Fmodule.ImplementationSection,List);
+  GetUses(FModule.InterfaceSection,List);
+  GetUses(FModule.ImplementationSection,List);
 end;
 
 procedure TPasSrcAnalysis.GetEnumValues(Enum : TPasEnumType;List : TStrings; Const APrefix : String = '');
@@ -281,40 +282,40 @@ end;
 procedure TPasSrcAnalysis.GetInterfaceIdentifiers(List: TStrings; Recurse : Boolean = False);
 begin
   Parse;
-  GetIdentifiers(Fmodule.InterfaceSection,List,Recurse);
+  GetIdentifiers(FModule.InterfaceSection,List,Recurse);
 end;
 
 procedure TPasSrcAnalysis.GetImplementationIdentifiers(List: TStrings;
   Recurse: Boolean);
 begin
   Parse;
-  GetIdentifiers(Fmodule.ImplementationSection,List,Recurse);
+  GetIdentifiers(FModule.ImplementationSection,List,Recurse);
 end;
 
 procedure TPasSrcAnalysis.GetAllIdentifiers(List: TStrings; Recurse: Boolean);
 begin
   Parse;
-  GetIdentifiers(Fmodule.InterfaceSection,List,Recurse);
-  GetIdentifiers(Fmodule.ImplementationSection,List,Recurse);
+  GetIdentifiers(FModule.InterfaceSection,List,Recurse);
+  GetIdentifiers(FModule.ImplementationSection,List,Recurse);
 end;
 
 function TPasSrcAnalysis.InterfaceHasResourcestrings: Boolean;
 begin
   Parse;
-  Result:=ResourceStringCount(Fmodule.InterfaceSection)>0;
+  Result:=ResourceStringCount(FModule.InterfaceSection)>0;
 end;
 
 function TPasSrcAnalysis.ImplementationHasResourcestrings: Boolean;
 begin
   Parse;
-  Result:=ResourceStringCount(Fmodule.ImplementationSection)>0;
+  Result:=ResourceStringCount(FModule.ImplementationSection)>0;
 end;
 
 function TPasSrcAnalysis.HasResourcestrings: Boolean;
 begin
   Parse;
-  Result:=(ResourceStringCount(Fmodule.InterfaceSection)>0)
-           or (ResourceStringCount(Fmodule.ImplementationSection)>0);
+  Result:=(ResourceStringCount(FModule.InterfaceSection)>0)
+           or (ResourceStringCount(FModule.ImplementationSection)>0);
 end;
 
 end.

@@ -814,6 +814,18 @@ var rtl = {
     return intf;
   },
 
+  _ReleaseArray: function(a,dim){
+    if (!a) return null;
+    for (var i=0; i<a.length; i++){
+      if (dim<=1){
+        if (a[i]) a[i]._Release();
+      } else {
+        rtl._ReleaseArray(a[i],dim-1);
+      }
+    }
+    return null;
+  },
+
   trunc: function(a){
     return a<0 ? Math.ceil(a) : Math.floor(a);
   },
@@ -1023,10 +1035,42 @@ var rtl = {
       if (src === null) continue;
       if (a===null){
         a=rtl.arrayRef(src); // Note: concat(a) does not clone
+      } else if (a['$pas2jsrefcnt']){
+        a=a.concat(src); // clone a and append src
       } else {
-        a=a.concat(src);
+        for (var i=0; i<src.length; i++){
+          a.push(src[i]);
+        }
       }
     };
+    return a;
+  },
+
+  arrayPush: function(type,a){
+    if(a===null){
+      a=[];
+    } else if (a['$pas2jsrefcnt']){
+      if (type===0){
+        a=a.concat();
+      } else {
+        a=rtl.arrayCopy(type,a,0,a.length);
+      }
+    }
+    for (var i=1; i<arguments.length; i++){
+      a.push(arguments[i]);
+    }
+    return a;
+  },
+
+  arrayPushN: function(a){
+    if(a===null){
+      a=[];
+    } else if (a['$pas2jsrefcnt']){
+      a=a.concat();
+    }
+    for (var i=1; i<arguments.length; i++){
+      a.push(arguments[i]);
+    }
     return a;
   },
 

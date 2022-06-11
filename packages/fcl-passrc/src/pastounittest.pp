@@ -731,6 +731,7 @@ function TTestContainer.CreateElement(AClass: TPTreeElement;
   const ASourceFilename: String; ASourceLinenumber: Integer): TPasElement;
 begin
   Result:=AClass.Create(AName,AParent);
+  FOwnedElements.Add(Result);
   Result.Visibility:=AVisibility;
   Result.SourceFilename:=ASourceFileName;
   Result.SourceLinenumber:=ASourceLineNumber;

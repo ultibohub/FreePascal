@@ -65,7 +65,6 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-    procedure ReleaseUsedUnits;
     function CreateElement(AClass: TPTreeElement; const AName: String;
       AParent: TPasElement; AVisibility: TPasMemberVisibility;
       const ASrcPos: TPasSourcePos; TypeParams: TFPList = nil): TPasElement;
@@ -114,11 +113,8 @@ type
   TCustomTestResolver = Class(TTestParser)
   Private
     FHub: TPasResolverHub;
-    {$IF defined(VerbosePasResolver) or defined(VerbosePasResolverMem)}
-    FStartElementRefCount: int64;
-    {$ENDIF}
     FFirstStatement: TPasImplBlock;
-    FModules: TObjectList;// list of TTestEnginePasResolver
+    FResolvers: TObjectList;// list of TTestEnginePasResolver
     FResolverEngine: TTestEnginePasResolver;
     FResolverMsgs: TObjectList; // list of TTestResolverMessage
     FResolverGoodMsgs: TFPList; // list of TTestResolverMessage marked as expected
@@ -1044,8 +1040,6 @@ end;
 procedure TTestEnginePasResolver.SetModule(AValue: TPasModule);
 begin
   if FModule=AValue then Exit;
-  if Module<>nil then
-    Module.Release{$IFDEF CheckPasTreeRefCount}('TTestEnginePasResolver.Module'){$ENDIF};
   FModule:=AValue;
   {$IFDEF CheckPasTreeRefCount}
   if Module<>nil then
@@ -1066,12 +1060,6 @@ begin
   FreeAndNil(FScanner);
   inherited Destroy;
   Module:=nil;
-end;
-
-procedure TTestEnginePasResolver.ReleaseUsedUnits;
-begin
-  if Module<>nil then
-    Module.ReleaseUsedUnits;
 end;
 
 function TTestEnginePasResolver.CreateElement(AClass: TPTreeElement;
@@ -1100,10 +1088,7 @@ end;
 
 procedure TCustomTestResolver.SetUp;
 begin
-  {$IF defined(VerbosePasResolver) or defined(VerbosePasResolverMem)}
-  FStartElementRefCount:=TPasElement.GlobalRefCount;
-  {$ENDIF}
-  FModules:=TObjectList.Create(true);
+  FResolvers:=TObjectList.Create(true);
   FHub:=TPasResolverHub.Create(Self);
   inherited SetUp;
   Parser.Options:=Parser.Options+[po_ResolveStandardTypes];
@@ -1113,10 +1098,6 @@ begin
 end;
 
 procedure TCustomTestResolver.TearDown;
-{$IFDEF CheckPasTreeRefCount}
-var El: TPasElement;
-{$ENDIF}
-var i: Integer;
 begin
   FResolverMsgs.Clear;
   FResolverGoodMsgs.Clear;
@@ -1130,46 +1111,22 @@ begin
   if ResolverEngine.Parser=Parser then
     ResolverEngine.Parser:=nil;
   ResolverEngine.Clear;
-  if FModules<>nil then
+  if FResolvers<>nil then
     begin
     {$IFDEF VerbosePasResolverMem}
-    writeln('TTestResolver.TearDown FModules');
+    writeln('TTestResolver.TearDown FResolvers');
     {$ENDIF}
-    for i:=0 to FModules.Count-1 do
-      TTestEnginePasResolver(FModules[i]).ReleaseUsedUnits;
-    FModules.OwnsObjects:=false;
-    FModules.Remove(ResolverEngine); // remove reference
-    FModules.OwnsObjects:=true;
-    FreeAndNil(FModules);// free all other modules
+    FResolvers.OwnsObjects:=false;
+    FResolvers.Remove(ResolverEngine); // remove reference
+    FResolvers.OwnsObjects:=true;
+    FreeAndNil(FResolvers);// free all other resolvers (the TPasElements are owned by the resolvers)
     end;
   FreeAndNil(FHub);
   {$IFDEF VerbosePasResolverMem}
   writeln('TTestResolver.TearDown inherited');
   {$ENDIF}
-  if Module<>nil then
-    Module.AddRef{$IFDEF CheckPasTreeRefCount}('CreateElement'){$ENDIF}; // for the Release in ancestor TTestParser
   inherited TearDown;
   FResolverEngine:=nil;
-  {$IF defined(VerbosePasResolver) or defined(VerbosePasResolverMem)}
-  if FStartElementRefCount<>TPasElement.GlobalRefCount then
-    begin
-    writeln('TCustomTestResolver.TearDown GlobalRefCount Was='+IntToStr(FStartElementRefCount)+' Now='+IntToStr(TPasElement.GlobalRefCount));
-    {$IFDEF CheckPasTreeRefCount}
-    El:=TPasElement.FirstRefEl;
-    if El=nil then
-      writeln('  TPasElement.FirstRefEl=nil');
-    while El<>nil do
-      begin
-      writeln('  ',GetObjName(El),' RefIds.Count=',El.RefIds.Count,':');
-      for i:=0 to El.RefIds.Count-1 do
-        writeln('    ',El.RefIds[i]);
-      El:=El.NextRefEl;
-      end;
-    {$ENDIF}
-    //Halt;
-    Fail('TCustomTestResolver.TearDown GlobalRefCount Was='+IntToStr(FStartElementRefCount)+' Now='+IntToStr(TPasElement.GlobalRefCount));
-    end;
-  {$ENDIF}
   {$IFDEF VerbosePasResolverMem}
   writeln('TTestResolver.TearDown END');
   {$ENDIF}
@@ -2209,7 +2166,7 @@ begin
   Result.Hub:=Hub;
   Result.ExprEvaluator.DefaultStringCodePage:=CP_UTF8;
   Result.ExprEvaluator.DefaultSourceCodePage:=CP_UTF8;
-  FModules.Add(Result);
+  FResolvers.Add(Result);
 end;
 
 function TCustomTestResolver.AddModuleWithSrc(aFilename, Src: string
@@ -2543,10 +2500,10 @@ begin
     E('El.Parent=El='+GetObjName(El));
   if El is TBinaryExpr then
     begin
-    if (TBinaryExpr(El).left<>nil) and (TBinaryExpr(El).left.Parent<>El) then
-      E('TBinaryExpr(El).left.Parent='+GetObjName(TBinaryExpr(El).left.Parent)+'<>El');
-    if (TBinaryExpr(El).right<>nil) and (TBinaryExpr(El).right.Parent<>El) then
-      E('TBinaryExpr(El).right.Parent='+GetObjName(TBinaryExpr(El).right.Parent)+'<>El');
+    if (TBinaryExpr(El).Left<>nil) and (TBinaryExpr(El).Left.Parent<>El) then
+      E('TBinaryExpr(El).left.Parent='+GetObjName(TBinaryExpr(El).Left.Parent)+'<>El');
+    if (TBinaryExpr(El).Right<>nil) and (TBinaryExpr(El).Right.Parent<>El) then
+      E('TBinaryExpr(El).right.Parent='+GetObjName(TBinaryExpr(El).Right.Parent)+'<>El');
     end
   else if El is TParamsExpr then
     begin
@@ -2663,7 +2620,7 @@ end;
 
 function TCustomTestResolver.GetModules(Index: integer): TTestEnginePasResolver;
 begin
-  Result:=TTestEnginePasResolver(FModules[Index]);
+  Result:=TTestEnginePasResolver(FResolvers[Index]);
 end;
 
 function TCustomTestResolver.GetMsgCount: integer;
@@ -2695,7 +2652,7 @@ end;
 
 function TCustomTestResolver.GetModuleCount: integer;
 begin
-  Result:=FModules.Count;
+  Result:=FResolvers.Count;
 end;
 
 { TTestResolver }
@@ -3649,21 +3606,21 @@ begin
   Add([
   'const',
   '  a=''o''+''x''+''''+''ab'';',
-  '  b=#65#66;',
-  '  c=a=b;',
-  '  d=a<>b;',
-  '  e=a<b;',
-  '  f=a<=b;',
-  '  g=a>b;',
-  '  h=a>=b;',
-  '  i=a[1];',
-  '  j=length(a);',
-  '  k=chr(97);',
-  '  l=ord(a[1]);',
-  '  m=low(char)+high(char);',
-  '  n = string(''A'');',
-  '  o = UnicodeString(''A'');',
-  '  p = ^C''bird'';',
+  //'  b=#65#66;',
+  //'  c=a=b;',
+  //'  d=a<>b;',
+  //'  e=a<b;',
+  //'  f=a<=b;',
+  //'  g=a>b;',
+  //'  h=a>=b;',
+  //'  i=a[1];',
+  //'  j=length(a);',
+  //'  k=chr(97);',
+  //'  l=ord(a[1]);',
+  //'  m=low(char)+high(char);',
+  //'  n = string(''A'');',
+  //'  o = UnicodeString(''A'');',
+  //'  p = ^C''bird'';',
   'begin']);
   ParseProgram;
   CheckResolverUnexpectedHints;
@@ -5737,8 +5694,8 @@ begin
   El:=TPasElement(Module.InitializationSection.Elements[0]);
   AssertEquals('direct assign',TPasImplAssign,El.ClassType);
   Assign1:=TPasImplAssign(El);
-  AssertEquals('direct assign left',TPrimitiveExpr,Assign1.left.ClassType);
-  Prim1:=TPrimitiveExpr(Assign1.left);
+  AssertEquals('direct assign left',TPrimitiveExpr,Assign1.Left.ClassType);
+  Prim1:=TPrimitiveExpr(Assign1.Left);
   AssertNotNull(Prim1.CustomData);
   AssertEquals('direct assign left ref',TResolvedReference,Prim1.CustomData.ClassType);
   DeclEl:=TResolvedReference(Prim1.CustomData).Declaration;
@@ -5748,10 +5705,10 @@ begin
   El:=TPasElement(Module.InitializationSection.Elements[1]);
   AssertEquals('indirect assign',TPasImplAssign,El.ClassType);
   Assign2:=TPasImplAssign(El);
-  AssertEquals('indirect assign left',TBinaryExpr,Assign2.left.ClassType);
-  BinExp:=TBinaryExpr(Assign2.left);
-  AssertEquals('indirect assign first token',TPrimitiveExpr,BinExp.left.ClassType);
-  Prim1:=TPrimitiveExpr(BinExp.left);
+  AssertEquals('indirect assign left',TBinaryExpr,Assign2.Left.ClassType);
+  BinExp:=TBinaryExpr(Assign2.Left);
+  AssertEquals('indirect assign first token',TPrimitiveExpr,BinExp.Left.ClassType);
+  Prim1:=TPrimitiveExpr(BinExp.Left);
   AssertEquals('indirect assign first token','afile',Prim1.Value);
   AssertNotNull(Prim1.CustomData);
   AssertEquals('indirect assign unit ref resolved',TResolvedReference,Prim1.CustomData.ClassType);
@@ -5760,8 +5717,8 @@ begin
 
   AssertEquals('indirect assign dot',eopSubIdent,BinExp.OpCode);
 
-  AssertEquals('indirect assign second token',TPrimitiveExpr,BinExp.right.ClassType);
-  Prim2:=TPrimitiveExpr(BinExp.right);
+  AssertEquals('indirect assign second token',TPrimitiveExpr,BinExp.Right.ClassType);
+  Prim2:=TPrimitiveExpr(BinExp.Right);
   AssertEquals('indirect assign second token','eXitCode',Prim2.Value);
   AssertNotNull(Prim2.CustomData);
   AssertEquals('indirect assign var ref resolved',TResolvedReference,Prim2.CustomData.ClassType);
@@ -5773,10 +5730,10 @@ begin
   El:=TPasElement(Module.InitializationSection.Elements[2]);
   AssertEquals('other unit assign',TPasImplAssign,El.ClassType);
   Assign3:=TPasImplAssign(El);
-  AssertEquals('other unit assign left',TBinaryExpr,Assign3.left.ClassType);
-  BinExp:=TBinaryExpr(Assign3.left);
-  AssertEquals('othe unit assign first token',TPrimitiveExpr,BinExp.left.ClassType);
-  Prim1:=TPrimitiveExpr(BinExp.left);
+  AssertEquals('other unit assign left',TBinaryExpr,Assign3.Left.ClassType);
+  BinExp:=TBinaryExpr(Assign3.Left);
+  AssertEquals('othe unit assign first token',TPrimitiveExpr,BinExp.Left.ClassType);
+  Prim1:=TPrimitiveExpr(BinExp.Left);
   AssertEquals('other unit assign first token','System',Prim1.Value);
   AssertNotNull(Prim1.CustomData);
   AssertEquals('other unit assign unit ref resolved',TResolvedReference,Prim1.CustomData.ClassType);
@@ -5787,8 +5744,8 @@ begin
 
   AssertEquals('other unit assign dot',eopSubIdent,BinExp.OpCode);
 
-  AssertEquals('other unit assign second token',TPrimitiveExpr,BinExp.right.ClassType);
-  Prim2:=TPrimitiveExpr(BinExp.right);
+  AssertEquals('other unit assign second token',TPrimitiveExpr,BinExp.Right.ClassType);
+  Prim2:=TPrimitiveExpr(BinExp.Right);
   AssertEquals('other unit assign second token','exiTCode',Prim2.Value);
   AssertNotNull(Prim2.CustomData);
   AssertEquals('other unit assign var ref resolved',TResolvedReference,Prim2.CustomData.ClassType);
