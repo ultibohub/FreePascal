@@ -75,7 +75,7 @@ interface
       msgfilename : string = '';
 
     procedure SetRedirectFile(const fn:string);
-    function  SetVerbosity(const s:string):boolean;
+    function  SetVerbosity(const s:TCmdStr):boolean;
     procedure PrepareReport;
 
     function  CheckVerbosity(v:longint):boolean;
@@ -83,7 +83,7 @@ interface
     procedure RestoreLocalVerbosity(pstate : pmessagestaterecord);
     procedure FreeLocalVerbosity(var fstate : pmessagestaterecord);
 
-    function ChangeMessageVerbosity(s: string; var i: integer;state:tmsgstate): boolean;
+    function ChangeMessageVerbosity(s: ansistring; var i: integer;state:tmsgstate): boolean;
     procedure ShowStatus;
     function  ErrorCount:longint;
     procedure SetErrorFlags(const s:string);
@@ -218,9 +218,9 @@ implementation
           end;
       end;
 
-    function ChangeMessageVerbosity(s: string; var i : integer;state:tmsgstate): boolean;
+    function ChangeMessageVerbosity(s: ansistring; var i : integer;state:tmsgstate): boolean;
       var
-        tok  : string;
+        tok  : ansistring;
         msgnr, code : longint;
       begin
         { delete everything up to and including 'm' }
@@ -254,7 +254,7 @@ implementation
       end;
 
 
-    function SetVerbosity(const s:string):boolean;
+    function SetVerbosity(const s:TCmdStr):boolean;
       const
         message_verbosity:array[boolean] of tmsgstate=(ms_off_global,ms_on_global);
       var

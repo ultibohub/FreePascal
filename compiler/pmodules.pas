@@ -411,6 +411,7 @@ implementation
         if ControllerSupport and (target_info.system in (systems_embedded+systems_freertos)) and
           (current_settings.controllertype<>ct_none) and
           (embedded_controllers[current_settings.controllertype].controllerunitstr<>'') and
+          (embedded_controllers[current_settings.controllertype].controllerunitstr<>current_module.modulename^) and
           not(current_module.islibrary) then
           AddUnit(embedded_controllers[current_settings.controllertype].controllerunitstr);
 {$pop}

@@ -100,8 +100,6 @@ Type
     Procedure TestRecord;
   end;
 
-  { TTestInterfaceParser }
-
   { TTestBaseInterfaceParser }
 
   TTestBaseInterfaceParser = Class(TTestParser)
@@ -116,9 +114,12 @@ Type
     Property CustAttributes : String Read FCustAttributes Write FCustAttributes;
   end;
 
+  { TTestInterfaceParser }
+
   TTestInterfaceParser = Class(TTestBaseInterfaceParser)
   Published
     Procedure ParseEmpty;
+    Procedure ParseEmptyNoBrackets;
     Procedure ParseEmptyInheritance;
     Procedure ParseMixinEmpty;
     Procedure ParseMixinEmptyInheritance;
@@ -144,6 +145,7 @@ Type
     Procedure Parse;
     Procedure ParseReadOnly;
   end;
+
   { TTestConstInterfaceParser }
 
   TTestConstInterfaceParser = Class(TTestBaseInterfaceParser)
@@ -181,8 +183,10 @@ Type
   Published
     Procedure ParseSimpleAttribute;
     Procedure ParseSimpleAttributeWithExtendedAttrs;
+    Procedure ParseSimpleAttributeLegacyNullToEmptyString;
     Procedure ParseSimpleStaticAttribute;
     Procedure ParseSimpleStringifierAttribute;
+    Procedure ParseStringifierNoAttribute;
     Procedure ParseSimpleReadonlyAttribute;
     Procedure ParseSimpleInheritedAttribute;
     Procedure ParseSimpleReadonlyInheritedAttribute;
@@ -222,11 +226,14 @@ Type
   Published
     Procedure TestSimpleFunction;
     Procedure TestSimpleGetterFunction;
+    Procedure TestSimpleGetterFunctionNoName;
     Procedure TestSimpleSetterFunction;
     Procedure TestSimpleLegacyCallerFunction;
     Procedure TestSimpleDeleterFunction;
     Procedure TestAttrFunctionFunction;
     Procedure TestOptionalDefaultArgFunction;
+    Procedure TestFunction_ClampArg;
+    Procedure TestFunction_ArgNameCallback;
   end;
 
   { TTestDictionaryParser }
@@ -415,7 +422,7 @@ end;
 function TTestOperationInterfaceParser.ParseFunction(ADef, aName,
   aReturnType: UTF8String; aArguments: array of UTF8String): TIDLFunctionDefinition;
 Var
-  TN,Src : UTF8String;
+  TN: UTF8String;
   P,I,Idx : integer;
   Arg : TIDLArgumentDefinition;
   ID : TIDLInterfaceDefinition;
@@ -457,7 +464,14 @@ end;
 procedure TTestOperationInterfaceParser.TestSimpleGetterFunction;
 begin
   AssertEquals('Options',[foGetter],ParseFunction('getter short A()','A','short',[]).Options);
+end;
 
+procedure TTestOperationInterfaceParser.TestSimpleGetterFunctionNoName;
+var
+  F: TIDLFunctionDefinition;
+begin
+  F:=ParseFunction('getter double (unsigned long index)','','double',['unsigned long','index']);
+  AssertEquals('Options',[foGetter],F.Options);
 end;
 
 procedure TTestOperationInterfaceParser.TestSimpleSetterFunction;
@@ -483,6 +497,21 @@ end;
 procedure TTestOperationInterfaceParser.TestOptionalDefaultArgFunction;
 begin
   ParseFunction('void A(optional short me = 0,optional short you = 0)','A','void',['short','me','short','you'])
+end;
+
+procedure TTestOperationInterfaceParser.TestFunction_ClampArg;
+var
+  F: TIDLFunctionDefinition;
+  Arg: TIDLDefinition;
+begin
+  F:=ParseFunction('void A(optional [Clamp] long long start)','A','void',['long long','start']);
+  Arg:=F.Arguments[0];
+  AssertEquals('optional arg is Clamp',true,Arg.HasSimpleAttribute('Clamp'));
+end;
+
+procedure TTestOperationInterfaceParser.TestFunction_ArgNameCallback;
+begin
+  ParseFunction('void getAsString(FunctionStringCallback? callback)','getAsString','void',['FunctionStringCallback','callback']);
 end;
 
 { TTestSerializerInterfaceParser }
@@ -624,6 +653,11 @@ begin
   AssertTrue('Have attribute',ParseAttribute('[Me] attribute short A','A','short',[]).HasSimpleAttribute('Me'));
 end;
 
+procedure TTestAttributeInterfaceParser.ParseSimpleAttributeLegacyNullToEmptyString;
+begin
+  ParseAttribute('attribute [LegacyNullToEmptyString] DOMString A','A','DOMString',[]);
+end;
+
 procedure TTestAttributeInterfaceParser.ParseSimpleStaticAttribute;
 begin
   ParseAttribute('static attribute short A','A','short',[aoStatic]);
@@ -634,10 +668,22 @@ begin
   ParseAttribute('stringifier attribute short A','A','short',[aoStringifier]);
 end;
 
+procedure TTestAttributeInterfaceParser.ParseStringifierNoAttribute;
+var
+  Id: TIDLInterfaceDefinition;
+  Def: TIDLAttributeDefinition;
+begin
+  Id:=ParseInterFace('IA','',['stringifier']);
+  AssertEquals('Correct class',TIDLAttributeDefinition,Id.Members[0].ClassType);
+  Def:=Id.Members[0] as TIDLAttributeDefinition;
+  AssertEquals('Attr name','',Def.Name);
+  AssertNull('Have type',Def.AttributeType);
+  AssertEquals('Attr options',[aoStringifier],Def.Options);
+end;
+
 procedure TTestAttributeInterfaceParser.ParseSimpleReadonlyAttribute;
 begin
   ParseAttribute('readonly attribute short A','A','short',[aoReadOnly]);
-
 end;
 
 procedure TTestAttributeInterfaceParser.ParseSimpleInheritedAttribute;
@@ -798,7 +844,7 @@ end;
 
 procedure TTestFunctionCallbackParser.ParseOneOptionalArgumentWithAttrsReturnVoid;
 begin
-  ParseCallback('A','void',['[Me] optional unsigned long long','A']);
+  ParseCallback('A','void',['optional [Me] unsigned long long','A']);
   AssertTrue('is optional',Func.Argument[0].IsOptional);
   AssertEquals('Type name','unsigned long long',Func.Argument[0].ArgumentType.TypeName);
   AssertTrue('Have attribute',Func.Arguments[0].HasSimpleAttribute('Me'));
@@ -818,7 +864,7 @@ end;
 
 procedure TTestFunctionCallbackParser.ParseThreeArgumentsAttrsReturnVoid;
 begin
-  ParseCallback('A','void',['[Me] short','B','[Me] short','C','[Me] optional unsigned long long','D']);
+  ParseCallback('A','void',['[Me] short','B','[Me] short','C','optional [Me] unsigned long long','D']);
   AssertTrue('Have attribute',Func.Arguments[0].HasSimpleAttribute('Me'));
   AssertTrue('Have attribute',Func.Arguments[1].HasSimpleAttribute('Me'));
   AssertTrue('Have attribute',Func.Arguments[2].HasSimpleAttribute('Me'));
@@ -1320,6 +1366,20 @@ end;
 procedure TTestInterfaceParser.ParseEmpty;
 begin
   ParseInterface('A','',[]);
+end;
+
+procedure TTestInterfaceParser.ParseEmptyNoBrackets;
+var
+  d: TIDLInterfaceDefinition;
+begin
+  InitSource('interface A;'+sLineBreak);
+  Parser.Parse;
+  AssertEquals('Correct class',TIDLInterfaceDefinition,Definitions[0].ClassType);
+  d:=Definitions[0] as TIDLInterfaceDefinition;
+  AssertEquals('Name','A',d.Name);
+  AssertEquals('Inheritance : ','',d.ParentName);
+  AssertEquals('Member count',0,d.Members.Count);
+  AssertEquals('Mixin correct',false,d.IsMixin);
 end;
 
 procedure TTestInterfaceParser.ParseEmptyInheritance;
