@@ -2,7 +2,7 @@
     This file is part of the Free Component Library
 
     WEBIDL source parser
-    Copyright (c) 2018 by Michael Van Canneyt michael@freepascal.org
+    Copyright (c) 2021 by Michael Van Canneyt michael@freepascal.org
 
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
@@ -15,7 +15,7 @@
 unit webidlparser;
 
 {$mode objfpc}{$H+}
-
+{$WARN 6060 off : }
 interface
 
 uses
@@ -48,8 +48,8 @@ Type
     function IndexOfDefinition(const AName: String): Integer;
     Function FindDefinition(const AName : String) : TIDLDefinition;
     Function AsString(Full: Boolean): UTF8String; override;
-    Function Add(aClass : TIDLDefinitionClass; const AName : UTF8String) : TIDLDefinition; override;
-    Function Add(aParent : TIDLBaseObject; aClass : TIDLDefinitionClass; const AName : UTF8String) : TIDLDefinition; virtual;
+    Function Add(aClass : TIDLDefinitionClass; const AName : UTF8String; const aFile: string; aLine, aCol: integer) : TIDLDefinition; override;
+    Function Add(aParent : TIDLBaseObject; aClass : TIDLDefinitionClass; const AName : UTF8String; const aFile: string; aLine, aCol: integer) : TIDLDefinition; virtual;
     Property Definitions : TIDLDefinitionList Read FDefinitions;
     Property Aliases : TStrings Read FAliases Write FAliases;
   end;
@@ -72,17 +72,21 @@ Type
     function CurrentToken: TIDLToken; virtual;
     function GetToken: TIDLToken; virtual;
     function CurrentTokenString: UTF8String;
+    function CurrentRow: integer; virtual;
+    function CurrentColumn: integer; virtual;
+    function CurrentFile: string; virtual;
     // Get next token, see if it is valid. Raise exception if not.
     procedure MaybeFree(Result: TIDLDefinition; aParent: TIDLBaseObject);
     Procedure CheckCurrentToken(aToken: TIDLToken);
     Procedure CheckCurrentTokens(aTokens: TIDLTokens);
     function ExpectToken(aToken: TIDLToken): TIDLToken;
     function ExpectTokens(aTokens: TIDLTokens): TIDLToken;
-    // Attributes
-    function ParseAttributes: TAttributeList;
-    procedure ParseAttributes(aList: TAttributeList; aTerminator: TIDLToken; ForSerializer: Boolean=False); virtual;
+    // Extended Attributes
+    function ParseExtAttributes: TExtAttributeList;
+    procedure ParseExtAttributes(aList: TExtAttributeList; aTerminator: TIDLToken; ForSerializer: Boolean=False); virtual;
     // Definitions
     // Type is a type without name of the type
+    function AddDefinition(aParent : TIDLBaseObject; aClass : TIDLDefinitionClass; const AName : UTF8String) : TIDLDefinition; virtual;
     function ParseAttribute(aParent: TIDLBaseObject): TIDLAttributeDefinition; virtual;
     function ParseArgument(aParent: TIDLBaseObject): TIDLArgumentDefinition; virtual;
     procedure ParseArguments(aParent: TIDLBaseObject);virtual;
@@ -204,6 +208,21 @@ begin
   Result:=Fscanner.CurTokenString;
 end;
 
+function TWebIDLParser.CurrentRow: integer;
+begin
+  Result:=FScanner.CurRow;
+end;
+
+function TWebIDLParser.CurrentColumn: integer;
+begin
+  Result:=FScanner.CurColumn;
+end;
+
+function TWebIDLParser.CurrentFile: string;
+begin
+  Result:=FScanner.CurFile;
+end;
+
 procedure TWebIDLParser.CheckCurrentToken(aToken: TIDLToken);
 begin
   if (aToken<>CurrentToken) then
@@ -232,19 +251,18 @@ end;
 
 // We're at the [,{,( token when we enter here
 // On exit, we're on the terminator token.
+procedure TWebIDLParser.ParseExtAttributes(aList: TExtAttributeList; aTerminator: TIDLToken; ForSerializer : Boolean = False);
 
-procedure TWebIDLParser.ParseAttributes(aList: TAttributeList; aTerminator: TIDLToken; ForSerializer : Boolean = False);
-
-  Function AddSub(aTerm : TIDLTOken) : String;
+  Function AddSub(aTerm : TIDLToken) : String;
 
   Var
-    L : TAttributeList;
+    L : TExtAttributeList;
 
   begin
     Result:=CurrentTokenString;
-    L:=TAttributeList.Create;
+    L:=TExtAttributeList.Create;
     try
-      ParseAttributes(L,aTerm,ForSerializer);
+      ParseExtAttributes(L,aTerm,ForSerializer);
       Result:=Trim(Result+L.ToLine(',')+CurrentTokenString);
     finally
       L.Free;
@@ -256,7 +274,7 @@ procedure TWebIDLParser.ParseAttributes(aList: TAttributeList; aTerminator: TIDL
   begin
     if (Current<>'') then
       Current:=Current+' ';
-    Current:=Current+aterm;
+    Current:=Current+aTerm;
   end;
 
   Procedure AddToList(Var aTerm : UTF8String);
@@ -272,7 +290,7 @@ procedure TWebIDLParser.ParseAttributes(aList: TAttributeList; aTerminator: TIDL
 
 Const
   OtherTokens = [tkNumberInteger,tkNumberFloat,tkIdentifier,tkString, {tkOther, tkMinus,}tkNegInfinity,
-                 tkDot,tkEllipsis,tkColon,tkSemicolon,tkLess,tkEqual,tkLarger,tkQuestionmark,tkByteString,
+                 tkDot,tkEllipsis,tkColon,tkSemicolon,tkLess,tkEqual,tkLarger,tkQuestionmark,tkStar,tkByteString,
                  tkDOMString,tkInfinity,tkNan,tkUSVString,tkAny,tkboolean,tkbyte,tkDouble,tkFalse,tkFloat,tkComma,
                  tkLong,tkNull,tkObject,tkOctet,tkOr,tkOptional,tkSequence,tkShort,tkTrue,tkUnsigned,tkVoid];
 
@@ -317,16 +335,21 @@ begin
   AddToList(S);
 end;
 
-function TWebIDLParser.ParseAttributes: TAttributeList;
+function TWebIDLParser.AddDefinition(aParent: TIDLBaseObject;
+  aClass: TIDLDefinitionClass; const AName: UTF8String): TIDLDefinition;
+begin
+  Result:=Context.Add(aParent,aClass,AName,CurrentFile,CurrentRow,CurrentColumn);
+end;
 
+function TWebIDLParser.ParseExtAttributes: TExtAttributeList;
 
 var
   ok: Boolean;
 begin
-  Result:=TAttributeList.Create;
+  Result:=TExtAttributeList.Create;
   ok:=false;
   try
-    ParseAttributes(Result,tkSquaredBraceClose);
+    ParseExtAttributes(Result,tkSquaredBraceClose);
     ok:=true;
   finally
     if not ok then
@@ -342,7 +365,7 @@ function TWebIDLParser.ParseArgument(aParent : TIDLBaseObject): TIDLArgumentDefi
 var
   ok: Boolean;
 begin
-  Result:=TIDLArgumentDefinition(Context.Add(aParent,TIDLArgumentDefinition,''));
+  Result:=TIDLArgumentDefinition(AddDefinition(aParent,TIDLArgumentDefinition,''));
   ok:=false;
   try
     if CurrentToken=tkOptional then
@@ -352,7 +375,7 @@ begin
       end;
     if (CurrentToken=tkSquaredBraceOpen) then
       begin
-      Result.Attributes:=ParseAttributes;
+      Result.Attributes:=ParseExtAttributes;
       GetToken;
       end;
     Result.ArgumentType:=ParseType(Result,False);
@@ -361,7 +384,7 @@ begin
       Result.HasEllipsis:=True;
       GetToken;
       end;
-    CheckCurrentTokens([tkIdentifier,tkOther,tkCallback]);
+    CheckCurrentTokens([tkIdentifier,tkOther,tkCallback,tkInterface]);
     Result.Name:=CurrentTokenString;
     ok:=true;
   finally
@@ -378,7 +401,7 @@ function TWebIDLParser.ParseFunction(aParent : TIDLBaseObject): TIDLFunctionDefi
 var
   ok: Boolean;
 begin
-  Result:=TIDLFunctionDefinition(Context.Add(aParent,TIDLFunctionDefinition,CurrentTokenString));
+  Result:=TIDLFunctionDefinition(AddDefinition(aParent,TIDLFunctionDefinition,CurrentTokenString));
   ok:=false;
   try
     ExpectToken(tkEqual);
@@ -468,7 +491,7 @@ begin
     Include(Opts,FO);
     GetToken;
     end;
-  Result:=TIDLFunctionDefinition(Context.Add(aParent,TIDLFunctionDefinition,''));
+  Result:=TIDLFunctionDefinition(AddDefinition(aParent,TIDLFunctionDefinition,''));
   ok:=false;
   try
     if (foConstructor in Opts) then
@@ -519,7 +542,7 @@ begin
   tkSemiColon:
     begin
     // stringifier;
-    Result:=TIDLAttributeDefinition(Context.Add(aParent,TIDLAttributeDefinition,''));
+    Result:=TIDLAttributeDefinition(AddDefinition(aParent,TIDLAttributeDefinition,''));
     With TIDLAttributeDefinition(Result) do
       Options:=Options+[aoStringifier];
     end;
@@ -542,7 +565,7 @@ begin
   ExpectToken(tkLess);
   T1:=Nil;
   T2:=nil;
-  Result:=TIDLIterableDefinition(Context.Add(aParent,TIDLIterableDefinition,''));
+  Result:=TIDLIterableDefinition(AddDefinition(aParent,TIDLIterableDefinition,''));
   ok:=false;
   try
     T1:=ParseType(Result,True,True);
@@ -565,7 +588,7 @@ begin
   end;
 end;
 
-function TWebIDLParser.CompleteSimpleType(tk: TIDLToken; Var S: UTF8String; out
+function TWebIDLParser.CompleteSimpleType(tk: TIDLToken; var S: UTF8String; out
   IsNull: Boolean): TIDLToken;
 
 begin
@@ -607,7 +630,7 @@ function TWebIDLParser.ParseMapLikeMember(aParent: TIDLBaseObject): TIDLMaplikeD
 var
   ok: Boolean;
 begin
-  Result:=TIDLMaplikeDefinition(Context.Add(aParent,TIDLMaplikeDefinition,''));
+  Result:=TIDLMaplikeDefinition(AddDefinition(aParent,TIDLMaplikeDefinition,''));
   ok:=false;
   try
     Result.TypeName:='maplike';
@@ -629,7 +652,7 @@ function TWebIDLParser.ParseSetLikeMember(aParent: TIDLBaseObject): TIDLSetlikeD
 var
   ok: Boolean;
 begin
-  Result:=TIDLSetlikeDefinition(Context.Add(aParent,TIDLSetlikeDefinition,''));
+  Result:=TIDLSetlikeDefinition(AddDefinition(aParent,TIDLSetlikeDefinition,''));
   ok:=false;
   try
     ExpectToken(tkLess);
@@ -648,7 +671,7 @@ function TWebIDLParser.ParseRecordTypeDef(aParent: TIDLBaseObject): TIDLRecordDe
 var
   ok: Boolean;
 begin
-  Result:=TIDLRecordDefinition(Context.Add(aParent,TIDLRecordDefinition,''));
+  Result:=TIDLRecordDefinition(AddDefinition(aParent,TIDLRecordDefinition,''));
   ok:=false;
   try
     Result.TypeName:='record';
@@ -734,7 +757,7 @@ begin
   // Unsigned
   Tk:=CompleteSimpleType(tk,S,IsNull);
   CheckCurrentToken(tkIdentifier);
-  Result:=TIDLConstDefinition(Context.Add(aParent,TIDLConstDefinition,CurrentTokenString));
+  Result:=TIDLConstDefinition(AddDefinition(aParent,TIDLConstDefinition,CurrentTokenString));
   ok:=false;
   try
     Result.TypeName:=S;
@@ -758,7 +781,6 @@ begin
     Result.Free;
 end;
 
-
 function TWebIDLParser.ParseAttribute(aParent : TIDLBaseObject): TIDLAttributeDefinition;
 (*
   On Entry we're on readonly, inherit or attribute.
@@ -781,11 +803,11 @@ begin
     GetToken;
     end;
   CheckCurrentToken(tkAttribute);
-  Result:=TIDLAttributeDefinition(Context.Add(aParent,TIDLAttributeDefinition,''));
+  Result:=TIDLAttributeDefinition(AddDefinition(aParent,TIDLAttributeDefinition,''));
   ok:=false;
   try
     Result.AttributeType:=ParseType(Result,True,True);
-    CheckCurrentToken(tkIdentifier);
+    CheckCurrentTokens([tkIdentifier,tkRequired]);
     Result.Name:=CurrentTokenString;
     Result.Options:=Options;
     ok:=true;
@@ -831,7 +853,7 @@ begin
   tk:=GetToken;
   if tk=tkSemiColon then
     exit;
-  Result:=TIDLSerializerDefinition(Context.Add(aParent,TIDLSerializerDefinition,''));
+  Result:=TIDLSerializerDefinition(AddDefinition(aParent,TIDLSerializerDefinition,''));
   ok:=false;
   try
     if tk<>tkEqual then
@@ -843,12 +865,12 @@ begin
     case CurrentToken of
       tkSquaredBraceOpen :
         begin
-        ParseAttributes(Result.Identifiers,tkSquaredBraceClose,True);
+        ParseExtAttributes(Result.Identifiers,tkSquaredBraceClose,True);
         Result.Kind:=skArray;
         end;
       tkCurlyBraceOpen :
         begin
-        ParseAttributes(Result.Identifiers,tkCurlyBraceClose,True);
+        ParseExtAttributes(Result.Identifiers,tkCurlyBraceClose,True);
         Result.Kind:=skObject;
         end;
       tkIdentifier :
@@ -871,7 +893,7 @@ function TWebIDLParser.ParseInterface(aParent : TIDLBaseObject): TIDLInterfaceDe
 
 Var
   tk : TIDLToken;
-  Attrs : TAttributeList;
+  Attrs : TExtAttributeList;
   M : TIDLDefinition;
   isMixin,SemicolonSeen , ok: Boolean;
 
@@ -881,7 +903,7 @@ begin
   isMixin:=CurrentToken=tkMixin;
   if CurrentToken=tkMixin then
     ExpectToken(tkIdentifier);
-  Result:=TIDLInterfaceDefinition(Context.Add(aParent,TIDLInterfaceDefinition,CurrentTokenString));
+  Result:=TIDLInterfaceDefinition(AddDefinition(aParent,TIDLInterfaceDefinition,CurrentTokenString));
   ok:=false;
   try
     Result.IsMixin:=IsMixin;
@@ -906,7 +928,7 @@ begin
       M:=Nil;
       if tk=tkSquaredBraceOpen then
         begin
-        Attrs:=ParseAttributes;
+        Attrs:=ParseExtAttributes;
         tk:=GetToken;
         end;
       Case tk of
@@ -1024,7 +1046,7 @@ Var
 
 begin
   ExpectToken(tkIdentifier);
-  Result:=TIDLEnumDefinition(Context.Add(aParent,TIDLEnumDefinition,CurrentTokenString));
+  Result:=TIDLEnumDefinition(AddDefinition(aParent,TIDLEnumDefinition,CurrentTokenString));
   ExpectToken(tkCurlyBraceOpen);
   Repeat
     tk:=ExpectTokens([tkCurlyBraceClose,tkString]);
@@ -1042,7 +1064,7 @@ function TWebIDLParser.ParseDictionaryMember(aParent : TIDLBaseObject): TIDLDict
   On Exit, we're on the ; }
 
 Var
-  Attrs : TAttributeList;
+  Attrs : TExtAttributeList;
   tk : TIDLToken;
   isReq , ok: Boolean;
   S : UTF8String;
@@ -1055,13 +1077,13 @@ begin
     tk:=GetToken;
   if tk=tkSquaredBraceOpen then
     begin
-    Attrs:=ParseAttributes;
+    Attrs:=ParseExtAttributes;
     tk:=GetToken;
     isReq:=(tk=tkRequired);
     if IsReq then
       tk:=GetToken;
     end;
-  Result:=TIDLDictionaryMemberDefinition(Context.Add(aParent,TIDLDictionaryMemberDefinition,''));
+  Result:=TIDLDictionaryMemberDefinition(AddDefinition(aParent,TIDLDictionaryMemberDefinition,''));
   ok:=false;
   try
     Result.Attributes:=Attrs;
@@ -1072,7 +1094,7 @@ begin
     tk:=GetToken;
     if tk=tkEqual then
       begin
-      Result.DefaultValue:=TIDLConstDefinition(Context.Add(Result,TIDLConstDefinition,''));
+      Result.DefaultValue:=TIDLConstDefinition(AddDefinition(Result,TIDLConstDefinition,''));
       Result.DefaultValue.ConstType:=ParseConstValue(S,True);
       Result.DefaultValue.Value:=S;
       tk:=GetToken;
@@ -1105,7 +1127,7 @@ begin
     tk:=GetToken;
     end;
   CheckCurrentToken(tkCurlyBraceOpen);
-  Result:=TIDLDictionaryDefinition(Context.Add(aParent,TIDLDictionaryDefinition,Name));
+  Result:=TIDLDictionaryDefinition(AddDefinition(aParent,TIDLDictionaryDefinition,Name));
   Result.ParentName:=ParentName;
   GetToken;
   While (CurrentToken<>tkCurlyBraceClose) do
@@ -1123,7 +1145,7 @@ function TWebIDLParser.ParseSequenceTypeDef(aParent : TIDLBaseObject): TIDLSeque
 var
   ok: Boolean;
 begin
-  Result:=TIDLSequenceTypeDefDefinition(Context.Add(aParent,TIDLSequenceTypeDefDefinition,''));
+  Result:=TIDLSequenceTypeDefDefinition(AddDefinition(aParent,TIDLSequenceTypeDefDefinition,''));
   ok:=false;
   try
     Result.TypeName:='sequence';
@@ -1145,12 +1167,12 @@ function TWebIDLParser.ParseUnionTypeDef(aParent : TIDLBaseObject): TIDLUnionTyp
 Var
   D : TIDLTypeDefDefinition;
   tk : TIDLToken;
-  Attr : TAttributeList;
+  Attr : TExtAttributeList;
   ok: Boolean;
 
 begin
   Attr:=Nil;
-  Result:=TIDLUnionTypeDefDefinition(Context.Add(aParent,TIDLUnionTypeDefDefinition,''));
+  Result:=TIDLUnionTypeDefDefinition(AddDefinition(aParent,TIDLUnionTypeDefDefinition,''));
   ok:=false;
   try
     Result.TypeName:='union';
@@ -1159,7 +1181,7 @@ begin
       tk:=GetToken;
       if Tk=tkSquaredBraceOpen then
         begin
-        Attr:=ParseAttributes;
+        Attr:=ParseExtAttributes;
         tk:=GetToken;
         end;
       D:=ParseType(Result.Union,False);
@@ -1186,7 +1208,7 @@ function TWebIDLParser.ParsePromiseTypeDef(aParent: TIDLBaseObject): TIDLPromise
 var
   ok: Boolean;
 begin
-  Result:=TIDLPromiseTypeDefDefinition(Context.Add(aParent,TIDLPromiseTypeDefDefinition,''));
+  Result:=TIDLPromiseTypeDefDefinition(AddDefinition(aParent,TIDLPromiseTypeDefDefinition,''));
   ok:=false;
   try
     Result.TypeName:='Promise';
@@ -1243,7 +1265,7 @@ begin
         Error(SErrInvalidToken,[LegacyDOMString,CurrentTokenString]);
       ExpectToken(tkSquaredBraceClose);
       ExpectToken(tkDOMString);
-      Result:=TIDLTypeDefDefinition(Context.Add(aParent,TIDLTypeDefDefinition,''));
+      Result:=TIDLTypeDefDefinition(AddDefinition(aParent,TIDLTypeDefDefinition,''));
       Result.TypeName:='DOMString';
       Result.Attributes.Add(LegacyDOMString);
       GetToken;
@@ -1259,7 +1281,7 @@ begin
     if (tk in SimplePrefixTokens) then
       begin
       tk:=CompleteSimpleType(tk,TypeName,isNull);
-      Result:=TIDLTypeDefDefinition(Context.Add(aParent,TIDLTypeDefDefinition,''));
+      Result:=TIDLTypeDefDefinition(AddDefinition(aParent,TIDLTypeDefDefinition,''));
       end
     else
       begin
@@ -1270,7 +1292,7 @@ begin
         tkPromise : Result:=ParsePromiseTypeDef(aParent);
         tkBracketOpen : Result:=ParseUnionTypeDef(aParent);
       else
-        Result:=TIDLTypeDefDefinition(Context.Add(aParent,TIDLTypeDefDefinition,''));
+        Result:=TIDLTypeDefDefinition(AddDefinition(aParent,TIDLTypeDefDefinition,''));
       end;
       tk:=GetToken;
       end;
@@ -1323,7 +1345,7 @@ begin
     end
   else
     N:=aName;
-  Result:=TIDLImplementsDefinition(Context.Add(aParent,TIDLImplementsDefinition,N));
+  Result:=TIDLImplementsDefinition(AddDefinition(aParent,TIDLImplementsDefinition,N));
   try
     ExpectToken(tkIdentifier);
     Result.ImplementedInterface:=CurrentTokenString;
@@ -1338,7 +1360,7 @@ function TWebIDLParser.ParseIncludes(const aName: UTF8String;
 (* On entry, we're on the identifier. On Exit, we're on the last identifier *)
 
 begin
-  Result:=TIDLIncludesDefinition(Context.Add(aParent,TIDLIncludesDefinition,aName));
+  Result:=TIDLIncludesDefinition(AddDefinition(aParent,TIDLIncludesDefinition,aName));
   try
     ExpectToken(tkIdentifier);
     Result.IncludedInterface:=CurrentTokenString;
@@ -1352,7 +1374,7 @@ function TWebIDLParser.ParseDefinition(aParent : TIDLBaseObject): TIDLDefinition
 
 Var
   tk : TIDLToken;
-  Attrs : TAttributeList;
+  Attrs : TExtAttributeList;
 
 begin
   Result:=Nil;
@@ -1360,7 +1382,7 @@ begin
   tk:=GetToken;
   if tk=tkSquaredBraceOpen then
     begin
-    Attrs:=ParseAttributes;
+    Attrs:=ParseExtAttributes;
     tk:=GetToken;
     end;
   Try
@@ -1601,21 +1623,24 @@ end;
 
 function TWebIDLContext.AsString(Full: Boolean): UTF8String;
 begin
-  Result:=Definitions.AsString(';'+sLineBreak,'','','',True,True);
+  Result:=Definitions.AsString(';'+sLineBreak,'','','',Full,True);
 end;
 
-function TWebIDLContext.Add(aClass: TIDLDefinitionClass; const AName: UTF8String): TIDLDefinition;
+function TWebIDLContext.Add(aClass: TIDLDefinitionClass;
+  const AName: UTF8String; const aFile: string; aLine, aCol: integer
+  ): TIDLDefinition;
 begin
-  Result:=Add(FDefinitions,aClass,AName);
+  Result:=Add(FDefinitions,aClass,AName,aFile,aLine,aCol);
 end;
 
-
-function TWebIDLContext.Add(aParent: TIDLBaseObject; aClass: TIDLDefinitionClass; const AName: UTF8String): TIDLDefinition;
+function TWebIDLContext.Add(aParent: TIDLBaseObject;
+  aClass: TIDLDefinitionClass; const AName: UTF8String; const aFile: string;
+  aLine, aCol: integer): TIDLDefinition;
 begin
   if Assigned(aParent) then
-    Result:=aParent.Add(aClass,aName)
+    Result:=aParent.Add(aClass,aName,aFile,aLine,aCol)
   else
-    Result:=aClass.Create(Nil,aName)
+    Result:=aClass.Create(Nil,aName,aFile,aLine,aCol);
 end;
 
 end.

@@ -342,7 +342,7 @@ interface
 
      type
        { optimizer }
-       toptimizerswitch = (cs_opt_none,
+       toptimizerswitch = (
          cs_opt_level1,cs_opt_level2,cs_opt_level3,cs_opt_level4,
          cs_opt_regvar,cs_opt_uncertain,cs_opt_size,cs_opt_stackframe,
          cs_opt_peephole,cs_opt_loopunroll,cs_opt_tailrecursion,cs_opt_nodecse,
@@ -410,7 +410,8 @@ interface
          mf_wasm_no_exceptions,       { unit was compiled in WebAssembly 'no exceptions' mode }
          mf_wasm_bf_exceptions,       { unit was compiled in WebAssembly 'branchful' exceptions mode }
          mf_wasm_js_exceptions,       { unit was compiled in WebAssembly JavaScript-based exceptions mode }
-         mf_wasm_native_exceptions    { unit was compiled in WebAssembly native exceptions mode }
+         mf_wasm_native_exceptions,   { unit was compiled in WebAssembly native exceptions mode }
+         mf_wasm_threads              { unit was compiled with WebAssembly multithreading support turned on }
        );
        tmoduleflags = set of tmoduleflag;
 
@@ -425,7 +426,7 @@ interface
        end;
 
     const
-       OptimizerSwitchStr : array[toptimizerswitch] of string[18] = ('',
+       OptimizerSwitchStr : array[toptimizerswitch] of string[18] = (
          'LEVEL1','LEVEL2','LEVEL3','LEVEL4',
          'REGVAR','UNCERTAIN','SIZE','STACKFRAME',
          'PEEPHOLE','LOOPUNROLL','TAILREC','CSE',

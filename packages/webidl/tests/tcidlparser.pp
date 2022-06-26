@@ -111,7 +111,7 @@ Type
   Public
     Function ParseInterface(AName,aInheritance : UTF8String; AMembers : Array of UTF8String) : TIDLInterfaceDefinition;
     Property isMixin : Boolean Read FisMixin Write FisMixin;
-    Property CustAttributes : String Read FCustAttributes Write FCustAttributes;
+    Property ExtAttributes : String Read FCustAttributes Write FCustAttributes;
   end;
 
   { TTestInterfaceParser }
@@ -123,7 +123,12 @@ Type
     Procedure ParseEmptyInheritance;
     Procedure ParseMixinEmpty;
     Procedure ParseMixinEmptyInheritance;
-    Procedure ParseCustomAttributes1;
+    Procedure ParseExtendedAttributes1;
+    Procedure ParseExtendedAttributes_Exposed;
+
+    Procedure ParseIfDefSkip;
+    Procedure ParseIfNDefUse;
+    Procedure ParseIfDefinedSkip;
   end;
 
   { TTestMapLikeInterfaceParser }
@@ -193,6 +198,7 @@ Type
     Procedure ParseSimpleReadonlyStaticAttribute;
     Procedure ParseSimpleReadonlyStringifierAttribute;
     Procedure ParseComplexReadonlyStaticAttribute;
+    Procedure ParseSimpleAttributeRequired;
     Procedure ParseIdentifierAttribute;
     Procedure Parse2IdentifierAttributes;
   end;
@@ -712,6 +718,10 @@ begin
   ParseAttribute('static readonly attribute unsigned long long A','A','unsigned long long',[aoStatic,aoReadOnly]);
 end;
 
+procedure TTestAttributeInterfaceParser.ParseSimpleAttributeRequired;
+begin
+  ParseAttribute('attribute boolean required','required','boolean',[]);
+end;
 
 procedure TTestAttributeInterfaceParser.ParseIdentifierAttribute;
 begin
@@ -1401,10 +1411,62 @@ begin
   ParseInterface('A','B',[]);
 end;
 
-procedure TTestInterfaceParser.ParseCustomAttributes1;
+procedure TTestInterfaceParser.ParseExtendedAttributes1;
 begin
-  CustAttributes:='[Constructor(DOMString type,optional WebGLContextEventInit eventInit)]';
-  AssertEquals('Attributes',CustAttributes,ParseInterface('A','B',[]).Attributes.AsString(True));
+  ExtAttributes:='[Constructor(DOMString type,optional WebGLContextEventInit eventInit)]';
+  AssertEquals('Attributes',ExtAttributes,ParseInterface('A','B',[]).Attributes.AsString(True));
+end;
+
+procedure TTestInterfaceParser.ParseExtendedAttributes_Exposed;
+begin
+  ExtAttributes:='[Exposed = *]';
+  AssertEquals('Attributes',ExtAttributes,ParseInterface('A','',[]).Attributes.AsString(True));
+end;
+
+procedure TTestInterfaceParser.ParseIfDefSkip;
+var
+  d: TIDLInterfaceDefinition;
+begin
+  InitSource('#ifdef Nothing'+sLineBreak
+    +'Skip This'+sLineBreak
+    +'#endif'+sLineBreak
+    +'interface A;'+sLineBreak);
+  Parser.Parse;
+  AssertEquals('Correct class',TIDLInterfaceDefinition,Definitions[0].ClassType);
+  d:=Definitions[0] as TIDLInterfaceDefinition;
+  AssertEquals('Name','A',d.Name);
+  AssertEquals('Member count',0,d.Members.Count);
+end;
+
+procedure TTestInterfaceParser.ParseIfNDefUse;
+var
+  d: TIDLInterfaceDefinition;
+begin
+  InitSource('#ifndef Nothing'+sLineBreak
+    +'interface A;'+sLineBreak
+    +'#endif'+sLineBreak
+    );
+  Parser.Parse;
+  AssertEquals('Has one definition',1,Definitions.Count);
+  AssertEquals('Correct class',TIDLInterfaceDefinition,Definitions[0].ClassType);
+  d:=Definitions[0] as TIDLInterfaceDefinition;
+  AssertEquals('Name','A',d.Name);
+  AssertEquals('Member count',0,d.Members.Count);
+end;
+
+procedure TTestInterfaceParser.ParseIfDefinedSkip;
+var
+  d: TIDLInterfaceDefinition;
+begin
+  InitSource('#if defined(Nothing)'+sLineBreak
+    +'Skip This'+sLineBreak
+    +'#endif'+sLineBreak
+    +'interface A;'+sLineBreak);
+  Parser.Parse;
+  AssertEquals('Correct class',TIDLInterfaceDefinition,Definitions[0].ClassType);
+  d:=Definitions[0] as TIDLInterfaceDefinition;
+  AssertEquals('Name','A',d.Name);
+  AssertEquals('Member count',0,d.Members.Count);
 end;
 
 procedure TTestConstInterfaceParser.ParseConstInt;

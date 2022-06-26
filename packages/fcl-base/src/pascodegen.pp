@@ -26,7 +26,7 @@ Type
   TCodegenLogType = (cltInfo);
   TCodegenLogTypes = Set of TCodegenLogType;
   TCodeGeneratorLogEvent = Procedure (Sender : TObject; LogType : TCodegenLogType; Const Msg : String) of object;
-  TCodesection = (csUnknown, csConst, csType, csVar, csResourcestring, csDeclaration);
+  TCodeSection = (csUnknown, csConst, csType, csVar, csResourcestring, csDeclaration);
 
   { TPascalCodeGenerator }
 
@@ -76,7 +76,8 @@ Type
     Procedure Comment(Const AComment : String; Curly : Boolean = False);
     Procedure Comment(Const AComment : Array of String);
     Procedure Comment(Const AComment : TStrings);
-    Procedure ClassHeader(Const AClassName: String); virtual;
+    Procedure ClassComment(Const AClassName: String); virtual;
+    Procedure ClassHeader(Const AClassName: String); deprecated 'use ClassComment instead';
     Procedure SimpleMethodBody(Lines: Array of string); virtual;
     procedure SaveToStream(const AStream: TStream);
     Procedure SaveToFile(Const AFileName : string);
@@ -194,8 +195,6 @@ begin
   AddLn('}');
 end;
 
-
-
 constructor TPascalCodeGenerator.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);
@@ -221,14 +220,15 @@ end;
 procedure TPascalCodeGenerator.EnsureSection(aSection: TCodeSection);
 
 Const
-  SectionKeyWords : Array[TCodesection] of string
+  SectionKeyWords : Array[TCodeSection] of string
     = ('', 'Const', 'Type', 'Var', 'Resourcestring', '');
 
 begin
   If CurrentSection<>aSection then
     begin
     CurrentSection:=aSection;
-    AddLn(SectionKeyWords[CurrentSection]);
+    if SectionKeyWords[CurrentSection]<>'' then
+      AddLn(SectionKeyWords[CurrentSection]);
     end;
 end;
 
@@ -373,7 +373,6 @@ begin
   Result:='';
 end;
 
-
 function TPascalCodeGenerator.MakePascalString(S: String; AddQuotes: Boolean
   ): String;
 
@@ -392,7 +391,7 @@ begin
     Result:=Upcase(S[1])+Copy(S,2,Length(S)-1);
 end;
 
-procedure TPascalCodeGenerator.ClassHeader(const AClassName: String);
+procedure TPascalCodeGenerator.ClassComment(const AClassName: String);
 
 begin
   AddLn('');
@@ -400,6 +399,11 @@ begin
   AddLn('  '+AClassName);
   AddLn('  '+StringOfChar('-',68)+'}');
   AddLn('');
+end;
+
+procedure TPascalCodeGenerator.ClassHeader(const AClassName: String);
+begin
+  ClassComment(AClassName);
 end;
 
 end.

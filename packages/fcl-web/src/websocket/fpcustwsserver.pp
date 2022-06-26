@@ -248,7 +248,7 @@ Type
     Property OnAllow : TWSAllowConnectionEvent Read FOnAllow Write FOnAllow;
     // Called when a text message is received.
     property OnMessageReceived: TWSMessageEvent read FOnMessageReceived write FOnMessageReceived;
-    // Called when a connection is disconnected. Sender is TWSServerConnection
+    // Called when a connection is disconnected. Sender is Self
     property OnDisconnect: TNotifyEvent read FOnDisconnect write FOnDisconnect;
     // Called when a control message is received.
     property OnControlReceived: TWSControlEvent read FOnControl write FOnControl;
@@ -592,14 +592,15 @@ end;
 
 procedure TCustomWSServer.RemoveConnection(AConnection: TWSServerConnection;aDoDisconnect: Boolean);
 begin
-  if aDoDisconnect then
+  if not aDoDisconnect then
+    DoDisconnect(aConnection)
+  else
     try
       aConnection.Disconnect;
     except
       on E : Exception do
        HandleError(aConnection,E);
     end;
-  DoDisconnect(aConnection);
   Connections.Remove(aConnection);
   aConnection.Free;
 end;

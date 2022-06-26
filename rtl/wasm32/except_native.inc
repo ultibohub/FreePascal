@@ -207,7 +207,7 @@ var
   hp,_ExceptObjectStack : PExceptObject;
 begin
 {$ifdef excdebug}
-  writeln ('In PopObjectstack');
+  writeln ('In PopSecondObjectstack');
 {$endif}
   _ExceptObjectStack:=ExceptObjectStack;
   If not(assigned(_ExceptObjectStack)) or
@@ -254,6 +254,22 @@ function Internal_PopSecondObjectStack : TObject; external name 'FPC_POPSECONDOB
 function Internal_PopObjectStack: TObject; external name 'FPC_POPOBJECTSTACK';
 procedure Internal_Reraise; external name 'FPC_RERAISE';
 
+Procedure fpc_ReRaise2;[Public, Alias : 'FPC_RERAISE2']; compilerproc;
+var
+  Newobj : PExceptObject;
+  _ExceptObjectStack : PExceptObject;
+begin
+{$ifdef excdebug}
+  writeln ('In reraise2');
+{$endif}
+  _ExceptObjectStack:=ExceptObjectStack;
+  NewObj:=AllocMem(sizeof(TExceptObject));
+  NewObj^.Next:=_ExceptObjectStack^.Next;
+  _ExceptObjectStack^.Next:=NewObj;
+
+  Internal_Reraise;
+end;
+
 Function fpc_Catches(Objtype : TClass) : TObject;[Public, Alias : 'FPC_CATCHES']; compilerproc;
 var
   _ExceptObjectStack : PExceptObject;
@@ -294,6 +310,9 @@ end;
 {$ifndef FPC_SYSTEM_HAS_DONEEXCEPTION}
 procedure fpc_doneexception;[public,alias:'FPC_DONEEXCEPTION'] compilerproc;
 begin
+{$ifdef excdebug}
+  Writeln('In doneexception');
+{$endif}
   Internal_PopObjectStack.Free;
 end;
 {$endif FPC_SYSTEM_HAS_DONEEXCEPTION}
@@ -301,6 +320,9 @@ end;
 {$ifndef FPC_SYSTEM_HAS_RAISENESTED}
 procedure fpc_raise_nested;[public,alias:'FPC_RAISE_NESTED']compilerproc;
 begin
+{$ifdef excdebug}
+  Writeln('In raise_nested');
+{$endif}
   Internal_PopSecondObjectStack.Free;
   Internal_Reraise;
 end;

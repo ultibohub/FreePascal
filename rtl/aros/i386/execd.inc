@@ -23,6 +23,39 @@
 {$include utild1.inc}
 
 
+
+{ * aros spinlock definition
+  *********************************************************************
+  * }
+
+
+{$ifndef AROS_ABIv11}
+{$ifdef AROS_ABIv1}
+{$ifdef AROSPLATFORM_SMP}
+type
+  TSpinLock =
+  record
+    case byte of
+    0: (slock:
+    bitpacked record  // ensure bits are packed. this is a volatile structure
+      readcount: 0..$FFFFFF;
+      _pad2: 0..$7;
+      &write: 0..$1;
+      _pad1: 0..$7;
+      updating: 0..$1;
+    end);
+    1: (block: packed array[0..3] of byte; lock: uint32);      // both fields are volatile
+       // The field s_Owner is set either to task owning the lock,
+       // or NULL if the lock is free/read mode or was acquired in interrupt/supervisor mode
+    2: (_skip: packed array[0..7] of byte; s_Owner: Pointer);  // skip block and lock because that occupies most space
+    3: (pad_align: packed array[0..128-1] of byte);            // ensure 128 byte record size
+  end;
+{$endif}
+{$endif}
+{$endif}
+
+
+
 { * exec node definitions
   *********************************************************************
   * }
@@ -575,6 +608,21 @@ type  // Checked OK 05.08.2011 ALB
     mp_SigBit : Byte;
     mp_SigTask: Pointer;
     mp_MsgList: TEList;
+{$ifndef AROS_ABIv11}
+{$ifdef AROS_ABIv1}
+{$ifdef AROSPLATFORM_SMP}
+{$ifdef AROSEXEC_SMP}
+    mp_SpinLock: TSpinLock;
+{$else}
+    mp_pad: TSpinLock;
+{$endif}
+{$endif}
+{$endif}
+{$else}
+{$ifndef CPUM68K}
+    mp_Private: array[0..1] of PtrUInt;
+{$endif}
+{$endif}
   end;
 
 
@@ -694,6 +742,7 @@ const
 
 
 type
+{$ifdef AROS_MORPHOS_COMPATIBLE}
   PETask = ^TETask;
   TETask = record
     Message  : TMessage;
@@ -748,7 +797,31 @@ type
       * never assume a size of this structure
       * }
   end;
-
+{$else}
+  TETask = record
+    et_Message: TMessage;
+    et_Parent: PTask;       // Pointer to parent task
+    et_UniqueID: DWord;
+    et_Children: TMinList; // List of children
+    et_TrapAlloc: Word;
+    et_TrapAble: Word;
+    et_Result1: DWord;     // First result
+    et_Result2: Pointer;      // Result data pointer (AllocVec)
+    et_TaskMsgPort: TMsgPort;
+{$IFDEF AROS_ABIv0}
+    et_Compatibility: array[0..3] of Pointer;   // Reserve this space for compiled software to access iet_startup and iet_acpd
+{$ENDIF}
+    et_MemPool: Pointer;              // Task's private memory pool
+{$ifdef aros}
+    et_Reserved: array[0..0] of PtrUInt; // MorphOS Private
+    et_TaskStorage: Pointer;          // Task Storage Slots
+{$else}
+    et_Reserved: array[0..1] of PtrUInt; // MorphOS Private
+{$endif}
+    et_RegFrame: Pointer;
+    // Internal fields follow
+  end;
+{$endif}
 
 type
   PTaskInitExtension = ^TTaskInitExtension;
@@ -1039,6 +1112,17 @@ type
   TSemaphoreRequest = record
     sr_Link  : TMinNode;
     sr_Waiter: PTask;
+{$ifndef AROS_ABIv11}
+{$ifdef AROS_ABIv1}
+{$ifdef AROSPLATFORM_SMP}
+{$ifdef AROSEXEC_SMP}
+    sr_SpinLock: TSpinLock;
+{$else}
+    sr_pad: TSpinLock;
+{$endif}
+{$endif}
+{$endif}
+{$endif}
   end;
 
 type
@@ -1506,11 +1590,17 @@ type
 
   PArosSupportBase = ^TArosSupportBase;
   TArosSupportBase = record
+{$IFDEF AROS_ABIv0}
     StdOut: Pointer;
+{$ELSE}
+    _pad: PtrUInt;
+{$ENDIF}
     kPrintfPtr: Pointer;
     rkPrintfPtr: Pointer;
     vkPrintfPtr: Pointer;
+{$IFDEF AROS_ABIv0}
     DebugConfig: Pointer;
+{$ENDIF}
   end;
 
 { * exec include
