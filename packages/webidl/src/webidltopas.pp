@@ -23,8 +23,6 @@ uses
 
 Type
 
-  { TBaseWebIDLToPas }
-
   { TPasData }
 
   TPasData = Class(TObject)
@@ -55,6 +53,9 @@ const
     );
 
 type
+
+  { TBaseWebIDLToPas }
+
   TBaseWebIDLToPas = Class(TPascalCodeGenerator)
   private
     FArrayPrefix: String;
@@ -66,7 +67,7 @@ type
     FContext: TWebIDLContext;
     FDictionaryClassParent: String;
     FFieldPrefix: String;
-    FFuncTypePrefix: String;
+    FTypePrefix: String;
     FGetterPrefix: String;
     FIncludeImplementationCode: TStrings;
     FIncludeInterfaceCode: TStrings;
@@ -98,6 +99,7 @@ type
     procedure AddJSIdentifier(D: TIDLDefinition); virtual;
     procedure ResolveTypeDefs(aList: TIDLDefinitionList); virtual;
     procedure ResolveTypeDef(D: TIDLDefinition); virtual;
+    procedure RemoveInterfaceForwards(aList: TIDLDefinitionList); virtual;
     function FindGlobalDef(const aName: UTF8String): TIDLDefinition; virtual;
     function GetDefPos(Def: TIDLBaseObject; WithoutFile: boolean = false): string; virtual;
     function GetPasDataPos(D: TPasData; WithoutFile: boolean = false): string; virtual;
@@ -107,6 +109,7 @@ type
     function GetPasClassName(const aName: string): string; overload; virtual;
     function GetTypeName(Const aTypeName: String; ForTypeDef: Boolean=False): String; overload; virtual;
     function GetTypeName(aTypeDef: TIDLTypeDefDefinition; ForTypeDef: Boolean=False): String; overload; virtual;
+    function GetResolvedTypeName(Const aTypeName: String): String; overload; virtual;
     function GetSequenceTypeName(Seq: TIDLSequenceTypeDefDefinition; ForTypeDef: Boolean=False): string; virtual;
     function GetInterfaceDefHead(Intf: TIDLInterfaceDefinition): String; virtual;
     function GetDictionaryDefHead(const CurClassName: string; Dict: TIDLDictionaryDefinition): String; virtual;
@@ -176,7 +179,7 @@ type
     Property ArraySuffix: String Read FArraySuffix Write FArraySuffix;
     Property GetterPrefix: String read FGetterPrefix write FGetterPrefix;
     Property SetterPrefix: String read FSetterPrefix write FSetterPrefix;
-    Property FuncTypePrefix: String read FFuncTypePrefix write FFuncTypePrefix;
+    Property TypePrefix: String read FTypePrefix write FTypePrefix;
     Property WebIDLVersion: TWebIDLVersion Read FWebIDLVersion Write FWebIDLVersion;
     Property TypeAliases: TStrings Read FTypeAliases Write SetTypeAliases;
     Property IncludeInterfaceCode: TStrings Read FIncludeInterfaceCode Write SetIncludeInterfaceCode;
@@ -559,7 +562,6 @@ Var
 
 var
   D: TIDLDefinition;
-
 begin
   L:=TFPObjectHashTable.Create(False);
   try
@@ -669,7 +671,7 @@ begin
   ArraySuffix:='DynArray';
   GetterPrefix:='Get';
   SetterPrefix:='Set';
-  FuncTypePrefix:='T';
+  TypePrefix:='T';
   FTypeAliases:=TStringList.Create;
   FPasNameList:=TFPObjectList.Create(True);
   FPasDataClass:=TPasData;
@@ -715,6 +717,17 @@ begin
     end
   else
     Result:=GetTypeName(aTypeDef.TypeName,ForTypeDef);
+end;
+
+function TBaseWebIDLToPas.GetResolvedTypeName(const aTypeName: String): String;
+var
+  aDef: TIDLDefinition;
+begin
+  aDef:=FindGlobalDef(aTypeName);
+  if aDef is TIDLTypeDefDefinition then
+    Result:=GetResolvedTypeName(TIDLTypeDefDefinition(aDef).TypeName)
+  else
+    Result:=GetTypeName(aTypeName);
 end;
 
 function TBaseWebIDLToPas.GetSequenceTypeName(
@@ -872,14 +885,14 @@ begin
     S:=S+(D as TIDLTypeDefDefinition).TypeName;
     end;
   Comment('Union of '+S);
-  AddLn('%s = JSValue; ',[GetName(aDef)])
+  AddLn(GetName(aDef)+' = '+GetTypeName('any')+';');
 end;
 
 
 procedure TBaseWebIDLToPas.WritePromiseDef(aDef: TIDLPromiseTypeDefDefinition);
 
 begin
-  AddLn('%s = TJSPromise;',[GetName(aDef)]);
+  AddLn(GetName(aDef)+' = '+ClassPrefix+'Promise'+ClassSuffix+';');
 end;
 
 procedure TBaseWebIDLToPas.WriteAliasTypeDef(aDef: TIDLTypeDefDefinition);
@@ -1400,6 +1413,7 @@ Var
   aData: TPasData;
 
 begin
+  //writeln('TBaseWebIDLToPas.AllocatePasName ',ParentName,'.',D.Name,':',D.ClassName);
   CN:=D.Name;
   if D Is TIDLInterfaceDefinition then
     begin
@@ -1422,9 +1436,11 @@ begin
     end
   else
     begin
-    if (D Is TIDLFunctionDefinition) and (foCallBack in TIDLFunctionDefinition(D).Options) then
+    if (D is TIDLTypeDefDefinition)
+        or (D is TIDLEnumDefinition)
+        or ((D Is TIDLFunctionDefinition) and (foCallBack in TIDLFunctionDefinition(D).Options)) then
       begin
-      CN:=FuncTypePrefix+CN;
+      CN:=TypePrefix+CN;
       AddJSIdentifier(D);
       end;
     Result:=CreatePasName(CN,D);
@@ -1445,12 +1461,13 @@ procedure TBaseWebIDLToPas.AddJSIdentifier(D: TIDLDefinition);
 var
   Old: TIDLDefinition;
 begin
+  //writeln('TBaseWebIDLToPas.AddJSIdentifier ',D.Name,':',D.ClassName);
   if (D.Parent=nil)
       or ((D is TIDLInterfaceDefinition) and TIDLInterfaceDefinition(D).IsMixin) then
     begin
     Old:=FindGlobalDef(D.Name);
     if Old<>nil then
-      raise EWebIDLParser.Create('Duplicate identifier '+D.Name+' at '+GetDefPos(D)+' and '+GetDefPos(Old));
+      raise EWebIDLParser.Create('Duplicate identifier '+D.Name+' at '+GetDefPos(D)+' and '+GetDefPos(Old)+' (20220718185400)');
     FGlobalDefs.Add(D.Name,D);
     end
   else
@@ -1534,6 +1551,55 @@ begin
     writeln('TBaseWebIDLToPas.ResolveTypeDef unknown ',D.Name,':',D.ClassName,' at ',GetDefPos(D));
 end;
 
+procedure TBaseWebIDLToPas.RemoveInterfaceForwards(aList: TIDLDefinitionList);
+
+Var
+  L: TFPObjectHashTable;
+
+  Procedure DeleteIntf(Def: TIDLInterfaceDefinition);
+  begin
+    writeln('DeleteIntf ',Def.Name);
+    aList.Delete(Def);
+  end;
+
+  Procedure CheckDuplicateInterfaceDef(Def: TIDLInterfaceDefinition);
+  var
+    aName: UTF8String;
+    OldDef: TIDLInterfaceDefinition;
+  begin
+    if Def.IsPartial then exit;
+    aName:=Def.Name;
+    OldDef:=TIDLInterfaceDefinition(L.Items[aName]);
+    if OldDef=nil then
+      L.add(aName,Def)
+    else
+      begin
+      if OldDef.IsForward then
+        begin
+        L.Delete(OldDef.Name);
+        DeleteIntf(OldDef);
+        L.Add(aName,Def);
+        end
+      else if Def.IsForward then
+        DeleteIntf(Def)
+      else
+        raise EConvertError.Create('Duplicate interface '+GetDefPos(Def)+' and '+GetDefPos(OldDef)+' (20220718184717)');
+      end;
+  end;
+
+var
+  i: Integer;
+begin
+  L:=TFPObjectHashTable.Create(False);
+  try
+    For i:=aList.Count-1 downto 0 do
+      if (aList[i] is TIDLInterfaceDefinition) then
+        CheckDuplicateInterfaceDef(TIDLInterfaceDefinition(aList[i]));
+  finally
+    L.Free;
+  end;
+end;
+
 function TBaseWebIDLToPas.FindGlobalDef(const aName: UTF8String
   ): TIDLDefinition;
 begin
@@ -1587,6 +1653,7 @@ end;
 procedure TBaseWebIDLToPas.ProcessDefinitions;
 
 begin
+  RemoveInterfaceForwards(FContext.Definitions);
   FContext.AppendPartials;
   FContext.AppendIncludes;
   AllocatePasNames(FContext.Definitions);

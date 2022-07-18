@@ -87,14 +87,16 @@ type
     function WriteOtherImplicitTypes(Intf: TIDLInterfaceDefinition; aMemberList: TIDLDefinitionList): Integer;
       override;
     // Code generation routines. Return the number of actually written defs.
-    function WriteDictionaryMemberImplicitTypes(aDict: TIDLDictionaryDefinition;
-      aList: TIDLDefinitionList): Integer; override;
     function WritePrivateGetters(aList: TIDLDefinitionList): Integer; override;
     function WritePrivateSetters(aList: TIDLDefinitionList): Integer; override;
     function WriteProperties(aList: TIDLDefinitionList): Integer; override;
     function WriteUtilityMethods(Intf: TIDLInterfaceDefinition): Integer;
       override;
     // Definitions. Return true if a definition was written.
+    function WriteDictionaryField(aField: TIDLDictionaryMemberDefinition
+      ): Boolean; override;
+    function WriteForwardClassDef(D: TIDLStructuredDefinition): Boolean;
+      override;
     function WriteFunctionDefinition(aDef: TIDLFunctionDefinition): Boolean;
       override;
     function WriteFunctionTypeDefinition(aDef: TIDLFunctionDefinition
@@ -102,6 +104,7 @@ type
     function WritePrivateGetter(Attr: TIDLAttributeDefinition): boolean; virtual;
     function WritePrivateSetter(Attr: TIDLAttributeDefinition): boolean; virtual;
     function WriteProperty(Attr: TIDLAttributeDefinition): boolean; virtual;
+    function WriteRecordDef(aDef: TIDLRecordDefinition): Boolean; override;
   Public
     constructor Create(ThOwner: TComponent); override;
   Published
@@ -129,7 +132,7 @@ implementation
 
 function TWebIDLToPasWasmJob.BaseUnits: String;
 begin
-  Result:='SysUtils, JOB_WAsm';
+  Result:='SysUtils, JOB_JS';
 end;
 
 function TWebIDLToPasWasmJob.GetPasClassName(const aName: string): string;
@@ -267,6 +270,8 @@ begin
     aParentName:=GetName(Intf.ParentInterface)
   else
     aParentName:=GetTypeName(Intf.ParentName);
+  if aParentName='' then
+    aParentName:=ClassPrefix+'Object'+ClassSuffix;
   if aParentName<>'' then
     Result:=Result+aParentName;
   aPasIntfName:=GetPasIntfName(Intf);
@@ -319,16 +324,6 @@ begin
   AddLn('');
 end;
 
-function TWebIDLToPasWasmJob.WriteDictionaryMemberImplicitTypes(
-  aDict: TIDLDictionaryDefinition; aList: TIDLDefinitionList): Integer;
-var
-  aName: String;
-begin
-  Result:=inherited WriteDictionaryMemberImplicitTypes(aDict, aList);
-  aName:=GetName(aDict);
-  AddLn(aName+' = TJOB_Dictionary;');
-end;
-
 function TWebIDLToPasWasmJob.WritePrivateGetters(aList: TIDLDefinitionList
   ): Integer;
 var
@@ -373,12 +368,34 @@ begin
   Result:=0;
   aClassName:=GetName(Intf);
   aPasIntfName:=GetPasIntfName(Intf);
-  AddLn('function Cast(Intf: IJSObject): '+aPasIntfName+';');
-  Code:='function '+aClassName+'.Cast(Intf: IJSObject): '+aPasIntfName+';'+sLineBreak;
+  AddLn('class function Cast(Intf: IJSObject): '+aPasIntfName+';');
+  Code:='class function '+aClassName+'.Cast(Intf: IJSObject): '+aPasIntfName+';'+sLineBreak;
   Code:=Code+'begin'+sLineBreak;
-  Code:=Code+'  Result:='+aClassName+'.CreateCast(Intf);'+sLineBreak;
+  Code:=Code+'  Result:='+aClassName+'.Cast(Intf);'+sLineBreak;
   Code:=Code+'end;'+sLineBreak;
   IncludeImplementationCode.Add(Code);
+end;
+
+function TWebIDLToPasWasmJob.WriteDictionaryField(
+  aField: TIDLDictionaryMemberDefinition): Boolean;
+var
+  N, TN: String;
+begin
+  Result:=True;
+  N:=GetName(aField);
+  TN:=GetTypeName(aField.MemberType);
+  if SameText(N,TN) then
+    N:='_'+N;
+  AddLn(N+': '+TN+';');
+end;
+
+function TWebIDLToPasWasmJob.WriteForwardClassDef(D: TIDLStructuredDefinition
+  ): Boolean;
+begin
+  if D is TIDLDictionaryDefinition then
+    AddLn(GetName(D)+' = '+JOB_JSValueTypeNames[jjvkDictionary]+';')
+  else
+    Result:=inherited WriteForwardClassDef(D);
 end;
 
 function TWebIDLToPasWasmJob.WriteFunctionDefinition(
@@ -404,7 +421,7 @@ Var
   Data: TPasDataWasmJob;
   FN, RT, Suff, Args, ProcKind, Sig, aClassName, Code, InvokeName,
     InvokeCode, ArgName, TryCode, VarSection, FinallyCode, LocalName,
-    WrapperFn: String;
+    WrapperFn, ArgTypeName: String;
   Overloads: TFPObjectList;
   I: Integer;
   AddFuncBody: Boolean;
@@ -494,15 +511,25 @@ begin
           if Args<>'' then
             Args:=Args+',';
           ArgName:=GetName(ArgDef);
-          ArgType:=FindGlobalDef(ArgDef.ArgumentType.TypeName);
-          if (ArgType is TIDLFunctionDefinition) and (foCallBack in TIDLFunctionDefinition(ArgType).Options) then
+          if ArgDef.ArgumentType is TIDLSequenceTypeDefDefinition then
             begin
-            LocalName:=CreateLocal('m');
-            VarSection:=VarSection+'  '+LocalName+': '+JOB_JSValueTypeNames[jivkMethod]+';'+sLineBreak;
-            WrapperFn:='JOBCall'+GetName(TIDLFunctionDefinition(ArgType));
-            TryCode:=TryCode+'  '+LocalName+':='+JOB_JSValueTypeNames[jivkMethod]+'.Create(TMethod('+ArgName+'),@'+WrapperFn+');'+sLineBreak;
-            FinallyCode:=FinallyCode+'    '+LocalName+'.free;'+sLineBreak;
-            ArgName:=LocalName;
+            ArgTypeName:=TIDLSequenceTypeDefDefinition(ArgDef.ArgumentType).ElementType.TypeName;
+            ArgType:=FindGlobalDef(ArgTypeName);
+            writeln('TWebIDLToPasWasmJob.WriteFunctionDefinition sequence of ',ArgTypeName,' Element=',ArgType<>nil);
+            raise EConvertError.Create('not yet supported: passing an array of '+ArgTypeName+' as argument at '+GetDefPos(ArgDef));
+            end
+          else
+            begin
+            ArgType:=FindGlobalDef(ArgDef.ArgumentType.TypeName);
+            if (ArgType is TIDLFunctionDefinition) and (foCallBack in TIDLFunctionDefinition(ArgType).Options) then
+              begin
+              LocalName:=CreateLocal('m');
+              VarSection:=VarSection+'  '+LocalName+': '+JOB_JSValueTypeNames[jivkMethod]+';'+sLineBreak;
+              WrapperFn:='JOBCall'+GetName(TIDLFunctionDefinition(ArgType));
+              TryCode:=TryCode+'  '+LocalName+':='+JOB_JSValueTypeNames[jivkMethod]+'.Create(TMethod('+ArgName+'),@'+WrapperFn+');'+sLineBreak;
+              FinallyCode:=FinallyCode+'    '+LocalName+'.free;'+sLineBreak;
+              ArgName:=LocalName;
+              end;
             end;
           Args:=Args+ArgName;
           end;
@@ -555,7 +582,7 @@ var
 begin
   Result:=True;
   FN:=GetName(aDef);
-  RT:=GetTypeName(aDef.ReturnType,False);
+  RT:=GetResolvedTypeName(aDef.ReturnType.TypeName);
   if (RT='void') then
     RT:='';
   ReturnDef:=FindGlobalDef(aDef.ReturnType.TypeName);
@@ -590,7 +617,7 @@ begin
         while ArgNames.IndexOf(ArgName+IntToStr(j))>=0 do inc(j);
         ArgName:=ArgName+IntToStr(j);
         end;
-      ArgTypeName:=GetTypeName(ArgDef.ArgumentType);
+      ArgTypeName:=GetResolvedTypeName(ArgDef.ArgumentType.TypeName);
 
       case ArgTypeName of
       '': raise EWebIDLParser.Create('not yet supported: function type arg['+IntToStr(I)+'] type void at '+GetDefPos(ArgDef));
@@ -612,7 +639,11 @@ begin
         if CurDef is TIDLInterfaceDefinition then
           GetFunc:='GetObject('+IntfToPasClassName(ArgTypeName)+') as '+ArgTypeName
         else
+          begin
+          if CurDef<>nil then
+            writeln('TWebIDLToPasWasmJob.WriteFunctionTypeDefinition CurDef=',CurDef.ClassName);
           raise EWebIDLParser.Create('not yet supported: function type arg['+IntToStr(I)+'] type '+ArgDef.ArgumentType.TypeName+' at '+GetDefPos(ArgDef));
+          end;
       end;
 
       // declare: var ArgName: ArgTypeName;
@@ -653,7 +684,11 @@ begin
       if ReturnDef is TIDLInterfaceDefinition then
         GetFunc:='Result:=H.AllocIntf('+Call+');'
       else
-        raise EWebIDLParser.Create('not yet supported: function type result type "'+RT+'" at '+GetDefPos(ArgDef));
+        begin
+        if ReturnDef<>nil then
+          writeln('TWebIDLToPasWasmJob.WriteFunctionTypeDefinition ReturnDef=',ReturnDef.ClassName);
+        raise EWebIDLParser.Create('not yet supported: function type result type "'+RT+'" at '+GetDefPos(aDef));
+        end;
     end;
     Code:=Code+'  '+GetFunc+sLineBreak;
     Code:=Code+'end;'+sLineBreak;
@@ -783,6 +818,13 @@ begin
     Code:=Code+' write '+SetterPrefix+PropName;
   AddLn(Code+';');
   Result:=true;
+end;
+
+function TWebIDLToPasWasmJob.WriteRecordDef(aDef: TIDLRecordDefinition
+  ): Boolean;
+begin
+  Result:=true;
+  AddLn(GetName(aDef)+' = '+ClassPrefix+'Object'+ClassSuffix+';');
 end;
 
 constructor TWebIDLToPasWasmJob.Create(ThOwner: TComponent);

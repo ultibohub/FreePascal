@@ -89,6 +89,7 @@ implementation
 
   uses
     cutils,
+    cgbase,
     fmodule,finput,
     itcpugas,
     cpubase,
@@ -141,9 +142,13 @@ implementation
 
   function TLLVMMachineCodePlaygroundAssembler.sectionname(atype: TAsmSectiontype; const aname: string; aorder: TAsmSectionOrder): string;
     begin
-      if (atype=sec_fpc) or (atype=sec_threadvar) then
+      if (atype=sec_fpc) or
+         ((atype=sec_threadvar) and not (ts_wasm_threads in current_settings.targetswitches)) then
         atype:=sec_data;
-      Result:=inherited sectionname(atype, aname, aorder)+',"",@';
+      if atype=sec_threadvar then
+        Result:=inherited sectionname(atype, aname, aorder)+',"T",@'
+      else
+        Result:=inherited sectionname(atype, aname, aorder)+',"",@';
     end;
 
 
@@ -162,7 +167,19 @@ implementation
 
     function getreferencestring(var ref : treference) : ansistring;
       begin
-        if assigned(ref.symbol) then
+        if ref.refaddr=addr_got_tls then
+          begin
+            if not assigned(ref.symbol) then
+              internalerror(2022071401);
+            if ref.base<>NR_NO then
+              internalerror(2022071402);
+            if ref.index<>NR_NO then
+              internalerror(2022071403);
+            if ref.offset<>0 then
+              internalerror(2022071404);
+            result:=ref.symbol.name+'@GOT@TLS';
+          end
+        else if assigned(ref.symbol) then
           begin
             // global symbol or field -> full type and name
             // ref.base can be <> NR_NO in case an instance field is loaded.
