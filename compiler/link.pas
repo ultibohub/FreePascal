@@ -82,6 +82,8 @@ interface
       TExternalLinker = class(TLinker)
       protected
          Function WriteSymbolOrderFile: TCmdStr;
+         Function GetSanitizerLibName(const basename: TCmdStr; withArch: boolean): TCmdStr;
+         Function AddSanitizerLibrariesAndGetSearchDir(const platformname: TCmdStr; out sanitizerlibrarydir: TCmdStr): boolean;
       public
          Info : TLinkerInfo;
          Constructor Create;override;
@@ -173,7 +175,7 @@ Implementation
 {$ifdef hasUnix}
       baseunix,
 {$endif hasUnix}
-      cscript,globals,verbose,comphook,ppu,fpchash,
+      cscript,globals,verbose,comphook,ppu,fpchash,triplet,tripletcpu,
       aasmbase,aasmcpu,
       ogmap;
 
@@ -675,6 +677,99 @@ Implementation
         symfile.WriteToDisk;
         result:=symfile.fn;
         symfile.Free;
+      end;
+
+
+    Function TExternalLinker.GetSanitizerLibName(const basename: TCmdStr; withArch: boolean): TCmdStr;
+      begin
+        result:=target_info.sharedClibprefix+'clang_rt.'+basename;
+        if target_info.system in systems_darwin then
+          begin
+            { Darwin never adds the arch, it uses fat binaries. But it has the
+              extra '_dynamic' for some reason, and also adds the platform type
+            }
+            if target_info.system in systems_macosx then
+              result:=result+'_osx_dynamic'
+            else if target_info.system in systems_ios then
+              result:='_ios_dynamic'
+            else if target_info.system in systems_iphonesym then
+              result:='_iossim_dynamic'
+            else
+              internalerror(2022071010);
+          end
+        else
+          begin
+            if withArch then
+              begin
+                result:=result+'-'+tripletcpustr(triplet_llvmrt);
+                if target_info.system in systems_android then
+                  result:=result+'-android';
+              end;
+          end;
+        result:=result+target_info.sharedClibext;
+      end;
+
+
+    function TExternalLinker.AddSanitizerLibrariesAndGetSearchDir(const platformname: TCmdStr; out sanitizerlibrarydir: TCmdStr): boolean;
+      var
+        clang,
+        clangsearchdirs,
+        textline,
+        clangsearchdirspath,
+        sanitizerlibname,
+        sanitizerlibrarypath: TCmdStr;
+        sanitizerlibraryfiles: TCmdStrList;
+        searchrec: TSearchRec;
+        searchres: longint;
+        clangsearchdirsfile: text;
+      begin
+        sanitizerlibraryfiles:=TCmdStrList.Create;
+        result:=false;
+        if (cs_sanitize_address in current_settings.moduleswitches) and
+           not(cs_link_on_target in current_settings.globalswitches) then
+          begin
+          { ask clang }
+          clang:=FindUtil('clang'+llvmutilssuffix);
+          if clang<>'' then
+            begin
+              clangsearchdirspath:=outputexedir+UniqueName('clangsearchdirs');
+              searchres:=shell(maybequoted(clang)+' -target '+targettriplet(triplet_llvm)+' -print-file-name=lib > '+maybequoted(clangsearchdirspath));
+              if searchres=0 then
+                begin
+                  AssignFile(clangsearchdirsfile,clangsearchdirspath);
+{$push}{$i-}
+                  reset(clangsearchdirsfile);
+{$pop}
+                  if ioresult=0 then
+                    begin
+                      readln(clangsearchdirsfile,textline);
+                      sanitizerlibrarydir:=FixFileName(textline+'/'+platformname);
+                      sanitizerlibrarypath:=FixFileName(sanitizerlibrarydir+'/');
+                      { from clang:
+                        Check for runtime files in the new layout without the architecture first.
+                      }
+                      sanitizerlibname:=GetSanitizerLibName('asan',false);
+                      result:=FileExists(sanitizerlibrarypath+sanitizerlibname,false);
+                      if result then
+                        begin
+                          sanitizerlibraryfiles.Concat(sanitizerlibrarypath+sanitizerlibname);
+                        end
+                      else
+                        begin
+                          sanitizerlibname:=GetSanitizerLibName('asan',true);
+                          result:=FileExists(sanitizerlibrarypath+sanitizerlibname,false);
+                          if result then
+                            sanitizerlibraryfiles.Concat(sanitizerlibrarypath+sanitizerlibname);
+                        end;
+                    end;
+                end;
+              if FileExists(clangsearchdirspath,false) then
+                DeleteFile(clangsearchdirspath);
+            end;
+          end;
+        if result then
+          ObjectFiles.concatList(sanitizerlibraryfiles);
+        sanitizerlibraryfiles.free;
       end;
 
 

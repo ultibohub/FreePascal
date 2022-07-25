@@ -61,7 +61,6 @@ implementation
       function GetLibSearchPath: TCmdStr;
       function GetLibraries: TCmdStr;
 
-      function InitSanitizersLibraryNameAndPath(const platformname: TCmdStr; out sanitizerLibraryDir, asanLibraryPath: TCmdStr): boolean;
     public
       constructor Create;override;
       procedure SetDefaultInfo;override;
@@ -443,55 +442,6 @@ implementation
       end;
 
 
-    function tlinkerdarwin.InitSanitizersLibraryNameAndPath(const platformname: TCmdStr; out sanitizerLibraryDir, asanLibraryPath: TCmdStr): boolean;
-      var
-        clang,
-        clangsearchdirs,
-        textline,
-        clangsearchdirspath: TCmdStr;
-        searchrec: TSearchRec;
-        searchres: longint;
-        clangsearchdirsfile: text;
-      begin
-        result:=false;
-        if (cs_sanitize_address in current_settings.moduleswitches) and
-           not(cs_link_on_target in current_settings.globalswitches) then
-          begin
-          { ask clang }
-          clang:=FindUtil('clang'+llvmutilssuffix);
-          if clang<>'' then
-            begin
-              clangsearchdirspath:=outputexedir+UniqueName('clangsearchdirs');
-              searchres:=shell(maybequoted(clang)+' -target '+targettriplet(triplet_llvm)+' -print-file-name=lib > '+clangsearchdirspath);
-              if searchres=0 then
-                begin
-                  AssignFile(clangsearchdirsfile,clangsearchdirspath);
-{$push}{$i-}
-                  reset(clangsearchdirsfile);
-{$pop}
-                  if ioresult=0 then
-                    begin
-                       readln(clangsearchdirsfile,textline);
-                       sanitizerLibraryDir:=FixFileName(textline+'/'+platformname);
-
-                       if target_info.system in systems_macosx then
-                         asanLibraryPath:=FixFileName(sanitizerLibraryDir+'/')+target_info.sharedClibprefix+'clang_rt.asan_osx_dynamic'+target_info.sharedClibext
-                       else if target_info.system in systems_ios then
-                         asanLibraryPath:=FixFileName(sanitizerLibraryDir+'/')+target_info.sharedClibprefix+'clang_rt.asan_ios_dynamic'+target_info.sharedClibext
-                       else if target_info.system in systems_iphonesym then
-                         asanLibraryPath:=FixFileName(sanitizerLibraryDir+'/')+target_info.sharedClibprefix+'clang_rt.asan_iossim_dynamic'+target_info.sharedClibext
-                       else
-                         internalerror(2022071010);
-                       result:=FileExists(asanLibraryPath,false);
-                    end;
-                end;
-              if FileExists(clangsearchdirspath,false) then
-                DeleteFile(clangsearchdirspath);
-            end;
-          end;
-      end;
-
-
     function tlinkerdarwin.WriteFileList: TCmdStr;
     Var
       FilesList    : TScript;
@@ -538,7 +488,6 @@ implementation
       GCSectionsStr,
       StaticStr,
       StripStr,
-      asanLibraryName,
       sanitizerLibraryDir: TCmdStr;
       success : boolean;
     begin
@@ -568,7 +517,7 @@ implementation
       if (cs_lto in current_settings.moduleswitches) and
          not(cs_link_on_target in current_settings.globalswitches) and
          (utilsdirectory<>'') and
-         FileExists(utilsdirectory+'/../lib/libLTO.dylib',true) then
+         FileExists(utilsdirectory+'/../lib/libLTO.dylib',false) then
         begin
           ltostr:='-lto_library '+maybequoted(utilsdirectory+'/../lib/libLTO.dylib');
         end;
@@ -589,10 +538,11 @@ implementation
       else
         Replace(cmdstr,'$ORDERSYMS','');
 
-      if InitSanitizersLibraryNameAndPath('darwin',sanitizerLibraryDir,asanLibraryName) then
+      if AddSanitizerLibrariesAndGetSearchDir('darwin',sanitizerLibraryDir) then
         begin
-          ObjectFiles.Concat(asanLibraryName);
-          Replace(cmdstr,'$RPATH','-rpath '+sanitizerLibraryDir)
+          { also add the executable path as search path in case the asan
+            library gets copied into the application bundle }
+          Replace(cmdstr,'$RPATH','-rpath @executable_path -rpath '+maybequoted(sanitizerLibraryDir))
         end
       else
         begin
@@ -660,8 +610,7 @@ implementation
       extdbgcmdstr,
       linkfiles,
       GCSectionsStr,
-      sanitizerLibraryDir,
-      asanLibraryName: TCmdStr;
+      sanitizerLibraryDir: TCmdStr;
       exportedsyms: text;
       success : boolean;
     begin
@@ -685,7 +634,7 @@ implementation
       if (cs_lto in current_settings.moduleswitches) and
          not(cs_link_on_target in current_settings.globalswitches) and
          (utilsdirectory<>'') and
-         FileExists(utilsdirectory+'/../lib/libLTO.dylib',true) then
+         FileExists(utilsdirectory+'/../lib/libLTO.dylib',false) then
         begin
           ltostr:='-lto_library '+maybequoted(utilsdirectory+'/../lib/libLTO.dylib');
         end;
@@ -711,10 +660,11 @@ implementation
       else
         Replace(cmdstr,'$ORDERSYMS','');
       { add asan library if known }
-      if InitSanitizersLibraryNameAndPath('darwin',sanitizerLibraryDir,asanLibraryName) then
+      if AddSanitizerLibrariesAndGetSearchDir('darwin',sanitizerLibraryDir) then
         begin
-          ObjectFiles.Concat(asanLibraryName);
-          Replace(cmdstr,'$RPATH','-rpath '+sanitizerLibraryDir)
+          { also add the executable path as search path in case the asan
+            library gets copied into the application bundle }
+          Replace(cmdstr,'$RPATH','-rpath @executable_path -rpath '+maybequoted(sanitizerLibraryDir))
         end
       else
         begin

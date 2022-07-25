@@ -202,9 +202,11 @@ begin
 {$endif sparc64}
 {$ifdef riscv32}
       LibrarySearchPath.AddLibraryPath(sysrootpath,'=/usr/lib/riscv32-linux-gnu',true);
+      LibrarySearchPath.AddLibraryPath(sysrootpath,'=/lib/riscv32-linux-gnu',true);
 {$endif riscv32}
 {$ifdef riscv64}
       LibrarySearchPath.AddLibraryPath(sysrootpath,'=/usr/lib/riscv64-linux-gnu',true);
+      LibrarySearchPath.AddLibraryPath(sysrootpath,'=/lib/riscv64-linux-gnu',true);
 {$endif riscv64}
     end;
 end;
@@ -396,8 +398,8 @@ begin
 
   with Info do
    begin
-     ExeCmd[1]:='ld '+platform_select+platformopt+' $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP $MAP $LTO -L. -o $EXE';
-     DllCmd[1]:='ld '+platform_select+platformopt+' $OPT $INIT $FINI $SONAME $MAP $LTO -shared $GCSECTIONS -L. -o $EXE';
+     ExeCmd[1]:='ld '+platform_select+platformopt+' $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP $MAP $LTO $RPATH -L. -o $EXE';
+     DllCmd[1]:='ld '+platform_select+platformopt+' $OPT $INIT $FINI $SONAME $MAP $LTO $RPATH -shared $GCSECTIONS -L. -o $EXE';
      { when we want to cross-link we need to override default library paths;
        when targeting binutils 2.19 or later, we use the "INSERT" command to
        augment the default linkerscript, which also requires -T (normally that
@@ -738,7 +740,9 @@ var
   binstr,
   cmdstr,
   mapstr,
-  ltostr  : TCmdStr;
+  ltostr,
+  rpathstr,
+  sanitizerLibraryDir: TCmdStr;
   success : boolean;
   DynLinkStr : ansistring;
   GCSectionsStr,
@@ -755,6 +759,7 @@ begin
   DynLinkStr:='';
   mapstr:='';
   ltostr:='';
+  rpathstr:='';
   if (cs_link_staticflag in current_settings.globalswitches) then
    StaticStr:='-static';
   if (cs_link_strip in current_settings.globalswitches) and
@@ -784,6 +789,11 @@ begin
       ltostr:='-plugin '+maybequoted(utilsdirectory+'/../lib/LLVMgold.so ');
     end;
 
+  if AddSanitizerLibrariesAndGetSearchDir('linux',sanitizerLibraryDir) then
+    begin
+      rpathstr:='-rpath '+maybequoted(sanitizerLibraryDir);
+    end;
+
 { Write used files and libraries }
   WriteResponseFile(false);
 
@@ -798,6 +808,7 @@ begin
   Replace(cmdstr,'$DYNLINK',DynLinkStr);
   Replace(cmdstr,'$MAP',mapstr);
   Replace(cmdstr,'$LTO',ltostr);
+  Replace(cmdstr,'$RPATH',rpathstr);
 
   { create dynamic symbol table? }
   if HasExports then
@@ -851,12 +862,15 @@ var
   binstr,
   cmdstr,
   mapstr,
-  ltostr : TCmdStr;
+  ltostr,
+  rpathstr,
+  sanitizerLibraryDir: TCmdStr;
   success : boolean;
 begin
   MakeSharedLibrary:=false;
   mapstr:='';
   ltostr:='';
+  rpathstr:='';
   if not(cs_link_nolink in current_settings.globalswitches) then
    Message1(exec_i_linking,current_module.sharedlibfilename);
   if (cs_link_smart in current_settings.globalswitches) and
@@ -885,7 +899,12 @@ begin
       ltostr:='-plugin '+maybequoted(utilsdirectory+'/../lib/LLVMgold.so ');
     end;
 
-{ Call linker }
+  if AddSanitizerLibrariesAndGetSearchDir('linux',sanitizerLibraryDir) then
+    begin
+      rpathstr:='-rpath '+maybequoted(sanitizerLibraryDir)
+    end;
+
+ { Call linker }
   SplitBinCmd(Info.DllCmd[1],binstr,cmdstr);
   Replace(cmdstr,'$EXE',maybequoted(current_module.sharedlibfilename));
   Replace(cmdstr,'$OPT',Info.ExtraOptions);
@@ -895,6 +914,7 @@ begin
   Replace(cmdstr,'$SONAME',SoNameStr);
   Replace(cmdstr,'$MAP',mapstr);
   Replace(cmdstr,'$LTO',ltostr);
+  Replace(cmdstr,'$RPATH',rpathstr);
   Replace(cmdstr,'$GCSECTIONS',GCSectionsStr);
   success:=DoExec(FindUtil(utilsprefix+binstr),cmdstr,true,false);
 

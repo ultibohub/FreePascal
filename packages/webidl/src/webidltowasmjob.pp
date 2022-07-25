@@ -368,8 +368,8 @@ begin
   Result:=0;
   aClassName:=GetName(Intf);
   aPasIntfName:=GetPasIntfName(Intf);
-  AddLn('class function Cast(Intf: IJSObject): '+aPasIntfName+';');
-  Code:='class function '+aClassName+'.Cast(Intf: IJSObject): '+aPasIntfName+';'+sLineBreak;
+  AddLn('function Cast(Intf: IJSObject): '+aPasIntfName+';');
+  Code:='function '+aClassName+'.Cast(Intf: IJSObject): '+aPasIntfName+';'+sLineBreak;
   Code:=Code+'begin'+sLineBreak;
   Code:=Code+'  Result:='+aClassName+'.Cast(Intf);'+sLineBreak;
   Code:=Code+'end;'+sLineBreak;
@@ -431,10 +431,20 @@ Var
 begin
   Result:=True;
   Data:=aDef.Data as TPasDataWasmJob;
+  if Data.PasName='' then
+    begin
+    writeln('Note: skipping Getter of '+aDef.Parent.Name+' at '+GetDefPos(aDef));
+    exit(false);
+    end;
+
   Suff:='';
   RT:='';
   if (foConstructor in aDef.Options) then
-    FN:='New'
+    begin
+    FN:='New';
+    writeln('Note: skipping constructor of '+aDef.Parent.Name+' at '+GetDefPos(aDef));
+    exit(false);
+    end
   else
     begin
     FN:=GetName(aDef);
@@ -453,7 +463,7 @@ begin
     'Double': InvokeName:='InvokeJSDoubleResult';
     'UnicodeString': InvokeName:='InvokeJSUnicodeStringResult';
     'TJOB_JSValue': InvokeName:='InvokeJSValueResult';
-    'void':
+    'void','undefined':
       begin
       RT:='';
       InvokeName:='InvokeJSNoResult';
@@ -734,7 +744,7 @@ begin
   'UnicodeString': ReadFuncName:='ReadJSPropertyUnicodeString';
   'TJOB_JSValue': ReadFuncName:='ReadJSPropertyValue';
   else
-    Call:='ReadJSPropertyObject('+Attr.Name+','''+GetTypeName(Attr.AttributeType)+''')';
+    Call:='ReadJSPropertyObject('''+Attr.Name+''','+GetTypeName(Attr.AttributeType)+')';
   end;
 
   if Call='' then
@@ -808,7 +818,7 @@ var
 begin
   if Attr.AttributeType=nil then
     begin
-    AddLn('skipping field without type: "'+Attr.Name+'"');
+    writeln('Note: skipping field "'+Attr.Name+'" without type at '+GetDefPos(Attr));
     exit;
     end;
   PropName:=GetName(Attr);
