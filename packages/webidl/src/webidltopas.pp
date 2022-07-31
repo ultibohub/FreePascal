@@ -67,6 +67,7 @@ type
     FContext: TWebIDLContext;
     FDictionaryClassParent: String;
     FFieldPrefix: String;
+    FGlobalVars: TStrings;
     FTypePrefix: String;
     FGetterPrefix: String;
     FIncludeImplementationCode: TStrings;
@@ -80,10 +81,12 @@ type
     FTypeAliases: TStrings; // user defined type maping name to name
     FVerbose: Boolean;
     FWebIDLVersion: TWebIDLVersion;
+    procedure SetGlobalVars(const AValue: TStrings);
     procedure SetIncludeImplementationCode(AValue: TStrings);
     procedure SetIncludeInterfaceCode(AValue: TStrings);
     procedure SetTypeAliases(AValue: TStrings);
   Protected
+    procedure TrimList(List: TStrings); virtual;
     procedure AddOptionsToHeader;
     Procedure Parse; virtual;
     Procedure WritePascal; virtual;
@@ -93,7 +96,8 @@ type
     // Auxiliary routines
     procedure GetOptions(L: TStrings; Full: boolean); virtual;
     procedure ProcessDefinitions; virtual;
-    function CreatePasName(aName: String; D: TIDLBaseObject; Escape: boolean): TPasData; virtual;
+    function CreatePasData(aName: String; D: TIDLBaseObject; Escape: boolean): TPasData; virtual;
+    function ClonePasData(Data: TPasData; OwnerDef: TIDLBaseObject): TPasData; virtual;
     procedure AllocatePasNames(aList: TIDLDefinitionList; ParentName: String=''); virtual;
     function AllocatePasName(D: TIDLDefinition; ParentName: String=''): TPasData; virtual;
     procedure AddJSIdentifier(D: TIDLDefinition); virtual;
@@ -106,12 +110,13 @@ type
     function GetDefPos(Def: TIDLBaseObject; WithoutFile: boolean = false): string; virtual;
     function GetPasDataPos(D: TPasData; WithoutFile: boolean = false): string; virtual;
     procedure EnsureUniqueNames(ML: TIDLDefinitionList); virtual;
+    procedure EnsureUniqueArgNames(Intf: TIDLInterfaceDefinition); virtual;
     function AddSequenceDef(ST: TIDLSequenceTypeDefDefinition): Boolean; virtual;
     function GetName(ADef: TIDLDefinition): String; virtual;
     function GetPasClassName(const aName: string): string; overload; virtual;
     function GetTypeName(Const aTypeName: String; ForTypeDef: Boolean=False): String; overload; virtual;
     function GetTypeName(aTypeDef: TIDLTypeDefDefinition; ForTypeDef: Boolean=False): String; overload; virtual;
-    function GetResolvedTypeName(Const aTypeName: String): String; overload; virtual;
+    function GetResolvedType(aDef: TIDLTypeDefDefinition; out aTypeName, aResolvedTypename: string): TIDLDefinition; overload; virtual;
     function GetSequenceTypeName(Seq: TIDLSequenceTypeDefDefinition; ForTypeDef: Boolean=False): string; virtual;
     function GetInterfaceDefHead(Intf: TIDLInterfaceDefinition): String; virtual;
     function GetDictionaryDefHead(const CurClassName: string; Dict: TIDLDictionaryDefinition): String; virtual;
@@ -133,25 +138,25 @@ type
     function WriteDictionaryDefs(aList: TIDLDefinitionList): Integer; virtual;
     function WriteForwardClassDefs(aList: TIDLDefinitionList): Integer; virtual;
     function WriteInterfaceDefs(aList: TIDLDefinitionList): Integer; virtual;
-    function WriteMethodDefs(aList: TIDLDefinitionList): Integer; virtual;
+    function WriteMethodDefs(aParent: TIDLInterfaceDefinition; aList: TIDLDefinitionList): Integer; virtual;
     function WriteUtilityMethods(Intf: TIDLInterfaceDefinition): Integer; virtual;
     function WriteTypeDefsAndCallbacks(aList: TIDLDefinitionList): Integer; virtual;
     function WriteEnumDefs(aList: TIDLDefinitionList): Integer; virtual;
-    function WriteConsts(aList: TIDLDefinitionList): Integer; virtual;
-    function WriteProperties(aList: TIDLDefinitionList): Integer; virtual;
-    function WritePlainFields(aList: TIDLDefinitionList): Integer; virtual;
-    function WriteDictionaryFields(aList: TIDLDefinitionList): Integer; virtual;
-    function WritePrivateReadOnlyFields(aList: TIDLDefinitionList): Integer; virtual;
-    function WritePrivateGetters(aList: TIDLDefinitionList): Integer; virtual;
-    function WritePrivateSetters(aList: TIDLDefinitionList): Integer; virtual;
+    function WriteConsts(aParent: TIDLDefinition; aList: TIDLDefinitionList): Integer; virtual;
+    function WriteProperties(aParent: TIDLDefinition; aList: TIDLDefinitionList): Integer; virtual;
+    function WritePlainFields(aParent: TIDLDefinition; aList: TIDLDefinitionList): Integer; virtual;
+    function WriteDictionaryFields(aDict: TIDLDictionaryDefinition; aList: TIDLDefinitionList): Integer; virtual;
+    function WritePrivateReadOnlyFields(aParent: TIDLDefinition; aList: TIDLDefinitionList): Integer; virtual;
+    function WritePrivateGetters(aParent: TIDLStructuredDefinition; aList: TIDLDefinitionList): Integer; virtual;
+    function WritePrivateSetters(aParent: TIDLStructuredDefinition; aList: TIDLDefinitionList): Integer; virtual;
     // Definitions. Return true if a definition was written.
     function WriteForwardClassDef(D: TIDLStructuredDefinition): Boolean; virtual;
     function WriteFunctionTypeDefinition(aDef: TIDLFunctionDefinition): Boolean; virtual;
-    function WriteFunctionDefinition(aDef: TIDLFunctionDefinition): Boolean; virtual;
+    function WriteFunctionDefinition(aParent: TIDLInterfaceDefinition; aDef: TIDLFunctionDefinition): Boolean; virtual;
     function WriteTypeDef(aDef: TIDLTypeDefDefinition): Boolean; virtual;
     function WriteRecordDef(aDef: TIDLRecordDefinition): Boolean; virtual;
     function WriteEnumDef(aDef: TIDLEnumDefinition): Boolean; virtual;
-    function WriteDictionaryField(aField: TIDLDictionaryMemberDefinition): Boolean; virtual;
+    function WriteDictionaryField(aDict: TIDLDictionaryDefinition; aField: TIDLDictionaryMemberDefinition): Boolean; virtual;
     function WriteField(aAttr: TIDLAttributeDefinition): Boolean; virtual;
     function WriteConst(aConst: TIDLConstDefinition): Boolean ; virtual;
     function WriteInterfaceDef(Intf: TIDLInterfaceDefinition): Boolean; virtual;
@@ -162,6 +167,7 @@ type
     procedure WriteSequenceDef(aDef: TIDLSequenceTypeDefDefinition); virtual;
     procedure WriteUnionDef(aDef: TIDLUnionTypeDefDefinition); virtual;
     // Extra interface/Implementation code.
+    procedure WriteGlobalVars; virtual;
     procedure WriteImplementation; virtual;
     procedure WriteIncludeInterfaceCode; virtual;
     Property Context: TWebIDLContext Read FContext;
@@ -185,6 +191,7 @@ type
     Property TypePrefix: String read FTypePrefix write FTypePrefix;
     Property WebIDLVersion: TWebIDLVersion Read FWebIDLVersion Write FWebIDLVersion;
     Property TypeAliases: TStrings Read FTypeAliases Write SetTypeAliases;
+    Property GlobalVars: TStrings Read FGlobalVars Write SetGlobalVars;
     Property IncludeInterfaceCode: TStrings Read FIncludeInterfaceCode Write SetIncludeInterfaceCode;
     Property IncludeImplementationCode: TStrings Read FIncludeImplementationCode Write SetIncludeImplementationCode;
     Property DictionaryClassParent: String Read FDictionaryClassParent Write FDictionaryClassParent;
@@ -277,6 +284,8 @@ end;
 
 function TBaseWebIDLToPas.GetPasClassName(const aName: string): string;
 begin
+  if aName='' then
+    raise EConvertError.Create('[20220725184209] empty name');
   Result:=ClassPrefix+aName+ClassSuffix;
 end;
 
@@ -369,29 +378,35 @@ begin
           Inc(Result);
 end;
 
-function TBaseWebIDLToPas.WritePrivateReadOnlyFields(aList: TIDLDefinitionList): Integer;
+function TBaseWebIDLToPas.WritePrivateReadOnlyFields(aParent: TIDLDefinition;
+  aList: TIDLDefinitionList): Integer;
 begin
   Result:=0;
+  if aParent=nil then ;
   if aList=nil then ;
 end;
 
-function TBaseWebIDLToPas.WritePrivateGetters(aList: TIDLDefinitionList
-  ): Integer;
+function TBaseWebIDLToPas.WritePrivateGetters(
+  aParent: TIDLStructuredDefinition; aList: TIDLDefinitionList): Integer;
 begin
   Result:=0;
+  if aParent=nil then ;
   if aList=nil then ;
 end;
 
-function TBaseWebIDLToPas.WritePrivateSetters(aList: TIDLDefinitionList
-  ): Integer;
+function TBaseWebIDLToPas.WritePrivateSetters(
+  aParent: TIDLStructuredDefinition; aList: TIDLDefinitionList): Integer;
 begin
   Result:=0;
+  if aParent=nil then ;
   if aList=nil then ;
 end;
 
-function TBaseWebIDLToPas.WriteProperties(aList: TIDLDefinitionList): Integer;
+function TBaseWebIDLToPas.WriteProperties(aParent: TIDLDefinition;
+  aList: TIDLDefinitionList): Integer;
 begin
   Result:=0;
+  if aParent=nil then ;
   if aList=nil then ;
 end;
 
@@ -406,12 +421,14 @@ begin
   Addln('%s = %s;',[GetName(aConst),S])
 end;
 
-function TBaseWebIDLToPas.WriteConsts(aList: TIDLDefinitionList): Integer;
+function TBaseWebIDLToPas.WriteConsts(aParent: TIDLDefinition;
+  aList: TIDLDefinitionList): Integer;
 
 Var
   D: TIDLDefinition;
 
 begin
+  if aParent=nil then ;
   EnsureSection(csConst);
   Indent;
   Result:=0;
@@ -422,13 +439,15 @@ begin
   Undent;
 end;
 
-function TBaseWebIDLToPas.WritePlainFields(aList: TIDLDefinitionList): Integer;
+function TBaseWebIDLToPas.WritePlainFields(aParent: TIDLDefinition;
+  aList: TIDLDefinitionList): Integer;
 
 Var
   D: TIDLDefinition;
   A: TIDLAttributeDefinition absolute D;
 
 begin
+  if aParent=nil then ;
   EnsureSection(csDeclaration);
   Result:=0;
   For D in aList do
@@ -438,7 +457,7 @@ begin
           Inc(Result);
 end;
 
-function TBaseWebIDLToPas.WriteDictionaryField(
+function TBaseWebIDLToPas.WriteDictionaryField(aDict: TIDLDictionaryDefinition;
   aField: TIDLDictionaryMemberDefinition): Boolean;
 
 Var
@@ -446,6 +465,7 @@ Var
 
 begin
   Result:=True;
+  if aDict=nil then ;
   N:=GetName(aField);
   TN:=GetTypeName(aField.MemberType);
   if TN='record' then
@@ -458,7 +478,8 @@ begin
   AddLn(Def);
 end;
 
-function TBaseWebIDLToPas.WriteDictionaryFields(aList: TIDLDefinitionList): Integer;
+function TBaseWebIDLToPas.WriteDictionaryFields(
+  aDict: TIDLDictionaryDefinition; aList: TIDLDefinitionList): Integer;
 
 Var
   D: TIDLDefinition;
@@ -469,12 +490,13 @@ begin
   Result:=0;
   For D in aList do
     if D is TIDLDictionaryMemberDefinition then
-      if WriteDictionaryField(M) then
+      if WriteDictionaryField(aDict,M) then
         Inc(Result);
   Undent;
 end;
 
-function TBaseWebIDLToPas.WriteMethodDefs(aList: TIDLDefinitionList): Integer;
+function TBaseWebIDLToPas.WriteMethodDefs(aParent: TIDLInterfaceDefinition;
+  aList: TIDLDefinitionList): Integer;
 
 Var
   D: TIDLDefinition;
@@ -485,7 +507,7 @@ begin
   for D in aList do
     if D is TIDLFunctionDefinition then
       if Not (foCallBack in FD.Options) then
-         if WriteFunctionDefinition(FD) then
+         if WriteFunctionDefinition(aParent,FD) then
            Inc(Result);
 end;
 
@@ -508,8 +530,8 @@ begin
     begin
     FAutoTypes.Add(TN);
     DoLog('Automatically adding %s sequence definition for %s.',[TN,GetDefPos(ST)]);
-    AddLn('%s = Array of %s;',[TN,GetTypeName(ST.ElementType)]);
-    ST.Data:=CreatePasName(TN,ST,true);
+    ST.Data:=CreatePasData(TN,ST,true);
+    WriteSequenceDef(ST);
     end;
 end;
 
@@ -546,7 +568,7 @@ Var
           ConflictDef:=CurDef;
           inc(I);
           if I>1 then
-            raise EConvertError.Create('Duplicate identifier '+GetDefPos(Def)+' and '+GetDefPos(CurDef)+' (20220620073704)');
+            raise EConvertError.Create('[20220725172221] Duplicate identifier '+GetDefPos(Def)+' and '+GetDefPos(CurDef)+' (20220620073704)');
           NewName:=KeywordPrefix+BaseName+KeywordSuffix;
           OrigName:=KeywordPrefix+OrigName+KeywordSuffix;
           end;
@@ -557,34 +579,10 @@ Var
       BaseName:=GetName(Def);
       DoLog('Renaming duplicate identifier (%s) %s at %s to %s, other at %s',[Def.ClassName,BaseName,GetDefPos(Def),OrigName,GetDefPos(ConflictDef)]);
       // Original TPasName is in list, will be freed automatically
-      Def.Data:=CreatePasName(OrigName,Def,false);
+      Def.Data:=CreatePasData(OrigName,Def,false);
       end;
     if not IsOverload then
       L.Add(NewName,Def);
-  end;
-
-  procedure CheckRenameArgs(Func: TIDLFunctionDefinition);
-  var
-    i: Integer;
-    Arg: TIDLArgumentDefinition;
-    ArgName: String;
-    ConflictDef: TIDLDefinition;
-  begin
-    for i:=0 to Func.Arguments.Count-1 do
-      begin
-      Arg:=Func.Argument[i];
-      ArgName:=GetName(Arg);
-      repeat
-        ConflictDef:=TIDLDefinition(L.Items[ArgName]);
-        if (ConflictDef=Nil) then break;
-        // name conflict -> rename
-        if ArgName[1]<>'a' then
-          ArgName:='a'+ArgName
-        else
-          ArgName:='_'+ArgName;
-        (Arg.Data as TPasData).PasName:=ArgName;
-      until false;
-      end;
   end;
 
 var
@@ -598,11 +596,71 @@ begin
     For D in ML Do
       if (D is TIDLConstDefinition) then
         CheckRename(D);
-    For D in ML Do
+  finally
+    L.Free;
+  end;
+end;
+
+procedure TBaseWebIDLToPas.EnsureUniqueArgNames(Intf: TIDLInterfaceDefinition);
+var
+  Names: TFPObjectHashTable;
+
+  procedure CheckRenameArgs(Func: TIDLFunctionDefinition);
+  var
+    i: Integer;
+    Arg: TIDLArgumentDefinition;
+    ArgName: String;
+    ConflictDef: TIDLDefinition;
+  begin
+    for i:=0 to Func.Arguments.Count-1 do
+      begin
+      Arg:=Func.Argument[i];
+      ArgName:=GetName(Arg);
+      if ArgName[1]<>'a' then
+        begin
+        ArgName:='a'+Uppercase(ArgName[1])+copy(ArgName,2,length(ArgName));
+        (Arg.Data as TPasData).PasName:=ArgName;
+        end;
+      repeat
+        ConflictDef:=TIDLDefinition(Names.Items[ArgName]);
+        if (ConflictDef=Nil) then break;
+        // name conflict -> rename
+        ArgName:='_'+ArgName;
+        (Arg.Data as TPasData).PasName:=ArgName;
+      until false;
+      end;
+  end;
+
+var
+  Members, MembersWithParents: TIDLDefinitionList;
+  CurIntf: TIDLInterfaceDefinition;
+  D: TIDLDefinition;
+  CurName: String;
+begin
+  Names:=TFPObjectHashTable.Create(False);
+  Members:=TIDLDefinitionList.Create(Nil,False);
+  MembersWithParents:=TIDLDefinitionList.Create(Nil,False);
+  try
+    Intf.GetFullMemberList(Members);
+    CurIntf:=Intf;
+    while CurIntf<>nil do
+      begin
+      CurIntf.GetFullMemberList(MembersWithParents);
+      CurIntf:=CurIntf.ParentInterface;
+      end;
+    For D in MembersWithParents Do
+      begin
+      CurName:=GetName(D);
+      if Names.Items[CurName]=nil then
+        Names.Add(CurName,D);
+      end;
+    For D in Members Do
       if D is TIDLFunctionDefinition then
         CheckRenameArgs(TIDLFunctionDefinition(D));
   finally
-    L.Free;
+    MembersWithParents.Free;
+    Members.Free;
+    Names.Free;
   end;
 end;
 
@@ -619,6 +677,7 @@ begin
   try
     Intf.GetFullMemberList(ML);
     EnsureUniqueNames(ML);
+    EnsureUniqueArgNames(Intf);
     aClassName:=GetName(Intf);
     // class comment
     ClassComment(aClassName);
@@ -632,9 +691,9 @@ begin
     // private section
     AddLn('Private');
     Indent;
-    WritePrivateReadOnlyFields(ML);
-    WritePrivateGetters(ML);
-    WritePrivateSetters(ML);
+    WritePrivateReadOnlyFields(Intf,ML);
+    WritePrivateGetters(Intf,ML);
+    WritePrivateSetters(Intf,ML);
     Undent;
     // write public section
     AddLn('Public');
@@ -642,16 +701,16 @@ begin
       begin
       Indent;
       PushSection(csUnknown);
-      WriteConsts(ML);
+      WriteConsts(Intf,ML);
       PopSection;
       Undent;
       AddLn('Public');
       end;
     Indent;
-    WritePlainFields(ML);
-    WriteMethodDefs(ML);
+    WritePlainFields(Intf,ML);
+    WriteMethodDefs(Intf,ML);
     WriteUtilityMethods(Intf);
-    WriteProperties(ML);
+    WriteProperties(Intf,ML);
     Undent;
     AddLn('end;');
   finally
@@ -683,7 +742,7 @@ begin
     // class and ancestor
     Decl:=GetDictionaryDefHead(CurClassName,aDict);
     AddLn(Decl);
-    WriteDictionaryFields(DefList);
+    WriteDictionaryFields(aDict,DefList);
     AddLn('end;');
   finally
     DefList.Free;
@@ -703,6 +762,7 @@ begin
   SetterPrefix:='Set';
   TypePrefix:='T';
   FTypeAliases:=TStringList.Create;
+  FGlobalVars:=TStringList.Create;
   FPasNameList:=TFPObjectList.Create(True);
   FPasDataClass:=TPasData;
   FAutoTypes:=TStringList.Create;
@@ -718,6 +778,7 @@ begin
   FreeAndNil(FIncludeInterfaceCode);
   FreeAndNil(FIncludeImplementationCode);
   FreeAndNil(FAutoTypes);
+  FreeAndNil(FGlobalVars);
   FreeAndNil(FTypeAliases);
   FreeAndNil(FPasNameList);
   inherited Destroy;
@@ -749,24 +810,41 @@ begin
     Result:=GetTypeName(aTypeDef.TypeName,ForTypeDef);
 end;
 
-function TBaseWebIDLToPas.GetResolvedTypeName(const aTypeName: String): String;
-var
-  aDef: TIDLDefinition;
+function TBaseWebIDLToPas.GetResolvedType(aDef: TIDLTypeDefDefinition; out
+  aTypeName, aResolvedTypename: string): TIDLDefinition;
 begin
-  aDef:=FindGlobalDef(aTypeName);
-  if aDef is TIDLTypeDefDefinition then
-    Result:=GetResolvedTypeName(TIDLTypeDefDefinition(aDef).TypeName)
+  Result:=nil;
+  if aDef=nil then
+    begin
+    aTypeName:='';
+    aResolvedTypename:='';
+    exit;
+    end;
+  aTypeName:=GetTypeName(aDef.TypeName);
+  //writeln('TBaseWebIDLToPas.GetResolvedType START aDef=',aDef.Name,':',aDef.ClassName,' ',aDef.TypeName,' ',GetDefPos(aDef),' Resolved=',(aDef.Data is TPasData) and (TPasData(aDef.Data).Resolved<>nil));
+  Result:=aDef;
+  while (aDef.Data is TPasData) and (TPasData(aDef.Data).Resolved<>nil) do
+    begin
+    Result:=TPasData(aDef.Data).Resolved;
+    //writeln('TBaseWebIDLToPas.GetResolvedType RESOLVED Result=',Result.Name,' ',GetDefPos(Result));
+    if not (Result is TIDLTypeDefDefinition) then
+      break;
+    aDef:=TIDLTypeDefDefinition(Result);
+    end;
+  if Result is TIDLTypeDefDefinition then
+    aResolvedTypename:=GetTypeName(TIDLTypeDefDefinition(Result))
   else
-    Result:=GetTypeName(aTypeName);
+    aResolvedTypename:=GetName(Result);
+  if aTypeName='sequence' then
+    aTypeName:=aResolvedTypename;
 end;
 
 function TBaseWebIDLToPas.GetSequenceTypeName(
   Seq: TIDLSequenceTypeDefDefinition; ForTypeDef: Boolean): string;
 begin
-  //writeln('TBaseWebIDLToPas.GetSequenceTypeName ',Seq.ElementType.Name,' ',Seq.ElementType.TypeName);
   Result:=GetTypeName(Seq.ElementType,ForTypeDef);
   if Result='' then
-    raise EConvertError.Create('sequence without name at '+GetDefPos(Seq));
+    raise EConvertError.Create('[20220725172227] sequence without name at '+GetDefPos(Seq));
   if LeftStr(Result,length(ArrayPrefix))<>ArrayPrefix then
     Result:=ArrayPrefix+Result;
   Result:=Result+ArraySuffix;
@@ -872,7 +950,7 @@ function TBaseWebIDLToPas.WriteForwardClassDef(D: TIDLStructuredDefinition): Boo
 begin
   Result:=not D.IsPartial;
   if Result then
-    AddLn('%s = Class;',[GetName(D)]);
+    AddLn('%s = class;',[GetName(D)]);
 end;
 
 function TBaseWebIDLToPas.WriteForwardClassDefs(aList: TIDLDefinitionList): Integer;
@@ -918,6 +996,22 @@ begin
   AddLn(GetName(aDef)+' = '+GetTypeName('any')+';');
 end;
 
+procedure TBaseWebIDLToPas.WriteGlobalVars;
+var
+  i: Integer;
+  VarName, VarType: String;
+begin
+  if GlobalVars.Count=0 then exit;
+  AddLn('var');
+  Indent;
+  for i:=0 to GlobalVars.Count-1 do
+    begin
+    VarName:=GlobalVars.Names[i];
+    VarType:=GlobalVars.ValueFromIndex[i];
+    AddLn(VarName+': '+VarType+';');
+    end;
+  Undent;
+end;
 
 procedure TBaseWebIDLToPas.WritePromiseDef(aDef: TIDLPromiseTypeDefDefinition);
 
@@ -1025,23 +1119,23 @@ function TBaseWebIDLToPas.GetArguments(aList: TIDLDefinitionList;
   ForceBrackets: Boolean): String;
 
 Var
-  I, Def: TIDLDefinition;
+  I, ArgType: TIDLDefinition;
   Arg: TIDLArgumentDefinition absolute I;
-  ArgName, aTypeName: string;
+  ArgName, ArgTypeName, ArgResolvedTypeName: string;
 
 begin
   Result:='';
   For I in aList do
     begin
     ArgName:=GetName(Arg);
-    aTypeName:=GetTypeName(Arg.ArgumentType);
-    ArgName:=ArgName+': '+aTypeName;
-    Def:=FindGlobalDef(Arg.ArgumentType.TypeName);
+    ArgType:=GetResolvedType(Arg.ArgumentType,ArgTypeName,ArgResolvedTypeName);
+    ArgName:=ArgName+': '+ArgTypeName;
     //writeln('TBaseWebIDLToPas.GetArguments Arg="',ArgName,'" A.ArgumentType.TypeName=',Arg.ArgumentType.TypeName,' ',Def<>nil);
-    if (Def is TIDLFunctionDefinition)
-        or (Def is TIDLDictionaryDefinition)
-        or (Arg.ArgumentType.TypeName='sequence')
-        or SameText(aTypeName,'UnicodeString') then
+    if (ArgType is TIDLFunctionDefinition)
+        or (ArgType is TIDLDictionaryDefinition)
+        or (ArgType is TIDLSequenceTypeDefDefinition)
+        or (ArgResolvedTypeName='UnicodeString')
+        or (ArgResolvedTypeName='UTF8String') then
       ArgName:='const '+ArgName;
     if Result<>'' then
       Result:=Result+'; ';
@@ -1108,7 +1202,8 @@ begin
       CD.ArgumentType:=TIDLTypeDefDefinition.Create(CD,'',PosEl.SrcFile,PosEl.Line,PosEl.Column);
       CD.ArgumentType.TypeName:=aTypeName;
       DL.Add(CD);
-      CD.Data:=CreatePasName(aPasName,CD,false);
+      CD.Data:=CreatePasData(aPasName,CD,false);
+      ResolveTypeDef(CD.ArgumentType);
       end;
     end;
 end;
@@ -1140,8 +1235,10 @@ Var
   I,J: Integer;
   D: TIDLDefinitionList;
   Dups: TStringList;
+  CurTypeDef: TIDLTypeDefDefinition;
 
 begin
+  //writeln('TBaseWebIDLToPas.AddUnionOverloads Name=',aName,' PasName=',aPasName);
   L2:=Nil;
   Dups:=TStringList.Create;
   Dups.Sorted:=True;
@@ -1158,21 +1255,29 @@ begin
       end;
     // Collect unique pascal types. Note that this can reduce the list to 1 element...
     For I:=0 to UT.Union.Count-1 do
-      Dups.Add(GetTypeName(UT.Union[I] as TIDLTypeDefDefinition));
+      begin
+      CurTypeDef:=UT.Union[I] as TIDLTypeDefDefinition;
+      //writeln('TBaseWebIDLToPas.AddUnionOverloads Union[',I,']='+GetTypeName(CurTypeDef));
+      Dups.AddObject(CurTypeDef.TypeName,CurTypeDef);
+      end;
     // First, clone list and add argument to cloned lists
     For I:=1 to Dups.Count-1 do
       begin
       // Clone list
       CloneNonPartialArgumentList(L,L2,False);
       // Add argument to cloned list
-      AddArgumentToOverloads(L2,aName,aPasName,Dups[i],UT.Union[I]);
+      CurTypeDef:=TIDLTypeDefDefinition(Dups.Objects[I]);
+      //writeln('TBaseWebIDLToPas.AddUnionOverloads Dups[',i,']=',Dups[i]);
+      AddArgumentToOverloads(L2,aName,aPasName,Dups[i],CurTypeDef);
       // Add overloads to original list
       For J:=0 to L2.Count-1 do
         aList.Add(L2[J]);
       L2.Clear;
       end;
     // Add first Union to original list
-    AddArgumentToOverloads(L,aName,aPasName,Dups[0],UT.Union[0]);
+    CurTypeDef:=TIDLTypeDefDefinition(Dups.Objects[0]);
+    //writeln('TBaseWebIDLToPas.AddUnionOverloads Dups[',0,']=',Dups[0]);
+    AddArgumentToOverloads(L,aName,aPasName,Dups[0],CurTypeDef);
   finally
     Dups.Free;
     L2.Free;
@@ -1199,8 +1304,9 @@ function TBaseWebIDLToPas.CloneArgument(Arg: TIDLArgumentDefinition
   ): TIDLArgumentDefinition;
 begin
   Result:=Arg.Clone(nil);
-  if Arg.Data is TPasData then
-    Result.Data:=CreatePasName(GetName(Arg),Result,false);
+  ResolveTypeDef(Result);
+  if Arg.Data<>nil then
+    Result.Data:=ClonePasData(TPasData(Arg.Data),Result);
 end;
 
 procedure TBaseWebIDLToPas.AddOverloads(aList: TFPObjectlist;
@@ -1208,20 +1314,21 @@ procedure TBaseWebIDLToPas.AddOverloads(aList: TFPObjectlist;
 
 Var
   Arg: TIDLArgumentDefinition;
-  D: TIDLDefinition;
+  ArgType: TIDLDefinition;
   UT: TIDLUnionTypeDefDefinition;
 
 begin
  if aIdx>=aDef.Arguments.Count then
     exit;
   Arg:=aDef.Argument[aIdx];
+  //writeln('TBaseWebIDLToPas.AddOverloads ',aDef.Name,'[',aIdx,']=',Arg.Name,':',Arg.ArgumentType.ClassName,' at ',GetDefPos(Arg),' Arg.IsOptional=',Arg.IsOptional);
   if Arg.IsOptional then
     CloneNonPartialArgumentList(aList);
   // Add current to list.
-  D:=Arg.ArgumentType;
+  ArgType:=Arg.ArgumentType;
   UT:=Nil;
   if coExpandUnionTypeArgs in BaseOptions then
-    UT:=CheckUnionTypeDefinition(D);
+    UT:=CheckUnionTypeDefinition(ArgType);
   if UT=Nil then
     AddArgumentToOverloads(aList,Arg)
   else
@@ -1260,10 +1367,12 @@ begin
     AddLn('%s = function %s: %s;',[FN,Args,RT])
 end;
 
-function TBaseWebIDLToPas.WriteFunctionDefinition(aDef: TIDLFunctionDefinition): Boolean;
+function TBaseWebIDLToPas.WriteFunctionDefinition(
+  aParent: TIDLInterfaceDefinition; aDef: TIDLFunctionDefinition): Boolean;
 begin
   Result:=true;
   if aDef=nil then exit;
+  if aParent=nil then ;
 end;
 
 function TBaseWebIDLToPas.WriteDictionaryDefs(aList: TIDLDefinitionList): Integer;
@@ -1418,6 +1527,7 @@ begin
   WriteDictionaryDefs(Context.Definitions);
   WriteInterfaceDefs(Context.GetInterfacesTopologically);
   Undent;
+  WriteGlobalVars;
   WriteIncludeInterfaceCode;
   Addln('');
   AddLn('implementation');
@@ -1426,12 +1536,20 @@ begin
   Source.SaveToFile(OutputFileName);
 end;
 
-function TBaseWebIDLToPas.CreatePasName(aName: String; D: TIDLBaseObject;
+function TBaseWebIDLToPas.CreatePasData(aName: String; D: TIDLBaseObject;
   Escape: boolean): TPasData;
 begin
   if Escape then
     aName:=EscapeKeyWord(aName);
   Result:=PasDataClass.Create(aName,D);
+  FPasNameList.Add(Result);
+end;
+
+function TBaseWebIDLToPas.ClonePasData(Data: TPasData; OwnerDef: TIDLBaseObject
+  ): TPasData;
+begin
+  Result:=PasDataClass.Create(Data.PasName,OwnerDef);
+  Result.Resolved:=Data.Resolved;
   FPasNameList.Add(Result);
 end;
 
@@ -1446,20 +1564,24 @@ begin
   CN:=D.Name;
   if D Is TIDLInterfaceDefinition then
     begin
+    if CN='' then
+      raise EConvertError.Create('[20220725184324] at '+GetDefPos(D));
     if not TIDLInterfaceDefinition(D).IsPartial then
       AddJSIdentifier(D);
     CN:=ClassPrefix+CN+ClassSuffix;
-    Result:=CreatePasName(CN,D,true);
+    Result:=CreatePasData(CN,D,true);
     D.Data:=Result;
     AllocatePasNames((D as TIDLInterfaceDefinition).Members,D.Name);
     end
   else if D Is TIDLDictionaryDefinition then
     begin
+    if CN='' then
+      raise EConvertError.Create('[20220725184410] at '+GetDefPos(D));
     if not TIDLDictionaryDefinition(D).IsPartial then
       AddJSIdentifier(D);
     if coDictionaryAsClass in BaseOptions then
       CN:=ClassPrefix+CN+ClassSuffix;
-    Result:=CreatePasName(EscapeKeyWord(CN),D,true);
+    Result:=CreatePasData(EscapeKeyWord(CN),D,true);
     D.Data:=Result;
     AllocatePasNames((D as TIDLDictionaryDefinition).Members,D.Name);
     end
@@ -1472,7 +1594,7 @@ begin
       CN:=TypePrefix+CN;
       AddJSIdentifier(D);
       end;
-    Result:=CreatePasName(CN,D,true);
+    Result:=CreatePasData(CN,D,true);
     D.Data:=Result;
     if D Is TIDLFunctionDefinition then
       AllocatePasNames((D as TIDLFunctionDefinition).Arguments,D.Name);
@@ -1500,7 +1622,7 @@ begin
     FGlobalDefs.Add(D.Name,D);
     end
   else
-    writeln('TBaseWebIDLToPas.AddJSIdentifier SubIdentifier: '+D.Name+' at '+GetDefPos(D)+' Parent=',D.Parent.Name,':',D.Parent.ClassName,' at ',GetDefPos(D.Parent));
+    ; //writeln('TBaseWebIDLToPas.AddJSIdentifier SubIdentifier: '+D.Name+' at '+GetDefPos(D)+' Parent=',D.Parent.Name,':',D.Parent.ClassName,' at ',GetDefPos(D.Parent));
 end;
 
 procedure TBaseWebIDLToPas.ResolveParentInterfaces(aList: TIDLDefinitionList);
@@ -1539,18 +1661,27 @@ procedure TBaseWebIDLToPas.ResolveTypeDef(D: TIDLDefinition);
     Def: TIDLDefinition;
     Data: TPasData;
   begin
+    if (D.Data is TPasData) and (TPasData(D.Data).Resolved<>nil) then
+      exit;
+
     Def:=FindGlobalDef(aTypeName);
+    //writeln('ResolveTypeName Searched D=',D.Name,':',D.ClassName,' aTypeName="',aTypeName,'" Def=',Def<>nil);
     if Def=nil then
       begin
-      if NameToWebIDLBaseType(aTypeName)=wibtNone then
-        writeln('Type ',aTypeName,' not found at ',GetDefPos(D));
+      if (NameToWebIDLBaseType(aTypeName)=wibtNone)
+          and (TypeAliases.Values[aTypeName]='') then
+        raise EConvertError.Create('[20220725172231] type "'+aTypeName+'" of "'+D.Name+'" not found at '+GetDefPos(D));
       end
     else
       begin
       Data:=TPasData(D.Data);
       if Data=nil then
-        Data:=CreatePasName('',D,false);
+        begin
+        Data:=CreatePasData('',D,false);
+        D.Data:=Data;
+        end;
       Data.Resolved:=Def;
+      //writeln('ResolveTypeName Resolved D=',D.Name,':',D.ClassName,' at ',GetDefPos(D),' Data.Resolved=',Def.Name,':',Def.ClassName,' at ',GetDefPos(Def));
       end;
   end;
 
@@ -1558,24 +1689,34 @@ var
   DMD: TIDLDictionaryMemberDefinition;
   IT: TIDLIterableDefinition;
   SerializerD: TIDLSerializerDefinition;
+  FD: TIDLFunctionDefinition;
 begin
   if D=nil then exit;
-  //writeln('TBaseWebIDLToPas.ResolveTypeDef START ',D.Name,':',D.ClassName,' at ',GetDefPos(D));
+  //writeln('TBaseWebIDLToPas.ResolveTypeDef START ',D.Name,':',D.ClassName,' at ',GetDefPos(D),' D=',hexstr(ptruint(D),sizeof(ptruint)*2));
   if D Is TIDLInterfaceDefinition then
-    ResolveTypeDefs((D as TIDLInterfaceDefinition).Members)
+    ResolveTypeDefs(TIDLInterfaceDefinition(D).Members)
   else if D Is TIDLDictionaryDefinition then
-    ResolveTypeDefs((D as TIDLDictionaryDefinition).Members)
+    ResolveTypeDefs(TIDLDictionaryDefinition(D).Members)
   else if D is TIDLIncludesDefinition then
   else if D Is TIDLFunctionDefinition then
-    ResolveTypeDefs((D as TIDLFunctionDefinition).Arguments)
+    begin
+    FD:=TIDLFunctionDefinition(D);
+    ResolveTypeDefs(FD.Arguments);
+    ResolveTypeDef(FD.ReturnType);
+    end
   else if D is TIDLAttributeDefinition then
     ResolveTypeDef(TIDLAttributeDefinition(D).AttributeType)
   else if D is TIDLArgumentDefinition then
     ResolveTypeDef(TIDLArgumentDefinition(D).ArgumentType)
+  else if D is TIDLSequenceTypeDefDefinition then
+    ResolveTypeDef(TIDLSequenceTypeDefDefinition(D).ElementType)
   else if D is TIDLTypeDefDefinition then
     ResolveTypeName(TIDLTypeDefDefinition(D).TypeName)
   else if D is TIDLConstDefinition then
-    ResolveTypeName(TIDLConstDefinition(D).TypeName)
+    begin
+    if TIDLConstDefinition(D).TypeName<>'' then
+      ResolveTypeName(TIDLConstDefinition(D).TypeName);
+    end
   else if D is TIDLSerializerDefinition then
     begin
     SerializerD:=TIDLSerializerDefinition(D);
@@ -1598,7 +1739,7 @@ begin
     ResolveTypeDef(IT.KeyType);
     end
   else {if Verbose then}
-    writeln('TBaseWebIDLToPas.ResolveTypeDef unknown ',D.Name,':',D.ClassName,' at ',GetDefPos(D));
+    raise EConvertError.Create('[20220725172214] TBaseWebIDLToPas.ResolveTypeDef unknown '+D.Name+':'+D.ClassName+' at '+GetDefPos(D));
 end;
 
 procedure TBaseWebIDLToPas.RemoveInterfaceForwards(aList: TIDLDefinitionList);
@@ -1608,7 +1749,8 @@ Var
 
   Procedure DeleteIntf(Def: TIDLInterfaceDefinition);
   begin
-    writeln('DeleteIntf ',Def.Name);
+    if Verbose then
+      DoLog('removing interface '+Def.Name+' at '+GetDefPos(Def));
     aList.Delete(Def);
   end;
 
@@ -1633,7 +1775,7 @@ Var
       else if Def.IsForward then
         DeleteIntf(Def)
       else
-        raise EConvertError.Create('Duplicate interface '+GetDefPos(Def)+' and '+GetDefPos(OldDef)+' (20220718184717)');
+        raise EConvertError.Create('[20220725172236] Duplicate interface '+GetDefPos(Def)+' and '+GetDefPos(OldDef)+' (20220718184717)');
       end;
   end;
 
@@ -1674,8 +1816,18 @@ end;
 
 procedure TBaseWebIDLToPas.SetTypeAliases(AValue: TStrings);
 begin
-  if FTypeAliases=AValue then Exit;
+  if FTypeAliases.Equals(AValue) then Exit;
   FTypeAliases.Assign(AValue);
+  TrimList(FTypeAliases);
+end;
+
+procedure TBaseWebIDLToPas.TrimList(List: TStrings);
+var
+  i: Integer;
+begin
+  for i:=List.Count-1 downto 0 do
+    if Trim(List[i])='' then
+       List.Delete(i);
 end;
 
 procedure TBaseWebIDLToPas.SetIncludeInterfaceCode(AValue: TStrings);
@@ -1688,6 +1840,13 @@ procedure TBaseWebIDLToPas.SetIncludeImplementationCode(AValue: TStrings);
 begin
   if FIncludeImplementationCode=AValue then Exit;
   FIncludeImplementationCode.Assign(AValue);
+end;
+
+procedure TBaseWebIDLToPas.SetGlobalVars(const AValue: TStrings);
+begin
+  if FGlobalVars.Equals(AValue) then Exit;
+  FGlobalVars.Assign(AValue);
+  TrimList(FGlobalVars);
 end;
 
 procedure TBaseWebIDLToPas.AllocatePasNames(aList: TIDLDefinitionList; ParentName: String = '');
@@ -1752,7 +1911,7 @@ end;
 
 function TBaseWebIDLToPas.IsKeyWord(const S: String): Boolean;
 Const
-   KW=';class;finalization;function;initialization;procedure;';
+   KW=';class;classname;finalization;function;initialization;procedure;';
 begin
   Result:=inherited IsKeyWord(S);
   if Result then exit;

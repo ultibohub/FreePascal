@@ -2196,7 +2196,7 @@ unit aoptx86;
                         exit;
                       end
                   end;
-            end;
+              end;
           if GetNextInstructionUsingReg(p,hp1,taicpu(p).oper[1]^.reg) then
             begin
               if MatchInstruction(hp1,[A_VFMADDPD,
@@ -2273,7 +2273,7 @@ unit aoptx86;
                     if not(RegUsedAfterInstruction(taicpu(p).oper[1]^.reg,hp2,TmpUsedRegs)) then
                       begin
                         taicpu(hp1).loadoper(2,taicpu(p).oper[0]^);
-                        RemoveCurrentP(p, hp1); // <-- Is this actually safe? hp1 is not necessarily the next instruction. [Kit]
+                        RemoveCurrentP(p);
                         RemoveInstruction(hp2);
                       end;
                   end
@@ -2310,8 +2310,10 @@ unit aoptx86;
                         { we cannot eliminate the first move if
                           the operations uses the same register for source and dest }
                         if not(OpsEqual(taicpu(hp1).oper[1]^,taicpu(hp1).oper[0]^)) then
-                          RemoveCurrentP(p, nil);
-                        p:=hp1;
+                          { Remember that hp1 is not necessarily the immediate
+                            next instruction }
+                          RemoveCurrentP(p);
+
                         taicpu(hp1).loadoper(1, taicpu(hp2).oper[1]^);
                         RemoveInstruction(hp2);
                         result:=true;
@@ -2342,7 +2344,7 @@ unit aoptx86;
                           taicpu(hp1).loadoper(0, taicpu(p).oper[0]^);
                         if OpsEqual(taicpu(p).oper[1]^,taicpu(hp1).oper[1]^) then
                           taicpu(hp1).loadoper(1, taicpu(p).oper[0]^);
-                        RemoveCurrentP(p, nil);
+                        RemoveCurrentP(p);
                         result:=true;
                         exit;
                       end;
@@ -4164,6 +4166,7 @@ unit aoptx86;
           (taicpu(p).oper[1]^.typ = top_reg) and
           (taicpu(p).opsize = S_L) and
           GetNextInstructionUsingRegTrackingUse(p,hp2,taicpu(p).oper[1]^.reg) and
+          (hp2.typ = ait_instruction) and
           (taicpu(hp2).opcode = A_AND) and
           (MatchOpType(taicpu(hp2),top_const,top_reg) or
            (MatchOpType(taicpu(hp2),top_reg,top_reg) and
@@ -4946,14 +4949,11 @@ unit aoptx86;
                 if condition_in(taicpu(hp1).condition, taicpu(hp1_dist).condition) then
                   begin
                     { Any registers used here will already be allocated }
-                    if Assigned(JumpLabel_dist) then
-                      JumpLabel_dist.IncRefs;
-
                     if Assigned(JumpLabel) then
                       JumpLabel.DecRefs;
 
                     DebugMsg(SPeepholeOptimization + 'TEST/Jcc/@Lbl/TEST/Jcc -> TEST/Jcc, redirecting first jump', hp1);
-                    taicpu(hp1).loadref(0, taicpu(hp1_dist).oper[0]^.ref^);
+                    taicpu(hp1).loadref(0, taicpu(hp1_dist).oper[0]^.ref^); { This also increases the reference count }
                     Result := True;
                     Exit;
                   end;
@@ -6668,12 +6668,12 @@ unit aoptx86;
              j(c1) @lbl1
              ...
            @lbl:
-             cmp   ###.### (same comparison as above)
+             cmp   ###,### (same comparison as above)
              j(c2) @lbl2
 
            If c1 is a subset of c2, change to:
              cmp   ###,###
-             j(c2) @lbl2
+             j(c1) @lbl2
              (@lbl1 may become a dead label as a result)
          }
 
@@ -6706,15 +6706,11 @@ unit aoptx86;
                      if IsCmpSubset(taicpu(p_jump).condition, taicpu(hp1_dist).condition) then
                        begin
                          { Any registers used here will already be allocated }
-                         if Assigned(JumpLabel_dist) then
-                           JumpLabel_dist.IncRefs;
-
                          if Assigned(JumpLabel) then
                            JumpLabel.DecRefs;
 
                          DebugMsg(SPeepholeOptimization + 'CMP/Jcc/@Lbl/CMP/Jcc -> CMP/Jcc, redirecting first jump', p_jump);
-                         taicpu(p_jump).condition := taicpu(hp1_dist).condition;
-                         taicpu(p_jump).loadref(0, taicpu(hp1_dist).oper[0]^.ref^);
+                         taicpu(p_jump).loadref(0, taicpu(hp1_dist).oper[0]^.ref^); { This also increases the reference count }
                          Result := True;
                          { Don't exit yet.  Since p and p_jump haven't actually been
                            removed, we can check for more on this iteration }
@@ -7157,19 +7153,69 @@ unit aoptx86;
        }
        Result:=false;
        if MatchOperand(taicpu(p).oper[0]^,taicpu(p).oper[1]^,taicpu(p).oper[2]^) and
-         MatchOpType(taicpu(p),top_reg,top_reg,top_reg) and
-         GetNextInstructionUsingReg(p,hp1,taicpu(p).oper[0]^.reg) and
-         MatchInstruction(hp1,taicpu(p).opcode,[taicpu(p).opsize]) and
-         MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[0]^) and
-         MatchOperand(taicpu(hp1).oper[0]^,taicpu(hp1).oper[1]^,taicpu(hp1).oper[2]^) then
+         MatchOpType(taicpu(p),top_reg,top_reg,top_reg) then
          begin
-           DebugMsg(SPeepholeOptimization + 'VPXorVPXor2PXor done',hp1);
-           RemoveInstruction(hp1);
-           Result:=true;
-           Exit;
+           if GetNextInstructionUsingReg(p,hp1,taicpu(p).oper[0]^.reg) and
+             MatchInstruction(hp1,taicpu(p).opcode,[taicpu(p).opsize]) and
+             MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[0]^) and
+             MatchOperand(taicpu(hp1).oper[0]^,taicpu(hp1).oper[1]^,taicpu(hp1).oper[2]^) then
+             begin
+               DebugMsg(SPeepholeOptimization + 'VPXorVPXor2VPXor done',hp1);
+               RemoveInstruction(hp1);
+               Result:=true;
+               Exit;
+             end;
+{$ifdef x86_64}
+           {
+              replace
+                 vpxor reg1,reg1,reg1
+                 vmov reg,mem
+
+                 by
+
+                 movq $0,mem
+           }
+           if GetNextInstruction(p,hp1) and
+             MatchInstruction(hp1,A_VMOVSD,[]) and
+             MatchOperand(taicpu(p).oper[2]^,taicpu(hp1).oper[0]^) and
+             MatchOpType(taicpu(hp1),top_reg,top_ref) then
+             begin
+               TransferUsedRegs(TmpUsedRegs);
+               UpdateUsedRegs(TmpUsedRegs, tai(p.next));
+               if not(RegUsedAfterInstruction(taicpu(hp1).oper[0]^.reg,hp1,TmpUsedRegs)) then
+                 begin
+                   taicpu(hp1).loadconst(0,0);
+                   taicpu(hp1).opcode:=A_MOV;
+                   taicpu(hp1).opsize:=S_Q;
+                   DebugMsg(SPeepholeOptimization + 'VPXorVMov2Mov done',p);
+                   RemoveCurrentP(p);
+                   result:=true;
+                   Exit;
+                 end;
+             end;
+{$endif x86_64}
          end
-       else
-         Result:=OptPass1VOP(p);
+       {
+          replace
+             vpxor reg1,reg1,reg2
+
+             by
+
+             vpxor reg2,reg2,reg2
+
+             to avoid unncessary data dependencies
+       }
+       else if MatchOperand(taicpu(p).oper[0]^,taicpu(p).oper[1]^) and
+         MatchOpType(taicpu(p),top_reg,top_reg,top_reg) then
+         begin
+           DebugMsg(SPeepholeOptimization + 'VPXor2VPXor done',p);
+           { avoid unncessary data dependency }
+           taicpu(p).loadreg(0,taicpu(p).oper[2]^.reg);
+           taicpu(p).loadreg(1,taicpu(p).oper[2]^.reg);
+           result:=true;
+           exit;
+         end;
+       Result:=OptPass1VOP(p);
      end;
 
 

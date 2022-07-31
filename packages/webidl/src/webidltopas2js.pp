@@ -50,16 +50,16 @@ type
     function GetInterfaceDefHead(Intf: TIDLInterfaceDefinition): String;
       override;
     // Code generation routines. Return the number of actually written defs.
-    function WriteFunctionDefinition(aDef: TIDLFunctionDefinition): Boolean;
+    function WriteFunctionDefinition(aParent: TIDLInterfaceDefinition; aDef: TIDLFunctionDefinition): Boolean;
       override;
-    function WritePrivateReadOnlyFields(aList: TIDLDefinitionList): Integer;
+    function WritePrivateReadOnlyFields(aParent: TIDLDefinition; aList: TIDLDefinitionList): Integer;
       override;
-    function WriteProperties(aList: TIDLDefinitionList): Integer; override;
+    function WriteProperties(aParent: TIDLDefinition; aList: TIDLDefinitionList): Integer; override;
     // Definitions. Return true if a definition was written.
     function WriteConst(aConst: TIDLConstDefinition): Boolean; override;
     function WriteField(aAttr: TIDLAttributeDefinition): Boolean; override;
     function WritePrivateReadOnlyField(aAttr: TIDLAttributeDefinition): Boolean; virtual;
-    function WriteReadonlyProperty(aAttr: TIDLAttributeDefinition): Boolean; virtual;
+    function WriteReadonlyProperty(aParent: TIDLDefinition; aAttr: TIDLAttributeDefinition): Boolean; virtual;
   Public
     constructor Create(TheOwner: TComponent); override;
     Property Pas2jsOptions: TPas2jsConversionOptions Read FPas2jsOptions Write FPas2jsOptions;
@@ -157,8 +157,8 @@ begin
     Result:=Result+' ('+aParentName+')';
 end;
 
-function TWebIDLToPas2js.WriteFunctionDefinition(aDef: TIDLFunctionDefinition
-  ): Boolean;
+function TWebIDLToPas2js.WriteFunctionDefinition(
+  aParent: TIDLInterfaceDefinition; aDef: TIDLFunctionDefinition): Boolean;
 
 Var
   FN,RT,Suff,Args: String;
@@ -167,6 +167,7 @@ Var
 
 begin
   Result:=True;
+  if aParent=nil then ;
   Suff:='';
   RT:='';
   if not (foConstructor in aDef.Options) then
@@ -205,8 +206,8 @@ begin
   end;
 end;
 
-function TWebIDLToPas2js.WritePrivateReadOnlyFields(aList: TIDLDefinitionList
-  ): Integer;
+function TWebIDLToPas2js.WritePrivateReadOnlyFields(aParent: TIDLDefinition;
+  aList: TIDLDefinitionList): Integer;
 
 Var
   D: TIDLDefinition;
@@ -214,6 +215,7 @@ Var
 
 begin
   Result:=0;
+  if aParent=nil then ;
   For D in aList do
     if (D is TIDLAttributeDefinition) then
       if (aoReadOnly in A.Options) then
@@ -221,7 +223,8 @@ begin
           Inc(Result);
 end;
 
-function TWebIDLToPas2js.WriteProperties(aList: TIDLDefinitionList): Integer;
+function TWebIDLToPas2js.WriteProperties(aParent: TIDLDefinition;
+  aList: TIDLDefinitionList): Integer;
 Var
   D: TIDLDefinition;
   A: TIDLAttributeDefinition absolute D;
@@ -230,7 +233,7 @@ begin
   For D in aList do
     if (D is TIDLAttributeDefinition) then
       if (aoReadOnly in A.Options) then
-        if WriteReadOnlyProperty(A) then
+        if WriteReadOnlyProperty(aParent,A) then
           Inc(Result);
 end;
 
@@ -284,14 +287,15 @@ begin
   Result:=true;
 end;
 
-function TWebIDLToPas2js.WriteReadonlyProperty(aAttr: TIDLAttributeDefinition
-  ): Boolean;
+function TWebIDLToPas2js.WriteReadonlyProperty(aParent: TIDLDefinition;
+  aAttr: TIDLAttributeDefinition): Boolean;
 
 Var
   TN,N,PN: String;
 
 begin
   Result:=True;
+  if aParent=nil then ;
   N:=GetName(aAttr);
   PN:=N;
   TN:=GetTypeName(aAttr.AttributeType);

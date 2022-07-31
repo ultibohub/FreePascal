@@ -45,10 +45,13 @@ Type
     function RedundantMovProcess(var p: tai; var hp1: tai): boolean;
     function GetNextInstructionUsingReg(Current: tai; out Next: tai; const reg: TRegister): Boolean;
 
+    function OptPreSBFXUBFX(var p: tai): Boolean;
+
     function OptPass1UXTB(var p: tai): Boolean;
     function OptPass1UXTH(var p: tai): Boolean;
     function OptPass1SXTB(var p: tai): Boolean;
     function OptPass1SXTH(var p: tai): Boolean;
+
 
     function OptPass1LDR(var p: tai): Boolean; virtual;
     function OptPass1STR(var p: tai): Boolean; virtual;
@@ -508,7 +511,7 @@ Implementation
                                   { This MOV is exactly the same as the first one.
                                     Since none of the registers have changed value
                                     at this point, we can remove it. }
-                                  DebugMsg('Peephole Optimization: RedundantMovProcess 3a done', next_hp);
+                                  DebugMsg(SPeepholeOptimization + 'RedundantMovProcess 3a done', next_hp);
 
                                   if (next_hp = hp1) then
                                     { Don't let hp1 become a dangling pointer }
@@ -551,7 +554,7 @@ Implementation
                             then
                             begin
                               { Instruction will become mov r1,r1 }
-                              DebugMsg('Peephole Optimization: Mov2None 2 done', next_hp);
+                              DebugMsg(SPeepholeOptimization + 'Mov2None 2 done', next_hp);
 
                               { Allocate r1 between the instructions; not doing
                                 so may cause problems when removing superfluous
@@ -574,7 +577,7 @@ Implementation
                           if not MatchOperand(taicpu(next_hp).oper[0]^, taicpu(p).oper[1]^.reg) then
 {$endif AARCH64}
                             begin
-                              DebugMsg('Peephole Optimization: ' + std_regname(taicpu(p).oper[0]^.reg) + ' = ' + std_regname(taicpu(p).oper[1]^.reg) + ' (MovMov2Mov 2)', next_hp);
+                              DebugMsg(SPeepholeOptimization + std_regname(taicpu(p).oper[0]^.reg) + ' = ' + std_regname(taicpu(p).oper[1]^.reg) + ' (MovMov2Mov 2)', next_hp);
                               taicpu(next_hp).oper[1]^.reg := taicpu(p).oper[1]^.reg;
                               AllocRegBetween(taicpu(p).oper[1]^.reg, p, next_hp, UsedRegs);
 
@@ -590,7 +593,7 @@ Implementation
                                 RegInUsedRegs(taicpu(p).oper[0]^.reg, UsedRegs) and
                                 not RegUsedAfterInstruction(taicpu(p).oper[0]^.reg, next_hp, TmpUsedRegs) then
                                 begin
-                                  DebugMsg('Peephole Optimization: RedundantMovProcess 2c done', p);
+                                  DebugMsg(SPeepholeOptimization + 'RedundantMovProcess 2c done', p);
                                   RemoveCurrentP(p);
                                   Result := True;
                                   Exit;
@@ -1067,6 +1070,44 @@ Implementation
       else if GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
            RemoveSuperfluousMove(p, hp1, 'UxthMov2Data') then
         Result:=true;
+    end;
+
+
+  function TARMAsmOptimizer.OptPreSBFXUBFX(var p: tai): Boolean;
+    begin
+      Result := False;
+      { Convert:
+          s/ubfx reg1,reg2,#0,#64 (or #32 for 32-bit registers)
+        To:
+          mov    reg1,reg2
+      }
+      if (taicpu(p).oper[2]^.val = 0) and
+{$ifdef AARCH64}
+        (
+          (
+            (getsubreg(taicpu(p).oper[0]^.reg) = R_SUBQ) and
+            (taicpu(p).oper[3]^.val = 64)
+          ) or
+          (
+            (getsubreg(taicpu(p).oper[0]^.reg) = R_SUBD) and
+            (taicpu(p).oper[3]^.val = 32)
+          )
+        )
+{$else AARCH64}
+        (taicpu(p).oper[3]^.val = 32)
+{$endif AARCH64}
+        then
+        begin
+          DebugMsg(SPeepholeOptimization + 'SBFX or UBFX -> MOV (full bitfield extract)', p);
+          taicpu(p).opcode := A_MOV;
+          taicpu(p).ops := 2;
+          taicpu(p).clearop(2);
+          taicpu(p).clearop(3);
+
+          Result := True;
+          Exit;
+        end;
+
     end;
 
 
