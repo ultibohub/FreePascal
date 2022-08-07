@@ -1382,27 +1382,38 @@ implementation
       var
         section_nr: Integer;
 
-        procedure MaybeWriteDebugSection(const sn: string; st: TWasmCustomSectionType; var debug_section_nr: Integer);
+        procedure MaybeAddDebugSectionToSymbolTable(st: TWasmCustomDebugSectionType; var debug_section_nr: Integer);
           var
-            i: Integer;
             objsec: TWasmObjSection;
           begin
-            for i:=0 to Data.ObjSectionList.Count-1 do
+            objsec:=TWasmObjSection(Data.ObjSectionList.Find(WasmCustomSectionName[st]));
+            if Assigned(objsec) then
               begin
-                objsec:=TWasmObjSection(Data.ObjSectionList[i]);
-                if objsec.Name=sn then
+                debug_section_nr:=section_nr;
+                Inc(section_nr);
+                objsec.SegSymIdx:=FWasmSymbolTableEntriesCount;
+                Inc(FWasmSymbolTableEntriesCount);
+                WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
+                WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
+                WriteUleb(FWasmSymbolTable,debug_section_nr);
+              end;
+          end;
+
+        procedure MaybeWriteDebugSection(st: TWasmCustomDebugSectionType);
+          var
+            objsec: TWasmObjSection;
+          begin
+            objsec:=TWasmObjSection(Data.ObjSectionList.Find(WasmCustomSectionName[st]));
+            if Assigned(objsec) then
+              begin
+                if oso_Data in objsec.SecOptions then
                   begin
-                    debug_section_nr:=section_nr;
-                    Inc(section_nr);
-                    if oso_Data in objsec.SecOptions then
-                      begin
-                        objsec.Data.seek(0);
-                        CopyDynamicArray(objsec.Data,FWasmCustomSections[st],objsec.Size);
-                      end
-                    else
-                      WriteZeros(FWasmCustomSections[st],objsec.Size);
-                    WriteWasmCustomSection(st);
-                  end;
+                    objsec.Data.seek(0);
+                    CopyDynamicArray(objsec.Data,FWasmCustomSections[st],objsec.Size);
+                  end
+                else
+                  WriteZeros(FWasmCustomSections[st],objsec.Size);
+                WriteWasmCustomSection(st);
               end;
           end;
 
@@ -1484,43 +1495,6 @@ implementation
                 objsec.SegOfs:=cur_seg_ofs;
                 Inc(segment_count);
                 Inc(cur_seg_ofs,objsec.Size);
-              end;
-          end;
-
-        if segment_count>0 then
-          begin
-            WriteUleb(FWasmSections[wsiData],segment_count);
-            WriteUleb(FWasmSections[wsiDataCount],segment_count);
-            WriteUleb(FWasmLinkingSubsections[WASM_SEGMENT_INFO],segment_count);
-            for i:=0 to Data.ObjSectionList.Count-1 do
-              begin
-                objsec:=TWasmObjSection(Data.ObjSectionList[i]);
-                if objsec.IsData then
-                  begin
-                    WriteName(FWasmLinkingSubsections[WASM_SEGMENT_INFO],objsec.Name);
-                    WriteUleb(FWasmLinkingSubsections[WASM_SEGMENT_INFO],BsrQWord(objsec.SecAlign));
-                    SegmentFlags:=0;
-                    if (ts_wasm_threads in current_settings.targetswitches) and
-                       (oso_threadvar in objsec.SecOptions) then
-                      SegmentFlags:=SegmentFlags or WASM_SEG_FLAG_TLS;
-                    WriteUleb(FWasmLinkingSubsections[WASM_SEGMENT_INFO],SegmentFlags);  { flags }
-
-                    WriteByte(FWasmSections[wsiData],0);
-                    WriteByte(FWasmSections[wsiData],$41);
-                    WriteSleb(FWasmSections[wsiData],objsec.SegOfs);
-                    WriteByte(FWasmSections[wsiData],$0b);
-                    WriteUleb(FWasmSections[wsiData],objsec.Size);
-                    objsec.FileSectionOfs:=FWasmSections[wsiData].size;
-                    if oso_Data in objsec.SecOptions then
-                      begin
-                        objsec.Data.seek(0);
-                        CopyDynamicArray(objsec.Data,FWasmSections[wsiData],objsec.Size);
-                      end
-                    else
-                      begin
-                        WriteZeros(FWasmSections[wsiData],objsec.Size);
-                      end;
-                  end;
               end;
           end;
 
@@ -1917,11 +1891,65 @@ implementation
             WriteWasmSection(wsiExport);
             Inc(section_nr);
           end;
+
+        { determine the section numbers for the datacount, code, data and debug sections ahead of time }
+        if segment_count>0 then
+          Inc(section_nr);  { the DataCount section }
+        code_section_nr:=section_nr;  { the Code section }
+        Inc(section_nr);
         if segment_count>0 then
           begin
-            WriteWasmSection(wsiDataCount);
+            data_section_nr:=section_nr; { the Data section }
             Inc(section_nr);
           end;
+        { the debug sections }
+        MaybeAddDebugSectionToSymbolTable(wcstDebugAbbrev,debug_abbrev_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugInfo,debug_info_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugStr,debug_str_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugLine,debug_line_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugFrame,debug_frame_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugAranges,debug_aranges_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugRanges,debug_ranges_section_nr);
+
+        DoRelocations;
+
+        if segment_count>0 then
+          begin
+            WriteUleb(FWasmSections[wsiData],segment_count);
+            WriteUleb(FWasmSections[wsiDataCount],segment_count);
+            WriteUleb(FWasmLinkingSubsections[WASM_SEGMENT_INFO],segment_count);
+            for i:=0 to Data.ObjSectionList.Count-1 do
+              begin
+                objsec:=TWasmObjSection(Data.ObjSectionList[i]);
+                if objsec.IsData then
+                  begin
+                    WriteName(FWasmLinkingSubsections[WASM_SEGMENT_INFO],objsec.Name);
+                    WriteUleb(FWasmLinkingSubsections[WASM_SEGMENT_INFO],BsrQWord(objsec.SecAlign));
+                    SegmentFlags:=0;
+                    if (ts_wasm_threads in current_settings.targetswitches) and
+                       (oso_threadvar in objsec.SecOptions) then
+                      SegmentFlags:=SegmentFlags or WASM_SEG_FLAG_TLS;
+                    WriteUleb(FWasmLinkingSubsections[WASM_SEGMENT_INFO],SegmentFlags);  { flags }
+
+                    WriteByte(FWasmSections[wsiData],0);
+                    WriteByte(FWasmSections[wsiData],$41);
+                    WriteSleb(FWasmSections[wsiData],objsec.SegOfs);
+                    WriteByte(FWasmSections[wsiData],$0b);
+                    WriteUleb(FWasmSections[wsiData],objsec.Size);
+                    objsec.FileSectionOfs:=FWasmSections[wsiData].size;
+                    if oso_Data in objsec.SecOptions then
+                      begin
+                        objsec.Data.seek(0);
+                        CopyDynamicArray(objsec.Data,FWasmSections[wsiData],objsec.Size);
+                      end
+                    else
+                      begin
+                        WriteZeros(FWasmSections[wsiData],objsec.Size);
+                      end;
+                  end;
+              end;
+          end;
+
         WriteUleb(FWasmSections[wsiCode],functions_count);
         for i:=0 to Data.ObjSymbolList.Count-1 do
           begin
@@ -1929,74 +1957,21 @@ implementation
             if (objsym.typ=AT_FUNCTION) and not objsym.IsAlias then
               WriteFunctionCode(FWasmSections[wsiCode],objsym);
           end;
-        WriteWasmSection(wsiCode);
-        code_section_nr:=section_nr;
-        Inc(section_nr);
+
         if segment_count>0 then
-          begin
-            WriteWasmSection(wsiData);
-            data_section_nr:=section_nr;
-            Inc(section_nr);
-          end;
+          WriteWasmSection(wsiDataCount);
+        WriteWasmSection(wsiCode);
+        if segment_count>0 then
+          WriteWasmSection(wsiData);
 
-        MaybeWriteDebugSection('.debug_abbrev',wcstDebugAbbrev,debug_abbrev_section_nr);
-        MaybeWriteDebugSection('.debug_info',wcstDebugInfo,debug_info_section_nr);
-        MaybeWriteDebugSection('.debug_str',wcstDebugStr,debug_str_section_nr);
-        MaybeWriteDebugSection('.debug_line',wcstDebugLine,debug_line_section_nr);
-        MaybeWriteDebugSection('.debug_frame',wcstDebugFrame,debug_frame_section_nr);
-        MaybeWriteDebugSection('.debug_aranges',wcstDebugAranges,debug_aranges_section_nr);
-        MaybeWriteDebugSection('.debug_ranges',wcstDebugRanges,debug_ranges_section_nr);
+        MaybeWriteDebugSection(wcstDebugAbbrev);
+        MaybeWriteDebugSection(wcstDebugInfo);
+        MaybeWriteDebugSection(wcstDebugStr);
+        MaybeWriteDebugSection(wcstDebugLine);
+        MaybeWriteDebugSection(wcstDebugFrame);
+        MaybeWriteDebugSection(wcstDebugAranges);
+        MaybeWriteDebugSection(wcstDebugRanges);
 
-        if debug_abbrev_section_nr<>-1 then
-          begin
-            TWasmObjSection(Data.ObjSectionList.Find('.debug_abbrev')).SegSymIdx:=FWasmSymbolTableEntriesCount;
-            Inc(FWasmSymbolTableEntriesCount);
-            WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
-            WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
-            WriteUleb(FWasmSymbolTable,debug_abbrev_section_nr);
-          end;
-        if debug_info_section_nr<>-1 then
-          begin
-            TWasmObjSection(Data.ObjSectionList.Find('.debug_info')).SegSymIdx:=FWasmSymbolTableEntriesCount;
-            Inc(FWasmSymbolTableEntriesCount);
-            WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
-            WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
-            WriteUleb(FWasmSymbolTable,debug_info_section_nr);
-          end;
-        if debug_str_section_nr<>-1 then
-          begin
-            TWasmObjSection(Data.ObjSectionList.Find('.debug_str')).SegSymIdx:=FWasmSymbolTableEntriesCount;
-            Inc(FWasmSymbolTableEntriesCount);
-            WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
-            WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
-            WriteUleb(FWasmSymbolTable,debug_str_section_nr);
-          end;
-        if debug_line_section_nr<>-1 then
-          begin
-            TWasmObjSection(Data.ObjSectionList.Find('.debug_line')).SegSymIdx:=FWasmSymbolTableEntriesCount;
-            Inc(FWasmSymbolTableEntriesCount);
-            WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
-            WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
-            WriteUleb(FWasmSymbolTable,debug_line_section_nr);
-          end;
-        if debug_frame_section_nr<>-1 then
-          begin
-            TWasmObjSection(Data.ObjSectionList.Find('.debug_frame')).SegSymIdx:=FWasmSymbolTableEntriesCount;
-            Inc(FWasmSymbolTableEntriesCount);
-            WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
-            WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
-            WriteUleb(FWasmSymbolTable,debug_frame_section_nr);
-          end;
-        if debug_aranges_section_nr<>-1 then
-          begin
-            TWasmObjSection(Data.ObjSectionList.Find('.debug_aranges')).SegSymIdx:=FWasmSymbolTableEntriesCount;
-            Inc(FWasmSymbolTableEntriesCount);
-            WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
-            WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
-            WriteUleb(FWasmSymbolTable,debug_aranges_section_nr);
-          end;
-
-        DoRelocations;
         WriteRelocations;
 
         WriteSymbolTable;
