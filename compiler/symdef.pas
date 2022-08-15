@@ -8468,7 +8468,8 @@ implementation
 
     function tobjectdef.members_need_inittable : boolean;
       begin
-        members_need_inittable:=tObjectSymtable(symtable).needs_init_final;
+        members_need_inittable:=tObjectSymtable(symtable).needs_init_final or
+                                  has_non_trivial_init_child(true);
       end;
 
 

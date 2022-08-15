@@ -1463,6 +1463,7 @@ implementation
     var
       i,j : longint;
       capturer : tobjectdef;
+      tocapture,
       capturedsyms : tfplist;
       convertarg : tconvert_arg;
       mapping : pconvert_mapping;
@@ -1511,6 +1512,9 @@ implementation
           assigned(pd.capturedsyms) and
           (pd.capturedsyms.count>0) then
         begin
+          if pd.was_anonymous then
+            internalerror(2022081201);
+
           {$ifdef DEBUG_CAPTURER}writeln('Converting symbols of nested function ',pd.procsym.name);{$endif}
 
           { this is a nested function, so rework all symbols that are used from
@@ -1547,6 +1551,10 @@ implementation
 
           selfsym:=get_capturer(pd);
 
+          { only capture those symbols that weren't capture already by one of
+            the above if-clauses and thus are now listed in capturedsyms }
+          tocapture:=tfplist.create;
+
           for i:=0 to pd.localst.symlist.count-1 do
             begin
               sym:=tsym(pd.localst.symlist[i]);
@@ -1554,7 +1562,7 @@ implementation
                 continue;
               if assigned(tabstractnormalvarsym(sym).capture_sym) then
                 if capturedsyms.indexof(sym)<0 then
-                  capturedsyms.add(sym);
+                  tocapture.add(sym);
             end;
 
           for i:=0 to pd.parast.symlist.count-1 do
@@ -1567,13 +1575,13 @@ implementation
                     outermost method }
                   not (vo_is_self in tabstractvarsym(sym).varoptions) then
                 if capturedsyms.indexof(sym)<0 then
-                  capturedsyms.add(sym);
+                  tocapture.add(sym);
             end;
 
-          for i:=0 to capturedsyms.count-1 do
+          for i:=0 to tocapture.count-1 do
             begin
               new(mapping);
-              mapping^.oldsym:=tsym(capturedsyms[i]);
+              mapping^.oldsym:=tsym(tocapture[i]);
               {$ifdef DEBUG_CAPTURER}writeln('Replacing symbol ',mapping^.oldsym.Name);{$endif}
               mapping^.newsym:=tabstractnormalvarsym(mapping^.oldsym).capture_sym;
               if not assigned(mapping^.newsym) then
@@ -1581,6 +1589,8 @@ implementation
               mapping^.selfnode:=self_tree_for_sym(selfsym,mapping^.newsym);
               convertarg.mappings.add(mapping);
             end;
+
+          tocapture.free;
         end;
 
       { not required anymore }
