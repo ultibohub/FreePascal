@@ -408,11 +408,14 @@ uses
 {$r-,q-}
     procedure calc_divconst_magic_signed(N: byte; d: aInt; out magic_m: aInt; out magic_s: byte);
       var
-        p: aInt;
+        p, sign_corrective_shift: aInt;
         ad,anc,delta,q1,r1,q2,r2,t: aWord;
         two_N_minus_1: aWord;
       begin
-        assert((d<-1) or (d>1));
+        if (d>=-1) and (d<=1) then
+          { Division by unity, -1 or 0 should have been caught earlier }
+          InternalError(2022081801);
+
         two_N_minus_1:=aWord(1) shl (N-1);
 
         ad:=abs(d);
@@ -441,7 +444,16 @@ uses
             end;
           delta:=ad-r2;
         until not ((q1<delta) or ((q1=delta) and (r1=0)));
+
         magic_m:=q2+1;
+
+        { Sign-extend magic_m to the full size of aint - fixes #39834 }
+        if N < (SizeOf(aint) * 8) then
+          begin
+            sign_corrective_shift := (SizeOf(aint) * 8) - N;
+            magic_m := SarInt64(magic_m shl sign_corrective_shift, sign_corrective_shift);
+          end;
+
         if (d<0) then
           magic_m:=-magic_m;  { resulting magic number }
         magic_s:=p-N;         { resulting shift }
