@@ -271,7 +271,7 @@ begin
   If Assigned(MessagePump) then
     MessagePump.RemoveClient(FConnection);
   If Assigned(OnDisconnect) then
-    OnDisconnect(Self);
+    OnDisconnect(FConnection);
   // We cannot free the connection here, because it still needs to call it's own OnDisconnect.
 end;
 
@@ -294,7 +294,7 @@ begin
   FConnection:=CreateClientConnection(FTransport);
   FConnection.OnMessageReceived:=@MessageReceived;
   FConnection.OnControl:=@ControlReceived;
-  FCOnnection.OutgoingFrameMask:=Self.OutGoingFrameMask;
+  FConnection.OutgoingFrameMask:=Self.OutGoingFrameMask;
   if UseSSL then
     FSocket.Connect;
   FActive:=True;
@@ -466,10 +466,9 @@ procedure TCustomWebsocketClient.FreeConnectionObjects;
 
 begin
   FreeAndNil(FConnection);
-  FreeAndNil(FTransport);
-  FreeAndNil(FSocket);
+  FTransport:=nil; // FTransport is freed in TWSClientConnection.Destroy
+  FSocket:=nil; // FSocket is freed in TWSClientTransport.Destroy
 end;
-
 
 procedure TCustomWebsocketClient.Disconnect(SendClose : boolean = true);
 

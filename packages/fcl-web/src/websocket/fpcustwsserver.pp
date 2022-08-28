@@ -102,7 +102,7 @@ Type
     procedure ConnectionDone(Sender: TObject);
   public
     Type
-        { TWSConnectionThread }
+      { TWSConnectionThread }
       TWSConnectionThread = Class(TThread)
       private
         FConnection: TWSServerConnection;
@@ -248,7 +248,7 @@ Type
     Property OnAllow : TWSAllowConnectionEvent Read FOnAllow Write FOnAllow;
     // Called when a text message is received.
     property OnMessageReceived: TWSMessageEvent read FOnMessageReceived write FOnMessageReceived;
-    // Called when a connection is disconnected. Sender is Self
+    // Called when a connection is disconnected. Sender is TCustomWebsocketClient
     property OnDisconnect: TNotifyEvent read FOnDisconnect write FOnDisconnect;
     // Called when a control message is received.
     property OnControlReceived: TWSControlEvent read FOnControl write FOnControl;
@@ -592,15 +592,14 @@ end;
 
 procedure TCustomWSServer.RemoveConnection(AConnection: TWSServerConnection;aDoDisconnect: Boolean);
 begin
-  if not aDoDisconnect then
-    DoDisconnect(aConnection)
-  else
+  if aDoDisconnect then
     try
       aConnection.Disconnect;
     except
       on E : Exception do
        HandleError(aConnection,E);
     end;
+  DoDisconnect(aConnection);
   Connections.Remove(aConnection);
   aConnection.Free;
 end;
@@ -609,24 +608,6 @@ procedure TCustomWSServer.CheckInactive;
 begin
   if Active then
     Raise EWebsocketServer.Create(SErrServerActive);
-end;
-
-
-{ TWSThreadedConnectionHandler }
-
-procedure TWSThreadedConnectionHandler.CheckIncomingMessages;
-begin
-  // Do nothing
-end;
-
-procedure TWSThreadedConnectionHandler.ConnectionDone(Sender: TObject);
-begin
-  RemoveConnection(Sender as TWSServerConnection);
-end;
-
-procedure TWSThreadedConnectionHandler.HandleConnection(aConnection: TWSServerConnection; DoHandshake: Boolean);
-begin
-  TWSConnectionThread.CreateConnection(aConnection,@ConnectionDone,DoHandShake);
 end;
 
 { TWSServerConnectionHandler }
@@ -686,7 +667,7 @@ end;
 procedure TWSSimpleConnectionHandler.HandleConnection(aConnection: TWSServerConnection; DoHandshake : Boolean);
 begin
   if DoHandShake then
-     aConnection.PerformHandShake;
+    aConnection.PerformHandShake;
   aConnection.CheckIncoming(WaitTime);
 end;
 
@@ -727,6 +708,23 @@ begin
   end;
   If Assigned(FOnDone) then
     FOnDone(Connection);
+end;
+
+{ TWSThreadedConnectionHandler }
+
+procedure TWSThreadedConnectionHandler.CheckIncomingMessages;
+begin
+  // Do nothing
+end;
+
+procedure TWSThreadedConnectionHandler.ConnectionDone(Sender: TObject);
+begin
+  RemoveConnection(Sender as TWSServerConnection);
+end;
+
+procedure TWSThreadedConnectionHandler.HandleConnection(aConnection: TWSServerConnection; DoHandshake: Boolean);
+begin
+  TWSConnectionThread.CreateConnection(aConnection,@ConnectionDone,DoHandShake);
 end;
 
 { TWSPooledConnectionHandler.THandleRequestTask }

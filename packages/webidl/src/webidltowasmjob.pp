@@ -244,7 +244,7 @@ function TWebIDLToPasWasmJob.GetTypeName(const aTypeName: String;
 begin
   Case aTypeName of
     'union',
-    'any': Result:=JOB_JSValueTypeNames[jjvkUndefined];
+    'any': Result:='Variant';
     'void','undefined': Result:=aTypeName;
   else
     //writeln('TWebIDLToPasWasmJob.GetTypeName ',aTypeName,' ',Def<>nil);
@@ -274,7 +274,9 @@ function TWebIDLToPasWasmJob.GetResolvedType(aDef: TIDLTypeDefDefinition; out
 begin
   Result:=inherited GetResolvedType(aDef, aTypeName, aResolvedTypename);
   if Result is TIDLInterfaceDefinition then
-    aTypeName:=GetPasClassName(aTypeName);
+    aTypeName:=GetPasClassName(aTypeName)
+  else if Result is TIDLPromiseTypeDefDefinition then
+    aTypeName:=PasInterfacePrefix+'Promise'+PasInterfaceSuffix;
 end;
 
 function TWebIDLToPasWasmJob.GetInterfaceDefHead(Intf: TIDLInterfaceDefinition
@@ -500,6 +502,7 @@ begin
     'Double': InvokeName:='InvokeJSDoubleResult';
     'UTF8String': InvokeName:='InvokeJSUTF8StringResult';
     'UnicodeString': InvokeName:='InvokeJSUnicodeStringResult';
+    'Variant': InvokeName:='InvokeJSVariantResult';
     'TJOB_JSValue': InvokeName:='InvokeJSValueResult';
     'void','undefined':
       begin
@@ -511,6 +514,8 @@ begin
       InvokeName:='InvokeJSObjectResult';
       if ReturnDef is TIDLSequenceTypeDefDefinition then
         InvokeClassName:=ClassPrefix+'Array'+ClassSuffix
+      else if ReturnDef is TIDLPromiseTypeDefDefinition then
+        InvokeClassName:=ClassPrefix+'Promise'+ClassSuffix
       else if ReturnDef is TIDLInterfaceDefinition then
         InvokeClassName:=GetName(ReturnDef)
       else if ResolvedReturnTypeName=PasInterfacePrefix+'Object'+PasInterfaceSuffix then
@@ -549,6 +554,8 @@ begin
         ProcKind:='function';
         Sig:=FuncName+Args+': '+ReturnTypeName+Suff+';';
         end;
+      if ReturnDef is TIDLPromiseTypeDefDefinition then
+        Sig:=Sig+' // Promise<'+TIDLPromiseTypeDefDefinition(ReturnDef).ReturnType.TypeName+'>';
       AddLn(ProcKind+' '+Sig);
 
       if not AddFuncBody then continue;
@@ -652,7 +659,9 @@ begin
     end;
   end;
   if ReturnDef is TIDLSequenceTypeDefDefinition then
-    ReturnTypeName:='IJSArray';
+    ReturnTypeName:=PasInterfacePrefix+'Array'+PasInterfaceSuffix
+  else if ReturnDef is TIDLPromiseTypeDefDefinition then
+    ReturnTypeName:=PasInterfacePrefix+'Promise'+PasInterfaceSuffix;
 
   Args:=aDef.Arguments;
 
@@ -700,6 +709,7 @@ begin
       'Double': GetFunc:='GetDouble';
       'UTF8String',
       'UnicodeString': GetFunc:='GetString';
+      'Variant': GetFunc:='GetVariant';
       'TJOB_JSValue': GetFunc:='GetValue';
       else
         if ArgType is TIDLInterfaceDefinition then
@@ -751,6 +761,7 @@ begin
     'Double': GetFunc:='Result:=H.AllocDouble('+Call+');';
     'UTF8String': GetFunc:='Result:=H.AllocString('+Call+');';
     'UnicodeString': GetFunc:='Result:=H.AllocString('+Call+');';
+    'Variant': GetFunc:='Result:=H.AllocVariant('+Call+');';
     'TJOB_JSValue': GetFunc:='Result:=H.AllocJSValue('+Call+');';
     else
       if ReturnDef is TIDLInterfaceDefinition then
@@ -812,10 +823,13 @@ begin
   'Double': ReadFuncName:='ReadJSPropertyDouble';
   'UTF8String': ReadFuncName:='ReadJSPropertyUTF8String';
   'UnicodeString': ReadFuncName:='ReadJSPropertyUnicodeString';
+  'Variant': ReadFuncName:='ReadJSPropertyVariant';
   'TJOB_JSValue': ReadFuncName:='ReadJSPropertyValue';
   else
     if AttrType is TIDLSequenceTypeDefDefinition then
       ObjClassName:=ClassPrefix+'Array'+ClassSuffix
+    else if AttrType is TIDLPromiseTypeDefDefinition then
+      ObjClassName:=ClassPrefix+'Promise'+ClassSuffix
     else
       begin
       ObjClassName:=GetName(AttrType);
@@ -879,6 +893,7 @@ begin
   'Double': WriteFuncName:='WriteJSPropertyDouble';
   'UTF8String': WriteFuncName:='WriteJSPropertyUTF8String';
   'UnicodeString': WriteFuncName:='WriteJSPropertyUnicodeString';
+  'Variant': WriteFuncName:='WriteJSPropertyVariant';
   'TJOB_JSValue': WriteFuncName:='WriteJSPropertyValue';
   else
     WriteFuncName:='WriteJSPropertyObject';
@@ -991,9 +1006,11 @@ begin
   inherited Create(ThOwner);
   // Switches.Add('modeswitch FunctionReferences');
   PasDataClass:=TPasDataWasmJob;
-  FPasInterfacePrefix:='IJS';
+  ClassPrefix:='TJS';
+  PasInterfacePrefix:='IJS';
   GetterPrefix:='_Get';
   SetterPrefix:='_Set';
+  KeywordSuffix:='_';
   BaseOptions:=BaseOptions+[coExpandUnionTypeArgs,coDictionaryAsClass];
 end;
 
