@@ -62,6 +62,7 @@ Interface
         function OptPass1Mov(var p: tai): boolean;
         function OptPass1MOVZ(var p: tai): boolean;
         function OptPass1FMov(var p: tai): Boolean;
+        function OptPass1SXTW(var p: tai): Boolean;
 
         function OptPass2LDRSTR(var p: tai): boolean;
       End;
@@ -610,6 +611,21 @@ Implementation
                   Exit;
                 end;
             end;
+          {
+             remove the second Movz from
+
+             movz reg,...
+             movz reg,...
+          }
+          if GetNextInstructionUsingReg(p,hp1,taicpu(p).oper[0]^.reg) and
+            MatchInstruction(hp1,A_MOVZ,[C_None],[PF_none]) and
+            MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[0]^) then
+            begin
+              DebugMsg(SPeepholeOptimization + 'MovzMovz2Movz', p);
+              RemoveCurrentP(p);
+              Result:=true;
+              exit;
+            end;
         end;
     end;
 
@@ -697,6 +713,67 @@ Implementation
           exit;
         end;
       }
+    end;
+
+
+  function TCpuAsmOptimizer.OptPass1SXTW(var p : tai) : Boolean;
+    var
+      hp1: tai;
+      GetNextInstructionUsingReg_hp1: Boolean;
+    begin
+      Result:=false;
+      if GetNextInstructionUsingReg(p,hp1,taicpu(p).oper[0]^.reg) then
+        begin
+          {
+            change
+            sxtw reg2,reg1
+            str reg2,[...]
+            dealloc reg2
+            to
+            str reg1,[...]
+          }
+          if MatchInstruction(p, taicpu(p).opcode, [C_None], [PF_None]) and
+            (taicpu(p).ops=2) and
+            MatchInstruction(hp1, A_STR, [C_None], [PF_None]) and
+            (getsubreg(taicpu(hp1).oper[0]^.reg)=R_SUBD) and
+            RegEndofLife(taicpu(p).oper[0]^.reg,taicpu(hp1)) and
+            { the reference in strb might not use reg2 }
+            not(RegInRef(taicpu(p).oper[0]^.reg,taicpu(hp1).oper[1]^.ref^)) and
+            { reg1 might not be modified inbetween }
+            not(RegModifiedBetween(taicpu(p).oper[1]^.reg,p,hp1)) then
+            begin
+              DebugMsg('Peephole SXTHStr2Str done', p);
+              taicpu(hp1).loadReg(0,taicpu(p).oper[1]^.reg);
+              result:=RemoveCurrentP(p);
+            end
+          {
+            change
+            sxtw reg2,reg1
+            sxtw reg3,reg2
+            dealloc reg2
+            to
+            sxtw reg3,reg1
+          }
+          else if MatchInstruction(p, A_SXTW, [C_None], [PF_None]) and
+            (taicpu(p).ops=2) and
+            MatchInstruction(hp1, A_SXTW, [C_None], [PF_None]) and
+            (taicpu(hp1).ops=2) and
+            MatchOperand(taicpu(hp1).oper[1]^, taicpu(p).oper[0]^.reg) and
+            RegEndofLife(taicpu(p).oper[0]^.reg,taicpu(hp1)) and
+            { reg1 might not be modified inbetween }
+            not(RegModifiedBetween(taicpu(p).oper[1]^.reg,p,hp1)) then
+            begin
+              DebugMsg('Peephole SxtwSxtw2Sxtw done', p);
+              AllocRegBetween(taicpu(p).oper[1]^.reg,p,hp1,UsedRegs);
+              taicpu(hp1).opcode:=A_SXTW;
+              taicpu(hp1).loadReg(1,taicpu(p).oper[1]^.reg);
+              result:=RemoveCurrentP(p);
+            end
+          else if USxtOp2Op(p,hp1,SM_SXTW) then
+            Result:=true
+          else if RemoveSuperfluousMove(p, hp1, 'SxtwMov2Data') then
+            Result:=true;
+        end;
     end;
 
 
@@ -1003,6 +1080,8 @@ Implementation
               Result:=OptPass1SXTB(p);
             A_SXTH:
               Result:=OptPass1SXTH(p);
+            A_SXTW:
+              Result:=OptPass1SXTW(p);
 //            A_VLDR,
             A_FMADD,
             A_FMSUB,
