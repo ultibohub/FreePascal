@@ -3,7 +3,8 @@ program testcss;
 {$mode objfpc}{$H+}
 
 uses
-  Classes, consoletestrunner, tccssScanner, tccssparser, tccsstree;
+  Classes, sysutils, consoletestrunner, tcCSSScanner, tcCSSParser, tcCSSTree,
+  tcCSSResolver;
 
 type
 
@@ -16,11 +17,15 @@ type
 
 var
   Application: TMyTestRunner;
+  Dir: String;
 
 begin
   DefaultFormat:=fPlain;
   DefaultRunAllTests:=True;
   Application := TMyTestRunner.Create(nil);
+  Dir:=ExtractFilePath(Application.ExeName);
+  if Dir<>'' then
+    SetCurrentDir(Dir);
   Application.Initialize;
   Application.Title := 'CSS tests runner';
   Application.Run;

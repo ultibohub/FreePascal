@@ -1,6 +1,6 @@
 {
     This file is part of the Free Pascal Run time library.
-    Copyright (c) 2022- by Michael Van Canneyt (michael@freepascal.org)
+    Copyright (c) 2022 by Michael Van Canneyt (michael@freepascal.org)
 
     This file contains the tests for the CSS parser
 
@@ -19,7 +19,7 @@ unit tcCSSParser;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testutils, testregistry, fpcssparser, fpcsstree;
+  Classes, SysUtils, fpcunit, testregistry, fpcssparser, fpcsstree;
 
 type
 
@@ -31,7 +31,7 @@ type
     FSource : TStringStream;
     FParser : TCSSParser;
     FToFree: TCSSElement;
-    procedure clear;
+    procedure Clear;
     function GetRule: TCSSRuleElement;
   protected
     procedure SetUp; override;
@@ -39,7 +39,7 @@ type
     Procedure CreateParser(Const ASource : string);
     procedure Parse;
     procedure Parse(Const aSource : String);
-    function ParseRule(Const aSource : String) :  TCSSRuleElement;
+    function ParseRule(Const aSource : String) : TCSSRuleElement;
     procedure AssertEquals(AMessage: String; AExpected, AActual: TCSSUnits);   overload;
     procedure AssertEquals(AMessage: String; AExpected, AActual: TCSSBinaryOperation);   overload;
     Function CheckClass(Const aMsg : String; aExpectedClass : TCSSElementClass; aActual : TCSSElement) : TCSSElement;
@@ -72,6 +72,11 @@ type
     procedure TestDoublePrefixedEmptyRule;
     procedure TestDoubleMixedPrefixedEmptyRule;
     procedure TestAttributePrefixedEmptyRule;
+    procedure TestAttributeSquaredEqualRule;
+    procedure TestAttributePipeEqualRule;
+    procedure TestAttributeStarEqualRule;
+    procedure TestAttributeDollarEqualRule;
+    procedure TestAttributeTildeEqualRule;
     procedure TestPseudoPrefixedEmptyRule;
     procedure TestPseudoFunctionEmptyRule;
     procedure TestFuncPrefixedEmptyRule;
@@ -415,6 +420,121 @@ begin
   AssertEquals('Binary op',boEquals,Bin.Operation);
 end;
 
+procedure TTestCSSParser.TestAttributeSquaredEqualRule;
+var
+  R : TCSSRuleElement;
+  sel: TCSSArrayElement;
+  bin : TCSSBinaryElement;
+  Left: TCSSIdentifierElement;
+
+begin
+  ParseRule('[b^="c"] { }');
+  R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
+  AssertEquals('No rule children',0,R.ChildCount);
+  AssertEquals('selector count',1,R.SelectorCount);
+  sel:=TCSSArrayElement(CheckClass('Selector', TCSSArrayElement,R.Selectors[0]));
+  if Sel.Prefix<>nil then
+    Fail('no prefix');
+  AssertEquals('Array count',1,Sel.ChildCount);
+  Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
+  AssertEquals('Binary op',boSquaredEqual,Bin.Operation);
+  Left:=TCSSIdentifierElement(CheckClass('Bin.Left',TCSSIdentifierElement,Bin.Left));
+  AssertEquals('left=b','b',Left.Value);
+  CheckClass('Bin.Right',TCSSStringElement,Bin.Right);
+end;
+
+procedure TTestCSSParser.TestAttributePipeEqualRule;
+var
+  R : TCSSRuleElement;
+  sel: TCSSArrayElement;
+  bin : TCSSBinaryElement;
+  Left: TCSSIdentifierElement;
+
+begin
+  ParseRule('[b|="c"] { }');
+  R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
+  AssertEquals('No rule children',0,R.ChildCount);
+  AssertEquals('selector count',1,R.SelectorCount);
+  sel:=TCSSArrayElement(CheckClass('Selector', TCSSArrayElement,R.Selectors[0]));
+  if Sel.Prefix<>nil then
+    Fail('no prefix');
+  AssertEquals('Array count',1,Sel.ChildCount);
+  Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
+  AssertEquals('Binary op',boPipeEqual,Bin.Operation);
+  Left:=TCSSIdentifierElement(CheckClass('Bin.Left',TCSSIdentifierElement,Bin.Left));
+  AssertEquals('left=b','b',Left.Value);
+  CheckClass('Bin.Right',TCSSStringElement,Bin.Right);
+end;
+
+procedure TTestCSSParser.TestAttributeStarEqualRule;
+var
+  R : TCSSRuleElement;
+  sel: TCSSArrayElement;
+  bin : TCSSBinaryElement;
+  Left: TCSSIdentifierElement;
+
+begin
+  ParseRule('[b*="c"] { }');
+  R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
+  AssertEquals('No rule children',0,R.ChildCount);
+  AssertEquals('selector count',1,R.SelectorCount);
+  sel:=TCSSArrayElement(CheckClass('Selector', TCSSArrayElement,R.Selectors[0]));
+  if Sel.Prefix<>nil then
+    Fail('no prefix');
+  AssertEquals('Array count',1,Sel.ChildCount);
+  Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
+  AssertEquals('Binary op',boStarEqual,Bin.Operation);
+  Left:=TCSSIdentifierElement(CheckClass('Bin.Left',TCSSIdentifierElement,Bin.Left));
+  AssertEquals('left=b','b',Left.Value);
+  CheckClass('Bin.Right',TCSSStringElement,Bin.Right);
+end;
+
+procedure TTestCSSParser.TestAttributeDollarEqualRule;
+var
+  R : TCSSRuleElement;
+  sel: TCSSArrayElement;
+  bin : TCSSBinaryElement;
+  Left: TCSSIdentifierElement;
+
+begin
+  ParseRule('[b$="c"] { }');
+  R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
+  AssertEquals('No rule children',0,R.ChildCount);
+  AssertEquals('selector count',1,R.SelectorCount);
+  sel:=TCSSArrayElement(CheckClass('Selector', TCSSArrayElement,R.Selectors[0]));
+  if Sel.Prefix<>nil then
+    Fail('no prefix');
+  AssertEquals('Array count',1,Sel.ChildCount);
+  Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
+  AssertEquals('Binary op',boDollarEqual,Bin.Operation);
+  Left:=TCSSIdentifierElement(CheckClass('Bin.Left',TCSSIdentifierElement,Bin.Left));
+  AssertEquals('left=b','b',Left.Value);
+  CheckClass('Bin.Right',TCSSStringElement,Bin.Right);
+end;
+
+procedure TTestCSSParser.TestAttributeTildeEqualRule;
+var
+  R : TCSSRuleElement;
+  sel: TCSSArrayElement;
+  bin : TCSSBinaryElement;
+  Left: TCSSIdentifierElement;
+
+begin
+  ParseRule('[b~="c"] { }');
+  R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
+  AssertEquals('No rule children',0,R.ChildCount);
+  AssertEquals('selector count',1,R.SelectorCount);
+  sel:=TCSSArrayElement(CheckClass('Selector', TCSSArrayElement,R.Selectors[0]));
+  if Sel.Prefix<>nil then
+    Fail('no prefix');
+  AssertEquals('Array count',1,Sel.ChildCount);
+  Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
+  AssertEquals('Binary op',boTileEqual,Bin.Operation);
+  Left:=TCSSIdentifierElement(CheckClass('Bin.Left',TCSSIdentifierElement,Bin.Left));
+  AssertEquals('left=b','b',Left.Value);
+  CheckClass('Bin.Right',TCSSStringElement,Bin.Right);
+end;
+
 procedure TTestCSSParser.TestPseudoPrefixedEmptyRule;
 var
   R : TCSSRuleElement;
@@ -465,19 +585,13 @@ begin
 end;
 
 procedure TTestCSSParser.TestQueryPrefixedEmptyRule;
-var
-  R : TCSSRuleElement;
 begin
-  R:=ParseRule('@media only screen and (-webkit-min-device-pixel-ratio: 2), only screen and (min-device-pixel-ratio: 3) { }');
+  ParseRule('@media only screen and (-webkit-min-device-pixel-ratio: 2), only screen and (min-device-pixel-ratio: 3) { }');
 end;
 
 procedure TTestCSSParser.TestCommaPrefixedEmptyRule;
-var
-  R : TCSSRuleElement;
-  sel: TCSSArrayElement;
-
 begin
-  R:=ParseRule('#facebox .tl,#facebox .tl { }');
+  ParseRule('#facebox .tl,#facebox .tl { }');
 end;
 
 procedure TTestCSSParser.TestOneDeclarationIDValue;
@@ -631,20 +745,13 @@ begin
 end;
 
 procedure TTestCSSParser.TestOneDeclarationNoColon;
-
-Var
-  R : TCSSRuleElement;
-
 begin
-  R:=ParseRule('@a b { 0% { d: e; } }');
+  ParseRule('@a b { 0% { d: e; } }');
 end;
 
 procedure TTestCSSParser.TestTwoDeclarationNoColon;
-Var
-  R : TCSSRuleElement;
-
 begin
-  R:=ParseRule('@a b { 0% { d: e; } 100% { f : g; }  }');
+  ParseRule('@a b { 0% { d: e; } 100% { f : g; }  }');
 end;
 
 procedure TTestCSSParser.TestOneEmptyDeclaration;
@@ -654,18 +761,15 @@ begin
   R:=ParseRule('{ ; }');
   AssertEquals('selector count',0,R.SelectorCount);
   AssertEquals('declaration count',0,R.ChildCount);
-
 end;
 
 procedure TTestCSSParser.TestImportAtKeyWord;
 var
   R : TCSSAtRuleElement;
-//  D : TCSSDeclarationElement;
 begin
   R:=TCSSAtRuleElement(CheckClass('at',TCSSAtRuleElement,ParseRule('@import url("abc.css");')));
   AssertEquals('selector count',1,R.SelectorCount);
   AssertEquals('declaration count',0,R.ChildCount);
-
 end;
 
 procedure TTestCSSParser.TestMediaPrint;
@@ -676,14 +780,14 @@ end;
 procedure TTestCSSParser.TestSupportsFunction;
 begin
   ParseRule('@supports ((position: -webkit-sticky) or (position: sticky)) {'+ sLineBreak+
-'  .sticky-top { '+ sLineBreak+
-'    position: -webkit-sticky; '+ sLineBreak+
-'    position: sticky; '+ sLineBreak+
-'    top: 0; '+ sLineBreak+
-'    z-index: 1020; '+ sLineBreak+
-'  } '+ sLineBreak+
-'} '
-);
+  '  .sticky-top { '+ sLineBreak+
+  '    position: -webkit-sticky; '+ sLineBreak+
+  '    position: sticky; '+ sLineBreak+
+  '    top: 0; '+ sLineBreak+
+  '    z-index: 1020; '+ sLineBreak+
+  '  } '+ sLineBreak+
+  '} '
+  );
 end;
 
 
@@ -708,7 +812,7 @@ begin
   FSource:=Nil;
 end;
 
-procedure TTestBaseCSSParser.clear;
+procedure TTestBaseCSSParser.Clear;
 
 begin
   if FParseResult<>FToFree then
@@ -855,7 +959,6 @@ function TTestBaseCSSParser.CheckLiteral(Msg: String; aEl: TCSSelement; aValue: 
 begin
   Result:=TCSSIntegerElement(CheckClass(Msg+': Class', TCSSIntegerElement,aEl));
   AssertEquals(Msg+': Value ',aValue,Result.Value);
-
 end;
 
 function TTestBaseCSSParser.CheckLiteral(Msg: String; aEl: TCSSelement; aValue: Integer; AUnits: TCSSUnits): TCSSIntegerElement;
@@ -870,7 +973,6 @@ begin
   AssertTrue('Have argument '+IntToStr(aIndex),aIndex<aCall.ChildCount);
   Result:=aCall.Children[0];
   AssertNotNull('Have call argument',Result);
-
 end;
  
 initialization

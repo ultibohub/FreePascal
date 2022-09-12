@@ -14,9 +14,7 @@
  **********************************************************************}
 unit fpCSSParser;
 
-{ $mode ObjFPC}{$H+}
-
-{ $DEFINE debugparser}
+{$mode ObjFPC}{$H+}
 
 interface
 
@@ -33,20 +31,20 @@ Type
     FScanner: TCSSScanner;
     FPrevious : TCSSToken;
     FCurrent : TCSSToken;
-    FCurrentTokenString : UTF8String;
+    FCurrentTokenString : TCSSString;
     FPeekToken : TCSSToken;
-    FPeekTokenString : UTF8String;
+    FPeekTokenString : TCSSString;
     FFreeScanner : Boolean;
     FRuleLevel : Integer;
     function CreateElement(aClass: TCSSElementClass): TCSSElement;
     class function GetAppendElement(aList: TCSSListElement): TCSSElement;
     function GetAtEOF: Boolean;
-    function GetCurSource: UTF8String;
+    function GetCurSource: TCSSString;
     Function GetCurLine : Integer;
     Function GetCurPos : Integer;
   protected
-    Procedure DoError(Msg : UTF8String);
-    Procedure DoError(Fmt : UTF8String; Args : Array of const);
+    Procedure DoError(Msg : TCSSString);
+    Procedure DoError(Fmt : TCSSString; const Args : Array of const);
     Procedure Consume(aToken : TCSSToken);
     function ParseComponentValueList(allowRules: Boolean=True): TCSSElement;
     function ParseComponentValue: TCSSElement;
@@ -56,7 +54,7 @@ Type
     function ParseRuleList(aStopOn : TCSStoken = ctkEOF): TCSSElement;
     function ParseSelector: TCSSElement;
     function ParseDeclaration(aIsAt : Boolean = false): TCSSDeclarationElement;
-    function ParseCall(aName: UTF8String): TCSSElement;
+    function ParseCall(aName: TCSSString): TCSSElement;
     function ParseUnary: TCSSElement;
     function ParseUnit: TCSSUnits;
     function ParseIdentifier : TCSSElement;
@@ -69,7 +67,7 @@ Type
     Function ParseUnicodeRange : TCSSElement;
     function ParseArray(aPrefix: TCSSElement): TCSSElement;
     function ParseURL: TCSSElement;
-    Property CurrentSource : UTF8String Read GetCurSource;
+    Property CurrentSource : TCSSString Read GetCurSource;
     Property CurrentLine : Integer Read GetCurLine;
     Property CurrentPos : Integer Read GetCurPos;
   Public
@@ -78,7 +76,7 @@ Type
     Destructor Destroy; override;
     Function Parse : TCSSElement;
     Property CurrentToken : TCSSToken Read FCurrent;
-    Property CurrentTokenString : UTF8String Read FCurrentTokenString;
+    Property CurrentTokenString : TCSSString Read FCurrentTokenString;
     Function GetNextToken : TCSSToken;
     Function PeekNextToken : TCSSToken;
     Property Scanner : TCSSScanner Read FScanner;
@@ -95,7 +93,7 @@ Resourcestring
   SUnaryInvalidToken = 'Invalid token for unary operation: %s';
   SErrFileSource = 'Error: file "%s" line %d, pos %d: ';
   SErrSource = 'Error: line %d, pos %d: ';
-  SErrUnexpectedToken = 'Unexpected token: Got %s (as UTF8String: "%s"), expected: %s ';
+  SErrUnexpectedToken = 'Unexpected token: Got %s (as string: "%s"), expected: %s ';
   SErrInvalidFloat = 'Invalid float: %s';
   SErrUnexpectedEndOfFile = 'Unexpected EOF while scanning function args: %s';
 
@@ -107,14 +105,16 @@ begin
     ctkPlus : Result:=boPlus;
     ctkMinus:  Result:=boMinus;
     ctkAnd : result:=boAnd;
+    ctkGT : Result:=boGT;
     ctkLT : Result:=boLT;
     ctkDIV : Result:=boDIV;
     ctkStar : Result:=boSTAR;
     ctkTilde : Result:=boTilde;
+    ctkSquared : Result:=boSquared;
+    ctkPIPE : Result:=boPipe;
+    ctkDOLLAR : Result:=boDollar;
     ctkColon : Result:=boCOLON;
     ctkDoubleColon : Result:=boDoubleColon;
-    ctkSquared : Result:=boSquared;
-    ctkGT : Result:=boGT;
   else
     Raise ECSSParser.CreateFmt(SBinaryInvalidToken,[GetEnumName(TypeInfo(aToken),Ord(aToken))]);
     // Result:=boEquals;
@@ -141,9 +141,9 @@ begin
   Result:=(CurrentToken=ctkEOF);
 end;
 
-procedure TCSSParser.DoError(Msg: UTF8String);
+procedure TCSSParser.DoError(Msg: TCSSString);
 Var
-  ErrAt : UTF8String;
+  ErrAt : TCSSString;
 
 begin
   If Assigned(FScanner) then
@@ -154,7 +154,7 @@ begin
   Raise ECSSParser.Create(ErrAt+Msg)
 end;
 
-procedure TCSSParser.DoError(Fmt: UTF8String; Args: array of const);
+procedure TCSSParser.DoError(Fmt: TCSSString; const Args: array of const);
 begin
   DoError(Format(Fmt,Args));
 end;
@@ -171,7 +171,7 @@ begin
 end;
 
 
-function TCSSParser.GetCurSource: UTF8String;
+function TCSSParser.GetCurSource: TCSSString;
 begin
   If Assigned(FScanner) then
     Result:=FScanner.CurFileName
@@ -218,7 +218,7 @@ begin
   inherited Destroy;
 end;
 
-Class Function TCSSParser.GetAppendElement(aList : TCSSListElement) : TCSSElement;
+class function TCSSParser.GetAppendElement(aList: TCSSListElement): TCSSElement;
 
 begin
   Case aList.ChildCount of
@@ -239,20 +239,21 @@ Var
   Term : TCSSTokens;
   aLast : TCSSToken;
   aList : TCSSListElement;
-  {$ifdef debugparser}
-  aAt : String;
+  {$ifdef VerboseCSSParser}
+  aAt : TCSSString;
   {$endif}
 
 begin
   Inc(FRuleLevel);
-{$ifdef debugparser}
+{$ifdef VerboseCSSParser}
   aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
   Writeln('Parse @ rule');
 {$endif}
   Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
   aRule:=TCSSAtRuleElement(CreateElement(TCSSAtRuleElement));
   TCSSAtRuleElement(aRule).AtKeyWord:=CurrentTokenString;
-  Consume(ctkAtKeyWord);
+  GetNextToken;
+  aList:=nil;
   try
     aList:=TCSSListElement(CreateElement(TCSSListElement));
     While Not (CurrentToken in Term) do
@@ -267,6 +268,7 @@ begin
         end;
       end;
     aRule.AddSelector(GetAppendElement(aList));
+    aList:=nil;
     aLast:=CurrentToken;
     if (aLast<>ctkSEMICOLON) then
       begin
@@ -275,18 +277,17 @@ begin
       Consume(ctkRBRACE);
       end;
     Result:=aRule;
-{$ifdef debugparser}  Writeln('Done Parse @ rule ',aAt); {$endif}
+    aRule:=nil;
+{$ifdef VerboseCSSParser}  Writeln('Done Parse @ rule ',aAt); {$endif}
     Inc(FRuleLevel);
-  except
+  finally
     aRule.Free;
-    Raise;
   end;
-
 end;
 
 function TCSSParser.ParseExpression: TCSSElement;
 
-    Function AllowRules(aName : String) : Boolean;
+    Function AllowRules(const aName : TCSSString) : Boolean;
 
     begin
       result:=sameText(aName,'@media') or sameText(aName,'@print');
@@ -330,9 +331,9 @@ begin
         Consume(ctkSEMICOLON);
       end;
     Result:=aList;
-  except
+    aList:=nil;
+  finally
     aList.Free;
-    Raise;
   end;
 end;
 
@@ -350,25 +351,25 @@ function TCSSParser.GetNextToken: TCSSToken;
 begin
   FPrevious:=FCurrent;
   If (FPeekToken<>ctkUNKNOWN) then
-     begin
-     FCurrent:=FPeekToken;
-     FCurrentTokenString:=FPeekTokenString;
-     FPeekToken:=ctkUNKNOWN;
-     FPeekTokenString:='';
-     end
+    begin
+    FCurrent:=FPeekToken;
+    FCurrentTokenString:=FPeekTokenString;
+    FPeekToken:=ctkUNKNOWN;
+    FPeekTokenString:='';
+    end
   else
     begin
     FCurrent:=FScanner.FetchToken;
     FCurrentTokenString:=FScanner.CurTokenString;
     end;
   Result:=FCurrent;
-  {$ifdef debugparser}
+  {$ifdef VerboseCSSParser}
      Writeln('GetNextToken returns ',
        GetEnumName(TypeInfo(TCSSToken),Ord(FCurrent)),
        '(String: "',FCurrentTokenString,'")',
        ' at (',FScanner.CurRow,',',FScanner.CurColumn,'): ',
        FSCanner.CurLine);
-  {$endif debugparser}
+  {$endif VerboseCSSParser}
 end;
 
 function TCSSParser.PeekNextToken: TCSSToken;
@@ -378,7 +379,7 @@ begin
     FPeekToken:=FScanner.FetchToken;
     FPeekTokenString:=FScanner.CurTokenString;
     end;
-  {$ifdef debugparser}Writeln('PeekNextToken : ',GetEnumName(TypeInfo(TCSSToken),Ord(FPeekToken)), ' As UTF8String: ',FPeekTokenString);{$endif debugparser}
+  {$ifdef VerboseCSSParser}Writeln('PeekNextToken : ',GetEnumName(TypeInfo(TCSSToken),Ord(FPeekToken)), ' As TCSSString: ',FPeekTokenString);{$endif VerboseCSSParser}
   Result:=FPeekToken;
 end;
 
@@ -415,7 +416,7 @@ end;
 function TCSSParser.ParseIdentifier: TCSSElement;
 
 Var
-  aValue : UTF8String;
+  aValue : TCSSString;
   aId : TCSSIdentifierElement;
 
 begin
@@ -424,13 +425,13 @@ begin
     aId:=TCSSClassNameElement(CreateElement(TCSSClassNameElement))
   else
     aId:=TCSSIdentifierElement(CreateElement(TCSSIdentifierElement));
+  aId.Value:=aValue;
   try
     Consume(CurrentToken);
-    aId.Value:=aValue;
     Result:=aId;
-  except
+    aId:=nil;
+  finally
     aId.Free;
-    Raise;
   end;
 end;
 
@@ -447,10 +448,10 @@ begin
     aInt.Value:=aValue;
     Consume(ctkINTEGER);
     aInt.Units:=ParseUnit;
-    result:=aInt;
-  except
+    Result:=aInt;
+    aInt:=nil;
+  finally
     aInt.Free;
-    Raise;
   end;
 end;
 
@@ -463,31 +464,33 @@ Var
 begin
   Val(CurrentTokenString,aValue,aCode);
   if aCode<>0 then
-
     DoError(SErrInvalidFloat,[CurrentTokenString]);
   aFloat:=TCSSFloatElement(CreateElement(TCSSFloatElement));
   try
     Consume(ctkFloat);
     aFloat.Value:=aValue;
     aFloat.Units:=ParseUnit;
-    result:=aFloat;
-  except
+    Result:=aFloat;
+    aFloat:=nil;
+  finally
     aFloat.Free;
-    Raise;
   end;
 end;
 
 
 function TCSSParser.ParseParenthesis: TCSSElement;
 
+var
+  aList: TCSSElement;
 begin
   Consume(ctkLPARENTHESIS);
-  Result:=ParseComponentValueList;
+  aList:=ParseComponentValueList;
   try
     Consume(ctkRPARENTHESIS);
-  except
-    Result.Free;
-    Raise;
+    Result:=aList;
+    aList:=nil;
+  finally
+    aList.Free;
   end;
 end;
 
@@ -501,13 +504,13 @@ begin
   try
     aURL.Value:=CurrentTokenString;
     if CurrentToken=ctkURL then
-      consume(ctkURL)
+      Consume(ctkURL)
     else
-      consume(ctkBADURL);
+      Consume(ctkBADURL);
      Result:=aURL;
-  except
+     aURL:=nil;
+  finally
     aURL.Free;
-    Raise;
   end;
 end;
 
@@ -515,7 +518,7 @@ function TCSSParser.ParsePseudo: TCSSElement;
 
 Var
   aPseudo : TCSSPseudoClassElement;
-  aValue : string;
+  aValue : TCSSString;
 
 begin
   aValue:=CurrentTokenString;
@@ -524,9 +527,9 @@ begin
     Consume(ctkPseudo);
     aPseudo.Value:=aValue;
     Result:=aPseudo;
-  except
+    aPseudo:=nil;
+  finally
     aPseudo.Free;
-    Raise;
   end;
 end;
 
@@ -535,14 +538,8 @@ function TCSSParser.ParseRuleBody(aRule: TCSSRuleElement; aIsAt: Boolean = false
 Var
   aDecl : TCSSElement;
 
-  Function CheckColon : Boolean;
-  begin
-    Result:=(aDecl is TCSSDeclarationElement);
-    if Result then
-      Result:=TCSSDeclarationElement(aDecl).Colon;
-  end;
-
 begin
+  aDecl:=nil;
   if not (CurrentToken in [ctkRBRACE,ctkSEMICOLON]) then
     begin
     aDecl:=ParseDeclaration(aIsAt);
@@ -550,9 +547,8 @@ begin
     end;
   While Not (CurrentToken in [ctkEOF,ctkRBRACE]) do
     begin
-    if CheckColon then
-      While CurrentToken=ctkSEMICOLON do
-        Consume(ctkSEMICOLON);
+    While CurrentToken=ctkSEMICOLON do
+      Consume(ctkSEMICOLON);
     if Not (CurrentToken in [ctkEOF,ctkRBRACE]) then
       begin
       if CurrentToken=ctkATKEYWORD then
@@ -573,25 +569,35 @@ Var
   Term : TCSSTokens;
   aLast : TCSSToken;
   aList: TCSSListElement;
-{$IFDEF debugparser}
-  aAt : String;
+{$IFDEF VerboseCSSParser}
+  aAt : TCSSString;
 {$ENDIF}
 
 begin
   Inc(FRuleLevel);
-{$IFDEF debugparser}
+{$IFDEF VerboseCSSParser}
   aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
   Writeln('Parse rule. IsAt: ',IsAt,aAt);
 {$ENDIF}
+  case CurrentToken of
+  ctkEOF: exit(nil);
+  ctkSEMICOLON:
+    begin
+    Result:=TCSSRuleElement(CreateElement(TCSSRuleElement));
+    exit;
+    end;
+  end;
+
   Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
   if IsAt then
     begin
     aRule:=TCSSAtRuleElement(CreateElement(TCSSAtRuleElement));
     TCSSAtRuleElement(aRule).AtKeyWord:=CurrentTokenString;
-    Consume(ctkATKEYWORD);
+    GetNextToken;
     end
   else
     aRule:=TCSSRuleElement(CreateElement(TCSSRuleElement));
+  aList:=nil;
   try
     aList:=TCSSListElement(CreateElement(TCSSListElement));
     While Not (CurrentToken in Term) do
@@ -605,7 +611,9 @@ begin
         aList:=TCSSListElement(CreateElement(TCSSListElement));
         end;
       end;
+    // Note: no selectors is allowed
     aRule.AddSelector(GetAppendElement(aList));
+    aList:=nil;
     aLast:=CurrentToken;
     if (aLast<>ctkSEMICOLON) then
       begin
@@ -614,13 +622,14 @@ begin
       Consume(ctkRBRACE);
       end;
     Result:=aRule;
-    {$IFDEF debugparser}
+    aRule:=nil;
+    {$IFDEF VerboseCSSParser}
     Writeln('Rule started at ',aAt,' done');
     {$endif}
     Dec(FRuleLevel);
-  except
+  finally
     aRule.Free;
-    Raise;
+    aList.Free;
   end;
 end;
 
@@ -637,13 +646,13 @@ begin
   Un:=TCSSUnaryElement(CreateElement(TCSSUnaryElement));
   try
     op:=TokenToUnaryOperation(CurrentToken);
-    Consume(CurrentToken);
     Un.Operation:=op;
+    Consume(CurrentToken);
     Un.Right:=ParseComponentValue;
-    Result:=un;
-  except
+    Result:=Un;
+    Un:=nil;
+  finally
     Un.Free;
-    Raise;
   end;
 end;
 
@@ -652,7 +661,7 @@ function TCSSParser.ParseComponentValueList(allowRules : Boolean = True): TCSSEl
 Const
   TermSeps = [ctkEquals,ctkPlus,ctkMinus,ctkAnd,ctkLT,ctkDIV,
               ctkStar,ctkTilde,ctkColon, ctkDoubleColon,
-              ctkSquared,ctkGT];
+              ctkSquared,ctkGT, ctkPIPE, ctkDOLLAR];
   ListTerms = [ctkEOF,ctkLBRACE,ctkATKEYWORD,ctkComma];
 
   function DoBinary(var aLeft : TCSSElement) : TCSSElement;
@@ -665,11 +674,29 @@ Const
       aLeft:=Nil;
       Bin.Operation:=TokenToBinaryOperation(CurrentToken);
       Consume(CurrentToken);
+      if allowRules
+          and (Bin.Operation in [boTilde,boStar,boSquared,boPipe,boDollar]) then
+        begin
+        Consume(ctkEQUALS);
+        case Bin.Operation of
+        boTilde: Bin.Operation:=boTileEqual;
+        boStar: Bin.Operation:=boStarEqual;
+        boSquared: Bin.Operation:=boSquaredEqual;
+        boPipe: Bin.Operation:=boPipeEqual;
+        boDollar: Bin.Operation:=boDollarEqual;
+        end;
+        end;
       Bin.Right:=ParseComponentValue;
+      if Bin.Right=nil then
+        DoError(SErrUnexpectedToken ,[
+               GetEnumName(TypeInfo(TCSSToken),Ord(CurrentToken)),
+               CurrentTokenString,
+               'value'
+               ]);
       Result:=Bin;
-    except
+      Bin:=nil;
+    finally
       Bin.Free;
-      Raise;
     end;
   end;
 
@@ -678,27 +705,33 @@ Var
   aFactor : TCSSelement;
 
 begin
+  aFactor:=Nil;
   List:=TCSSListElement(CreateElement(TCSSListElement));
   try
-    aFactor:=Nil;
     if AllowRules and (CurrentToken in [ctkLBRACE,ctkATKEYWORD]) then
       aFactor:=ParseRule(CurrentToken=ctkATKEYWORD)
     else
       aFactor:=ParseComponentValue;
+    if aFactor=nil then
+      DoError(SErrUnexpectedToken ,[
+             GetEnumName(TypeInfo(TCSSToken),Ord(CurrentToken)),
+             CurrentTokenString,
+             'value'
+             ]);
     While Assigned(aFactor) do
       begin
       While CurrentToken in TermSeps do
         aFactor:=DoBinary(aFactor);
       List.AddChild(aFactor);
-      if (CurrentToken in ListTerms) then
-        aFactor:=Nil
-      else
-        aFactor:=ParseComponentValue
+      aFactor:=Nil;
+      if not (CurrentToken in ListTerms) then
+        aFactor:=ParseComponentValue;
       end;
     Result:=GetAppendElement(List);
-  except
+    List:=nil;
+  finally
     List.Free;
-    Raise;
+    aFactor.Free;
   end;
 end;
 
@@ -760,6 +793,7 @@ Var
   aList : TCSSListElement;
 
 begin
+  aList:=nil;
   aDecl:= TCSSDeclarationElement(CreateElement(TCSSDeclarationElement));
   try
     aPrevDisablePseudo:= Scanner.DisablePseudo;
@@ -771,7 +805,7 @@ begin
       While (CurrentToken=ctkCOMMA) do
         begin
         while (CurrentToken=ctkCOMMA) do
-          consume(ctkCOMMA);
+          Consume(ctkCOMMA);
         aKey:=ParseComponentValue;
         aDecl.AddKey(aKey);
         end;
@@ -779,7 +813,7 @@ begin
     if Not aIsAt then
       begin
       aDecl.Colon:=True;
-      consume(ctkCOLON);
+      Consume(ctkCOLON);
       end
     else
       begin
@@ -806,20 +840,22 @@ begin
         end;
       if CurrentToken=ctkImportant then
         begin
-        consume(ctkImportant);
+        Consume(ctkImportant);
         aDecl.IsImportant:=True;
         end;
       end;
     aDecl.AddChild(GetAppendElement(aList));
+    aList:=nil;
     Result:=aDecl;
-  except
+    aDecl:=nil;
+  finally
     Scanner.DisablePseudo:=False;
     aDecl.Free;
-    Raise;
+    aList.Free;
   end;
 end;
 
-function TCSSParser.ParseCall(aName : UTF8String): TCSSElement;
+function TCSSParser.ParseCall(aName : TCSSString): TCSSElement;
 
 var
   aCall : TCSSCallElement;
@@ -848,17 +884,16 @@ begin
     Consume(ctkRPARENTHESIS);
     // Call argument list can be empty: mask()
     Result:=aCall;
-  except
+    aCall:=nil;
+  finally
     aCall.Free;
-    Raise;
   end;
 end;
-
 
 function TCSSParser.ParseString: TCSSElement;
 
 Var
-  aValue : UTF8String;
+  aValue : TCSSString;
   aEl : TCSSElement;
   aStr : TCSSStringElement;
 
@@ -877,15 +912,15 @@ begin
       aStr.Children.Add(aEl);
       end;
     Result:=aStr;
-  except
+    aStr:=nil;
+  finally
     aStr.Free;
-    Raise;
   end;
 end;
 
 function TCSSParser.ParseUnicodeRange: TCSSElement;
 Var
-  aValue : String;
+  aValue : TCSSString;
   aRange : TCSSUnicodeRangeElement;
 
 begin
@@ -894,12 +929,11 @@ begin
   try
     Consume(ctkUnicodeRange);
     aRange.Value:=aValue;
-    result:=aRange;
-  except
+    Result:=aRange;
+    aRange:=nil;
+  finally
     aRange.Free;
-    Raise;
   end;
-
 end;
 
 function TCSSParser.ParseArray(aPrefix: TCSSElement): TCSSElement;
@@ -921,14 +955,11 @@ begin
       end;
     Consume(ctkRBRACKET);
     Result:=aArray;
-  except
+    aArray:=nil;
+  finally
     aArray.Free;
-    Raise;
   end;
 end;
-
-
-
 
 end.
 
