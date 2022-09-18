@@ -3060,14 +3060,14 @@ implementation
          { vector support, this must be before the zero based array
            check }
          else if (cs_support_vectors in current_settings.globalswitches) and
-                 is_vector(ld) and
-                 is_vector(rd) and
+                 fits_in_mm_register(ld) and
+                 fits_in_mm_register(rd) and
                  equal_defs(ld,rd) then
             begin
               if not(nodetype in [addn,subn,xorn,orn,andn,muln,slashn]) then
                 CGMessage3(type_e_operator_not_supported_for_types,node2opstr(nodetype),ld.typename,rd.typename);
               { both defs must be equal, so taking left or right as resultdef doesn't matter }
-              resultdef:=left.resultdef;
+              resultdef:=to_hwvectordef(left.resultdef,false);
             end
 
          { this is a little bit dangerous, also the left type }

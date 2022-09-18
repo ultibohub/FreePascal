@@ -39,16 +39,20 @@ Type
     ctkEQUALS,
     ctkAND,
     ctkTILDE,
+    ctkTILDEEQUAL,
     ctkPLUS,
     ctkCOLON,
     ctkDOUBLECOLON,
     ctkDOT,
     ctkDIV,
     ctkGT,
+    ctkGE,
     ctkLT,
+    ctkLE,
     ctkPERCENTAGE,
     ctkMINUS,
     ctkSTAR,
+    ctkSTAREQUAL,
     ctkINTEGER,
     ctkFLOAT,
     ctkHASH,
@@ -63,9 +67,13 @@ Type
     ctkPSEUDO,
     ctkPSEUDOFUNCTION,
     ctkSQUARED,
+    ctkSQUAREDEQUAL,
     ctkUNICODERANGE,
     ctkPIPE,
-    ctkDOLLAR
+    ctkPIPEEQUAL,
+    ctkDOLLAR,
+    ctkDOLLAREQUAL,
+    ctkINVALID
    );
   TCSSTokens = Set of TCSSToken;
 
@@ -117,10 +125,12 @@ Type
 
   TCSSScannerOption = (csoExtendedIdentifiers,csoReturnComments,csoReturnWhiteSpace);
   TCSSScannerOptions = set of TCSSScannerOption;
+  TCSSScannerWarnEvent = procedure(Sender: TObject; Msg: string) of object;
 
   TCSSScanner = class
   private
     FDisablePseudo: Boolean;
+    FOnWarn: TCSSScannerWarnEvent;
     FOptions: TCSSScannerOptions;
     FSourceFile: TLineReader;
     FSourceFilename: TCSSString;
@@ -133,6 +143,7 @@ Type
     FOwnSourceFile : Boolean;
     function DoHash: TCSSToken;
     function DoIdentifierLike : TCSSToken;
+    function DoInvalidChars : TCSSToken;
     function DoMultiLineComment: TCSSToken;
     function CommentDiv: TCSSToken;
     function DoNumericLiteral: TCSSToken;
@@ -159,6 +170,7 @@ Type
     destructor Destroy; override;
     procedure OpenFile(const AFilename: TCSSString);
     Function FetchToken: TCSSToken;
+    function IsUTF8BOM: boolean;
     Property ReturnComments : Boolean Read GetReturnComments Write SetReturnComments;
     Property ReturnWhiteSpace : Boolean Read GetReturnWhiteSpace Write SetReturnWhiteSpace;
     Property Options : TCSSScannerOptions Read FOptions Write FOptions;
@@ -169,9 +181,11 @@ Type
     property CurColumn: Integer read GetCurColumn;
     property CurToken: TCSSToken read FCurToken;
     property CurTokenString: TCSSString read FCurTokenString;
-    Property DisablePseudo : Boolean Read FDisablePseudo Write FDisablePseudo;
+    property DisablePseudo : Boolean Read FDisablePseudo Write FDisablePseudo;
+    property OnWarn: TCSSScannerWarnEvent read FOnWarn write FOnWarn;
   end;
 
+function SafeFormat(const Fmt: string; const Args: array of const): string;
 
 implementation
 
@@ -183,6 +197,82 @@ Const
   WhiteSpace = [' ',#9];
   WhiteSpaceEx = WhiteSpace+[#0];
 
+type
+  TMessageArgs = array of string;
+
+procedure CreateMsgArgs(var MsgArgs: TMessageArgs; const Args: array of const);
+var
+  i: Integer;
+  {$ifdef pas2js}
+  v: jsvalue;
+  {$endif}
+begin
+  SetLength(MsgArgs, High(Args)-Low(Args)+1);
+  for i:=Low(Args) to High(Args) do
+    {$ifdef pas2js}
+    begin
+    v:=Args[i];
+    if isBoolean(v) then
+      MsgArgs[i] := BoolToStr(Boolean(v))
+    else if isString(v) then
+      MsgArgs[i] := String(v)
+    else if isNumber(v) then
+      begin
+      if IsInteger(v) then
+        MsgArgs[i] := str(NativeInt(v))
+      else
+        MsgArgs[i] := str(double(v));
+      end
+    else
+      MsgArgs[i]:='';
+    end;
+    {$else}
+    case Args[i].VType of
+      vtInteger:      MsgArgs[i] := IntToStr(Args[i].VInteger);
+      vtBoolean:      MsgArgs[i] := BoolToStr(Args[i].VBoolean);
+      vtChar:         MsgArgs[i] := Args[i].VChar;
+      {$ifndef FPUNONE}
+      vtExtended:     ; //  Args[i].VExtended^;
+      {$ENDIF}
+      vtString:       MsgArgs[i] := Args[i].VString^;
+      vtPointer:      ; //  Args[i].VPointer;
+      vtPChar:        MsgArgs[i] := Args[i].VPChar;
+      vtObject:       ; //  Args[i].VObject;
+      vtClass:        ; //  Args[i].VClass;
+      vtWideChar:     MsgArgs[i] := AnsiString(Args[i].VWideChar);
+      vtPWideChar:    MsgArgs[i] := Args[i].VPWideChar;
+      vtAnsiString:   MsgArgs[i] := AnsiString(Args[i].VAnsiString);
+      vtCurrency:     ; //  Args[i].VCurrency^);
+      vtVariant:      ; //  Args[i].VVariant^);
+      vtInterface:    ; //  Args[i].VInterface^);
+      vtWidestring:   MsgArgs[i] := AnsiString(WideString(Args[i].VWideString));
+      vtInt64:        MsgArgs[i] := IntToStr(Args[i].VInt64^);
+      vtQWord:        MsgArgs[i] := IntToStr(Args[i].VQWord^);
+      vtUnicodeString:MsgArgs[i] := AnsiString(UnicodeString(Args[i].VUnicodeString));
+    end;
+    {$endif}
+end;
+
+function SafeFormat(const Fmt: string; const Args: array of const): string;
+var
+  MsgArgs: TMessageArgs;
+  i: Integer;
+begin
+  try
+    Result:=Format(Fmt,Args);
+  except
+    Result:='';
+    MsgArgs:=nil;
+    CreateMsgArgs(MsgArgs,Args);
+    for i:=0 to length(MsgArgs)-1 do
+      begin
+      if i>0 then
+        Result:=Result+',';
+      Result:=Result+MsgArgs[i];
+      end;
+    Result:='{'+Fmt+'}['+Result+']';
+  end;
+end;
 
 constructor TFileLineReader.Create(const AFilename: TCSSString);
 begin
@@ -234,8 +324,6 @@ begin
   FSourceFile := TFileLineReader.Create(AFilename);
   FSourceFilename := AFilename;
 end;
-
-
 
 function TCSSScanner.FetchLine: Boolean;
 begin
@@ -582,12 +670,12 @@ Var
   Len,oLen : Integer;
   IsEscape,IsAt, IsPseudo, IsFunc : Boolean;
 
-
 begin
   Result:=ctkIDENTIFIER;
   TokenStart := TokenStr;
   IsPseudo:=False;
   IsAt:=TokenStr[0]='@';
+  IsFunc:=false;
   For Len:=1 to 2 do
     if TokenStr[0]=':' then
       begin
@@ -617,9 +705,9 @@ begin
     SetLength(FCurTokenString,Olen+Len);
     if Len > 0 then
       Move(TokenStart^,FCurTokenString[Olen+1],Len);
-     if IsEscape then
-       Inc(TokenStr);
-     TokenStart := TokenStr;
+    if IsEscape then
+      Inc(TokenStr);
+    TokenStart := TokenStr;
   until Not IsEscape;
   // Some specials
   if (CurTokenString[1]='.') and not IsFunc then
@@ -651,6 +739,23 @@ begin
     Result:=ctkFUNCTION;
 end;
 
+function TCSSScanner.DoInvalidChars: TCSSToken;
+var
+  TokenStart: PChar;
+  Len: SizeUInt;
+begin
+  Result:=ctkINVALID;
+  TokenStart := TokenStr;
+  repeat
+    writeln('TCSSScanner.DoInvalidChars ',hexstr(ord(TokenStr^),2));
+    Inc(TokenStr);
+  until (TokenStr[0] in [#0,#9,#10,#13,#32..#127]);
+  Len:=TokenStr-TokenStart;
+  SetLength(FCurTokenString,Len);
+  if Len > 0 then
+    Move(TokenStart^,FCurTokenString[1],Len);
+end;
+
 function TCSSScanner.FetchToken: TCSSToken;
 
 var
@@ -659,7 +764,10 @@ var
 begin
   Repeat
     Result:=DoFetchToken;
-    CanStop:=(Not (Result in [ctkComment,ctkWhiteSpace]))
+    if (Result=ctkINVALID) and IsUTF8BOM then
+      CanStop:=false
+    else
+      CanStop:=(Not (Result in [ctkComment,ctkWhiteSpace]))
              or ((ReturnComments and (Result=ctkComment))
                   or
                  (ReturnWhiteSpace and (Result=ctkWhiteSpace))
@@ -667,14 +775,30 @@ begin
   Until CanStop;
 end;
 
+function TCSSScanner.IsUTF8BOM: boolean;
+begin
+  Result:=(length(FCurTokenString)=3)
+      and (FCurTokenString[1]=#$EF)
+      and (FCurTokenString[2]=#$BB)
+      and (FCurTokenString[3]=#$BF);
+end;
+
 function TCSSScanner.DoFetchToken: TCSSToken;
 
 
-  Procedure CharToken(aToken : TCSSToken); inline;
+  Procedure CharToken(aToken : TCSSToken);
 
   begin
     FCurTokenString:=TokenStr[0];
     Inc(TokenStr);
+    Result:=aToken;
+  end;
+
+  Procedure TwoCharsToken(aToken : TCSSToken);
+
+  begin
+    FCurTokenString:=TokenStr[0]+TokenStr[1];
+    Inc(TokenStr,2);
     Result:=aToken;
   end;
 
@@ -721,17 +845,33 @@ begin
     '&': CharToken(ctkAnd);
     '{': CharToken( ctkLBRACE);
     '}': CharToken(ctkRBRACE);
-    '*': if Not (csoExtendedIdentifiers in Options) then
-           CharToken(ctkSTAR)
-         else if TokenStr[1] in AlNumIden then
+    '*': if TokenStr[1]='=' then
+           TwoCharsToken(ctkSTAREQUAL)
+         else if (csoExtendedIdentifiers in Options) and (TokenStr[1] in AlNumIden) then
            Result:=DoIdentifierLike
          else
            CharToken(ctkSTAR);
-    '^': CharToken(ctkSQUARED);
+    '^':
+      if TokenStr[1]='=' then
+        TwoCharsToken(ctkSQUAREDEQUAL)
+      else
+        CharToken(ctkSQUARED);
     ',': CharToken(ctkCOMMA);
-    '~': CharToken(ctkTILDE);
-    '|': CharToken(ctkPIPE);
-    '$': CharToken(ctkDOLLAR);
+    '~':
+      if TokenStr[1]='=' then
+        TwoCharsToken(ctkTILDEEQUAL)
+      else
+        CharToken(ctkTILDE);
+    '|':
+      if TokenStr[1]='=' then
+        TwoCharsToken(ctkPIPEEQUAL)
+      else
+        CharToken(ctkPIPE);
+    '$':
+      if TokenStr[1]='=' then
+        TwoCharsToken(ctkDOLLAREQUAL)
+      else
+        CharToken(ctkDOLLAR);
     ';': CharToken(ctkSEMICOLON);
     '@': Result:=DoIdentifierLike;
     ':':
@@ -757,8 +897,16 @@ begin
       else
         CharToken(ctkDOT);
       end;
-    '>': CharToken(ctkGT);
-    '<': CharToken(ctkLT);
+    '>':
+      if TokenStr[1]='=' then
+        TwoCharsToken(ctkGE)
+      else
+        CharToken(ctkGT);
+    '<':
+      if TokenStr[1]='=' then
+        TwoCharsToken(ctkLE)
+      else
+        CharToken(ctkLT);
     '(': CharToken(ctkLPARENTHESIS);
     ')': CharToken(ctkRPARENTHESIS);
     '[': CharToken(ctkLBRACKET);
@@ -785,8 +933,9 @@ begin
          Result:=DoIdentifierLike;
        end;
   else
+    writeln('TCSSScanner.DoFetchToken ',Ord(TokenStr[0]));
     If Ord(TokenStr[0])>127 then
-      Result:=DoIdentifierLike
+      Result:=DoInvalidChars
     else
       DoError(SErrUnknownCharacter ,['"'+TokenStr[0]+'"']);
 

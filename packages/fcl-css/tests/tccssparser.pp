@@ -19,7 +19,8 @@ unit tcCSSParser;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testregistry, fpcssparser, fpcsstree;
+  Classes, SysUtils, fpcunit, testregistry, fpcssparser, fpcsstree,
+  fpCSSScanner;
 
 type
 
@@ -28,11 +29,13 @@ type
   TTestBaseCSSParser = class(TTestCase)
   Private
     FParseResult: TCSSElement;
+    FSkipInvalid: boolean;
     FSource : TStringStream;
     FParser : TCSSParser;
     FToFree: TCSSElement;
     procedure Clear;
     function GetRule: TCSSRuleElement;
+    procedure OnScannerWarn(Sender: TObject; Msg: string);
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -57,6 +60,7 @@ type
     Property ParseResult : TCSSElement read FParseResult;
     Property FirstRule : TCSSRuleElement Read GetRule;
     Property ToFree : TCSSElement Read FToFree Write FToFree;
+    Property SkipInvalid: boolean read FSkipInvalid write FSkipInvalid;
   end;
 
   { TTestCSSParser }
@@ -69,8 +73,8 @@ type
     Procedure TestPrefixedEmptyRule;
     Procedure TestClassPrefixedEmptyRule;
     Procedure TestHashPrefixedEmptyRule;
-    procedure TestDoublePrefixedEmptyRule;
-    procedure TestDoubleMixedPrefixedEmptyRule;
+    procedure TestDescendantPrefixedEmptyRule;
+    procedure TestDescendantMixedPrefixedEmptyRule;
     procedure TestAttributePrefixedEmptyRule;
     procedure TestAttributeSquaredEqualRule;
     procedure TestAttributePipeEqualRule;
@@ -98,6 +102,7 @@ type
     Procedure TestImportAtKeyWord;
     Procedure TestMediaPrint;
     Procedure TestSupportsFunction;
+    Procedure TestSkipUnknownFunction;
   end;
 
   { TTestCSSFilesParser }
@@ -190,7 +195,6 @@ begin
     end;
 end;
 
-
 procedure TTestCSSFilesParser.Testabsolute;
 begin
   RunFileTest;
@@ -198,6 +202,7 @@ end;
 
 procedure TTestCSSFilesParser.Testanimation;
 begin
+  SkipInvalid:=true;
   RunFileTest;
 end;
 
@@ -343,61 +348,59 @@ begin
   AssertEquals('No rule children',0,R.ChildCount);
   AssertEquals('selector count',1,R.SelectorCount);
   sel:=TCSSClassNameElement(CheckClass('Selector', TCSSClassNameElement,R.Selectors[0]));
-  AssertEquals('Sel name','.a',Sel.Value);
+  AssertEquals('Sel name','a',Sel.Value);
 end;
 
 procedure TTestCSSParser.TestHashPrefixedEmptyRule;
 var
   R : TCSSRuleElement;
-  sel: TCSSStringElement;
+  sel: TCSSHashIdentifierElement;
 
 begin
   ParseRule('#a { }');
   R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
   AssertEquals('No rule children',0,R.ChildCount);
   AssertEquals('selector count',1,R.SelectorCount);
-  sel:=TCSSStringElement(CheckClass('Selector', TCSSStringElement,R.Selectors[0]));
-  AssertEquals('Sel name','#a',Sel.Value);
+  sel:=TCSSHashIdentifierElement(CheckClass('Selector', TCSSHashIdentifierElement,R.Selectors[0]));
+  AssertEquals('Sel name','a',Sel.Value);
 end;
 
-procedure TTestCSSParser.TestDoublePrefixedEmptyRule;
+procedure TTestCSSParser.TestDescendantPrefixedEmptyRule;
 
 var
   R : TCSSRuleElement;
   sel: TCSSIdentifierElement;
-  List : TCSSListElement;
+  Bin: TCSSBinaryElement;
 
 begin
   ParseRule('a b { }');
   R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
   AssertEquals('No rule children',0,R.ChildCount);
   AssertEquals('selector count',1,R.SelectorCount);
-  List:=TCSSListElement(CheckClass('Selector', TCSSListElement,R.Selectors[0]));
-  AssertEquals('selector list count',2,List.ChildCount);
-  sel:=TCSSIdentifierElement(CheckClass('Selector', TCSSIdentifierElement,List[0]));
+  Bin:=TCSSBinaryElement(CheckClass('Selector', TCSSBinaryElement,R.Selectors[0]));
+  sel:=TCSSIdentifierElement(CheckClass('Selector', TCSSIdentifierElement,Bin.Left));
   AssertEquals('Sel 1 name','a',Sel.Value);
-  sel:=TCSSIdentifierElement(CheckClass('Selector', TCSSIdentifierElement,List[1]));
+  sel:=TCSSIdentifierElement(CheckClass('Selector', TCSSIdentifierElement,Bin.Right));
   AssertEquals('Sel 2 name','b',Sel.Value);
 end;
 
-procedure TTestCSSParser.TestDoubleMixedPrefixedEmptyRule;
+procedure TTestCSSParser.TestDescendantMixedPrefixedEmptyRule;
 
 var
   R : TCSSRuleElement;
   sel: TCSSIdentifierElement;
-  List : TCSSListElement;
+  Bin: TCSSBinaryElement;
 
 begin
   ParseRule('a .b { }');
   R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
   AssertEquals('No rule children',0,R.ChildCount);
   AssertEquals('selector count',1,R.SelectorCount);
-  List:=TCSSListElement(CheckClass('Selector', TCSSListElement,R.Selectors[0]));
-  AssertEquals('selector list count',2,List.ChildCount);
-  sel:=TCSSIdentifierElement(CheckClass('Selector', TCSSIdentifierElement,List[0]));
+  Bin:=TCSSBinaryElement(CheckClass('Selector', TCSSBinaryElement,R.Selectors[0]));
+  sel:=TCSSIdentifierElement(CheckClass('Selector', TCSSIdentifierElement,Bin.Left));
   AssertEquals('Sel 1 name','a',Sel.Value);
-  sel:=TCSSClassNameElement(CheckClass('Selector', TCSSClassNameElement,List[1]));
-  AssertEquals('Sel 2 name','.b',Sel.Value);
+  sel:=TCSSClassNameElement(CheckClass('Selector', TCSSClassNameElement,Bin.Right));
+  AssertEquals('Sel 2 name','b',Sel.Value);
 end;
 
 procedure TTestCSSParser.TestAttributePrefixedEmptyRule;
@@ -406,14 +409,17 @@ var
   sel: TCSSArrayElement;
   id : TCSSIdentifierElement;
   bin : TCSSBinaryElement;
+  List: TCSSListElement;
 
 begin
   ParseRule('a[b="c"] { }');
   R:=TCSSRuleElement(CheckClass('Rule',TCSSRuleElement,FirstRule));
   AssertEquals('No rule children',0,R.ChildCount);
   AssertEquals('selector count',1,R.SelectorCount);
-  sel:=TCSSArrayElement(CheckClass('Selector', TCSSArrayElement,R.Selectors[0]));
-  Id:=TCSSIdentifierElement(CheckClass('Array prefix',TCSSIdentifierElement,Sel.Prefix));
+  List:=TCSSListElement(CheckClass('Selector', TCSSListElement,R.Selectors[0]));
+  AssertEquals('list selector count',2,List.ChildCount);
+  Id:=TCSSIdentifierElement(CheckClass('prefix',TCSSIdentifierElement,List[0]));
+  sel:=TCSSArrayElement(CheckClass('Attribute Selector', TCSSArrayElement,List[1]));
   AssertEquals('Prefix name','a',Id.Value);
   AssertEquals('Array count',1,Sel.ChildCount);
   Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
@@ -529,7 +535,7 @@ begin
     Fail('no prefix');
   AssertEquals('Array count',1,Sel.ChildCount);
   Bin:=TCSSBinaryElement(CheckClass('Bin',TCSSBinaryElement,sel.children[0]));
-  AssertEquals('Binary op',boTileEqual,Bin.Operation);
+  AssertEquals('Binary op',boTildeEqual,Bin.Operation);
   Left:=TCSSIdentifierElement(CheckClass('Bin.Left',TCSSIdentifierElement,Bin.Left));
   AssertEquals('left=b','b',Left.Value);
   CheckClass('Bin.Right',TCSSStringElement,Bin.Right);
@@ -746,11 +752,13 @@ end;
 
 procedure TTestCSSParser.TestOneDeclarationNoColon;
 begin
+  SkipInvalid:=true;
   ParseRule('@a b { 0% { d: e; } }');
 end;
 
 procedure TTestCSSParser.TestTwoDeclarationNoColon;
 begin
+  SkipInvalid:=true;
   ParseRule('@a b { 0% { d: e; } 100% { f : g; }  }');
 end;
 
@@ -765,9 +773,11 @@ end;
 
 procedure TTestCSSParser.TestImportAtKeyWord;
 var
+  Rule: TCSSRuleElement;
   R : TCSSAtRuleElement;
 begin
-  R:=TCSSAtRuleElement(CheckClass('at',TCSSAtRuleElement,ParseRule('@import url("abc.css");')));
+  Rule:=ParseRule('@import url("abc.css");');
+  R:=TCSSAtRuleElement(CheckClass('at',TCSSAtRuleElement,Rule));
   AssertEquals('selector count',1,R.SelectorCount);
   AssertEquals('declaration count',0,R.ChildCount);
 end;
@@ -790,6 +800,14 @@ begin
   );
 end;
 
+procedure TTestCSSParser.TestSkipUnknownFunction;
+begin
+  SkipInvalid:=true;
+  ParseRule(':-webkit-any(table, thead, tbody, tfoot, tr) > form:-internal-is-html {'+sLineBreak
+    +'  display: none !important;'+sLineBreak
+    +'}');
+end;
+
 
 { TTestBaseCSSParser }
 
@@ -803,6 +821,14 @@ begin
     Result:=TCSSAtRuleElement(CheckClass('First element is rule',TCSSAtRuleElement,L.Children[0]))
   else
     Result:=TCSSRuleElement(CheckClass('First element is rule',TCSSRuleElement,L.Children[0]));
+end;
+
+procedure TTestBaseCSSParser.OnScannerWarn(Sender: TObject; Msg: string);
+var
+  aScanner: TCSSScanner;
+begin
+  aScanner:=FParser.Scanner;
+  writeln('TTestBaseCSSParser.OnScannerWarn ',aScanner.CurFilename+'('+IntToStr(aScanner.CurRow)+','+IntToStr(aScanner.CurColumn)+') ',Msg);
 end;
 
 procedure TTestBaseCSSParser.SetUp;
@@ -833,6 +859,8 @@ begin
   Clear;
   FSource:=TStringStream.Create(ASource);
   FParser:=TCSSParser.Create(FSource);
+  if SkipInvalid then
+    FParser.Scanner.OnWarn:=@OnScannerWarn;
 end;
 
 procedure TTestBaseCSSParser.Parse;
