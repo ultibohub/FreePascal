@@ -1029,7 +1029,7 @@ implementation
       fieldsym:=nil;
       if assigned(pinested) then
         begin
-          n1:=ccallnode.create(create_paras(pd),ps,capturedef.symtable,cloadnode.create(capturer,capturer.owner),[],nil);
+          n1:=ccallnode.create(create_paras(pinested.procdef),ps,capturedef.symtable,cloadnode.create(capturer,capturer.owner),[],nil);
           { captured variables cannot be in registers }
           make_not_regable(tcallnode(n1).methodpointer,[ra_addr_regable,ra_addr_taken]);
         end
@@ -1081,6 +1081,7 @@ implementation
                 begin
                   captured:=pcapturedsyminfo(capturesyms[i]);
                   pi.add_captured_sym(captured^.sym,captured^.fileinfo);
+                  dispose(captured);
                 end;
               capturesyms.clear;
             end;
@@ -1421,6 +1422,7 @@ implementation
       mapping : pconvert_mapping;
       i : longint;
       old_filepos : tfileposinfo;
+      loadprocvar : boolean;
     begin
       result:=fen_true;
       if n.nodetype<>loadn then
@@ -1432,8 +1434,11 @@ implementation
             continue;
           old_filepos:=current_filepos;
           current_filepos:=n.fileinfo;
+          loadprocvar:=nf_load_procvar in n.flags;
           n.free;
           n:=csubscriptnode.create(mapping^.newsym,mapping^.selfnode.getcopy);
+          if loadprocvar then
+            include(n.flags,nf_load_procvar);
           typecheckpass(n);
           current_filepos:=old_filepos;
           break;

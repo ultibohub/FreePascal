@@ -13,14 +13,79 @@
 
  **********************************************************************
 
+Works:
+
+Selector 	Example 	Example description
+.class  	.intro  	Selects all elements with class="intro"
+.class1.class2 	.name1.name2 	Selects all elements with both name1 and name2 set within its class attribute
+.class1 .class2 	.name1 .name2 	Selects all elements with name2 that is a descendant of an element with name1
+#id 	#firstname 	Selects the element with name="firstname"
+* 	* 	Selects all elements
+element 	p 	Selects all <p> elements
+element.class 	p.intro 	Selects all <p> elements with class="intro"
+element,element 	div, p 	Selects all <div> elements and all <p> elements
+element element 	div p 	Selects all <p> elements inside <div> elements
+element>element 	div > p 	Selects all <p> elements where the parent is a <div> element
+element+element 	div + p 	Selects the first <p> element that is placed immediately after <div> elements
+element1~element2 	p ~ ul 	Selects every <ul> element that is preceded by a <p> element
+[attribute] 	[target] 	Selects all elements with a target attribute
+[attribute=value] 	[target=_blank] 	Selects all elements with target="_blank"
+[attribute~=value] 	[title~=flower] 	Selects all elements with a title attribute containing the *word* "flower"
+[attribute|=value] 	[lang|=en] 	Selects all elements with a lang attribute value equal to "en" or starting with "en-" (hyphen)
+[attribute^=value] 	a[href^="https"] 	Selects every <a> element whose href attribute value begins with "https"
+[attribute$=value] 	a[href$=".pdf"] 	Selects every <a> element whose href attribute value ends with ".pdf"
+[attribute*=value] 	a[href*="w3schools"] 	Selects every <a> element whose href attribute value contains the substring "w3schools"
+:root 	:root 	Selects the document's root element
+:empty 	p:empty 	Selects every <p> element that has no children (including text nodes)
+:first-child 	p:first-child 	Selects every <p> element that is the first child of its parent
+:first-of-type 	p:first-of-type 	Selects every <p> element that is the first <p> element of its parent
+:last-child 	p:last-child 	Selects every <p> element that is the last child of its parent
+:last-of-type 	p:last-of-type 	Selects every <p> element that is the last <p> element of its parent
+:not(selector) 	:not(p) 	Selects every element that is not a <p> element
+:nth-child(n) 	p:nth-child(2) 	Selects every <p> element that is the second child of its parent. n can be a number, a keyword (odd or even), or a formula (like an + b).
+:nth-last-child(n) 	p:nth-last-child(2) 	Selects every <p> element that is the second child of its parent, counting from the last child
+:nth-last-of-type(n) 	p:nth-last-of-type(2) 	Selects every <p> element that is the second <p> element of its parent, counting from the last child
+:nth-of-type(n) 	p:nth-of-type(2) 	Selects every <p> element that is the second <p> element of its parent
+:only-of-type 	p:only-of-type 	Selects every <p> element that is the only <p> element of its parent
+:only-child 	p:only-child 	Selects every <p> element that is the only child of its parent
+:is()
+:where()
+
+Specifity:
+important: 10000
+inline: 1000
+id: 100 #menu
+class+attribute selectors: 10 .button, :hover, [href]
+element/type: 1 p, :before
+*: 0
+
 ToDo:
-- descendant combinator
-- and combinator
-- 'all' attribute
+- :has()
+- 'all' attribute: resets all properties, except direction and unicode bidi
 - TCSSResolver.FindComputedAttribute  use binary search for >8 elements
-- CSSSpecifityInline
 - namespaces
 - layers
+- @rules:-----------------------------------------------------------------------
+- @media
+- @font-face
+- @keyframes
+- columns combinator ||     col.selected || td
+- :nth-col()
+- :nth-last-col()
+- Pseudo-elements - not case sensitive:-----------------------------------------
+- ::first-letter 	p::first-letter 	Selects the first letter of every <p> element
+- ::first-line 	p::first-line 	Selects the first line of every <p> element
+- ::selection 	::selection 	Selects the portion of an element that is selected by a user
+- Altering:---------------------------------------------------------------------
+- ::after 	p::after 	Insert something after the content of each <p> element
+- ::before 	p::before 	Insert something before the content of each <p> element
+- Functions and Vars:-----------------------------------------------------------
+- attr() 	Returns the value of an attribute of the selected element
+- calc() 	Allows you to perform calculations to determine CSS property values  calc(100% - 100px)
+- max() min()  min(50%, 50px)
+- --varname
+- counter-reset
+- counter-increment
 
 }
 
@@ -32,7 +97,7 @@ unit fpCSSResolver;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, StrUtils, fpCSSTree;
+  Classes, SysUtils, types, Contnrs, StrUtils, fpCSSTree;
 
 const
   CSSSpecifityInvalid = -2;
@@ -51,14 +116,43 @@ const
   CSSAttributeID_All = 3; // id of attribute key 'all'
   // pseudo attribute IDs
   CSSPseudoID_Root = 1; // :root
-  CSSPseudoID_Empty = 2; // :empty
-  CSSPseudoID_FirstChild = 3; // :first-child
-  CSSPseudoID_LastChild = 4; // :last-child
-  CSSPseudoID_OnlyChild = 5; // :only-child
-  CSSPseudoID_FirstOfType = 6; // :first-of-type
-  CSSPseudoID_LastOfType = 7; // :last-of-type
-  CSSPseudoID_OnlyOfType = 8; // :only-of-type
-  CSSCallID_NthChild = 9; // :nth-child
+  CSSPseudoID_Empty = CSSPseudoID_Root+1; // :empty
+  CSSPseudoID_FirstChild = CSSPseudoID_Empty+1; // :first-child
+  CSSPseudoID_LastChild = CSSPseudoID_FirstChild+1; // :last-child
+  CSSPseudoID_OnlyChild = CSSPseudoID_LastChild+1; // :only-child
+  CSSPseudoID_FirstOfType = CSSPseudoID_OnlyChild+1; // :first-of-type
+  CSSPseudoID_LastOfType = CSSPseudoID_FirstOfType+1; // :last-of-type
+  CSSPseudoID_OnlyOfType = CSSPseudoID_LastOfType+1; // :only-of-type
+  CSSCallID_Not = CSSPseudoID_OnlyOfType+1; // :nth-child
+  CSSCallID_Is = CSSCallID_Not+1; // :nth-child
+  CSSCallID_Where = CSSCallID_Is+1; // :nth-child
+  CSSCallID_Has = CSSCallID_Where+1; // :nth-child
+  CSSCallID_NthChild = CSSCallID_Has+1; // :nth-child
+  CSSCallID_NthLastChild = CSSCallID_NthChild+1; // :nth-child
+  CSSCallID_NthOfType = CSSCallID_NthLastChild+1; // :nth-child
+  CSSCallID_NthLastOfType = CSSCallID_NthOfType+1; // :nth-child
+  CSSIDLast = CSSCallID_NthLastOfType;
+
+const
+  CSSPseudoNames: array[0..CSSIDLast] of string = (
+    '?',
+    ':root',
+    ':empty',
+    ':first-child',
+    ':last-child',
+    ':only-child',
+    ':first-of-type',
+    ':last-of-type',
+    ':only-of-type',
+    ':not()',
+    ':is()',
+    ':where()',
+    ':has()',
+    ':nth-child(n)',
+    ':nth-last-child(n)',
+    ':nth-of-type(n)',
+    ':nth-last-of-type(n)'
+    );
 
 type
   TCSSMsgID = int64;
@@ -98,6 +192,7 @@ type
     function HasCSSPseudoAttribute(const AttrID: TCSSNumericalID): boolean;
     function GetCSSPseudoAttribute(const AttrID: TCSSNumericalID): TCSSString;
     function GetCSSEmpty: boolean;
+    function GetCSSDepth: integer;
     procedure SetCSSValue(AttrID: TCSSNumericalID; Value: TCSSElement);
   end;
 
@@ -168,9 +263,34 @@ type
     destructor Destroy; override;
   end;
 
+  TCSSCallNthChildParams = class;
+
+  TCSSCallNthChildParamsCacheItem = record
+    TypeID: TCSSNumericalID;
+    ChildIDs: TIntegerDynArray;
+    Cnt: integer; // = length(ChildIDs), used during creation
+  end;
+  PCSSCallNthChildParamsCacheItem = ^TCSSCallNthChildParamsCacheItem;
+  TCSSCallNthChildParamsCacheItems = array of TCSSCallNthChildParamsCacheItem;
+
+  TCSSCallNthChildParamsCache = class
+  public
+    Owner: TCSSCallNthChildParams;
+    Parent: TCSSNode;
+    StackDepth: integer;
+    Items: TCSSCallNthChildParamsCacheItems;
+  end;
+  TCSSCallNthChildParamsCaches = array of TCSSCallNthChildParamsCache;
+
+  { TCSSCallNthChildParams }
+
   TCSSCallNthChildParams = class
     Modulo: integer;
     Start: integer;
+    HasOf: boolean;
+    OfSelector: TCSSElement;
+    StackCache: TCSSCallNthChildParamsCaches;
+    destructor Destroy; override;
   end;
 
   TCSSResolverOption = (
@@ -187,15 +307,22 @@ const
   DefaultCSSComputeOptions = [ccoCommit];
 
 type
+  TCSSResolverLogEntry = class
+  public
+    MsgType: TEventType;
+    ID: TCSSMsgID;
+    Msg: string;
+    PosEl: TCSSElement;
+  end;
+
+  TCSSResolverLogEvent = procedure(Sender: TObject; Entry: TCSSResolverLogEntry) of object;
+
   TCSSResStringComparison = (
     crscDefault,
     crscCaseInsensitive,
     crscCaseSensitive
     );
   TCSSResStringComparisons = set of TCSSResStringComparison;
-
-  TCSSResolverLogEvent = procedure(Sender: TObject; aType: TEventType;
-    const ID: TCSSMsgID; const Msg: string; PosEl: TCSSElement) of object;
 
   { TCSSResolver }
 
@@ -210,6 +337,8 @@ type
     FFirstElData: TCSSElResolverData;
     FLastElData: TCSSElResolverData;
     function GetAttributes(Index: integer): PCSSComputedAttribute;
+    function GetLogCount: integer;
+    function GetLogEntries(Index: integer): TCSSResolverLogEntry;
     function GetNumericalIDs(Kind: TCSSNumericalIDKind): TCSSNumericalIDs;
     procedure SetNumericalIDs(Kind: TCSSNumericalIDKind;
       const AValue: TCSSNumericalIDs);
@@ -218,27 +347,35 @@ type
     FAttributes: TCSSComputedAttributeArray;
     FAttributeCount: integer;
     FNode: TCSSNode;
+    FLogEntries: TFPObjectList; // list of TCSSResolverLogEntry
     procedure SetStyle(const AValue: TCSSElement); virtual;
     procedure ComputeElement(El: TCSSElement); virtual;
     procedure ComputeRule(aRule: TCSSRuleElement); virtual;
     procedure ComputeInline(El: TCSSElement); virtual;
     procedure ComputeInlineRule(aRule: TCSSRuleElement); virtual;
-    function SelectorMatches(aSelector: TCSSElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorIdentifierMatches(Identifier: TCSSIdentifierElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorHashIdentifierMatches(Identifier: TCSSHashIdentifierElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorClassNameMatches(aClassName: TCSSClassNameElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorPseudoClassMatches(aPseudoClass: TCSSPseudoClassElement; var TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorListMatches(aList: TCSSListElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorBinaryMatches(aBinary: TCSSBinaryElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorArrayMatches(anArray: TCSSArrayElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
+    function SelectorMatches(aSelector: TCSSElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorIdentifierMatches(Identifier: TCSSIdentifierElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorHashIdentifierMatches(Identifier: TCSSHashIdentifierElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorClassNameMatches(aClassName: TCSSClassNameElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorPseudoClassMatches(aPseudoClass: TCSSPseudoClassElement; var TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorListMatches(aList: TCSSListElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorBinaryMatches(aBinary: TCSSBinaryElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function SelectorArrayMatches(anArray: TCSSArrayElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
     function SelectorArrayBinaryMatches(aBinary: TCSSBinaryElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function SelectorCallMatches(aCall: TCSSCallElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
-    function Call_NthChild(aCall: TCSSCallElement; const TestNode: TCSSNode): TCSSSpecifity; virtual;
+    function SelectorCallMatches(aCall: TCSSCallElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function Call_Not(aCall: TCSSCallElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function Call_Is(aCall: TCSSCallElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function Call_Where(aCall: TCSSCallElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function Call_NthChild(CallID: TCSSNumericalID; aCall: TCSSCallElement; const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity; virtual;
+    function CollectSiblingsOf(CallID: TCSSNumericalID; TestNode: TCSSNode;
+      Params: TCSSCallNthChildParams): TIntegerDynArray; virtual;
+    function GetSiblingOfIndex(SiblingIDs: TIntegerDynArray; Index: integer): integer; virtual;
     function ComputeValue(El: TCSSElement): TCSSString; virtual;
     function SameValueText(const A, B: TCSSString): boolean; virtual;
     function SameValueText(A: PChar; ALen: integer; B: PChar; BLen: integer): boolean; virtual;
     function PosSubString(const SearchStr, Str: TCSSString): integer; virtual;
     function PosWord(const SearchWord, Words: TCSSString): integer; virtual;
+    function GetSiblingCount(aNode: TCSSNode): integer; virtual;
     procedure MergeProperty(El: TCSSElement; Specifity: TCSSSpecifity); virtual;
     function ResolveIdentifier(El: TCSSIdentifierElement; Kind: TCSSNumericalIDKind): TCSSNumericalID; virtual;
     function ResolveCall(El: TCSSCallElement): TCSSNumericalID; virtual;
@@ -253,6 +390,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    procedure Clear; virtual;
     procedure ClearStyleCustomData; virtual;
     procedure Compute(Node: TCSSNode; NodeStyle: TCSSElement = nil;
       const CompOptions: TCSSComputeOptions = DefaultCSSComputeOptions); virtual;
@@ -265,9 +403,22 @@ type
     property AttributeCount: integer read FAttributeCount;
     property StringComparison: TCSSResStringComparison read FStringComparison;
     property OnLog: TCSSResolverLogEvent read FOnLog write FOnLog;
+    property LogCount: integer read GetLogCount;
+    property LogEntries[Index: integer]: TCSSResolverLogEntry read GetLogEntries;
   end;
 
 implementation
+
+{ TCSSCallNthChildParams }
+
+destructor TCSSCallNthChildParams.Destroy;
+var
+  i: Integer;
+begin
+  for i:=0 to high(StackCache) do
+    StackCache[i].Free;
+  inherited Destroy;
+end;
 
 { TCSSCallData }
 
@@ -333,6 +484,16 @@ begin
   Result:=@FAttributes[Index];
 end;
 
+function TCSSResolver.GetLogCount: integer;
+begin
+  Result:=FLogEntries.Count;
+end;
+
+function TCSSResolver.GetLogEntries(Index: integer): TCSSResolverLogEntry;
+begin
+  Result:=TCSSResolverLogEntry(FLogEntries[Index]);
+end;
+
 procedure TCSSResolver.SetNumericalIDs(Kind: TCSSNumericalIDKind;
   const AValue: TCSSNumericalIDs);
 begin
@@ -385,7 +546,7 @@ begin
   for i:=0 to aRule.SelectorCount-1 do
   begin
     aSelector:=aRule.Selectors[i];
-    Specifity:=SelectorMatches(aSelector,FNode);
+    Specifity:=SelectorMatches(aSelector,FNode,false);
     if Specifity>BestSpecifity then
       BestSpecifity:=Specifity;
   end;
@@ -420,14 +581,14 @@ begin
 end;
 
 function TCSSResolver.SelectorMatches(aSelector: TCSSElement;
-  const TestNode: TCSSNode): TCSSSpecifity;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
 
   procedure MatchPseudo;
   var
     aNode: TCSSNode;
   begin
     aNode:=TestNode;
-    Result:=SelectorPseudoClassMatches(TCSSPseudoClassElement(aSelector),aNode);
+    Result:=SelectorPseudoClassMatches(TCSSPseudoClassElement(aSelector),aNode,OnlySpecifity);
   end;
 
 var
@@ -436,27 +597,28 @@ begin
   Result:=CSSSpecifityInvalid;
   C:=aSelector.ClassType;
   if C=TCSSIdentifierElement then
-    Result:=SelectorIdentifierMatches(TCSSIdentifierElement(aSelector),TestNode)
+    Result:=SelectorIdentifierMatches(TCSSIdentifierElement(aSelector),TestNode,OnlySpecifity)
   else if C=TCSSHashIdentifierElement then
-    Result:=SelectorHashIdentifierMatches(TCSSHashIdentifierElement(aSelector),TestNode)
+    Result:=SelectorHashIdentifierMatches(TCSSHashIdentifierElement(aSelector),TestNode,OnlySpecifity)
   else if C=TCSSClassNameElement then
-    Result:=SelectorClassNameMatches(TCSSClassNameElement(aSelector),TestNode)
+    Result:=SelectorClassNameMatches(TCSSClassNameElement(aSelector),TestNode,OnlySpecifity)
   else if C=TCSSPseudoClassElement then
     MatchPseudo
   else if C=TCSSBinaryElement then
-    Result:=SelectorBinaryMatches(TCSSBinaryElement(aSelector),TestNode)
+    Result:=SelectorBinaryMatches(TCSSBinaryElement(aSelector),TestNode,OnlySpecifity)
   else if C=TCSSArrayElement then
-    Result:=SelectorArrayMatches(TCSSArrayElement(aSelector),TestNode)
+    Result:=SelectorArrayMatches(TCSSArrayElement(aSelector),TestNode,OnlySpecifity)
   else if C=TCSSListElement then
-    Result:=SelectorListMatches(TCSSListElement(aSelector),TestNode)
+    Result:=SelectorListMatches(TCSSListElement(aSelector),TestNode,OnlySpecifity)
   else if C=TCSSCallElement then
-    Result:=SelectorCallMatches(TCSSCallElement(aSelector),TestNode)
+    Result:=SelectorCallMatches(TCSSCallElement(aSelector),TestNode,OnlySpecifity)
   else
     Log(etError,20220908230152,'Unknown CSS selector element',aSelector);
 end;
 
 function TCSSResolver.SelectorIdentifierMatches(
-  Identifier: TCSSIdentifierElement; const TestNode: TCSSNode): TCSSSpecifity;
+  Identifier: TCSSIdentifierElement; const TestNode: TCSSNode;
+  OnlySpecifity: boolean): TCSSSpecifity;
 var
   TypeID: TCSSNumericalID;
 begin
@@ -469,7 +631,9 @@ begin
   begin
     // universal selector
     Result:=CSSSpecifityUniversal;
-  end else if TypeID=CSSIDNone then
+  end else if OnlySpecifity then
+    Result:=CSSSpecifityType
+  else if TypeID=CSSIDNone then
   begin
     if croErrorOnUnknownName in Options then
       Log(etError,20220911230224,'Unknown CSS selector type name "'+Identifier.Name+'"',Identifier);
@@ -479,11 +643,13 @@ begin
 end;
 
 function TCSSResolver.SelectorHashIdentifierMatches(
-  Identifier: TCSSHashIdentifierElement; const TestNode: TCSSNode
-  ): TCSSSpecifity;
+  Identifier: TCSSHashIdentifierElement; const TestNode: TCSSNode;
+  OnlySpecifity: boolean): TCSSSpecifity;
 var
   aValue: TCSSString;
 begin
+  if OnlySpecifity then
+    exit(CSSSpecifityIdentifier);
   Result:=CSSSpecifityNoMatch;
   aValue:=Identifier.Value;
   if TestNode.GetCSSID=aValue then
@@ -491,10 +657,13 @@ begin
 end;
 
 function TCSSResolver.SelectorClassNameMatches(
-  aClassName: TCSSClassNameElement; const TestNode: TCSSNode): TCSSSpecifity;
+  aClassName: TCSSClassNameElement; const TestNode: TCSSNode;
+  OnlySpecifity: boolean): TCSSSpecifity;
 var
   aValue: TCSSString;
 begin
+  if OnlySpecifity then
+    exit(CSSSpecifityClass);
   aValue:=aClassName.Name;
   if TestNode.HasCSSClass(aValue) then
     Result:=CSSSpecifityClass
@@ -504,10 +673,13 @@ begin
 end;
 
 function TCSSResolver.SelectorPseudoClassMatches(
-  aPseudoClass: TCSSPseudoClassElement; var TestNode: TCSSNode): TCSSSpecifity;
+  aPseudoClass: TCSSPseudoClassElement; var TestNode: TCSSNode;
+  OnlySpecifity: boolean): TCSSSpecifity;
 var
   PseudoID: TCSSNumericalID;
 begin
+  if OnlySpecifity then
+    exit(CSSSpecifityClass);
   Result:=CSSSpecifityNoMatch;
   PseudoID:=ResolveIdentifier(aPseudoClass,nikPseudoAttribute);
   case PseudoID of
@@ -547,7 +719,7 @@ begin
 end;
 
 function TCSSResolver.SelectorListMatches(aList: TCSSListElement;
-  const TestNode: TCSSNode): TCSSSpecifity;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
 var
   i: Integer;
   El: TCSSElement;
@@ -568,12 +740,17 @@ begin
     {$ENDIF}
     C:=El.ClassType;
     if (C=TCSSIdentifierElement) and (i>0) then
-      Log(etError,20220914163218,'Type selector must be first',aList)
+    begin
+      if OnlySpecifity then
+        exit(0);
+      Log(etWarning,20220914163218,'Type selector must be first',aList);
+      exit(CSSSpecifityInvalid);
+    end
     else if C=TCSSPseudoClassElement then
     begin
-      Specifity:=SelectorPseudoClassMatches(TCSSPseudoClassElement(El),aNode);
+      Specifity:=SelectorPseudoClassMatches(TCSSPseudoClassElement(El),aNode,OnlySpecifity);
     end else
-      Specifity:=SelectorMatches(El,aNode);
+      Specifity:=SelectorMatches(El,aNode,OnlySpecifity);
     if Specifity<0 then
       exit(Specifity);
     inc(Result,Specifity);
@@ -581,22 +758,29 @@ begin
 end;
 
 function TCSSResolver.SelectorBinaryMatches(aBinary: TCSSBinaryElement;
-  const TestNode: TCSSNode): TCSSSpecifity;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
 var
   aParent, Sibling: TCSSNode;
   aSpecifity: TCSSSpecifity;
 begin
+  if OnlySpecifity then
+  begin
+    Result:=SelectorMatches(aBinary.Left,TestNode,true);
+    inc(Result,SelectorMatches(aBinary.Right,TestNode,true));
+    exit;
+  end;
+
   Result:=CSSSpecifityInvalid;
   case aBinary.Operation of
   boGT:
     begin
       // child combinator >
-      Result:=SelectorMatches(aBinary.Right,TestNode);
+      Result:=SelectorMatches(aBinary.Right,TestNode,false);
       if Result<0 then exit;
       aParent:=TestNode.GetCSSParent;
       if aParent=nil then
         exit(CSSSpecifityNoMatch);
-      aSpecifity:=SelectorMatches(aBinary.Left,aParent);
+      aSpecifity:=SelectorMatches(aBinary.Left,aParent,false);
       if aSpecifity<0 then
         exit(aSpecifity);
       inc(Result,aSpecifity);
@@ -604,12 +788,12 @@ begin
   boPlus:
     begin
       // adjacent sibling combinator +
-      Result:=SelectorMatches(aBinary.Right,TestNode);
+      Result:=SelectorMatches(aBinary.Right,TestNode,false);
       if Result<0 then exit;
       Sibling:=TestNode.GetCSSPreviousSibling;
       if Sibling=nil then
         exit(CSSSpecifityNoMatch);
-      aSpecifity:=SelectorMatches(aBinary.Left,Sibling);
+      aSpecifity:=SelectorMatches(aBinary.Left,Sibling,false);
       if aSpecifity<0 then
         exit(aSpecifity);
       inc(Result,aSpecifity);
@@ -617,12 +801,12 @@ begin
   boTilde:
     begin
       // general sibling combinator ~
-      Result:=SelectorMatches(aBinary.Right,TestNode);
+      Result:=SelectorMatches(aBinary.Right,TestNode,false);
       if Result<0 then exit;
       Sibling:=TestNode.GetCSSPreviousSibling;
       while Sibling<>nil do
       begin
-        aSpecifity:=SelectorMatches(aBinary.Left,Sibling);
+        aSpecifity:=SelectorMatches(aBinary.Left,Sibling,false);
         if aSpecifity=CSSSpecifityInvalid then
           exit(aSpecifity)
         else if aSpecifity>=0 then
@@ -637,14 +821,14 @@ begin
   boWhiteSpace:
     begin
     // descendant combinator
-    Result:=SelectorMatches(aBinary.Right,TestNode);
+    Result:=SelectorMatches(aBinary.Right,TestNode,false);
     if Result<0 then exit;
     aParent:=TestNode;
     repeat
       aParent:=aParent.GetCSSParent;
       if aParent=nil then
         exit(CSSSpecifityNoMatch);
-      aSpecifity:=SelectorMatches(aBinary.Left,aParent);
+      aSpecifity:=SelectorMatches(aBinary.Left,aParent,false);
       if aSpecifity>=0 then
       begin
         inc(Result,aSpecifity);
@@ -661,7 +845,7 @@ begin
 end;
 
 function TCSSResolver.SelectorArrayMatches(anArray: TCSSArrayElement;
-  const TestNode: TCSSNode): TCSSSpecifity;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
 var
   {$IFDEF VerboseCSSResolver}
   i: integer;
@@ -672,20 +856,29 @@ var
   OldStringComparison: TCSSResStringComparison;
   aValue: TCSSString;
 begin
+  if OnlySpecifity then
+    exit(CSSSpecifityClass);
+
   Result:=CSSSpecifityInvalid;
   if anArray.Prefix<>nil then
-    Log(etError,20220910154004,'Invalid CSS attribute selector prefix',anArray.Prefix);
+  begin
+    Log(etWarning,20220910154004,'Invalid CSS attribute selector prefix',anArray.Prefix);
+    exit;
+  end;
   {$IFDEF VerboseCSSResolver}
   writeln('TCSSResolver.SelectorArrayMatches Prefix=',GetCSSObj(anArray.Prefix),' ChildCount=',anArray.ChildCount);
   for i:=0 to anArray.ChildCount-1 do
     writeln('TCSSResolver.SelectorArrayMatches ',i,' ',GetCSSObj(anArray.Children[i]));
   {$ENDIF}
   if anArray.ChildCount<1 then
-    Log(etError,20220910154033,'Invalid CSS attribute selector',anArray);
+  begin
+    Log(etWarning,20220910154033,'Invalid CSS attribute selector',anArray);
+    exit;
+  end;
   OldStringComparison:=StringComparison;
   try
     if anArray.ChildCount>1 then
-      begin
+    begin
       El:=anArray.Children[1];
       C:=El.ClassType;
       if C=TCSSIdentifierElement then
@@ -696,13 +889,17 @@ begin
         's': FStringComparison:=crscCaseSensitive;
         else
           if croErrorOnUnknownName in Options then
-            Log(etError,20220914174409,'Invalid attribute modifier "'+aValue+'"',El);
+            Log(etError,20220914174409,'Invalid attribute modifier "'+aValue+'"',El)
+          else
+            Log(etWarning,20220918084203,'Invalid attribute modifier "'+aValue+'"',El);
         end;
-      end else
-        Log(etError,20220914173643,'Invalid CSS attribute modifier',El);
+      end else begin
+        Log(etWarning,20220914173643,'Invalid CSS attribute modifier',El);
+        exit;
       end;
-    if (anArray.ChildCount>2) and (croErrorOnUnknownName in Options) then
-      Log(etError,20220914174550,'Invalid CSS attribute modifier',anArray.Children[2]);
+    end;
+    if (anArray.ChildCount>2) then
+      Log(etWarning,20220914174550,'Invalid CSS attribute modifier',anArray.Children[2]);
 
     El:=anArray.Children[0];
     C:=El.ClassType;
@@ -728,8 +925,9 @@ begin
       end;
     end else if C=TCSSBinaryElement then
       Result:=SelectorArrayBinaryMatches(TCSSBinaryElement(El),TestNode)
-    else
+    else begin
       Log(etError,20220910153725,'Invalid CSS array selector',El);
+    end;
   finally
     FStringComparison:=OldStringComparison;
   end;
@@ -811,31 +1009,122 @@ begin
 end;
 
 function TCSSResolver.SelectorCallMatches(aCall: TCSSCallElement;
-  const TestNode: TCSSNode): TCSSSpecifity;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
 var
   CallID: TCSSNumericalID;
 begin
   Result:=CSSSpecifityNoMatch;
   CallID:=ResolveCall(aCall);
   case CallID of
-  CSSCallID_NthChild:
-    Result:=Call_NthChild(aCall,TestNode);
+  CSSCallID_Not:
+    Result:=Call_Not(aCall,TestNode,OnlySpecifity);
+  CSSCallID_Is:
+    Result:=Call_Is(aCall,TestNode,OnlySpecifity);
+  CSSCallID_Where:
+    Result:=Call_Where(aCall,TestNode,OnlySpecifity);
+  CSSCallID_NthChild,CSSCallID_NthLastChild,CSSCallID_NthOfType, CSSCallID_NthLastOfType:
+    Result:=Call_NthChild(CallID,aCall,TestNode,OnlySpecifity);
   else
-    Result:=CSSSpecifityInvalid;
+    if OnlySpecifity then
+      Result:=0
+    else
+      Result:=CSSSpecifityInvalid;
   end;
 end;
 
-function TCSSResolver.Call_NthChild(aCall: TCSSCallElement;
-  const TestNode: TCSSNode): TCSSSpecifity;
+function TCSSResolver.Call_Not(aCall: TCSSCallElement;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
+// :not(arg1, arg2, ...)
+// :not(args) has the same specifity as :not(:is(args))
+var
+  i: Integer;
+  Specifity: TCSSSpecifity;
+  HasMatch: Boolean;
+begin
+  Result:=0;
+  HasMatch:=false;
+  for i:=0 to aCall.ArgCount-1 do
+  begin
+    Specifity:=SelectorMatches(aCall.Args[i],TestNode,OnlySpecifity);
+    if Specifity>=0 then
+      HasMatch:=true
+    else begin
+      // the specifity of :is is the highest, independent of matching (forgiving)
+      Specifity:=SelectorMatches(aCall.Args[i],TestNode,true);
+    end;
+    if Specifity>Result then
+      Result:=Specifity;
+  end;
+  if OnlySpecifity then
+    // return best
+  else if HasMatch then
+    Result:=CSSSpecifityNoMatch;
+end;
+
+function TCSSResolver.Call_Is(aCall: TCSSCallElement; const TestNode: TCSSNode;
+  OnlySpecifity: boolean): TCSSSpecifity;
+var
+  i: Integer;
+  Specifity: TCSSSpecifity;
+  ok: Boolean;
+begin
+  Result:=0;
+  ok:=false;
+  for i:=0 to aCall.ArgCount-1 do
+  begin
+    Specifity:=SelectorMatches(aCall.Args[i],TestNode,OnlySpecifity);
+    if Specifity>=0 then
+      ok:=true
+    else begin
+      // the specifity of :is is the highest, independent of matching (forgiving)
+      Specifity:=SelectorMatches(aCall.Args[i],TestNode,true);
+    end;
+    if Specifity>Result then
+      Result:=Specifity;
+  end;
+  if (not ok) and (not OnlySpecifity) then
+    Result:=CSSSpecifityNoMatch;
+end;
+
+function TCSSResolver.Call_Where(aCall: TCSSCallElement;
+  const TestNode: TCSSNode; OnlySpecifity: boolean): TCSSSpecifity;
+var
+  i: Integer;
+begin
+  Result:=0;
+  if OnlySpecifity then
+    exit;
+  for i:=0 to aCall.ArgCount-1 do
+  begin
+    if SelectorMatches(aCall.Args[i],TestNode,false)>=0 then
+      // Note: :where is forgiving, so invalid arguments are ignored
+      exit;
+  end;
+  Result:=CSSSpecifityNoMatch;
+end;
+
+function TCSSResolver.Call_NthChild(CallID: TCSSNumericalID;
+  aCall: TCSSCallElement; const TestNode: TCSSNode; OnlySpecifity: boolean
+  ): TCSSSpecifity;
+
+  procedure NthWarn(const ID: TCSSMsgID; const Msg: string; PosEl: TCSSElement);
+  begin
+    Log(etWarning,ID,CSSPseudoNames[CallID]+' '+Msg,PosEl);
+  end;
+
 var
   i, ArgCount, aModulo, aStart: Integer;
   Arg, OffsetEl: TCSSElement;
   Str: TCSSString;
-  UnaryEl: TCSSUnaryElement;
+  UnaryEl, anUnary: TCSSUnaryElement;
   Params: TCSSCallNthChildParams;
   CallData: TCSSCallData;
+  ChildIDs: TIntegerDynArray;
 begin
-  Result:=CSSSpecifityInvalid;
+  if OnlySpecifity then
+    Result:=CSSSpecifityClass
+  else
+    Result:=CSSSpecifityInvalid;
   CallData:=TCSSCallData(aCall.CustomData);
   Params:=TCSSCallNthChildParams(CallData.Params);
   if Params=nil then
@@ -850,11 +1139,11 @@ begin
 
     i:=0;
     aModulo:=0;
-    aStart:=0;
+    aStart:=1;
     // check step
     if ArgCount<=i then
     begin
-      Log(etWarning,20220915143843,':nth-child missing arguments',aCall);
+      NthWarn(20220915143843,'missing arguments',aCall);
       exit;
     end;
     Arg:=aCall.Args[i];
@@ -865,18 +1154,18 @@ begin
       // check n
       if ArgCount<=i then
       begin
-        Log(etWarning,20220915143843,':nth-child missing arguments',aCall);
+        NthWarn(20220915143843,'missing arguments',aCall);
         exit;
       end;
       Arg:=aCall.Args[i];
       if Arg.ClassType<>TCSSIdentifierElement then
       begin
-        Log(etWarning,20220915144312,':nth-child expected n',Arg);
+        NthWarn(20220915144312,'expected n',Arg);
         exit;
       end;
       if TCSSIdentifierElement(Arg).Value<>'n' then
       begin
-        Log(etWarning,20220915144359,':nth-child expected n',Arg);
+        NthWarn(20220915144359,'expected n',Arg);
         exit;
       end;
 
@@ -887,29 +1176,45 @@ begin
       case lowercase(Str) of
       'even':
         begin
-        writeln('TCSSResolver.Call_NthChild EVEN');
+        //writeln('TCSSResolver.Call_NthChild EVEN');
         aModulo:=2;
         aStart:=2;
         end;
       'odd':
         begin
-        writeln('TCSSResolver.Call_NthChild ODD');
+        //writeln('TCSSResolver.Call_NthChild ODD');
         aModulo:=2;
-        aStart:=1;
         end;
       'n':
         begin
-        writeln('TCSSResolver.Call_NthChild N');
+        //writeln('TCSSResolver.Call_NthChild N');
         aModulo:=1;
-        aStart:=1;
         end;
       else
-        Log(etWarning,20220915150332,':nth-child expected multiplier',Arg);
+        NthWarn(20220915150332,'expected multiplier',Arg);
+        exit;
+      end
+    end else if Arg.ClassType=TCSSUnaryElement then
+    begin
+      anUnary:=TCSSUnaryElement(Arg);
+      case anUnary.Operation of
+      uoMinus: aModulo:=-1;
+      uoPlus: aModulo:=1;
+      else
+        NthWarn(20220917080309,'expected multiplier',Arg);
+        exit;
+      end;
+      if (anUnary.Right.ClassType=TCSSIdentifierElement)
+          and (SameText(TCSSIdentifierElement(anUnary.Right).Value,'n')) then
+      begin
+        // ok
+      end else begin
+        NthWarn(20220917080154,'expected multiplier',Arg);
         exit;
       end;
     end else
     begin
-      Log(etWarning,20220915144056,':nth-child expected multiplier',Arg);
+      NthWarn(20220915144056,'expected multiplier',Arg);
       exit;
     end;
 
@@ -923,18 +1228,18 @@ begin
         //writeln('TCSSResolver.Call_NthChild UNARY ',UnaryEl.AsString);
         if not (UnaryEl.Operation in [uoMinus,uoPlus]) then
         begin
-          Log(etWarning,20220915151422,':nth-child unexpected offset',UnaryEl);
+          NthWarn(20220915151422,'unexpected offset',UnaryEl);
           exit;
         end;
         OffsetEl:=UnaryEl.Right;
         if OffsetEl=nil then
         begin
-          Log(etWarning,20220915151511,':nth-child unexpected offset',UnaryEl);
+          NthWarn(20220915151511,'unexpected offset',UnaryEl);
           exit;
         end;
         if OffsetEl.ClassType<>TCSSIntegerElement then
         begin
-          Log(etWarning,20220915151718,':nth-child unexpected offset',OffsetEl);
+          NthWarn(20220915151718,'unexpected offset',OffsetEl);
           exit;
         end;
         aStart:=TCSSIntegerElement(OffsetEl).Value;
@@ -942,7 +1247,7 @@ begin
           aStart:=-aStart;
       end else
       begin
-        Log(etWarning,20220915150851,':nth-child expected offset',Arg);
+        NthWarn(20220915150851,'expected offset',Arg);
         exit;
       end;
     end;
@@ -951,27 +1256,192 @@ begin
     CallData.Params:=Params;
     Params.Modulo:=aModulo;
     Params.Start:=aStart;
+
+    inc(i);
+    if (i<ArgCount) then
+    begin
+      Arg:=aCall.Args[i];
+      if (Arg.ClassType=TCSSIdentifierElement)
+          and (SameText(TCSSIdentifierElement(Arg).Value,'of')) then
+      begin
+        // An+B of Selector
+        inc(i);
+        if i=ArgCount then
+        begin
+          NthWarn(20220915150851,'expected selector',Arg);
+          exit;
+        end;
+        Arg:=aCall.Args[i];
+        Params.HasOf:=true;
+        Params.OfSelector:=Arg;
+      end;
+    end;
+
+    if (CallID in [CSSCallID_NthOfType,CSSCallID_NthLastOfType]) then
+      Params.HasOf:=true;
   end else begin
     aModulo:=Params.Modulo;
     aStart:=Params.Start;
   end;
 
+  if OnlySpecifity then
+  begin
+    if Params.OfSelector<>nil then
+      inc(Result,SelectorMatches(Params.OfSelector,TestNode,true));
+    exit;
+  end;
+
   Result:=CSSSpecifityNoMatch;
-  if aModulo<1 then
+  if aModulo=0 then
     exit;
   i:=TestNode.GetCSSIndex;
+  if Params.HasOf then
+  begin
+    ChildIDs:=CollectSiblingsOf(CallID,TestNode,Params);
+    i:=GetSiblingOfIndex(ChildIDs,i);
+  end else
+    ChildIDs:=nil;
+  {$IFDEF VerboseCSSResolver}
+  //writeln('TCSSResolver.Call_NthChild CallID=',CallID,' ',aModulo,' * N + ',aStart,' Index=',TestNode.GetCSSIndex,' i=',i,' HasOf=',Params.HasOf,' OfChildCount=',length(Params.ChildIDs));
+  {$ENDIF}
   if i<0 then
     exit;
-  i:=i+1-aStart;
+  if CallID in [CSSCallID_NthLastChild,CSSCallID_NthLastOfType] then
+  begin
+    if Params.HasOf then
+      i:=length(ChildIDs)-i
+    else
+      i:=GetSiblingCount(TestNode)-i;
+  end else
+  begin
+    i:=i+1;
+  end;
+  dec(i,aStart);
   if i mod aModulo = 0 then
   begin
     i:=i div aModulo;
     if i>=0 then
-      Result:=CSSSpecifityClass
+      Result:=CSSSpecifityClass;
   end;
   {$IFDEF VerboseCSSResolver}
-  writeln('TCSSResolver.Call_NthChild ',aModulo,' * N + ',aStart,' Index=',TestNode.GetCSSIndex+1,' Result=',Result);
+  //writeln('TCSSResolver.Call_NthChild ',aModulo,' * N + ',aStart,' Index=',TestNode.GetCSSIndex+1,' Result=',Result);
   {$ENDIF}
+end;
+
+function TCSSResolver.CollectSiblingsOf(CallID: TCSSNumericalID;
+  TestNode: TCSSNode; Params: TCSSCallNthChildParams): TIntegerDynArray;
+var
+  i, Depth, ChildCount, j: Integer;
+  aTypeID: TCSSNumericalID;
+  aParent, aNode: TCSSNode;
+  aSelector: TCSSElement;
+  StackDepth: SizeInt;
+  Cache: TCSSCallNthChildParamsCache;
+  Item: PCSSCallNthChildParamsCacheItem;
+  NeedTypeID: Boolean;
+begin
+  Result:=nil;
+  aParent:=TestNode.GetCSSParent;
+  {$IFDEF VerboseCSSResolver}
+  //writeln('TCSSResolver.CollectSiblingsOf HasParent=',aParent<>nil);
+  {$ENDIF}
+  if aParent=nil then exit;
+  ChildCount:=aParent.GetCSSChildCount;
+  if ChildCount=0 then exit;
+
+  Depth:=aParent.GetCSSDepth;
+  StackDepth:=length(Params.StackCache);
+  if StackDepth<=Depth then
+  begin
+    SetLength(Params.StackCache,Depth+1);
+    for i:=StackDepth to Depth do
+      Params.StackCache[i]:=nil;
+  end;
+  Cache:=Params.StackCache[Depth];
+  if Cache=nil then
+  begin
+    Cache:=TCSSCallNthChildParamsCache.Create;
+    Params.StackCache[Depth]:=Cache;
+    Cache.Owner:=Params;
+    Cache.StackDepth:=Depth;
+  end;
+
+  NeedTypeID:=CallID in [CSSCallID_NthOfType,CSSCallID_NthLastOfType];
+
+  if Cache.Parent<>aParent then
+  begin
+    // build cache
+    Cache.Parent:=aParent;
+    SetLength(Cache.Items,0);
+    {$IFDEF VerboseCSSResolver}
+    writeln('TCSSResolver.CollectSiblingsOf Depth=',Depth,' Candidates=',ChildCount);
+    {$ENDIF}
+    aSelector:=Params.OfSelector;
+    for i:=0 to ChildCount-1 do
+    begin
+      aNode:=aParent.GetCSSChild(i);
+      if (aSelector<>nil) and (SelectorMatches(aSelector,aNode,false)<0) then
+        continue;
+
+      if NeedTypeID then
+        aTypeID:=aNode.GetCSSTypeID
+      else
+        aTypeID:=0;
+      j:=length(Cache.Items)-1;
+      while (j>=0) and (Cache.Items[j].TypeID<>aTypeID) do dec(j);
+      if j<0 then
+      begin
+        j:=length(Cache.Items);
+        SetLength(Cache.Items,j+1);
+        Item:=@Cache.Items[j];
+        Item^.TypeID:=aTypeID;
+        Item^.Cnt:=0;
+        SetLength(Item^.ChildIDs,ChildCount);
+      end else
+        Item:=@Cache.Items[j];
+      Item^.ChildIDs[Item^.Cnt]:=i;
+      {$IFDEF VerboseCSSResolver}
+      writeln('TCSSResolver.CollectSiblingsOf Sel=',GetCSSObj(aSelector),' CSSTypeID=',aNode.GetCSSTypeID,' ',Item^.Cnt,'=>',i);
+      {$ENDIF}
+      inc(Item^.Cnt);
+    end;
+
+    for i:=0 to high(Cache.Items) do
+      with Cache.Items[i] do
+        SetLength(ChildIDs,Cnt);
+  end;
+
+  // use cache
+  if NeedTypeID then
+  begin
+    aTypeID:=TestNode.GetCSSTypeID;
+    for i:=0 to high(Cache.Items) do
+      if Cache.Items[i].TypeID=aTypeID then
+        exit(Cache.Items[i].ChildIDs);
+  end else
+    Result:=Cache.Items[0].ChildIDs;
+end;
+
+function TCSSResolver.GetSiblingOfIndex(SiblingIDs: TIntegerDynArray;
+  Index: integer): integer;
+// searches the position of Index in a sorted array
+var
+  l, r, m: Integer;
+begin
+  l:=0;
+  r:=length(SiblingIDs)-1;
+  while l<=r do
+  begin
+    m:=(l+r) div 2;
+    Result:=SiblingIDs[m];
+    if Index<Result then
+      r:=m-1
+    else if Index>Result then
+      l:=m+1
+    else
+      exit(m);
+  end;
+  Result:=-1;
 end;
 
 function TCSSResolver.ComputeValue(El: TCSSElement): TCSSString;
@@ -1112,6 +1582,30 @@ begin
   until p>WordsLen;
 end;
 
+function TCSSResolver.GetSiblingCount(aNode: TCSSNode): integer;
+var
+  aParent, CurNode: TCSSNode;
+begin
+  if aNode=nil then
+    exit(0);
+  aParent:=aNode.GetCSSParent;
+  if aParent<>nil then
+    exit(aParent.GetCSSChildCount);
+  Result:=0;
+  CurNode:=aNode;
+  while CurNode<>nil do
+  begin
+    inc(Result);
+    CurNode:=CurNode.GetCSSPreviousSibling;
+  end;
+  CurNode:=aNode.GetCSSNextSibling;
+  while CurNode<>nil do
+  begin
+    inc(Result);
+    CurNode:=CurNode.GetCSSNextSibling;
+  end;
+end;
+
 procedure TCSSResolver.MergeProperty(El: TCSSElement; Specifity: TCSSSpecifity);
 var
   C: TClass;
@@ -1244,7 +1738,14 @@ begin
     Result:=CSSIDNone;
 
     case aName of
+    ':not': Result:=CSSCallID_Not;
+    ':is': Result:=CSSCallID_Is;
+    ':where': Result:=CSSCallID_Where;
+    ':has': Result:=CSSCallID_Has;
     ':nth-child': Result:=CSSCallID_NthChild;
+    ':nth-last-child': Result:=CSSCallID_NthLastChild;
+    ':nth-of-type': Result:=CSSCallID_NthOfType;
+    ':nth-last-of-type': Result:=CSSCallID_NthLastOfType;
     else
       if croErrorOnUnknownName in FOptions then
         Log(etError,20220914193946,'TCSSResolver.ResolveCall unknown "'+El.Name+'"',El);
@@ -1312,9 +1813,29 @@ end;
 
 procedure TCSSResolver.Log(MsgType: TEventType; const ID: TCSSMsgID;
   Msg: string; PosEl: TCSSElement);
+var
+  Entry: TCSSResolverLogEntry;
+  i: Integer;
 begin
-  if assigned(OnLog) then
-    OnLog(Self,MsgType,ID,Msg,PosEl);
+  if Assigned(OnLog) then
+  begin
+    for i:=0 to FLogEntries.Count-1 do
+    begin
+      Entry:=LogEntries[i];
+      if (Entry.PosEl=PosEl)
+          and (Entry.ID=ID)
+          and (Entry.MsgType=MsgType)
+          and (Entry.Msg=Msg) then
+        exit; // this warning was already logged
+    end;
+    Entry:=TCSSResolverLogEntry.Create;
+    Entry.MsgType:=MsgType;
+    Entry.ID:=ID;
+    Entry.Msg:=Msg;
+    Entry.PosEl:=PosEl;
+    FLogEntries.Add(Entry);
+    OnLog(Self,Entry);
+  end;
   if (MsgType=etError) or (FOnLog=nil) then
   begin
     Msg:='['+IntToStr(ID)+'] '+Msg+' at '+GetElPos(PosEl);
@@ -1341,15 +1862,21 @@ end;
 
 constructor TCSSResolver.Create;
 begin
-
+  FLogEntries:=TFPObjectList.Create(true);
 end;
 
 destructor TCSSResolver.Destroy;
 begin
+  FreeAndNil(FLogEntries);
   if FOwnsStyle then
     FStyle.Free;
   FStyle:=nil;
   inherited Destroy;
+end;
+
+procedure TCSSResolver.Clear;
+begin
+  ClearStyleCustomData;
 end;
 
 procedure TCSSResolver.ClearStyleCustomData;

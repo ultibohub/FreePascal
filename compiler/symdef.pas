@@ -6773,8 +6773,9 @@ implementation
 
     function tprocdef.customprocname(pno: tprocnameoptions):ansistring;
       var
-        s, rn : ansistring;
+        s, hs, rn : ansistring;
         t : ttoken;
+	module : tmodule;
         syssym : tsyssym;
       begin
 {$ifdef EXTDEBUG}
@@ -6851,7 +6852,23 @@ implementation
              potype_class_constructor,potype_class_destructor]) and
            assigned(returndef) and
            not(is_void(returndef)) then
-          s:=s+':'+returndef.GetTypeName;
+          begin
+            if assigned(returndef.typesym) then
+              begin
+                module:=find_module_from_symtable(returndef.typesym.owner);
+		if module <> current_module then
+                  s:=s+':'+module.realmodulename^+'.'
+                else
+	          s:=s+':';
+                hs:=returndef.typesym.realname;
+                if hs[1]<>'$' then
+                  s:=s+returndef.OwnerHierarchyName+hs
+                else
+                  s:=s+returndef.GetTypeName;
+              end
+            else
+              s:=s+':'+returndef.GetTypeName;
+	  end;
         if not (po_anonymous in procoptions) then
           if assigned(owner) and (owner.symtabletype=localsymtable) then
             s:=s+' is nested'
@@ -7773,45 +7790,53 @@ implementation
          { handles the predefined class tobject  }
          { the last TOBJECT which is loaded gets }
          { it !                                  }
-         if (childof=nil) and
-            (objecttype in [odt_class,odt_javaclass]) and
-            (objname^='TOBJECT') then
-           class_tobject:=self;
-         if (childof=nil) and
-            (objecttype=odt_interfacecom) then
-            if (objname^='IUNKNOWN') then
-              interface_iunknown:=self
-            else
-            if (objname^='IDISPATCH') then
-              interface_idispatch:=self;
+         { but do this only from a unit that's   }
+         { marked as system unit to avoid some   }
+         { equally named user's type to override }
+         { the internal types!                   }
+         if mf_system_unit in current_module.moduleflags then
+           begin
+             if (childof=nil) and
+                (objecttype in [odt_class,odt_javaclass]) and
+                (objname^='TOBJECT') then
+               class_tobject:=self;
+             if (childof=nil) and
+                (objecttype=odt_interfacecom) then
+                if (objname^='IUNKNOWN') then
+                  interface_iunknown:=self
+                else
+                if (objname^='IDISPATCH') then
+                  interface_idispatch:=self;
+             if (objecttype=odt_javaclass) and
+                not(oo_is_formal in objectoptions) then
+               begin
+                 if (objname^='JLOBJECT') then
+                   java_jlobject:=self
+                 else if (objname^='JLTHROWABLE') then
+                   java_jlthrowable:=self
+                 else if (objname^='FPCBASERECORDTYPE') then
+                   java_fpcbaserecordtype:=self
+                 else if (objname^='JLSTRING') then
+                   java_jlstring:=self
+                 else if (objname^='ANSISTRINGCLASS') then
+                   java_ansistring:=self
+                 else if (objname^='SHORTSTRINGCLASS') then
+                   java_shortstring:=self
+                 else if (objname^='JLENUM') then
+                   java_jlenum:=self
+                 else if (objname^='JUENUMSET') then
+                   java_juenumset:=self
+                 else if (objname^='FPCBITSET') then
+                   java_jubitset:=self
+                 else if (objname^='FPCBASEPROCVARTYPE') then
+                   java_procvarbase:=self;
+               end;
+           end;
          if (childof=nil) and
             (objecttype=odt_objcclass) and
             (objname^='PROTOCOL') then
            objc_protocoltype:=self;
-         if (objecttype=odt_javaclass) and
-            not(oo_is_formal in objectoptions) then
-           begin
-             if (objname^='JLOBJECT') then
-               java_jlobject:=self
-             else if (objname^='JLTHROWABLE') then
-               java_jlthrowable:=self
-             else if (objname^='FPCBASERECORDTYPE') then
-               java_fpcbaserecordtype:=self
-             else if (objname^='JLSTRING') then
-               java_jlstring:=self
-             else if (objname^='ANSISTRINGCLASS') then
-               java_ansistring:=self
-             else if (objname^='SHORTSTRINGCLASS') then
-               java_shortstring:=self
-             else if (objname^='JLENUM') then
-               java_jlenum:=self
-             else if (objname^='JUENUMSET') then
-               java_juenumset:=self
-             else if (objname^='FPCBITSET') then
-               java_jubitset:=self
-             else if (objname^='FPCBASEPROCVARTYPE') then
-               java_procvarbase:=self;
-           end;
+
          writing_class_record_dbginfo:=false;
        end;
 
