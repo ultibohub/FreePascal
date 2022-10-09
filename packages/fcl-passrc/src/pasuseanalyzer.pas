@@ -1467,7 +1467,10 @@ begin
       UseProcedure(TPasProcedure(Decl))
       end
     else if C.InheritsFrom(TPasType) then
-      UseType(TPasType(Decl),Mode)
+      begin
+      if OnlyExports then continue;
+      UseType(TPasType(Decl),Mode);
+      end
     else if C.InheritsFrom(TPasVariable) then
       begin
       if OnlyExports and ([vmExport,vmPublic]*TPasVariable(Decl).VarModifiers=[]) then
@@ -2887,6 +2890,12 @@ begin
 end;
 
 procedure TPasAnalyzer.EmitTypeHints(El: TPasType);
+
+  function IsRightStr(const s, right: string): boolean;
+  begin
+    Result:=(right<>'') and (RightStr(s,length(right))=right);
+  end;
+
 var
   C: TClass;
   Usage: TPAElement;
@@ -2903,6 +2912,7 @@ begin
   if Usage=nil then
     begin
     // the whole type was never used
+
     if IsSpecializedGenericType(El) then
       exit; // no hints for not used specializations
     if (El.CustomData is TPasGenericScope) then
@@ -2918,6 +2928,9 @@ begin
           end;
       end;
 
+    if IsRightStr(El.Name,Resolver.AnonymousElTypePostfix) then
+      exit; // anonymous type
+
     if (El.Visibility in [visPrivate,visStrictPrivate]) then
       EmitMessage(20170312000020,mtHint,nPAPrivateTypeXNeverUsed,
         sPAPrivateTypeXNeverUsed,[El.FullName],El)
@@ -2929,6 +2942,7 @@ begin
       EmitMessage(20170312000025,mtHint,nPALocalXYNotUsed,
         sPALocalXYNotUsed,[El.ElementTypeName,GetElementNameAndParams(El)],El);
       end;
+
     exit;
     end;
   // emit hints for sub elements

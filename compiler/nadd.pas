@@ -3015,13 +3015,29 @@ implementation
          { <dyn. array>+<dyn. array> ? }
          else if (nodetype=addn) and (is_dynamic_array(ld) or is_dynamic_array(rd)) then
            begin
-              result:=maybe_convert_to_insert;
-              if assigned(result) then
-                exit;
-              if not(is_dynamic_array(ld)) then
-                inserttypeconv(left,rd);
-              if not(is_dynamic_array(rd)) then
-                inserttypeconv(right,ld);
+              { empty array to add? }
+              if (right.nodetype=arrayconstructorn) and (tarrayconstructornode(right).left=nil) then
+                begin
+                  result:=left;
+                  left:=nil;
+                  exit;
+                end
+              else if (left.nodetype=arrayconstructorn) and (tarrayconstructornode(left).left=nil) then
+                begin
+                  result:=right;
+                  right:=nil;
+                  exit;
+                end
+              else
+                begin
+                  result:=maybe_convert_to_insert;
+                  if assigned(result) then
+                    exit;
+                  if not(is_dynamic_array(ld)) then
+                    inserttypeconv(left,rd);
+                  if not(is_dynamic_array(rd)) then
+                    inserttypeconv(right,ld);
+                end;
            end
 
         { support dynamicarray=nil,dynamicarray<>nil }
@@ -3366,7 +3382,13 @@ implementation
               { create the call to the concat routine both strings as arguments }
               if assigned(aktassignmentnode) and
                   (aktassignmentnode.right=self) and
-                  (aktassignmentnode.left.resultdef=resultdef) and
+                  (
+                    (aktassignmentnode.left.resultdef=resultdef) or
+                    (
+                      is_shortstring(aktassignmentnode.left.resultdef) and
+                      is_shortstring(resultdef)
+                    )
+                  ) and
                   valid_for_var(aktassignmentnode.left,false) then
                 begin
                   para:=ccallparanode.create(
@@ -4565,22 +4587,22 @@ implementation
             begin
               if is_widestring(ld) then
                 begin
-                   { this is only for add, the comparisaion is handled later }
+                   { this is only for add, the comparison is handled later }
                    expectloc:=LOC_REGISTER;
                 end
               else if is_unicodestring(ld) then
                 begin
-                   { this is only for add, the comparisaion is handled later }
+                   { this is only for add, the comparison is handled later }
                    expectloc:=LOC_REGISTER;
                 end
               else if is_ansistring(ld) then
                 begin
-                   { this is only for add, the comparisaion is handled later }
+                   { this is only for add, the comparison is handled later }
                    expectloc:=LOC_REGISTER;
                 end
               else if is_longstring(ld) then
                 begin
-                   { this is only for add, the comparisaion is handled later }
+                   { this is only for add, the comparison is handled later }
                    expectloc:=LOC_REFERENCE;
                 end
               else
