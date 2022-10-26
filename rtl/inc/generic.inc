@@ -958,7 +958,9 @@ begin
     end;
   dests[0]:=chr(s1l+s2l);
 end;
+{$endif ndef FPC_SYSTEM_HAS_FPC_SHORTSTR_CONCAT}
 
+{$ifndef FPC_SYSTEM_HAS_FPC_SHORTSTR_CONCAT_MULTI}
 procedure fpc_shortstr_concat_multi(var dests:shortstring;const sarr:array of pshortstring);compilerproc;
 var
   s2l : byte;
@@ -1020,7 +1022,7 @@ begin
   if needtemp then
     DestS:=TmpStr;
 end;
-{$endif ndef FPC_SYSTEM_HAS_FPC_SHORTSTR_CONCAT}
+{$endif ndef FPC_SYSTEM_HAS_FPC_SHORTSTR_CONCAT_MULTI}
 
 {$pop}
 
@@ -2646,6 +2648,9 @@ end;
 procedure SysResetFpu;{$ifdef SYSTEMINLINE}inline;{$endif}
 begin
   softfloat_exception_flags:=[];
+{$if declared(DefaultFPUControlWord)}
+  SetNativeFPUControlWord(DefaultFPUControlWord);
+{$endif}
 end;
 
 {$endif FPC_SYSTEM_HAS_SYSRESETFPU}
@@ -2655,9 +2660,26 @@ end;
 procedure SysInitFpu;{$ifdef SYSTEMINLINE}inline;{$endif}
 begin
   softfloat_exception_mask:=[float_flag_underflow,float_flag_inexact,float_flag_denormal];
+  softfloat_exception_flags:=[];
 end;
 
 {$endif FPC_SYSTEM_HAS_SYSINITFPU}
+{$endif}
+
+{$ifndef FPC_SYSTEM_HAS_FPC_CPUINIT}
+procedure fpc_cpuinit;
+  begin
+{$ifndef FPUNONE}
+{$ifdef FPC_HAS_FEATURE_DYNLIBS}
+    if not IsLibrary then
+{$endif}
+      SysInitFPU;
+{$if declared(DefaultFPUControlWord)}
+    DefaultFPUControlWord:=GetNativeFPUControlWord;
+{$endif}
+    SysResetFPU;
+{$endif}
+  end;
 {$endif}
 
 {$ifndef FPC_SYSTEM_HAS_SWAPENDIAN}

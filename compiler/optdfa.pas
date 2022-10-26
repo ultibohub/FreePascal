@@ -289,7 +289,12 @@ unit optdfa;
                 { for while loops, node use set is included at the beginning of loop }
                 l:=twhilerepeatnode(node).right.optinfo^.life;
                 if lnf_testatbegin in twhilerepeatnode(node).loopflags then
-                  DFASetIncludeSet(l,node.optinfo^.use);
+                  begin
+                    DFASetIncludeSet(l,node.optinfo^.use);
+                    { ... loop body could be skipped, so include life info of the successsor node }
+                    if assigned(node.successor) then
+                      DFASetIncludeSet(l,node.successor.optinfo^.life);
+                  end;
 
                 UpdateLifeInfo(node,l);
 
@@ -888,7 +893,7 @@ unit optdfa;
             exit;
           include(node.flags,nf_processing);
 
-          if not(DFASetIn(node.optinfo^.life,nodetosearch.optinfo^.index)) then
+          if not(assigned(node.optinfo)) or not(DFASetIn(node.optinfo^.life,nodetosearch.optinfo^.index)) then
             exit;
 
           { we do not need this info always, so try to safe some time here, CheckAndWarn

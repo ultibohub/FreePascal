@@ -198,6 +198,7 @@ type
     function GetCSSEmpty: boolean;
     function GetCSSDepth: integer;
     procedure SetCSSValue(AttrID: TCSSNumericalID; Value: TCSSElement);
+    function CheckCSSValue(AttrID: TCSSNumericalID; Value: TCSSElement): boolean;
   end;
 
 type
@@ -249,10 +250,18 @@ type
     Next, Prev: TCSSElResolverData;
   end;
 
+  TCSSValueValidity = (
+    cvvNone,
+    cvvValid,
+    cvvInvalid
+    );
+  TCSSValueValidities = set of TCSSValueValidity;
+
   TCSSIdentifierData = class(TCSSElResolverData)
   public
     NumericalID: TCSSNumericalID;
     Kind: TCSSNumericalIDKind;
+    ValueValid: TCSSValueValidity;
   end;
 
   TCSSValueData = class(TCSSElResolverData)
@@ -385,6 +394,7 @@ type
     function PosWord(const SearchWord, Words: TCSSString): integer; virtual;
     function GetSiblingCount(aNode: ICSSNode): integer; virtual;
     procedure MergeProperty(El: TCSSElement; Specifity: TCSSSpecifity); virtual;
+    function CheckAttrValueValidity(AttrID: TCSSNumericalID; aKey, aValue: TCSSElement): boolean; virtual;
     function ResolveIdentifier(El: TCSSIdentifierElement; Kind: TCSSNumericalIDKind): TCSSNumericalID; virtual;
     function ResolveCall(El: TCSSCallElement): TCSSNumericalID; virtual;
     procedure AddElData(El: TCSSElement; ElData: TCSSElResolverData); virtual;
@@ -407,6 +417,7 @@ type
     function IndexOfStyle(aStyle: TCSSElement): integer; virtual;
     procedure RemoveStyle(aStyle: TCSSElement); virtual;
     procedure DeleteStyle(aIndex: integer); virtual;
+    procedure ClearStyles; virtual;
     property StyleCount: integer read GetStyleCount;
     property Styles[Index: integer]: TCSSElement read GetStyles write SetStyles;
     property OwnsStyle: boolean read FOwnsStyle write FOwnsStyle default false;
@@ -558,6 +569,7 @@ begin
   if C=TCSSCompoundElement then
   begin
     Compound:=TCSSCompoundElement(El);
+    //writeln('TCSSResolver.ComputeElement Compound.ChildCount=',Compound.ChildCount);
     for i:=0 to Compound.ChildCount-1 do
       ComputeElement(Compound.Children[i]);
   end else if C=TCSSRuleElement then
@@ -625,6 +637,7 @@ var
   C: TClass;
 begin
   Result:=CSSSpecifityInvalid;
+  //writeln('TCSSResolver.SelectorMatches ',aSelector.ClassName,' ',TestNode.GetCSSTypeName);
   C:=aSelector.ClassType;
   if C=TCSSIdentifierElement then
     Result:=SelectorIdentifierMatches(TCSSIdentifierElement(aSelector),TestNode,OnlySpecifity)
@@ -1674,9 +1687,13 @@ begin
         begin
           if CompAttr^.Specifity>Specifity then
             exit;
+          if not CheckAttrValueValidity(AttrID,aKey,aValue) then
+            exit;
           CompAttr^.Specifity:=Specifity;
           CompAttr^.Value:=aValue;
         end else begin
+          if not CheckAttrValueValidity(AttrID,aKey,aValue) then
+            exit;
           AddComputedAttribute(AttrID,Specifity,aValue);
         end;
       end;
@@ -1684,6 +1701,25 @@ begin
       Log(etError,20220908232359,'Unknown CSS key',aKey);
   end else
     Log(etError,20220908230855,'Unknown CSS property',El);
+end;
+
+function TCSSResolver.CheckAttrValueValidity(AttrID: TCSSNumericalID; aKey,
+  aValue: TCSSElement): boolean;
+var
+  Data: TCSSIdentifierData;
+begin
+  if not (aKey.CustomData is TCSSIdentifierData) then
+    raise Exception.Create('TCSSResolver.CheckAttrValueValidity 20221019173901');
+  Data:=TCSSIdentifierData(aKey.CustomData);
+  case Data.ValueValid of
+  cvvValid: exit(true);
+  cvvInvalid: exit(false);
+  end;
+  Result:=FNode.CheckCSSValue(AttrID,aValue);
+  if Result then
+    Data.ValueValid:=cvvValid
+  else
+    Data.ValueValid:=cvvInvalid;
 end;
 
 function TCSSResolver.ResolveIdentifier(El: TCSSIdentifierElement;
@@ -1736,6 +1772,7 @@ begin
     end;
 
     // resolve user defined names
+    //writeln('TCSSResolver.ResolveIdentifier ',Kind,' "',aName,'"');
     if Result=CSSIDNone then
       Result:=FNumericalIDs[Kind][aName];
 
@@ -1896,22 +1933,17 @@ begin
 end;
 
 destructor TCSSResolver.Destroy;
-var
-  i: Integer;
 begin
+  Clear;
   FreeAndNil(FLogEntries);
-  if FOwnsStyle then
-  begin
-    for i:=0 to high(FStyles) do
-      FStyles[i].Free;
-  end;
-  FStyles:=nil;
   inherited Destroy;
 end;
 
 procedure TCSSResolver.Clear;
 begin
+  FLogEntries.Clear;
   ClearStyleCustomData;
+  ClearStyles;
 end;
 
 procedure TCSSResolver.ClearStyleCustomData;
@@ -1955,6 +1987,7 @@ procedure TCSSResolver.Commit;
 var
   i: Integer;
 begin
+  //writeln('TCSSResolver.Commit FAttributeCount=',FAttributeCount);
   for i:=0 to FAttributeCount-1 do
     with FAttributes[i] do
       FNode.SetCSSValue(AttrID,Value);
@@ -1988,6 +2021,16 @@ begin
   if OwnsStyle then
     FStyles[aIndex].Free;
   Delete(FStyles,aIndex,1);
+end;
+
+procedure TCSSResolver.ClearStyles;
+var
+  i: Integer;
+begin
+  if OwnsStyle then
+    for i:=0 to high(FStyles) do
+      FStyles[i].Free;
+  FStyles:=nil;
 end;
 
 end.

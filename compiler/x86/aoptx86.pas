@@ -5880,9 +5880,10 @@ unit aoptx86;
 
     function TX86AsmOptimizer.DoSETccLblRETOpt(var p: tai; const hp_label: tai_label) : Boolean;
       var
-        hp2, hp3, hp4, hp5, hp6: tai;
-        ThisReg: TRegister;
+        hp_allocstart, hp_pos, hp2, hp3, hp4, hp5, hp6: tai;
+        ThisReg, SecondReg: TRegister;
         JumpLoc: TAsmLabel;
+        NewSize: TOpSize;
       begin
         Result := False;
         {
@@ -6041,43 +6042,85 @@ unit aoptx86;
             if taicpu(hp2).opsize=S_B then
               begin
                 if taicpu(hp2).oper[1]^.typ = top_reg then
-                  hp4:=taicpu.op_reg(A_SETcc, S_B, taicpu(hp2).oper[1]^.reg)
+                  begin
+                    SecondReg := taicpu(hp2).oper[1]^.reg;
+                    hp4:=taicpu.op_reg(A_SETcc, S_B, SecondReg);
+                  end
                 else
-                  hp4:=taicpu.op_ref(A_SETcc, S_B, taicpu(hp2).oper[1]^.ref^);
+                  begin
+                    hp4:=taicpu.op_ref(A_SETcc, S_B, taicpu(hp2).oper[1]^.ref^);
+                    SecondReg := NR_NO;
+                  end;
 
-                hp2 := p;
+                hp_pos := p;
+                hp_allocstart := hp4;
               end
             else
               begin
                 { Will be a register because the size can't be S_B otherwise }
-                ThisReg:=newreg(R_INTREGISTER,getsupreg(taicpu(hp2).oper[1]^.reg), R_SUBL);
+                SecondReg:=taicpu(hp2).oper[1]^.reg;
+                ThisReg:=newreg(R_INTREGISTER,getsupreg(SecondReg), R_SUBL);
                 hp4:=taicpu.op_reg(A_SETcc, S_B, ThisReg);
 
-                hp2:=taicpu.op_const_reg(A_MOV, taicpu(hp2).opsize, 0, taicpu(hp2).oper[1]^.reg);
-                taicpu(hp2).fileinfo:=taicpu(p).fileinfo;
+                if (cs_opt_size in current_settings.optimizerswitches) then
+                  begin
+                    { Favour using MOVZX when optimising for size }
+                    case taicpu(hp2).opsize of
+                      S_W:
+                        NewSize := S_BW;
+                      S_L:
+                        NewSize := S_BL;
+{$ifdef x86_64}
+                      S_Q:
+                        begin
+                          NewSize := S_BL;
+                          { Will implicitly zero-extend to 64-bit }
+                          setsubreg(SecondReg, R_SUBD);
+                        end;
+{$endif x86_64}
+                      else
+                        InternalError(2022101301);
+                    end;
 
-                { Inserting it right before p will guarantee that the flags are also tracked }
-                Asml.InsertBefore(hp2, p);
+                    hp5:=taicpu.op_reg_reg(A_MOVZX, NewSize, ThisReg, SecondReg);
+                    { Inserting it right before p will guarantee that the flags are also tracked }
+                    Asml.InsertBefore(hp5, p);
+
+                    { Make sure the SET instruction gets inserted before the MOVZX instruction }
+                    hp_pos := hp5;
+                    hp_allocstart := hp4;
+                  end
+                else
+                  begin
+                    hp5:=taicpu.op_const_reg(A_MOV, taicpu(hp2).opsize, 0, SecondReg);
+                    { Inserting it right before p will guarantee that the flags are also tracked }
+                    Asml.InsertBefore(hp5, p);
+
+                    hp_pos := p;
+                    hp_allocstart := hp5;
+                  end;
+
+                taicpu(hp5).fileinfo:=taicpu(p).fileinfo;
+
               end;
 
-            taicpu(hp4).fileinfo := taicpu(hp2).fileinfo;
+            taicpu(hp4).fileinfo := taicpu(p).fileinfo;
             taicpu(hp4).condition := taicpu(p).condition;
-            asml.InsertBefore(hp4, hp2);
+            asml.InsertBefore(hp4, hp_pos);
 
-            JumpLoc.decrefs;
-            if taicpu(hp3).opcode = A_JMP then
+            if taicpu(hp3).is_jmp then
               begin
+                JumpLoc.decrefs;
                 MakeUnconditional(taicpu(p));
                 taicpu(p).loadref(0, JumpTargetOp(taicpu(hp3))^.ref^);
                 TAsmLabel(JumpTargetOp(taicpu(hp3))^.ref^.symbol).increfs;
               end
             else
-              begin
-                taicpu(p).condition := C_None;
-                taicpu(p).opcode := A_RET;
-                taicpu(p).clearop(0);
-                taicpu(p).ops := 0;
-              end;
+              ConvertJumpToRET(p, hp3);
+
+            if SecondReg <> NR_NO then
+              { Ensure the destination register is allocated over this region }
+              AllocRegBetween(SecondReg, hp_allocstart, p, UsedRegs);
 
             if (JumpLoc.getrefs = 0) then
               RemoveDeadCodeAfterJump(hp3);
@@ -10320,6 +10363,7 @@ unit aoptx86;
       begin
         ThisLabel := tasmlabel(taicpu(p).oper[0]^.ref^.symbol);
         ThisLabel.decrefs;
+        taicpu(p).condition := C_None;
         taicpu(p).opcode := A_RET;
         taicpu(p).is_jmp := false;
         taicpu(p).ops := taicpu(ret_p).ops;
@@ -12605,6 +12649,7 @@ unit aoptx86;
                   if reg is deallocated before the
                   jump, but only if it's a conditional jump (PFV)
                 }
+                DebugMsg(SPeepholeOptimization + 'AndJcc2TestJcc', p);
                 taicpu(p).opcode := A_TEST;
                 Exit;
               end;
@@ -12755,6 +12800,7 @@ unit aoptx86;
 
             { Change:
                 add     %reg2,%reg1
+                (%reg2 not modified in between)
                 mov/s/z #(%reg1),%reg1  (%reg1 superregisters must be the same)
 
               To:
@@ -12782,18 +12828,41 @@ unit aoptx86;
                   MemRegisterNotUsedLater
                 )
               ) then
-              begin
-                AllocRegBetween(taicpu(p).oper[0]^.reg, p, hp1, UsedRegs);
-                taicpu(hp1).oper[0]^.ref^.base := taicpu(p).oper[1]^.reg;
-                taicpu(hp1).oper[0]^.ref^.index := taicpu(p).oper[0]^.reg;
+                begin
 
-                DebugMsg(SPeepholeOptimization + 'AddMov2Mov done', p);
+                if (
+                  { Instructions are guaranteed to be adjacent on -O2 and under }
+                  (cs_opt_level3 in current_settings.optimizerswitches) and
+                  RegModifiedBetween(taicpu(p).oper[0]^.reg, p, hp1)
+                ) then
+                  begin
+                    { If the other register is used in between, move the MOV
+                      instruction to right after the ADD instruction so a
+                      saving can still be made }
+                    Asml.Remove(hp1);
+                    Asml.InsertAfter(hp1, p);
 
-                if (cs_opt_level3 in current_settings.optimizerswitches) then
-                  { hp1 may not be the immediate next instruction under -O3 }
-                  RemoveCurrentp(p)
+                    taicpu(hp1).oper[0]^.ref^.base := taicpu(p).oper[1]^.reg;
+                    taicpu(hp1).oper[0]^.ref^.index := taicpu(p).oper[0]^.reg;
+
+                    DebugMsg(SPeepholeOptimization + 'AddMov2Mov done (instruction moved)', p);
+
+                    RemoveCurrentp(p, hp1);
+                  end
                 else
-                  RemoveCurrentp(p, hp1);
+                  begin
+                    AllocRegBetween(taicpu(p).oper[0]^.reg, p, hp1, UsedRegs);
+                    taicpu(hp1).oper[0]^.ref^.base := taicpu(p).oper[1]^.reg;
+                    taicpu(hp1).oper[0]^.ref^.index := taicpu(p).oper[0]^.reg;
+
+                    DebugMsg(SPeepholeOptimization + 'AddMov2Mov done', p);
+
+                    if (cs_opt_level3 in current_settings.optimizerswitches) then
+                      { hp1 may not be the immediate next instruction under -O3 }
+                      RemoveCurrentp(p)
+                    else
+                      RemoveCurrentp(p, hp1);
+                  end;
 
                 Result := True;
                 Exit;
@@ -13793,6 +13862,7 @@ unit aoptx86;
           begin
             taicpu(p).opcode := A_TEST;
             taicpu(p).loadreg(0,taicpu(p).oper[1]^.reg);
+            DebugMsg(SPeepholeOptimization + 'Cmp2Test', p);
             Result:=true;
           end;
       end;
@@ -13847,6 +13917,7 @@ unit aoptx86;
                     )
                   ) then
                   begin
+                    DebugMsg(SPeepholeOptimization + 'OpTest/Or2Op done', hp1);
                     RemoveCurrentP(p, hp2);
                     Result:=true;
                     Exit;
@@ -13864,6 +13935,7 @@ unit aoptx86;
                   { and in case of carry for A(E)/B(E)/C/NC                  }
                    (taicpu(hp2).condition in [C_Z,C_NZ,C_E,C_NE]) then
                   begin
+                    DebugMsg(SPeepholeOptimization + 'OpTest/Or2Op done', hp1);
                     RemoveCurrentP(p, hp2);
                     Result:=true;
                     Exit;
@@ -13876,6 +13948,19 @@ unit aoptx86;
                   { and in case of carry for A(E)/B(E)/C/NC                  }
                   (taicpu(hp2).condition in [C_Z,C_NZ,C_E,C_NE]) then
                   begin
+                    DebugMsg(SPeepholeOptimization + 'OpTest/Or2Op done', hp1);
+                    RemoveCurrentP(p, hp2);
+                    Result:=true;
+                    Exit;
+                  end;
+              end;
+            A_ANDN:
+              begin
+                if OpsEqual(taicpu(hp1).oper[2]^,taicpu(p).oper[1]^) and
+                  { ANDN sets only the Z and S flag }
+                  (taicpu(hp2).condition in [C_Z,C_NZ,C_E,C_NE]) then
+                  begin
+                    DebugMsg(SPeepholeOptimization + 'OpTest/Or2Op done', hp1);
                     RemoveCurrentP(p, hp2);
                     Result:=true;
                     Exit;
