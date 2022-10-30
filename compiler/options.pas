@@ -1366,7 +1366,7 @@ begin
       end;
     system_aarch64_darwin:
       begin
-        if not ParseMacVersionMin(MacOSXVersionMin,iPhoneOSVersionMin,'MAC_OS_X_VERSION_MIN_REQUIRED','11.00.0',false) then
+        if not ParseMacVersionMin(MacOSXVersionMin,iPhoneOSVersionMin,'MAC_OS_X_VERSION_MIN_REQUIRED','11.0.0',false) then
           internalerror(2022090915);
       end
     else
@@ -3961,7 +3961,7 @@ begin
     end;
 {$endif i8086_link_intern_debuginfo}
 
-  if (paratargetdbg in [dbg_dwarf2,dbg_dwarf3]) and
+  if (paratargetdbg in [dbg_dwarf2,dbg_dwarf3,dbg_dwarf4]) and
      not(target_info.system in (systems_darwin+[system_i8086_msdos,system_i8086_embedded])) then
     begin
       { smartlink creation does not yet work with DWARF

@@ -701,48 +701,13 @@ implementation
             current_tokenpos:=storepos;
           end;
 
-        procedure consume_generic_interface;
-          var
-            genparalist : tfpobjectlist;
-            prettyname,
-            specializename : ansistring;
-            genname,
-            ugenname : tidstring;
-            gencount : string;
-          begin
-            consume(_LSHARPBRACKET);
-            genparalist:=tfpobjectlist.create(false);
-
-            if not parse_generic_specialization_types(genparalist,nil,prettyname,specializename) then
-              srsym:=generrorsym
-            else
-              begin
-                str(genparalist.count,gencount);
-                genname:=sp+'$'+gencount;
-                { ToDo: handle nested interfaces }
-                genname:=generate_generic_name(genname,specializename,'');
-                ugenname:=upper(genname);
-
-                srsym:=search_object_name(ugenname,false);
-
-                if not assigned(srsym) then
-                  begin
-                    Message1(type_e_generic_declaration_does_not_match,sp+'<'+prettyname+'>');
-                    srsym:=nil;
-                    exit;
-                  end;
-              end;
-
-            genparalist.free;
-            consume(_RSHARPBRACKET);
-          end;
-
         function handle_generic_interface:boolean;
           var
             i : longint;
             sym : ttypesym;
             typesrsym : tsym;
             typesrsymtable : tsymtable;
+            hierarchy,
             specializename,
             prettyname: ansistring;
             error : boolean;
@@ -786,8 +751,23 @@ implementation
                 srsym:=generrorsym;
                 exit;
               end;
-            { ToDo: handle nested interfaces }
-            genname:=generate_generic_name(sp,specializename,'');
+
+            if not searchsym(sp,typesrsym,typesrsymtable) or (typesrsym.typ<>typesym) then
+              begin
+                identifier_not_found(sp);
+                srsym:=generrorsym;
+                exit;
+              end;
+
+            module:=find_module_from_symtable(ttypesym(typesrsym).owner);
+            if not assigned(module) then
+              internalerror(2022102105);
+
+            hierarchy:=ttypesym(typesrsym).typedef.ownerhierarchyname;
+            if hierarchy<>'' then
+              hierarchy:='.'+hierarchy;
+
+            genname:=generate_generic_name(sp,specializename,module.modulename^+hierarchy);
             ugenname:=upper(genname);
 
             srsym:=search_object_name(ugenname,false);
