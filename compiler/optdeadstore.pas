@@ -31,7 +31,7 @@ unit optdeadstore;
     uses
       node;
 
-    function do_optdeadstoreelim(var rootnode : tnode) : tnode;
+    function do_optdeadstoreelim(var rootnode : tnode;var changed: boolean) : tnode;
 
   implementation
 
@@ -79,7 +79,7 @@ unit optdeadstore;
                     ((a.right.nodetype in [niln,stringconstn,pointerconstn,setconstn,guidconstn]) or
                      ((a.right.nodetype=ordconstn) and not(cs_check_range in current_settings.localswitches)) or
                      ((a.right.nodetype=realconstn) and not(cs_ieee_errors in current_settings.localswitches)) or
-                    ((cs_opt_dead_values in current_settings.optimizerswitches) and not(might_have_sideeffects(a.right)))
+                    ((cs_opt_dead_values in current_settings.optimizerswitches) and not(might_have_sideeffects(a.right,[mhs_exceptions])))
                    ) then
                   begin
                     redundant:=not(assigned(a.successor)) or not(DFASetIn(a.successor.optinfo^.life,a.left.optinfo^.index));
@@ -106,9 +106,7 @@ unit optdeadstore;
       end;
 
 
-    function do_optdeadstoreelim(var rootnode: tnode): tnode;
-      var
-        changed: boolean;
+    function do_optdeadstoreelim(var rootnode: tnode;var changed: boolean): tnode;
       begin
 {$ifdef EXTDEBUG_DEADSTORE}
         writeln('******************* Tree before deadstore elimination **********************');

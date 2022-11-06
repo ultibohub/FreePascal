@@ -277,7 +277,7 @@ interface
           procedure insertdef(def:TDefEntry);override;
         end;
 
-       tstt_excepTSymtable = class(TSymtable)
+       tstt_exceptsymtable = class(TSymtable)
        public
           constructor create;
        end;
@@ -2828,7 +2828,7 @@ implementation
     constructor tstt_excepTSymtable.create;
       begin
         inherited create('');
-        symtabletype:=stt_excepTSymtable;
+        symtabletype:=exceptsymtable;
       end;
 
 
@@ -3355,6 +3355,15 @@ implementation
           else
             internalerror(2019050702);
         end;
+
+        if not result then
+          begin
+            { capturers have access to anything as we assume checks were done
+              before the procdef was inserted into the capturer }
+            result:=assigned(current_structdef) and
+                    (current_structdef.typ=objectdef) and
+                    (oo_is_capturer in tobjectdef(current_structdef).objectoptions);
+          end;
       end;
 
 

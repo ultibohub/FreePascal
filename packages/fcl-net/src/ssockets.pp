@@ -62,7 +62,6 @@ type
 
   TSocketHandler = Class(TObject)
   Private
-    FServer: TSocketServer;
     FSocket: TSocketStream;
   Protected
     FLastError : integer;
@@ -119,7 +118,7 @@ type
     Procedure Close;
     function Seek(Offset: Longint; Origin: Word): Longint; override;
     function Select(aCheck : TSocketStates; TimeOut : Integer): TSocketStates;
-    Function CanRead(TimeOut : Integer): Boolean;
+    Function CanRead(TimeOut : Integer): Boolean; virtual;
     Function Read (Var Buffer; Count : Longint) : longint; Override;
     Function Write (Const Buffer; Count : Longint) :Longint; Override;
     Property SocketOptions : TSocketOptions Read FSocketOptions
@@ -290,6 +289,8 @@ type
   Protected
     Procedure DoOnClose; override;
     Property Server : TSocketServer Read FServer;
+  Public
+    Function CanRead(TimeOut : Integer): Boolean; override;
   end;
 
 {$if defined(unix) or defined(windows)}
@@ -361,6 +362,12 @@ resourcestring
   strSocketConnectTimeOut = 'Connection to %s timed out.';
 
 { TServerSocketStream }
+
+function TServerSocketStream.CanRead(TimeOut : Integer): Boolean;
+begin
+  Result:=inherited CanRead(TimeOut);
+  Result:=Result and Assigned(FServer); // main server is gone, cannot read from it
+end;
 
 procedure TServerSocketStream.DoOnClose;
 begin
