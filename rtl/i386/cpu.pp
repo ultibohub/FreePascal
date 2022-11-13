@@ -31,6 +31,7 @@ unit cpu;
     { returns the contents of the cr0 register }
     function cr0 : longint;
 
+    function CMOVSupport : boolean;inline;
     function InterlockedCompareExchange128Support : boolean;
     function AESSupport : boolean;inline;
     function AVXSupport: boolean;inline;
@@ -55,6 +56,8 @@ unit cpu;
     function FMASupport: boolean;inline;
     function POPCNTSupport: boolean;inline;
     function LZCNTSupport: boolean;inline;
+    function SSE3Support: boolean;inline;
+    function SSSE3Support: boolean;inline;
     function SSE41Support: boolean;inline;
     function SSE42Support: boolean;inline;
     function MOVBESupport: boolean;inline;
@@ -73,6 +76,7 @@ unit cpu;
 
 {$ASMMODE INTEL}
     var
+      _CMOVSupport,
       _AESSupport,
       _AVXSupport,
       _AVX2Support,
@@ -96,6 +100,8 @@ unit cpu;
       _FMASupport,
       _POPCNTSupport,
       _LZCNTSupport,
+      _SSE3Support,
+      _SSSE3Support,
       _SSE41Support,
       _SSE42Support,
       _MOVBESupport,
@@ -219,11 +225,15 @@ unit cpu;
                  pushl %ebx
                  movl $1,%eax
                  cpuid
+                 movl %edx,_edx
                  movl %ecx,_ecx
                  popl %ebx
               end;
+              _CMOVSupport:=(_edx and $8000)<>0;
               _AESSupport:=(_ecx and $2000000)<>0;
               _POPCNTSupport:=(_ecx and $800000)<>0;
+              _SSE3Support:=(_ecx and $1)<>0;
+              _SSSE3Support:=(_ecx and $200)<>0;
               _SSE41Support:=(_ecx and $80000)<>0;
               _SSE42Support:=(_ecx and $100000)<>0;
               _MOVBESupport:=(_ecx and $400000)<>0;
@@ -296,6 +306,12 @@ unit cpu;
         { 32 Bit CPUs have no 128 Bit interlocked exchange support,
           but it can simulated using RTM }
         result:=_RTMSupport;
+      end;
+
+
+    function CMOVSupport : boolean;
+      begin
+        result:=_CMOVSupport;
       end;
 
 
@@ -434,6 +450,18 @@ unit cpu;
     function LZCNTSupport: boolean;inline;
       begin
         result:=_LZCNTSupport;
+      end;
+
+
+    function SSE3Support: boolean;inline;
+      begin
+        result:=_SSE3Support;
+      end;
+
+
+    function SSSE3Support: boolean;inline;
+      begin
+        result:=_SSSE3Support;
       end;
 
 

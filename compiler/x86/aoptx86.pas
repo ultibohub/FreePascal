@@ -5942,13 +5942,13 @@ unit aoptx86;
               { Overflow; abort }
               Exit;
 
-            RemoveInstruction(hp1);
             if (ThisConst = 0) then
               begin
                 DebugMsg(SPeepholeOptimization + 'Arithmetic combine: ' +
                   debug_op2str(taicpu(hp1).opcode) + ' $' + debug_tostr(taicpu(hp1).oper[0]^.val) + ',' + debug_operstr(taicpu(hp1).oper[1]^) + '; ' +
                   debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(taicpu(p).oper[0]^.val) + ',' + debug_operstr(taicpu(p).oper[1]^) + ' cancel out (NOP)', p);
 
+                RemoveInstruction(hp1);
                 hp1 := tai(p.next);
                 RemoveInstruction(p); { Note, the choice to not use RemoveCurrentp is deliberate }
                 if not GetLastInstruction(hp1, p) then
@@ -5956,11 +5956,18 @@ unit aoptx86;
               end
             else
               begin
-                DebugMsg(SPeepholeOptimization + 'Arithmetic combine: ' +
-                  debug_op2str(taicpu(hp1).opcode) + ' $' + debug_tostr(taicpu(hp1).oper[0]^.val) + ',' + debug_operstr(taicpu(hp1).oper[1]^) + '; ' +
-                  debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(taicpu(p).oper[0]^.val) + ',' + debug_operstr(taicpu(p).oper[1]^) + ' -> ' +
-                  debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(ThisConst) + ' ' + debug_operstr(taicpu(p).oper[1]^), p);
+                if taicpu(hp1).opercnt=1 then
+                  DebugMsg(SPeepholeOptimization + 'Arithmetic combine: ' +
+                    debug_op2str(taicpu(hp1).opcode) + ' $' + debug_tostr(taicpu(hp1).oper[0]^.val) + '; ' +
+                    debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(taicpu(p).oper[0]^.val) + ',' + debug_operstr(taicpu(p).oper[1]^) + ' -> ' +
+                    debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(ThisConst) + ' ' + debug_operstr(taicpu(p).oper[1]^), p)
+                else
+                  DebugMsg(SPeepholeOptimization + 'Arithmetic combine: ' +
+                    debug_op2str(taicpu(hp1).opcode) + ' $' + debug_tostr(taicpu(hp1).oper[0]^.val) + ',' + debug_operstr(taicpu(hp1).oper[1]^) + '; ' +
+                    debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(taicpu(p).oper[0]^.val) + ',' + debug_operstr(taicpu(p).oper[1]^) + ' -> ' +
+                    debug_op2str(taicpu(p).opcode) + ' $' + debug_tostr(ThisConst) + ' ' + debug_operstr(taicpu(p).oper[1]^), p);
 
+                RemoveInstruction(hp1);
                 taicpu(p).loadconst(0, ThisConst);
               end;
 
@@ -8604,17 +8611,10 @@ unit aoptx86;
        begin
          { Always accept if optimising for size }
          Result := (cs_opt_size in current_settings.optimizerswitches) or
-           (
-{$ifdef x86_64}
-             { XCHG takes 3 cycles on AMD Athlon64 }
-             (current_settings.optimizecputype >= cpu_core_i)
-{$else x86_64}
-             { From the Pentium M onwards, XCHG only has a latency of 2 rather
+           { From the Pentium M onwards, XCHG only has a latency of 2 rather
              than 3, so it becomes a saving compared to three MOVs with two of
              them able to execute simultaneously. [Kit] }
-             (current_settings.optimizecputype >= cpu_PentiumM)
-{$endif x86_64}
-           );
+           (CPUX86_HINT_FAST_XCHG in cpu_optimization_hints[current_settings.optimizecputype]);
        end;
 
       var
