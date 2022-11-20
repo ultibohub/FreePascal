@@ -338,6 +338,12 @@ Unit AoptObj;
           reloaded with a new value or it is deallocated afterwards }
         function RegEndOfLife(reg: TRegister;p: taicpu): boolean;
 
+        { Returns the next ait_tempalloc object with allocation=false
+          for Offset which is found in the block of Tai's starting with StartPai
+          and ending with the next "real" instruction. If none is found, it returns
+          nil                                                                        }
+        class function FindTempDeAlloc(Offset: ASizeInt; StartPai: Tai): tai_tempalloc;
+
         { removes p from asml, updates registers and replaces it by a valid value, if this is the case true is returned }
         function RemoveCurrentP(var p : tai): boolean;
 
@@ -1358,6 +1364,32 @@ Unit AoptObj;
        End;
 
 
+      class function TAOptObj.FindTempDeAlloc(Offset: ASizeInt; StartPai: Tai): tai_tempalloc;
+      Begin
+         Result:=nil;
+         Repeat
+           While Assigned(StartPai) And
+                 ((StartPai.typ in (SkipInstr - [ait_tempalloc])) Or
+                  ((StartPai.typ = ait_label) and
+                   Not(Tai_Label(StartPai).labsym.Is_Used))) Do
+             StartPai := Tai(StartPai.Next);
+           If Assigned(StartPai) And
+              (StartPai.typ = ait_tempalloc) Then
+             Begin
+               if not(tai_tempalloc(StartPai).allocation) and
+                 (tai_tempalloc(StartPai).temppos = Offset) then
+                begin
+                  Result:=tai_tempalloc(StartPai);
+                  exit;
+                end;
+               StartPai := Tai(StartPai.Next);
+             End
+           else
+             exit;
+         Until false;
+       End;
+
+
     { allocates register reg between (and including) instructions p1 and p2
       the type of p1 and p2 must not be in SkipInstr }
     procedure TAOptObj.AllocRegBetween(reg: tregister; p1, p2: tai; var initialusedregs: TAllUsedRegs);
@@ -2185,7 +2217,7 @@ Unit AoptObj;
 
     function TAOptObj.CollapseZeroDistJump(var p: tai; ThisLabel: TAsmLabel): Boolean;
       var
-        tmp, hp1: tai;
+        hp1: tai;
       begin
         Result := False;
         if not GetNextInstruction(p,hp1) then
@@ -2203,15 +2235,11 @@ Unit AoptObj;
 {$ifdef cpudelayslot}
             RemoveDelaySlot(p);
 {$endif cpudelayslot}
-            tmp := tai(p.Next); { Might be an align before the label, so keep a note of it }
-            asml.remove(p);
-            p.free;
-
-            StripDeadLabels(tmp, p);
-
-            if p.typ <> ait_instruction then
-              GetNextInstruction(UpdateUsedRegsAndOptimize(p), p);
-
+            hp1 := tai(p.Next);
+            { Use RemoveInstruction, not RemoveCurrentP, since the latter also
+              updates the registers }
+            RemoveInstruction(p);
+            p := hp1;
             Result := True;
           end;
 
