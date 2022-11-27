@@ -817,7 +817,7 @@ implementation
           end;
 
         { Add,Sub,Mul,Or,Xor,Andn with constant 0, 1 or -1?  }
-       if is_constintnode(right) and (is_integer(left.resultdef) or is_pointer(left.resultdef)) then
+        if is_constintnode(right) and (is_integer(left.resultdef) or is_pointer(left.resultdef)) then
           begin
             if (tordconstnode(right).value = 0) and (nodetype in [addn,subn,orn,xorn,andn,muln]) then
               begin
@@ -956,6 +956,17 @@ implementation
               end;
             if assigned(result) then
               exit;
+          end;
+
+        { convert n - n mod const into n div const*const }
+        if (nodetype=subn) and (right.nodetype=modn) and is_constintnode(tmoddivnode(right).right) and
+          (left.isequal(tmoddivnode(right).left)) and not(might_have_sideeffects(left)) { and
+	  not(cs_check_overflow in localswitches) } then
+          begin
+            result:=caddnode.create(muln,cmoddivnode.create(divn,left,tmoddivnode(right).right.getcopy),tmoddivnode(right).right);
+            left:=nil;
+            tmoddivnode(right).right:=nil;
+            exit;
           end;
 
       { both real constants ? }
