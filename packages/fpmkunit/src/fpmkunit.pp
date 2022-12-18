@@ -64,6 +64,10 @@ Interface
   {$DEFINE NO_THREADING}
 {$ENDIF NETBSD}
 
+{ $define NO_UNIT_PROCESS}
+{ $define NO_TAR_SUPPORT}
+{ $define NO_UNIT_ZIPPER}
+
 {$ifndef NO_UNIT_PROCESS}
   {$define HAS_UNIT_PROCESS}
 {$endif NO_UNIT_PROCESS}
@@ -130,7 +134,7 @@ Type
   );
   TOSes = Set of TOS;
 
-  TCompilerMode = (cmFPC,cmTP,cmObjFPC,cmDelphi,cmMacPas);
+  TCompilerMode = (cmFPC,cmTP,cmObjFPC,cmDelphi,cmMacPas,cmDelphiUnicode);
   TCompilerModes = Set of TCompilerMode;
 
   TInstallMOde = (imInstall, imUnInstall);
@@ -1079,7 +1083,6 @@ Type
     FDocInstallDir,
     FExamplesInstallDir : String;
     FSingleFPDocFile: Boolean;
-    FSingleDocProjectFile: Boolean;
     FSearchPath: TStrings;
     FSkipCrossPrograms: boolean;
     FThreadsAmount: integer;
@@ -1302,7 +1305,7 @@ Type
     Procedure ClearResolvedFileNames(APackage : TPackage);
 
     // Public Copy/delete/Move/Archive/Mkdir Commands.
-    Procedure ExecuteCommand(const Cmd,Args : String; const Env: TStrings = nil; IgnoreError : Boolean = False); virtual;
+    Procedure ExecuteCommand(const Cmd : String; const Args : TStrings; Env: TStrings = nil; IgnoreError : Boolean = False); virtual;
     procedure CmdCopyFiles(List: TStrings; const DestDir: String; APackage: TPackage);
     Procedure CmdCreateDir(const DestDir : String);
     Procedure CmdMoveFiles(List : TStrings; Const DestDir : String);
@@ -1316,7 +1319,8 @@ Type
     // Dependency commands
     Function  DependencyOK(ADependency : TDependency) : Boolean;
     // Target commands
-    Function  GetCompilerCommand(APackage : TPackage; ATarget : TTarget; Env: TStrings) : String;
+    Function  GetCompilerCommand(APackage : TPackage; ATarget : TTarget; Env: TStrings) : String; deprecated 'use TStrings version';
+    Procedure GetCompilerCommand(Args: TStrings; APackage : TPackage; ATarget : TTarget; Env: TStrings);
     Function  TargetOK(ATarget : TTarget; ACPU: TCPU; AOS: TOS) : Boolean;
     Function  TargetInstallOK(ATarget : TTarget;ACPU:TCPU; AOS : TOS) : Boolean;
     Function  NeedsCompile(APackage:TPackage; ATarget : TTarget) : Boolean;
@@ -1411,7 +1415,7 @@ Type
     Procedure Info; virtual;
     procedure AddAutoPackageVariantsToPackage(APackage: TPackage); virtual;
   Public
-    Constructor Create(AOwner : TComponent); virtual;
+    Constructor Create(AOwner : TComponent); override;
     Destructor destroy; override;
     Function AddPackage(Const AName : String) : TPackage;
     Function AddPackageVariant(AName: string; AIsInheritable: boolean; AutoAddToPackage: Boolean = false): TPackageVariants;
@@ -1571,7 +1575,7 @@ Function AddLibraryExtension(const LibraryName: string; AOS : TOS) : string;
 Function GetImportLibraryFilename(const UnitName: string; AOS : TOS) : string;
 
 procedure SearchFiles(AFileName, ASearchPathPrefix: string; Recursive: boolean; var List: TStrings);
-function GetDefaultLibGCCDir(CPU : TCPU;OS: TOS; var ErrorMessage: string): string;
+function GetDefaultLibGCCDir(CPU : TCPU;OS: TOS; out ErrorMessage: string): string;
 
 function GetPluginManager: TfpmPluginManager;
 
@@ -1755,12 +1759,11 @@ ResourceString
   SErrMovingFile        = 'Failed to move file "%s" to "%s"';
   SErrCopyingFile       = 'Failed to copy file "%s" to "%s"';
   SErrChangeDirFailed   = 'Failed to enter directory "%s"';
-  SErrInvalidArgumentToSubstitute = 'Invalid number of arguments to Substitute';
   SErrNoArchiveSupport  = 'This binary contains no archive support. Please recompile with archive support';
   SErrNoDictionaryItem  = 'No item called "%s" in the dictionary';
-  SErrNoDictionaryValue = 'The item "%s" in the dictionary is not a value';
-  SErrNoDictionaryFunc  = 'The item "%s" in the dictionary is not a function';
+  {$ifdef HAS_UNIT_PROCESS}
   SErrInvalidFPCInfo    = 'Compiler returns invalid information, check if fpc -iV works';
+  {$ENDIF}
   SErrDependencyNotFound = 'Could not find unit directory for dependency package "%s" required for package "%s"';
   SErrAlreadyInitialized = 'Installer can only be initialized once';
   SErrInvalidState      = 'Invalid state for target %s';
@@ -1776,7 +1779,6 @@ ResourceString
   SWarnCircularPackageDependency = 'Warning: Circular dependency detected when compiling package %s with package %s';
   SWarnFailedToSetTime    = 'Warning: Failed to set timestamp on file "%s"';
   SWarnFailedToGetTime    = 'Warning: Failed to get timestamp from file "%s"';
-  SWarnAttemptingToCompileNonNeutralTarget = 'Warning: Attempting to compile non-neutral target %s';
   SWarnSourceFileNotFound  = 'Warning: Source file "%s" from package %s not found for %s';
   SWarnIncludeFileNotFound = 'Warning: Include file "%s" from package %s not found for %s';
   SWarnDepUnitNotFound     = 'Warning: Dependency on unit %s is not supported for %s';
@@ -1794,7 +1796,9 @@ ResourceString
   SWarngccNotFound        = 'Could not find libgcc';
   SWarncrossgccNotFound   = 'Could not find libgcc for cross-configuration';
   SWarngcclibpath         = 'Warning: Unable to determine the libgcc path.';
+{$IFNDEF HAS_UNIT_PROCESS}
   SWarnNoFCLProcessSupport= 'No FCL-Process support';
+{$ENDIF}
   SWarnRetryRemDirectory     = 'Failed to remove directory "%s". Retry after a short delay';
   SWarnRetryDeleteFile       = 'Failed to remove file "%s". Retry after a short delay';
   SWarnCombinedPathAndUDir= 'Warning: Better do not combine the SearchPath and Global/Local-UnitDir parameters';
@@ -1915,7 +1919,9 @@ ResourceString
   sHelpDocOptionsFile = 'Name=Value File with options for fpdoc project file';
   sHelpFPUnitSrcPath  = 'Sourcepath to replace in fpunits.cfg on installation.';
   sHelpThreads        = 'Enable the indicated amount of worker threads.';
+  {$ifdef HAS_UNIT_PROCESS}
   sHelpUseEnvironment = 'Use environment to pass options to compiler.';
+  {$endif}
   SHelpUseBuildUnit   = 'Compile package in Build-unit mode.';
   sHelpZipPrefix      = 'Use indicated prefix for generated archives.';
   sHelpPackageVariant1= 'To add a package-variant to all packages:';
@@ -1973,15 +1979,12 @@ Const
 ****************************************************************************}
 
 {$ifdef HAS_UNIT_PROCESS}
-function ExecuteFPC(Verbose, Interactive: boolean; const Path: string; const ComLine: string; const Env: TStrings; ConsoleOutput: TMemoryStream): integer;
+function ExecuteFPC(Verbose, Interactive: boolean; const aCompiler: string; const Args: TStrings; const Env: TStrings; ConsoleOutput: TMemoryStream): integer;
 var
   P: TProcess;
   BytesRead: longint;
 
   function ReadFromStream(const ReadFromStdErr: boolean): longint;
-
-  const
-    READ_BYTES = 2048;
 
   type
     TMessages = (mCompiling, mLinking);
@@ -2022,7 +2025,7 @@ var
 
       sLine := '';
       BuffPos := ConsoleOutput.Position;
-
+      ch:=#0;
       //read lines from the stream
       repeat
         ConsoleOutput.Read(ch,1);
@@ -2089,7 +2092,8 @@ begin
   BytesRead := 0;
   P := TProcess.Create(nil);
   try
-    P.CommandLine := Path + ' ' + ComLine;
+    P.Executable:=aCompiler;
+    P.Parameters:=Args;
     if assigned(Env) then
       P.Environment.Assign(Env);
 
@@ -2164,6 +2168,7 @@ var
   ch: char;
   eolchar: char;
 begin
+  Result:='';
   m.Seek(0, soBeginning);
   setlength(Result,M.Size);
 
@@ -2250,6 +2255,7 @@ const
 Var
   I,J : Integer;
 begin
+  Result:='';
   SetLength(Result,Length(S));
   J:=0;
   For I:=1 to Length(S) do
@@ -2607,6 +2613,16 @@ begin
     end;
 end;
 
+Procedure PrependFileListWithString(List : TStrings; const APrefix : String);
+Var
+  I : integer;
+
+begin
+  For I:=0 to List.Count-1 do
+    List[i]:=APrefix+List[i];
+end;
+
+
 
 function FixPath (const APath : String) : String;
 begin
@@ -2823,39 +2839,70 @@ end;
   returns stdout output of Acompiler with AOptions parameters
   If ReadStdErr is True, return stderr output if stdout is empty
   If EmptyIfStdErr, return empty string if stderr output is not empty }
-function GetCompilerInfo(const ACompiler,AOptions:string; ReadStdErr: boolean;EmptyIfStdErr : boolean):string;
+
+function GetCompilerInfo(const ACompiler:string; Args : TStrings; ReadStdErr: boolean;EmptyIfStdErr : boolean):string;
+
 const
   BufSize = 1024;
+Type
+  TBufType = array [0..BufSize - 1] of char;
+
 var
-  S: TProcess;
-  Buf: array [0..BufSize - 1] of char;
-  ErrorBuf: array [0..BufSize - 1] of char;
+  Proc: TProcess;
+  Buf: TBufType;
+  ErrorBuf: TBufType;
   Count, ErrorCount: longint;
+
+
 begin
-  S:=TProcess.Create(Nil);
-  S.Commandline:=ACompiler+' '+AOptions;
-  S.Options:=[poUsePipes,poWaitOnExit];
-  S.execute;
-  Count:=s.output.read(buf,BufSize);
-  if (count=0) and ReadStdErr then
-    Count:=s.Stderr.read(buf,BufSize)
-  else if EmptyIfStdErr then
-    begin
-      ErrorCount:=s.StdErr.read(ErrorBuf,BufSize);
-      if (ErrorCount>0) then
-        begin
-          Result:='';
-          S.Free;
-          exit;
-        end;
-    end;
-  S.Free;
+  buf:=Default(TBufType);
+  ErrorBuf:=Default(TBufType);
+  Proc:=TProcess.Create(Nil);
+  try
+    Proc.Executable:=ACompiler;
+    Proc.Parameters:=Args;
+    Proc.Options:=[poUsePipes,poWaitOnExit];
+    Proc.execute;
+    Count:=Proc.output.read(buf,BufSize);
+    if (count=0) and ReadStdErr then
+      Count:=Proc.Stderr.read(buf,BufSize)
+    else if EmptyIfStdErr then
+      begin
+        ErrorCount:=Proc.StdErr.read(ErrorBuf,BufSize);
+        if (ErrorCount>0) then
+          begin
+            Result:='';
+            exit;
+          end;
+      end;
+  finally
+    Proc.Free;
+  end;
   SetLength(Result,Count);
   Move(Buf,Result[1],Count);
 end;
+
+// Convenience function
+
+function GetCompilerInfo(const ACompiler:string; aOptions : Array of String; ReadStdErr: boolean;EmptyIfStdErr : boolean):string;
+
+Var
+  Args : TStrings;
+
+begin
+  Args:=TStringList.Create;
+  try
+    Args.AddStrings(aOptions);
+    Result:=GetCompilerInfo(aCompiler,Args,ReadStdErr,EmptyIfStdErr);
+  finally
+    Args.Free;
+  end;
+
+end;
+
 {$endif HAS_UNIT_PROCESS}
 
-function GetDefaultLibGCCDir(CPU : TCPU;OS: TOS; var ErrorMessage: string): string;
+function GetDefaultLibGCCDir(CPU : TCPU;OS: TOS; out ErrorMessage: string): string;
 
 var
   CrossPrefix: string;
@@ -2893,19 +2940,26 @@ var
       end;
   end;
 
-  function GetGccDirArch(const ACpuType, GCCParams: string) : string;
+  function GetGccDirArch(const ACpuType : String; GCCParams: TStrings) : string;
+
   var ExecResult: string;
       libgccFilename: string;
       GccExecutable: string;
+      Parms : TStrings;
+
   begin
     result := '';
+    Parms:=TStringList.Create;
+    try
     GccExecutable := ExeSearch(AddProgramExtension(CrossPrefix+'gcc', OS),Sysutils.GetEnvironmentVariable('PATH'));
     if not(FileExists(GccExecutable)) then
       GccExecutable := ExeSearch(AddProgramExtension(CrossPrefix+'gnu-gcc', OS),Sysutils.GetEnvironmentVariable('PATH'));
     if FileExists(GccExecutable) then
       begin
 {$ifdef HAS_UNIT_PROCESS}
-      ExecResult:=GetCompilerInfo(GccExecutable,'-v '+GCCParams, True, True);
+      Parms.Add('-v');
+      Parms.AddStrings(GCCParams);
+      ExecResult:=GetCompilerInfo(GccExecutable,Parms, True, True);
       libgccFilename:=Get4thWord(ExecResult);
       // Use IsRelativePath to check if the 4th word is an (absolute) path.
       // This depends on the language settings. In English the 4th word is
@@ -2915,7 +2969,10 @@ var
       if IsRelativePath(libgccFilename) then
         libgccFilename:='';
       if libgccFilename='' then
-        libgccFilename:=GetCompilerInfo(GccExecutable,'--print-libgcc-file-name '+GCCParams, False, True);
+        begin
+        Parms[0]:='--print-libgcc-file-name';
+        libgccFilename:=GetCompilerInfo(GccExecutable,Parms, False, True);
+        end;
       result := ExtractFileDir(libgccFilename);
 {$else HAS_UNIT_PROCESS}
       ErrorMessage := SWarnNoFCLProcessSupport;
@@ -2925,7 +2982,26 @@ var
       ErrorMessage := SWarncrossgccNotFound
     else
       ErrorMessage := SWarngccNotFound;
+
+    finally
+      Parms.Free;
+    end;
   end;
+
+  function GetGccDirArch(const ACpuType : String; GCCParams: Array of String) : string;
+  var
+    Args : TStrings;
+
+  begin
+    Args:=TStringList.Create;
+    try
+      Args.AddStrings(GCCParams);
+      Result:=GetGCCDirArch(aCPUType,Args);
+    finally
+      Args.Free;
+    end;
+  end;
+
 
 begin
   result := '';
@@ -2978,29 +3054,33 @@ begin
     end
   else if OS = linux then
     case CPU of
-      i386:     result := GetGccDirArch('cpui386','-m32');
-      x86_64:   result := GetGccDirArch('cpux86_64','-m64');
-      powerpc:  result := GetGccDirArch('cpupowerpc','-m32');
-      powerpc64:result := GetGccDirArch('cpupowerpc64','-m64');
-      arm:      result := GetGccDirArch('cpuarm','-marm -march=armv2');
-      aarch64:  result := GetGccDirArch('cpuaarch64','-march=aarch64 -mcmodel=large');
-      m68k:     result := GetGccDirArch('cpum68k','-march=68020');
-      mips:     result := GetGccDirArch('cpumips','-mips32 -EB -mabi=32');
-      mipsel:   result := GetGccDirArch('cpumipsel','-mips32 -EL -mabi=32');
-      riscv32:  result := GetGccDirArch('cpuriscv32','-march=rv32imafdc');
-      riscv64:  result := GetGccDirArch('cpuriscv64','-march=rv64imafdc');
-      sparc:    result := GetGccDirArch('cpusparc','-m32');
-      sparc64:  result := GetGccDirArch('cpusparc64','-m64');
-      xtensa:   result := GetGccDirArch('cpuxtensa','');
+      i386:     result := GetGccDirArch('cpui386',['-m32']);
+      x86_64:   result := GetGccDirArch('cpux86_64',['-m64']);
+      powerpc:  result := GetGccDirArch('cpupowerpc',['-m32']);
+      powerpc64:result := GetGccDirArch('cpupowerpc64',['-m64']);
+      arm:      result := GetGccDirArch('cpuarm',['-marm','-march=armv2']);
+      aarch64:  result := GetGccDirArch('cpuaarch64',['-march=aarch64','-mcmodel=large']);
+      m68k:     result := GetGccDirArch('cpum68k',['-march=68020']);
+      mips:     result := GetGccDirArch('cpumips',['-mips32','-EB','-mabi=32']);
+      mipsel:   result := GetGccDirArch('cpumipsel',['-mips32','-EL','-mabi=32']);
+      riscv32:  result := GetGccDirArch('cpuriscv32',['-march=rv32imafdc']);
+      riscv64:  result := GetGccDirArch('cpuriscv64',['-march=rv64imafdc']);
+      sparc:    result := GetGccDirArch('cpusparc',['-m32']);
+      sparc64:  result := GetGccDirArch('cpusparc64',['-m64']);
+      xtensa:   result := GetGccDirArch('cpuxtensa',[]);
+    else
+      ; // avoid compiler warning
     end {case}
   else if OS = darwin then
     case CPU of
-      i386:     result := GetGccDirArch('cpui386','-arch i386');
-      x86_64:   result := GetGccDirArch('cpux86_64','-arch x86_64');
-      powerpc:  result := GetGccDirArch('cpupowerpc','-arch ppc');
-      powerpc64:result := GetGccDirArch('cpupowerpc64','-arch ppc64');
+      i386:     result := GetGccDirArch('cpui386',['-arch', 'i386']);
+      x86_64:   result := GetGccDirArch('cpux86_64',['-arch','x86_64']);
+      powerpc:  result := GetGccDirArch('cpupowerpc',['-arch','ppc']);
+      powerpc64:result := GetGccDirArch('cpupowerpc64',['-arch','ppc64']);
       { this target uses clang }
       aarch64:  result := ''
+    else
+      ; // Avoid compiler warning
     end; {case}
 end;
 
@@ -3446,6 +3526,7 @@ begin
   result := IndexOf(S);
   If result > -1 then
     Case DUplicates of
+      DupAccept,
       DupIgnore : Exit;
       DupError : Error(SDuplicateString,0)
     end;
@@ -3923,8 +4004,7 @@ end;
 
 
 destructor TPackage.destroy;
-var
-  i: integer;
+
 begin
 {$ifndef NO_THREADING}
   DoneCriticalSection(FResolveDirsCS);
@@ -3965,7 +4045,7 @@ begin
 end;
 
 
-Function TPackage.GetUnitsOutputDir(ACPU:TCPU; AOS : TOS):String;
+function TPackage.GetUnitsOutputDir(ACPU: TCPU; AOS: TOS): String;
 begin
   result:=FixPath(Dictionary.Substitute(FUnitsOutputDir,['CPU',CPUToString(ACPU),'OS',OSToString(AOS),'target',MakeTargetString(ACPU,AOS)]), False);
 end;
@@ -4028,7 +4108,7 @@ begin
 end;
 
 
-Function TPackage.GetBinOutputDir(ACPU:TCPU; AOS : TOS) : String;
+function TPackage.GetBinOutputDir(ACPU: TCPU; AOS: TOS): String;
 begin
   Result:='bin'+PathDelim+MakeTargetString(ACPU,AOS);
 end;
@@ -4051,7 +4131,7 @@ end;
 
 procedure TPackage.GetInstallFiles(List: TStrings;Types : TTargetTypes;ACPU:TCPU; AOS : TOS);
 Var
-  OB,OU,OL : String;
+  OB,OU : String;
   I : Integer;
   T : TTarget;
 begin
@@ -4109,7 +4189,7 @@ begin
     List.Add(Sources[i].Name);
 end;
 
-Function TPackage.GetDescription : string;
+function TPackage.GetDescription: string;
 Var
   FN : String;
   L : TStringList;
@@ -4143,7 +4223,7 @@ begin
 end;
 
 
-Function TPackage.GetVersion : string;
+function TPackage.GetVersion: string;
 begin
   result:=FVersion.AsString;
 end;
@@ -4164,13 +4244,13 @@ begin
     TransmitOptions.Assign(AValue);
 end;
 
-Procedure TPackage.SetVersion(const V : string);
+procedure TPackage.SetVersion(const V: string);
 begin
   FVersion.AsString:=V;
 end;
 
 
-Function TPackage.GetFileName : string;
+function TPackage.GetFileName: string;
 begin
   If (FFileName<>'') then
     Result:=FFileName
@@ -4183,7 +4263,7 @@ begin
 end;
 
 
-Function TPackage.GetShortName : string;
+function TPackage.GetShortName: string;
 begin
   if FShortName<>'' then
     result := FShortName
@@ -4206,7 +4286,7 @@ begin
   Result:=FTransmitOptions;
 end;
 
-Procedure TPackage.GetManifest(Manifest : TStrings);
+procedure TPackage.GetManifest(Manifest: TStrings);
 
   procedure AddOSes(const AIndent:string;AOSes:TOSes);
   var
@@ -4292,7 +4372,7 @@ begin
     end;
 end;
 
-Procedure TPackage.ListPackage(PkgList : TStrings);
+procedure TPackage.ListPackage(PkgList: TStrings);
 
   function GetArchiveName (const APackage: TPackage; ALimit83: boolean): string;
   begin
@@ -4445,7 +4525,7 @@ begin
 end;
 
 
-procedure TPackage.LoadUnitConfigFromFile(Const AFileName: String);
+procedure TPackage.LoadUnitConfigFromFile(const AFileName: String);
 var
   L,L2 : TStrings;
   VOS : TOS;
@@ -4610,7 +4690,8 @@ begin
     end;
 end;
 
-procedure TPackage.SaveUnitConfigToFile(Const AFileName: String;ACPU:TCPU;AOS:TOS);
+procedure TPackage.SaveUnitConfigToFile(const AFileName: String; ACPU: TCPU;
+  AOS: TOS);
 Var
   F : TFileStream;
   L : TStringList;
@@ -5070,27 +5151,31 @@ end;
 
 
 procedure TCustomDefaults.CompilerDefaults;
-{$ifdef HAS_UNIT_PROCESS}
+
 var
   infoSL : TStringList;
-{$endif HAS_UNIT_PROCESS}
+
+
 begin
-  if (CPU=cpuNone) or ((OS=osNone) and not ExplicitOSNone) or
-                                                     (FCompilerVersion='') then
+  infosl:=TStringList.Create;
+  try
+    infosl.Delimiter:=' ';
+    if (CPU=cpuNone) or
+       ((OS=osNone) and not ExplicitOSNone) or
+       (FCompilerVersion='') then
     begin
 {$ifdef HAS_UNIT_PROCESS}
       // Detect compiler version/target from -i option
-      infosl:=TStringList.Create;
-      infosl.Delimiter:=' ';
-      infosl.DelimitedText:=GetCompilerInfo(GetCompiler,'-iVTPTO', False, True);
-      if infosl.Count<>3 then
-        Raise EInstallerError.Create(SErrInvalidFPCInfo);
-      if FCompilerVersion='' then
-        FCompilerVersion:=infosl[0];
-      if CPU=cpuNone then
-        CPU:=StringToCPU(infosl[1]);
-      if (OS=osNone) and not ExplicitOSNone then
-        OS:=StringToOS(infosl[2]);
+        infosl.DelimitedText:=GetCompilerInfo(GetCompiler,['-iVTPTO'],False, True);
+        if infosl.Count<>3 then
+          Raise EInstallerError.Create(SErrInvalidFPCInfo);
+        if FCompilerVersion='' then
+          FCompilerVersion:=infosl[0];
+        if CPU=cpuNone then
+          CPU:=StringToCPU(infosl[1]);
+        if (OS=osNone) and not ExplicitOSNone then
+          OS:=StringToOS(infosl[2]);
+
 {$else HAS_UNIT_PROCESS}
       // Defaults taken from compiler used to build fpmake
       if CPU=cpuNone then
@@ -5105,9 +5190,7 @@ begin
     begin
 {$ifdef HAS_UNIT_PROCESS}
       // Detect compiler version/target from -i option
-      infosl:=TStringList.Create;
-      infosl.Delimiter:=' ';
-      infosl.DelimitedText:=GetCompilerInfo(GetCompiler,'-iDWSPSO', False, True);
+      infosl.DelimitedText:=GetCompilerInfo(GetCompiler,['-iDWSPSO'], False, True);
       if infosl.Count<>4 then
         Raise EInstallerError.Create(SErrInvalidFPCInfo);
       FCompilerDate:=infosl[0];
@@ -5122,6 +5205,9 @@ begin
       FCompilerDate:={$I %FPCDATE%};
 {$endif HAS_UNIT_PROCESS}
     end;
+  finally
+    infosl.Free;
+  end;
 end;
 
 
@@ -5307,6 +5393,7 @@ end;
 
 constructor TCustomInstaller.Create(AOwner: TComponent);
 begin
+  Inherited;
   FPackageVariantSettings := TStringList.Create;
   FPackageVariants := TFPList.Create;
   GlobalDictionary:=DictionaryClass.Create(Nil);
@@ -5352,7 +5439,7 @@ end;
 
 procedure TCustomInstaller.Log(Level: TVerboseLevel; Const Msg: String);
 begin
-  If Level in FLogLevels then
+  If (Level in FLogLevels) or (ListMode and (level=vlCommand)) then
     begin
     Writeln(StdOut, Msg);
     Flush(StdOut);
@@ -6077,6 +6164,7 @@ begin
     FTarWriter.GroupName := 'root';
     end;
 {$ifdef unix}
+  filestat:=Default(stat);
   if (FpStat(ASourceFileName, FileStat) = 0) and (FileStat.st_mode and S_IXUSR = S_IXUSR) then
     begin
     FTarWriter.Permissions := FTarWriter.Permissions + [tpExecuteByGroup];
@@ -6142,16 +6230,20 @@ begin
 end;
 
 
-procedure TBuildEngine.ExecuteCommand(const Cmd,Args : String; const Env: TStrings = nil; IgnoreError : Boolean = False);
+procedure TBuildEngine.ExecuteCommand(const Cmd : String; const Args : TStrings;  Env: TStrings = nil; IgnoreError : Boolean = False);
 Var
   E : Integer;
   cmdLine: string;
   ConsoleOutput: TMemoryStream;
   s: string;
 begin
-  Log(vlInfo,SInfoExecutingCommand,[Cmd,Args]);
+  cmdLine:='';
+  if Args.Count<>0 then
+    for s in Args do
+      cmdLine := cmdline + ' ' + S;
+  Log(vlInfo,SInfoExecutingCommand,[Cmd,CmdLine]);
   if ListMode then
-    Log(vlCommand,'%s %s',[Cmd,Args])
+    Log(vlCommand,'%s %s',[Cmd,CmdLine])
   else
     begin
       // We should check cmd for spaces, and move all after first space to args.
@@ -6162,15 +6254,12 @@ begin
         {$ifdef HAS_UNIT_PROCESS}
         E:=ExecuteFPC(Verbose, Interactive, cmd, args, env, ConsoleOutput);
         {$else}
-        E:=ExecuteProcess(cmd,args);
+        E:=ExecuteProcess(cmd,args.ToStringArray);
         {$endif}
         If (E<>0) and (not IgnoreError) then
           begin
-            if trim(Args)<>'' then
-              cmdLine := cmd + ' ' + trim(args)
-            else
-              cmdline := cmd;
             s := ParsecompilerOutput(ConsoleOutput,Verbose);
+            cmdLine:=cmd+' '+cmdLine;
             Error(SErrExternalCommandFailed,[cmdLine,E,s]);
           end;
       finally
@@ -6247,6 +6336,7 @@ begin
         Log(vlWarning,SWarnFailedToSetTime,[S]);
 {$ifdef UNIX}
     // Copy the file-access rights on Unix, especially the executable-bit
+    filestat:=Default(stat);
     if FpStat(Src,FileStat) <> 0 then
       Log(vlWarning,SWarnCanNotGetAccessRights,[Src])
     else
@@ -6469,7 +6559,8 @@ begin
       EnterCriticalSection(FGeneralCriticalSection);
       try
 {$endif NO_THREADING}
-      if Level in [vlInfo,vlDebug] then
+      if (Level in [vlInfo,vlDebug])
+         or (ListMode and (level=vlCommand)) then
         FOnLog(Level,GLogPrefix+Msg)
       else
         FOnLog(Level,Msg);
@@ -6503,7 +6594,7 @@ end;
 procedure TBuildEngine.CmdCopyFiles(List: TStrings; Const DestDir: String; APackage : TPackage);
 
 Var
-  Args : String;
+  Args : TStrings;
   I : Integer;
   DestFileName : String;
 begin
@@ -6528,9 +6619,15 @@ begin
   CmdCreateDir(DestDir);
   If (Defaults.Copy<>'') then
     begin
-      Args:=FileListToString(List, IncludeTrailingPathDelimiter(GPathPrefix));
-      Args:=Args+' '+DestDir;
-      ExecuteCommand(Defaults.Copy,Args);
+      Args:=TStringList.Create;
+      try
+        Args.Assign(List);
+        PrependFileListWithString(Args, IncludeTrailingPathDelimiter(GPathPrefix));
+        Args.Add(DestDir);
+        ExecuteCommand(Defaults.Copy,Args);
+      finally
+        Args.Free;
+      end;
     end
   else
     For I:=0 to List.Count-1 do
@@ -6549,9 +6646,22 @@ end;
 
 
 procedure TBuildEngine.CmdCreateDir(const DestDir: String);
+
+Var
+  Args : TStrings;
+
 begin
   If (Defaults.MkDir<>'') then
-    ExecuteCommand(Defaults.MkDir,DestDir)
+    begin
+    Args:=TstringList.Create;
+    try
+      Args.Append('-p'); // Same effect as forcedirectories
+      Args.Append(DestDir);
+      ExecuteCommand(Defaults.MkDir,Args);
+    finally
+      Args.Free;
+    end;
+    end
   else
     If not ForceDirectories(DestDir) then
       Error(SErrCreatingDirectory,[DestDir]);
@@ -6560,15 +6670,20 @@ end;
 
 procedure TBuildEngine.CmdMoveFiles(List: TStrings; Const DestDir: String);
 Var
-  Args : String;
+  Args : TStrings;
   I : Integer;
 begin
   CmdCreateDir(DestDir);
   If (Defaults.Move<>'') then
     begin
-      Args:=FileListToString(List,'');
-      Args:=Args+' '+DestDir;
-      ExecuteCommand(Defaults.Move,Args);
+      Args:=TStringList.Create;
+      try
+        Args.Assign(List);
+        Args.Add(DestDir);
+        ExecuteCommand(Defaults.Move,Args);
+      finally
+        Args.Free;
+      end;
     end
   else
     For I:=0 to List.Count-1 do
@@ -6578,13 +6693,11 @@ end;
 
 procedure TBuildEngine.CmdDeleteFiles(List: TStrings);
 Var
-  Args : String;
   I : Integer;
 begin
   If (Defaults.Remove<>'') then
     begin
-      Args:=FileListToString(List,'');
-      ExecuteCommand(Defaults.Remove,Args);
+    ExecuteCommand(Defaults.Remove,List);
     end
   else
     For I:=0 to List.Count-1 do
@@ -6615,46 +6728,75 @@ end;
 
 
 procedure TBuildEngine.CmdArchiveFiles(List: TStrings; Const ArchiveFile: String);
+
 Var
-  S,C,O : String;
+  P : Integer;
+  CmdLine : Array of String;
+  i : integer;
+  S,Cmd : String;
+
+  Files,Args : TStrings;
+
 begin
   If (Defaults.Archive='') then
     SysArchiveFiles(List,ArchiveFile)
   else
     begin
-      S:=FileListToString(List,IncludeTrailingPathDelimiter(GPathPrefix));
-      SplitCommand(Defaults.Archive,C,O);
-      If (O='') then
-        O:=ArchiveFile+' '+S
-      else
-        O:=GlobalDictionary.Substitute(O,['ARCHIVE',ArchiveFile,'FILESORDIRS']);
-      ExecuteCommand(C,O);
+      Files:=Nil;
+      Args:=TStringList.Create;
+      try
+        Files:=TStringList.Create;
+        Files.Assign(List);
+        PrependFileListWithString(Files,IncludeTrailingPathDelimiter(GPathPrefix));
+        CmdLine:=Defaults.Archive.Split(' ','"','"');
+        Cmd:=CmdLine[0];
+        For I:=1 to Length(CmdLine)-1 do
+          begin
+          S:=CmdLine[i];
+          P:=Pos('$(FILESORDIRS)',S);
+          if (P<>0) then
+            Args.AddStrings(Files)
+          else
+            Args.Append(GlobalDictionary.Substitute(S,['ARCHIVE',ArchiveFile]));
+          end;
+        ExecuteCommand(Cmd,Args);
+      finally
+        List.Free;
+        Args.Free;
+      end;
     end;
 end;
 
 procedure TBuildEngine.CmdRenameFile(SourceName, DestName: String);
+
 var
-  Args: string;
+  Args: TStrings;
+
 begin
   If (Defaults.Move<>'') then
     begin
-      Args:=SourceName;
-      Args:=Args+' '+DestName;
-      ExecuteCommand(Defaults.Move,Args);
+      Args:=TstringList.Create;
+      try
+        Args.Add(SourceName);
+        Args.Add(DestName);
+        ExecuteCommand(Defaults.Move,Args);
+      finally
+        Args.Free;
+      end;
     end
   else
     SysMoveFile(SourceName,DestName);
 end;
 
 procedure TBuildEngine.CmdRemoveDirs(List: TStrings);
+
 Var
-  Args : String;
   I : Integer;
+
 begin
   If (Defaults.RemoveDir<>'') then
     begin
-      Args:=FileListToString(List,'');
-      ExecuteCommand(Defaults.RemoveDir,Args);
+      ExecuteCommand(Defaults.RemoveDir,List);
     end
   else
     For I:=0 to List.Count-1 do
@@ -6663,13 +6805,11 @@ end;
 
 procedure TBuildEngine.CmdRemoveTrees(List: TStrings);
 Var
-  Args : String;
   I : Integer;
 begin
   If (Defaults.RemoveTree<>'') then
     begin
-      Args:=FileListToString(List,'');
-      ExecuteCommand(Defaults.RemoveTree,Args);
+      ExecuteCommand(Defaults.RemoveTree,List);
     end
   else
     For I:=0 to List.Count-1 do
@@ -6705,7 +6845,9 @@ procedure TBuildEngine.ExecuteCommands(Commands: TCommands; At: TCommandAt; APac
 Var
   C : TCommand;
   I : Integer;
-  Cmd,O : String;
+  Opts,Cmd : String;
+  Args : TStrings;
+  CmdLine : Array of String;
   E : Boolean;
   ADictionary: TDictionary;
   SourceFile, DestFile: string;
@@ -6753,10 +6895,16 @@ begin
 
             If Assigned(C.BeforeCommand) then
               C.BeforeCommand(C);
-            O:=ADictionary.Substitute(C.CmdLineOptions,['SOURCE',SourceFile,'DEST',DestFile]);
-
-            Log(vlCommand,SInfoExecutingCommand,[Cmd,O]);
-            ExecuteCommand(Cmd,O,nil,C.IgnoreResult);
+            Opts:=ADictionary.Substitute(C.CmdLineOptions,['SOURCE',SourceFile,'DEST',DestFile]);
+            CmdLine:=Opts.Split([' '],'"','"');
+            Args:=TstringList.Create;
+            try
+              Args.AddStrings(CmdLine);
+              Log(vlCommand,SInfoExecutingCommand,[Cmd,Opts]);
+              ExecuteCommand(Cmd,Args,nil,C.IgnoreResult);
+            finally
+              Args.Free;
+            end;
             If Assigned(C.AfterCommand) then
               C.AfterCommand(C);
             end;
@@ -6970,6 +7118,9 @@ begin
                     else
                       FindExampleSource(T);
                   end;
+                ttCleanOnlyUnit, // not sure about this one ?
+                ttFPDoc:
+                  ; // Avoid compiler warning
               end;
             finally
               LogUnIndent;
@@ -7119,10 +7270,9 @@ threadvar
 
 procedure TBuildEngine.AddDependencyTransmittedOptions(Args: TStrings; APackage: TPackage);
 Var
-  I, J : Integer;
+  I : Integer;
   P : TPackage;
   D : TDependency;
-  S : String;
   IsRootLevel: Boolean;
 begin
   if not Assigned(GHandledRecursiveDependencies) then
@@ -7169,20 +7319,41 @@ end;
 
 
 Function TBuildEngine.GetCompilerCommand(APackage : TPackage; ATarget : TTarget; Env: TStrings) : String;
+
+var
+  Args : TStringList;
+  i : Integer;
+
+begin
+  Result:='';
+  Args:=TStringList.Create;
+  try
+    Args:=TStringList.Create;
+    Args.Duplicates:=dupIgnore;
+    GetCompilerCommand(Args,aPackage,aTarget,Env);
+    // Convert to string
+    if Defaults.UseEnvironment and assigned(Env) then
+      Result:='!FPCEXTCMD' // Result is in environment.
+    else
+      for i:=0 to Args.Count-1 do
+        Result:=Result+' '+Args[i];
+    Delete(result,1,1);
+  finally
+    Args.Free;
+  end;
+end;
+
+
+Procedure TBuildEngine.GetCompilerCommand(Args: TStrings; APackage : TPackage; ATarget : TTarget; Env: TStrings);
+
 Var
   L : TUnsortedDuplicatesStringList;
-  Args : TStringList;
   s : string;
-  ErrS: string;
+  ExtCmd,ErrS: string;
   i : Integer;
 begin
   if ATarget.TargetSourceFileName = '' then
     Error(SErrCouldNotCompile,[ATarget.Name, APackage.Name]);
-
-  Args:=TStringList.Create;
-  Args.Duplicates:=dupIgnore;
-
-  Result := '';
 
   //compiler configuration
   if Defaults.NoFPCCfg then
@@ -7241,6 +7412,7 @@ begin
     begin
       if FCachedlibcPath='' then
         begin
+
           s:=GetDefaultLibGCCDir(Defaults.CPU, Defaults.OS,ErrS);
           if s='' then
             begin
@@ -7300,25 +7472,25 @@ begin
   {$endif}
 
   // Convert to string
-  Result:='';
+  ExtCmd:='';
   for i:=0 to Args.Count-1 do
-    Result:=Result+' '+maybequoted(APackage.Dictionary.ReplaceStrings(Args[i]));
-  Delete(result,1,1);
+    ExtCmd:=ExtCmd+' '+maybequoted(APackage.Dictionary.ReplaceStrings(Args[i]));
+  Delete(ExtCmd,1,1);
 
   if Defaults.UseEnvironment and assigned(Env) then
     begin
-      env.Values['FPCEXTCMD'] := Result;
-      result := '!FPCEXTCMD';
+      env.Values['FPCEXTCMD'] := ExtCmd;
       // Make sure that this process' environment variables are passed to the
       // compiler's environment
       for i := 0 to GetEnvironmentVariableCount-1 do
         env.Add(GetEnvironmentString(i));
     end;
 
+  // Replace strings
+  for I:=0 to Args.Count-1 do
+    Args[i]:=maybequoted(APackage.Dictionary.ReplaceStrings(Args[i]));
   // Add Filename to compile
-  result := result + ' ' + AddPathPrefix(APackage,ATarget.TargetSourceFileName);
-
-  Args.Free;
+  Args.Add(AddPathPrefix(APackage,ATarget.TargetSourceFileName));
 end;
 
 
@@ -7513,6 +7685,8 @@ begin
                   begin
                     log(vlWarning,SWarnTargetDependsOnPackage,[ATarget.Name, APackage.Name, d.Value]);
                   end;
+                depImplicitPackage:
+                  ; // Avoid compiler warning
               end;
               if result then
                 break;
@@ -7527,43 +7701,36 @@ end;
 
 procedure TBuildEngine.Compile(APackage: TPackage; ATarget: TTarget);
 Var
-  S : String;
   Env : TStrings;
+  Args : TStrings;
+
 begin
   Log(vlInfo,SInfoCompilingTarget,[ATarget.Name]);
+  Args:=nil;
+  Env:=nil;
   try
-  LogIndent;
-  ExecuteCommands(ATarget.Commands,caBeforeCompile);
-  If Assigned(ATarget.BeforeCompile) then
-    ATarget.BeforeCompile(ATarget);
-
-  if (APackage.BuildMode=bmBuildUnit) and not (ATarget.TargetType in [ttProgram,ttSharedLibrary,ttExampleProgram]) then
-    begin
-      APackage.FBUTarget.Dependencies.AddUnit(ATarget.Name).FTargetFileName:=ATarget.TargetSourceFileName;
-    end
-  else
-    begin
+    LogIndent;
+    ExecuteCommands(ATarget.Commands,caBeforeCompile);
+    If Assigned(ATarget.BeforeCompile) then
+      ATarget.BeforeCompile(ATarget);
+    if (APackage.BuildMode=bmBuildUnit) and not (ATarget.TargetType in [ttProgram,ttSharedLibrary,ttExampleProgram]) then
+      begin
+        APackage.FBUTarget.Dependencies.AddUnit(ATarget.Name).FTargetFileName:=ATarget.TargetSourceFileName;
+      end
+    else
+      begin
+      Args:=TstringList.Create;
       if Defaults.UseEnvironment then
-        begin
-          Env := TStringList.Create;
-          try
-            S:=GetCompilerCommand(APackage,ATarget,Env);
-            ExecuteCommand(GetCompiler,S,Env);
-          finally
-            Env.Free;
-          end;
-        end
-      else
-        begin
-          S:=GetCompilerCommand(APackage,ATarget,nil);
-          ExecuteCommand(GetCompiler,S,nil);
-        end;
+        Env:=TStringList.Create;
+      GetCompilerCommand(Args,APackage,ATarget,Env);
+      ExecuteCommand(GetCompiler,Args,Env);
       If Assigned(ATarget.AfterCompile) then
         ATarget.AfterCompile(ATarget);
       ExecuteCommands(ATarget.Commands,caAfterCompile);
-    end;
+      end;
   finally
-  LogUnIndent;
+    LogUnIndent;
+    Args.Free;
   end;
 end;
 
@@ -7599,6 +7766,8 @@ begin
                           MaybeCompile(APackage,T);
                         tsConsidering :
                           Log(vlWarning,SWarnCircularTargetDependency,[ATarget.Name,T.Name]);
+                        tsNoCompile,tsCompiled,tsInstalled,tsNotFound:
+                          ; // Avoid compiler warning
                       end;
                     end;
                 end
@@ -7762,6 +7931,8 @@ begin
                       MaybeCompile(P);
                     tsConsidering :
                       Log(vlWarning,SWarnCircularPackageDependency,[APackage.Name,P.Name]);
+                    tsNoCompile,tsCompiled,tsInstalled,tsNotFound:
+                      ; // avoid compiler warning
                   end;
                 end
               else
@@ -7804,6 +7975,8 @@ begin
                       result := cdNotYetAvailable;
                     tsConsidering :
                       Log(vlWarning,SWarnCircularPackageDependency,[APackage.Name,P.Name]);
+                    tsNoCompile,tsCompiled,tsInstalled,tsNotFound:
+                      ; // Avoid compiler warning
                   end;
                 end
               else
@@ -8149,7 +8322,7 @@ end;
 
 function TBuildEngine.GetUnitConfigFilesInstallDir(ABaseDir: string): String;
 begin
-  result := FixPath(ABaseDir)+Defaults.UnitConfigFilesInstallDir;
+  result := FixPath(ABaseDir,True)+Defaults.UnitConfigFilesInstallDir;
 end;
 
 procedure TBuildEngine.InstallUnitConfigFile(APAckage: TPackage; const Dest: String);
@@ -8231,7 +8404,7 @@ end;
 
 procedure TBuildEngine.Install(APackage: TPackage; AnArchiveFiles: boolean);
 Var
-  UC,D : String;
+  D : String;
   B : Boolean;
 begin
   If (Apackage.State<>tsCompiled) then
@@ -8748,6 +8921,7 @@ begin
       // This event is set by the worker-threads to notify the main/this thread
       // that a package finished it's task.
       NotifyThreadWaiting := RTLEventCreate;
+      Threads:=[];
       SetLength(Threads,Defaults.ThreadsAmount);
       try
         // Create all worker-threads
