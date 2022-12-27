@@ -318,9 +318,61 @@ function GradToRad(grad : float) : float;inline;
 function RadToGrad(rad : float) : float;inline;
 function DegToGrad(deg : float) : float;inline;
 function GradToDeg(grad : float) : float;inline;
-{ one cycle are 2*Pi rad }
-function CycleToRad(cycle : float) : float;inline;
-function RadToCycle(rad : float) : float;inline;
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CycleToDeg(const Cycles: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CycleToDeg(const Cycles: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CycleToDeg(const Cycles: Extended): Extended;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function DegToCycle(const Degrees: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function DegToCycle(const Degrees: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function DegToCycle(const Degrees: Extended): Extended;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CycleToGrad(const Cycles: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CycleToGrad(const Cycles: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CycleToGrad(const Cycles: Extended): Extended;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function GradToCycle(const Grads: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function GradToCycle(const Grads: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function GradToCycle(const Grads: Extended): Extended;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CycleToRad(const Cycles: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CycleToRad(const Cycles: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CycleToRad(const Cycles: Extended): Extended;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function RadToCycle(const Rads: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function RadToCycle(const Rads: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function RadToCycle(const Rads: Extended): Extended;
+{$ENDIF}
+
 {$ifdef FPC_HAS_TYPE_SINGLE}
 Function DegNormalize(deg : single) : single; inline;
 {$ENDIF}
@@ -365,6 +417,35 @@ function ArcTan2(y,x : float) : float;
 function CosH(x : float) : float;
 function SinH(x : float) : float;
 function TanH(x : float) : float;
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function SecH(const X: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function SecH(const X: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function SecH(const X: Extended): Extended;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CscH(const X: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CscH(const X: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CscH(const X: Extended): Extended;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CotH(const X: Single): Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CotH(const X: Double): Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CotH(const X: Extended): Extended;
+{$ENDIF}
 
 { area functions }
 
@@ -398,8 +479,8 @@ function Power(base,exponent : float) : float;
 { base^exponent }
 function IntPower(base : float;exponent : longint) : float;
 
-operator ** (bas,expo : float) e: float; inline;
-operator ** (bas,expo : int64) i: int64; inline;
+operator ** (base,exponent : float) e: float; inline;
+operator ** (base,exponent : int64) res: int64;
 
 { number converting }
 
@@ -780,16 +861,119 @@ function gradtodeg(grad : float) : float;inline;
      gradtodeg:=grad*(180.0/200.0);
   end;
 
-function cycletorad(cycle : float) : float;inline;
-  begin
-     cycletorad:=(2*pi)*cycle;
-  end;
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CycleToDeg(const Cycles: Single): Single;
+begin
+  CycleToDeg:=Cycles*360.0;
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CycleToDeg(const Cycles: Double): Double;
+begin
+  CycleToDeg:=Cycles*360.0;
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CycleToDeg(const Cycles: Extended): Extended;
+begin
+  CycleToDeg:=Cycles*360.0;
+end;
+{$ENDIF}
 
-function radtocycle(rad : float) : float;inline;
-  begin
-     { avoid division }
-     radtocycle:=rad*(1/(2*pi));
-  end;
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function DegToCycle(const Degrees: Single): Single;
+begin
+  DegToCycle:=Degrees*(1/360.0);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function DegToCycle(const Degrees: Double): Double;
+begin
+  DegToCycle:=Degrees*(1/360.0);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function DegToCycle(const Degrees: Extended): Extended;
+begin
+  DegToCycle:=Degrees*(1/360.0);
+end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CycleToGrad(const Cycles: Single): Single;
+begin
+  CycleToGrad:=Cycles*400.0;
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CycleToGrad(const Cycles: Double): Double;
+begin
+  CycleToGrad:=Cycles*400.0;
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CycleToGrad(const Cycles: Extended): Extended;
+begin
+  CycleToGrad:=Cycles*400.0;
+end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function GradToCycle(const Grads: Single): Single;
+begin
+  GradToCycle:=Grads*(1/400.0);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function GradToCycle(const Grads: Double): Double;
+begin
+  GradToCycle:=Grads*(1/400.0);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function GradToCycle(const Grads: Extended): Extended;
+begin
+  GradToCycle:=Grads*(1/400.0);
+end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CycleToRad(const Cycles: Single): Single;
+begin
+  CycleToRad:=Cycles*2*pi;
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CycleToRad(const Cycles: Double): Double;
+begin
+  CycleToRad:=Cycles*2*pi;
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CycleToRad(const Cycles: Extended): Extended;
+begin
+  CycleToRad:=Cycles*2*pi;
+end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function RadToCycle(const Rads: Single): Single;
+begin
+  RadToCycle:=Rads*(1/(2*pi));
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function RadToCycle(const Rads: Double): Double;
+begin
+  RadToCycle:=Rads*(1/(2*pi));
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function RadToCycle(const Rads: Extended): Extended;
+begin
+  RadToCycle:=Rads*(1/(2*pi));
+end;
+{$ENDIF}
 
 {$ifdef FPC_HAS_TYPE_SINGLE}
 Function DegNormalize(deg : single) : single;
@@ -969,6 +1153,97 @@ function tanh(x : float) : float;
     end;
   end;
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function SecH(const X: Single): Single;
+var
+  Ex: ValReal;
+begin
+  //https://en.wikipedia.org/wiki/Hyperbolic_functions#Definitions
+  //SecH = 2 / (e^X + e^-X)
+  Ex:=Exp(X);
+  SecH:=2/(Ex+1/Ex);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function SecH(const X: Double): Double;
+var
+  Ex: ValReal;
+begin
+  Ex:=Exp(X);
+  SecH:=2/(Ex+1/Ex);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function SecH(const X: Extended): Extended;
+var
+  Ex: Extended;
+begin
+  Ex:=Exp(X);
+  SecH:=2/(Ex+1/Ex);
+end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CscH(const X: Single): Single;
+var
+  Ex: ValReal;
+begin
+  //CscH = 2 / (e^X - e^-X)
+  Ex:=Exp(X);
+  CscH:=2/(Ex-1/Ex);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CscH(const X: Double): Double;
+var
+  Ex: ValReal;
+begin
+  Ex:=Exp(X);
+  CscH:=2/(Ex-1/Ex);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CscH(const X: Extended): Extended;
+var
+  Ex: Extended;
+begin
+  Ex:=Exp(X);
+  CscH:=2/(Ex-1/Ex);
+end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function CotH(const X: Single): Single;
+var
+  Ex, Emx: ValReal;
+begin
+  //CotH = (e^X + e^-X) / (e^X - e^-X)
+  Ex:=Exp(X);
+  Emx:=1/Ex;
+  CotH:=(Ex+Emx)/(Ex-Emx);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function CotH(const X: Double): Double;
+var
+  Ex, Emx: ValReal;
+begin
+  Ex:=Exp(X);
+  Emx:=1/Ex;
+  CotH:=(Ex+Emx)/(Ex-Emx);
+end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function CotH(const X: Extended): Extended;
+var
+  Ex, Emx: Extended;
+begin
+  Ex:=Exp(X);
+  Emx:=1/Ex;
+  CotH:=(Ex+Emx)/(Ex-Emx);
+end;
+{$ENDIF}
+
 function arccosh(x : float) : float; inline;
   begin
      arccosh:=arcosh(x);
@@ -1088,16 +1363,33 @@ function intpower(base : float;exponent : longint) : float;
   end;
 
 
-operator ** (bas,expo : float) e: float; inline;
+operator ** (base,exponent : float) e: float; inline;
   begin
-    e:=power(bas,expo);
+    e:=power(base,exponent);
   end;
 
 
-operator ** (bas,expo : int64) i: int64; inline;
-  begin
-    i:=round(intpower(bas,expo));
-  end;
+operator ** (base,exponent : int64) res: int64;
+begin
+  if exponent<0 then
+    begin
+      if base<=0 then
+        raise EInvalidArgument.Create('Non-positive base with negative exponent in **');
+      if base=1 then
+        res:=1
+      else
+        res:=0;
+      exit;
+    end; 
+  res:=1;
+  while exponent<>0 do
+    begin
+      if exponent and 1<>0 then
+        res:=res*base;
+      exponent:=exponent shr 1;
+      base:=base*base;
+    end;
+end;
 
 
 function ceil(x : float) : integer;

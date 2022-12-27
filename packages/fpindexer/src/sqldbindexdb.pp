@@ -368,7 +368,11 @@ begin
 end;
 
 procedure TSQLDBIndexDB.CommitTrans;
+Var
+  T : TCachedQueryType;
 begin
+  For T:=Low(TCachedQueryType) to High(TCachedQueryType) do
+    FreeAndNil(FQueries[T]);
   FDB.Transaction.Commit;
 end;
 
