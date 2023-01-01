@@ -34,6 +34,7 @@ begin
     P.SourcePath.Add('src/dos/vesa',[go32v2]);
     P.SourcePath.Add('src/dos/vga',[go32v2]);
     P.IncludePath.Add('src');
+    P.IncludePath.Add('src/ptcwrapper');
     P.IncludePath.Add('src/cocoa',[macosx]);
     P.IncludePath.Add('src/core');
     P.IncludePath.Add('src/dos',[go32v2]);
@@ -199,13 +200,13 @@ begin
     T:=P.Targets.AddUnit('ptceventqueue.pp');
     with T.Dependencies do
       begin
-        AddInclude('ptceventqueue_st.inc');
-        AddInclude('ptceventqueue_mt.inc');
         AddUnit('ptc');
       end;
     T:=P.Targets.AddUnit('ptcwrapper.pp');
     with T.Dependencies do
       begin
+        AddInclude('ptcwrapper_st.inc');
+        AddInclude('ptcwrapper_mt.inc');
         AddUnit('ptc');
         AddUnit('ptceventqueue');
       end;

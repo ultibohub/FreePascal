@@ -294,6 +294,9 @@ begin
   FConnection:=CreateClientConnection(FTransport);
   FConnection.OnMessageReceived:=@MessageReceived;
   FConnection.OnControl:=@ControlReceived;
+  // RFC states we MUST use a mask.
+  if OutGoingFrameMask=0 then
+    OutGoingFrameMask:=1+Random(MaxInt-1);
   FConnection.OutgoingFrameMask:=Self.OutGoingFrameMask;
   if UseSSL then
     FSocket.Connect;
@@ -389,7 +392,7 @@ end;
 
 Function TCustomWebsocketClient.CheckHandShakeResponse(aHeaders : TStrings) : Boolean;
 
-Var
+Var 
   K : String;
   {%H-}hash : TSHA1Digest;
   B : TBytes;
@@ -475,7 +478,7 @@ procedure TCustomWebsocketClient.Disconnect(SendClose : boolean = true);
 begin
   if Not Active then
     Exit;
-  if SendClose then
+  if SendClose and (Connection.CloseState <> csClosed) then
     Connection.Close('');
   if Assigned(MessagePump) then
     MessagePump.RemoveClient(Connection);

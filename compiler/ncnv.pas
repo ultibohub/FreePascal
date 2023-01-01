@@ -2501,6 +2501,14 @@ implementation
                         ) then
                       internalerror(2021060801);
 
+                    { so that insert_self_and_vmt_para correctly inserts the
+                      Self, cause it otherwise skips that for anonymous functions }
+                    include(pd.procoptions,po_methodpointer);
+                    { we know this only captures Self, so we can move the
+                      anonymous function to normal function level }
+                    pd.parast.symtablelevel:=normal_function_level;
+                    tprocdef(pd).localst.symtablelevel:=normal_function_level;
+
                     selfsym:=nil;
                     fpsym:=nil;
                     { find the framepointer parameter and an eventual self }
@@ -2574,8 +2582,6 @@ implementation
                             { replace all uses of the captured Self by the new Self
                               parameter }
                             foreachnodestatic(pm_preprocess,tcgprocinfo(pi).code,@replace_self_sym,@mapping);
-
-                            mapping.oldsym.free;
                           end
                         else
                           begin

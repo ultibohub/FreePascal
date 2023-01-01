@@ -574,6 +574,7 @@ implementation
       sym : tsym;
       fieldsym : tfieldvarsym;
       fieldname : tsymstr;
+      fielddef : tdef;
     begin
       if not pd.was_anonymous or not assigned(pd.capturedsyms) or (pd.capturedsyms.count=0) then
         exit;
@@ -611,9 +612,14 @@ implementation
                   if not assigned(fieldsym) then
                     begin
                       {$ifdef DEBUG_CAPTURER}writeln('Adding field ',fieldname,' to ',subcapturer.typesym.name);{$endif}
+                      fielddef:=tabstractvarsym(sym).vardef;
                       if vo_is_self in tabstractnormalvarsym(sym).varoptions then
-                        fieldname:='$'+fieldname;
-                      fieldsym:=cfieldvarsym.create(fieldname,vs_value,tabstractvarsym(sym).vardef,[]);
+                        begin
+                          fieldname:='$'+fieldname;
+                          if not is_implicit_pointer_object_type(fielddef) then
+                            fielddef:=cpointerdef.getreusable(fielddef);
+                        end;
+                      fieldsym:=cfieldvarsym.create(fieldname,vs_value,fielddef,[]);
                       fieldsym.fileinfo:=sym.fileinfo;
                       subcapturer.symtable.insertsym(fieldsym);
                       tabstractrecordsymtable(subcapturer.symtable).addfield(fieldsym,vis_public);
@@ -1132,7 +1138,6 @@ implementation
       invokename : tsymstr;
       i : longint;
       outerself,
-      fpsym,
       selfsym,
       sym : tsym;
       info : pcapturedsyminfo;
@@ -1141,6 +1146,7 @@ implementation
       invokedef,
       parentdef,
       curpd : tprocdef;
+      syms : tfpobjectlist;
     begin
       capturer:=nil;
       result:=funcref_intf_for_proc(pd,fileinfo_to_suffix(pd.fileinfo));
@@ -1190,29 +1196,31 @@ implementation
           pd.struct:=capturedef;
           exclude(pd.procoptions,po_anonymous);
           exclude(pd.procoptions,po_delphi_nested_cc);
+          exclude(pd.procoptions,po_staticmethod);
+          exclude(pd.procoptions,po_classmethod);
           pd.was_anonymous:=true;
           pd.procsym.ChangeOwnerAndName(capturedef.symtable,upcase(invokename));
           pd.procsym.realname:=invokename;
           pd.parast.symtablelevel:=normal_function_level;
           pd.localst.symtablelevel:=normal_function_level;
-          { retrieve framepointer and self parameters if any }
-          fpsym:=nil;
+          { collect all hidden parameters and especially the self parameter (if any) }
           selfsym:=nil;
+          syms:=tfpobjectlist.create(false);
           for i:=0 to pd.parast.symlist.count-1 do
             begin
               sym:=tsym(pd.parast.symlist[i]);
               if sym.typ<>paravarsym then
                 continue;
-              if vo_is_parentfp in tparavarsym(sym).varoptions then
-                fpsym:=sym
-              else if vo_is_self in tparavarsym(sym).varoptions then
-                selfsym:=sym;
-              if assigned(fpsym) and assigned(selfsym) then
-                break;
+              if vo_is_self in tparavarsym(sym).varoptions then
+                selfsym:=sym
+              else if vo_is_hidden_para in tparavarsym(sym).varoptions then
+                syms.add(sym);
             end;
-          { get rid of the framepointer parameter }
-          if assigned(fpsym) then
-            pd.parast.deletesym(fpsym);
+          { get rid of the hidden parameters; they will be added again during
+            buildvmt of the capturer }
+          for i:=0 to syms.count-1 do
+            pd.parast.deletesym(tsym(syms[i]));
+          syms.free;
           outerself:=nil;
           { complain about all symbols that can't be captured and add the symbols
             to this procdefs capturedsyms if it isn't a top level function }
@@ -1314,6 +1322,8 @@ implementation
           n:=cloadnode.create(psym,psym.owner);
           if psym.capture_sym.owner.defowner<>capturer.vardef then
             internalerror(2022010903);
+          if (vo_is_self in psym.varoptions) and not is_implicit_pointer_object_type(psym.vardef) then
+            n:=caddrnode.create(n);
           n:=cassignmentnode.create(
                csubscriptnode.create(psym.capture_sym,cloadnode.create(capturer,capturer.owner)),
                n
@@ -1455,6 +1465,10 @@ implementation
           n:=csubscriptnode.create(mapping^.newsym,mapping^.selfnode.getcopy);
           if loadprocvar then
             include(n.flags,nf_load_procvar);
+          if (mapping^.oldsym.typ=paravarsym) and
+              (vo_is_self in tparavarsym(mapping^.oldsym).varoptions) and
+              not is_implicit_pointer_object_type(tparavarsym(mapping^.oldsym).vardef) then
+            n:=cderefnode.create(n);
           typecheckpass(n);
           current_filepos:=old_filepos;
           break;

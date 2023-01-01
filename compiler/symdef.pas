@@ -2041,7 +2041,7 @@ implementation
          if doregister then
            begin
              { immediately register interface defs, as they will always be
-               written to the ppu, their defid inlfuences the interface crc and
+               written to the ppu, their defid influences the interface crc and
                if we wait, depending on e.g. compiler defines they may get a
                different defid (e.g. when a function is called, its procdef is
                registered, so depending on whether or not, or when, an interface
@@ -5912,7 +5912,7 @@ implementation
                       { in case of bare proc, don't copy self, vmt or framepointer
                         parameters }
                       if (copytyp in [pc_bareproc,pc_normal_no_hidden]) and
-                         (([vo_is_self,vo_is_vmt,vo_is_parentfp,vo_is_result,vo_is_funcret]*pvs.varoptions)<>[]) then
+                         (([vo_is_self,vo_is_vmt,vo_is_parentfp,vo_is_result,vo_is_funcret,vo_is_high_para]*pvs.varoptions)<>[]) then
                         continue;
                       if paraprefix='' then
                         npvs:=cparavarsym.create(pvs.realname,pvs.paranr,pvs.varspez,
