@@ -431,9 +431,36 @@ function ArcTan2(y,x : float) : float;
 
 { hyperbolic functions }
 
-function CosH(x : float) : float;
-function SinH(x : float) : float;
-function TanH(x : float) : float;
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function cosh(x : Single) : Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function cosh(x : Double) : Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function cosh(x : Extended) : Extended;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function sinh(x : Single) : Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function sinh(x : Double) : Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function sinh(x : Extended) : Extended;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function tanh(x : Single) : Single;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function tanh(x : Double) : Double;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function tanh(x : Extended) : Extended;
+{$ENDIF}
+
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function SecH(const X: Single): Single;
 {$ENDIF}
@@ -1179,37 +1206,19 @@ end;
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function Arccos(x : Single) : Single;
 begin
-  if abs(x)=1.0 then
-    if x<0.0 then
-      arccos:=Pi
-    else
-      arccos:=0
-  else
-    arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
+  arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
 end;
 {$ENDIF}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function Arccos(x : Double) : Double;
 begin
-  if abs(x)=1.0 then
-    if x<0.0 then
-      arccos:=Pi
-    else
-      arccos:=0
-  else
-    arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
+  arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
 end;
 {$ENDIF}
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function Arccos(x : Extended) : Extended;
 begin
-  if abs(x)=1.0 then
-    if x<0.0 then
-      arccos:=Pi
-    else
-      arccos:=0
-  else
-    arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
+  arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
 end;
 {$ENDIF}
 
@@ -1238,37 +1247,127 @@ function arctan2(y,x : float) : float;
   end;
 {$endif FPC_MATH_HAS_ARCTAN2}
 
-
-function cosh(x : float) : float;
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function cosh(x : Single) : Single;
   var
-     temp : float;
+     temp : ValReal;
   begin
      temp:=exp(x);
      cosh:=0.5*(temp+1.0/temp);
   end;
-
-function sinh(x : float) : float;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function cosh(x : Double) : Double;
   var
-     temp : float;
+     temp : ValReal;
   begin
      temp:=exp(x);
-     { copysign ensures that sinh(-0.0)=-0.0 }
-     sinh:=copysign(0.5*(temp-1.0/temp),x);
+     cosh:=0.5*(temp+1.0/temp);
   end;
-
-function tanh(x : float) : float;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function cosh(x : Extended) : Extended;
   var
-    tmp:float;
+     temp : Extended;
+  begin
+     temp:=exp(x);
+     cosh:=0.5*(temp+1.0/temp);
+  end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function sinh(x : Single) : Single;
+  var
+     temp : ValReal;
+  begin
+     temp:=exp(x);
+     { gives better behavior around zero, and in particular ensures that sinh(-0.0)=-0.0 }
+     if temp=1 then
+       exit(x);
+     sinh:=0.5*(temp-1.0/temp);
+  end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function sinh(x : Double) : Double;
+  var
+     temp : ValReal;
+  begin
+     temp:=exp(x);
+     if temp=1 then
+       exit(x);
+     sinh:=0.5*(temp-1.0/temp);
+  end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function sinh(x : Extended) : Extended;
+  var
+     temp : Extended;
+  begin
+     temp:=exp(x);
+     if temp=1 then
+       exit(x);
+     sinh:=0.5*(temp-1.0/temp);
+  end;
+{$ENDIF}
+
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function tanh(x : Single) : Single;
+  var
+    tmp:ValReal;
   begin
     if x < 0 then begin
-      tmp:=exp(2*x); 
+      tmp:=exp(2*x);
+      if tmp=1 then
+        exit(x);
       result:=(tmp-1)/(1+tmp)
     end
     else begin
       tmp:=exp(-2*x);
+      if tmp=1 then
+        exit(x);
       result:=(1-tmp)/(1+tmp)
     end;
   end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function tanh(x : Double) : Double;
+  var
+    tmp:ValReal;
+  begin
+    if x < 0 then begin
+      tmp:=exp(2*x);
+      if tmp=1 then
+        exit(x);
+      result:=(tmp-1)/(1+tmp)
+    end
+    else begin
+      tmp:=exp(-2*x);
+      if tmp=1 then
+        exit(x);
+      result:=(1-tmp)/(1+tmp)
+    end;
+  end;
+{$ENDIF}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function tanh(x : Extended) : Extended;
+  var
+    tmp:Extended;
+  begin
+    if x < 0 then begin
+      tmp:=exp(2*x);
+      if tmp=1 then
+        exit(x);
+      result:=(tmp-1)/(1+tmp)
+    end
+    else begin
+      tmp:=exp(-2*x);
+      if tmp=1 then
+        exit(x);
+      result:=(1-tmp)/(1+tmp)
+    end;
+  end;
+{$ENDIF}
+
 
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function SecH(const X: Single): Single;
@@ -1332,32 +1431,58 @@ end;
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function CotH(const X: Single): Single;
 var
-  Ex, Emx: ValReal;
+  e2: ValReal;
 begin
-  //CotH = (e^X + e^-X) / (e^X - e^-X)
-  Ex:=Exp(X);
-  Emx:=1/Ex;
-  CotH:=(Ex+Emx)/(Ex-Emx);
+  if x < 0 then begin
+    e2:=exp(2*x);
+    if e2=1 then
+      exit(1/x);
+    result:=(1+e2)/(e2-1)
+  end
+  else begin
+    e2:=exp(-2*x);
+    if e2=1 then
+      exit(1/x);
+    result:=(1+e2)/(1-e2)
+  end;
 end;
 {$ENDIF}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function CotH(const X: Double): Double;
 var
-  Ex, Emx: ValReal;
+  e2: ValReal;
 begin
-  Ex:=Exp(X);
-  Emx:=1/Ex;
-  CotH:=(Ex+Emx)/(Ex-Emx);
+  if x < 0 then begin
+    e2:=exp(2*x);
+    if e2=1 then
+      exit(1/x);
+    result:=(1+e2)/(e2-1)
+  end
+  else begin
+    e2:=exp(-2*x);
+    if e2=1 then
+      exit(1/x);
+    result:=(1+e2)/(1-e2)
+  end;
 end;
 {$ENDIF}
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function CotH(const X: Extended): Extended;
 var
-  Ex, Emx: Extended;
+  e2: Extended;
 begin
-  Ex:=Exp(X);
-  Emx:=1/Ex;
-  CotH:=(Ex+Emx)/(Ex-Emx);
+  if x < 0 then begin
+    e2:=exp(2*x);
+    if e2=1 then
+      exit(1/x);
+    result:=(1+e2)/(e2-1)
+  end
+  else begin
+    e2:=exp(-2*x);
+    if e2=1 then
+      exit(1/x);
+    result:=(1+e2)/(1-e2)
+  end;
 end;
 {$ENDIF}
 

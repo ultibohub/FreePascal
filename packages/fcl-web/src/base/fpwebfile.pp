@@ -343,10 +343,10 @@ begin
   else
     begin
     BaseDir:=Locations.Values[BaseURL];
-    if (BaseURL='') then
+    if (BaseDir='') then
       BaseDir:=ExtractFilePath(Paramstr(0))
     end;
-  FN:=ExtractRelativepath(BaseDir,aFileName);
+  FN:=ExtractRelativepath(BaseDir,FN);
   Result:=Pos('..'+PathDelim,FN)=0;
 end;
 
