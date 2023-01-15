@@ -1131,6 +1131,8 @@ Implementation
         eextended: extended;
 {$else}
 {$ifdef FPC_SOFT_FPUX80}
+	f32 : float32;
+	f64 : float64;
 	eextended: floatx80;
 {$endif}
 {$endif cpuextended}
@@ -1195,9 +1197,24 @@ Implementation
           aitrealconst_s80bit:
             begin
 	      if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
-                eextended:=float64_to_floatx80(float64(double(tai_realconst(hp).value.s80val)))
+                begin
+                  f64:=float64(double(tai_realconst(hp).value.s80val));
+                  if float64_is_signaling_nan(f64)<>0 then
+                    begin
+                      f64.low := 0;
+                      f64.high := longword($fff80000);
+                    end;
+                  eextended:=float64_to_floatx80(f64);
+                end
 	      else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
-	        eextended:=float32_to_floatx80(float32(single(tai_realconst(hp).value.s80val)))
+                begin
+                  f32:=float32(single(tai_realconst(hp).value.s80val));
+                  if float32_is_signaling_nan(f32)<>0 then
+                    begin
+                      f32 := longword($ffc00000);
+	            end;
+                  eextended:=float32_to_floatx80(f32);
+                end
 	      else
 	        internalerror(2017091902);
               pdata:=@eextended;
@@ -1677,7 +1694,11 @@ Implementation
       begin
         while assigned(hp) do
          begin
-           case hp.typ of
+{$ifdef DEBUG}
+           if not(hp.typ in SkipLineInfo) then
+             current_filepos:=tailineinfo(hp).fileinfo;
+{$endif DEBUG}
+            case hp.typ of
              ait_align :
                begin
                  if tai_align_abstract(hp).aligntype>1 then
@@ -1898,6 +1919,10 @@ Implementation
       begin
         while assigned(hp) do
          begin
+{$ifdef DEBUG}
+           if not(hp.typ in SkipLineInfo) then
+             current_filepos:=tailineinfo(hp).fileinfo;
+{$endif DEBUG}
            case hp.typ of
              ait_align :
                begin
@@ -2093,6 +2118,8 @@ Implementation
         eextended : extended;
 	{$else}
         {$ifdef FPC_SOFT_FPUX80}
+	f32 : float32;
+	f64 : float64;
 	eextended : floatx80;
         {$endif}
         {$endif}
@@ -2110,6 +2137,10 @@ Implementation
         { main loop }
         while assigned(hp) do
          begin
+{$ifdef DEBUG}
+           if not(hp.typ in SkipLineInfo) then
+             current_filepos:=tailineinfo(hp).fileinfo;
+{$endif DEBUG}
            case hp.typ of
              ait_align :
                begin
@@ -2174,16 +2205,31 @@ Implementation
            {$push}{$warn 6018 off} { Unreachable code due to compile time evaluation }
                    aitrealconst_s80bit:
                      begin
-		       if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
-                         eextended:=float64_to_floatx80(float64(double(tai_realconst(hp).value.s80val)))
-		       else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
-			 eextended:=float32_to_floatx80(float32(single(tai_realconst(hp).value.s80val)))
-		       else
-			 internalerror(2017091903);
+                       if sizeof(tai_realconst(hp).value.s80val) = sizeof(double) then
+                         begin
+                           f64:=float64(double(tai_realconst(hp).value.s80val));
+                           if float64_is_signaling_nan(f64)<>0 then
+                             begin
+                               f64.low := 0;
+                               f64.high := longword($fff80000);
+                             end;
+                           eextended:=float64_to_floatx80(f64);
+                         end
+                       else if sizeof(tai_realconst(hp).value.s80val) = sizeof(single) then
+                         begin
+                           f32:=float32(single(tai_realconst(hp).value.s80val));
+                           if float32_is_signaling_nan(f32)<>0 then
+                             begin
+                               f32 := longword($ffc00000);
+                             end;
+                           eextended:=float32_to_floatx80(f32);
+                         end
+                       else
+                         internalerror(2017091903);
                        pdata:=@eextended;
                      end;
            {$pop}
-	 {$endif}
+         {$endif}
          {$endif cpuextended}
                    aitrealconst_s64comp:
                      begin
