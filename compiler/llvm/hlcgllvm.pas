@@ -98,6 +98,8 @@ uses
 
       procedure g_concatcopy(list : TAsmList;size: tdef; const source,dest : treference);override;
 
+      procedure g_undefined_ok(list: TAsmList; size: tdef; reg: tregister); override;
+
       procedure a_loadfpu_ref_reg(list: TAsmList; fromsize, tosize: tdef; const ref: treference; reg: tregister); override;
       procedure a_loadfpu_reg_ref(list: TAsmList; fromsize, tosize: tdef; reg: tregister; const ref: treference); override;
       procedure a_loadfpu_reg_reg(list: TAsmList; fromsize, tosize: tdef; reg1, reg2: tregister); override;
@@ -1319,6 +1321,17 @@ implementation
     end;
 
 
+  procedure thlcgllvm.g_undefined_ok(list: TAsmList; size: tdef; reg: tregister);
+    begin
+      if not(llvmflag_no_freeze in llvmversion_properties[current_settings.llvmversion]) then
+        begin
+          list.concat(taillvm.op_reg_size_reg(la_freeze,reg,size,reg));
+          exit;
+        end;
+      internalerror(2023010110);
+    end;
+
+
   procedure thlcgllvm.a_loadfpu_ref_reg(list: TAsmList; fromsize, tosize: tdef; const ref: treference; reg: tregister);
     var
        tmpreg: tregister;
@@ -2053,7 +2066,6 @@ implementation
       hreg1,
       hreg2: tregister;
       tmpref: treference;
-      pointedsize: asizeint;
     begin
       if ref.alignment=0 then
         internalerror(2016072203);
@@ -2066,41 +2078,9 @@ implementation
           result:=ref;
           exit;
         end;
-      case ptrdef.typ of
-        pointerdef:
-          begin
-            pointedsize:=tpointerdef(ptrdef).pointeddef.size;
-            { void, formaldef }
-            if pointedsize=0 then
-              pointedsize:=1;
-          end;
-        else
-          begin
-            { pointedsize is only used if the offset <> 0, to see whether we
-              can use getelementptr if it's an exact multiple -> set pointedsize
-              to a value that will never be a multiple as we can't "index" other
-              types }
-            pointedsize:=ref.offset+1;
-          end;
-      end;
-      hreg2:=getaddressregister(list,ptrdef);
-      { symbol+offset or base+offset with offset a multiple of the size ->
-        use getelementptr }
-      if (ref.index=NR_NO) and
-         (ref.offset mod pointedsize=0) then
-        begin
-          ptrindex:=ref.offset div pointedsize;
-          if assigned(ref.symbol) then
-            reference_reset_symbol(tmpref,ref.symbol,0,ref.alignment,ref.volatility)
-          else
-            reference_reset_base(tmpref,ptrdef,ref.base,0,ref.temppos,ref.alignment,ref.volatility);
-          list.concat(taillvm.getelementptr_reg_size_ref_size_const(hreg2,ptrdef,tmpref,ptruinttype,ptrindex,assigned(ref.symbol)));
-          reference_reset_base(result,ptrdef,hreg2,0,ref.temppos,ref.alignment,ref.volatility);
-          exit;
-        end;
-      { for now, perform all calculations using plain pointer arithmetic. Later
-        we can look into optimizations based on getelementptr for structured
-        accesses (if only to prevent running out of virtual registers).
+      { At this levevl, perform all calculations using plain pointer arithmetic.
+        Optimizations based on getelementptr for structured accesses need to be
+        performed at the node tree level.
 
         Assumptions:
           * symbol/base register: always type "ptrdef"

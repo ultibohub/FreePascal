@@ -655,6 +655,7 @@ begin
   InternalFindClose(f.FindHandle{$ifdef SEARCHREC_USEFINDDATA},f.FindData{$endif});
 end;
 
+
 {$if defined(windows) and not defined(win16)}
 function FindDataTimeToDateTime(constref aFileTime: FILETIME; out aResult: TDateTime): Boolean;
 var
@@ -681,6 +682,73 @@ begin
 end;
 {$endif}
 
+{ TDateTimeInfoRec }
+
+function TDateTimeInfoRec.GetCreationTime: TDateTime;
+begin
+  {$if defined(windows) and not defined(win16)}
+    FindDataTimeToDateTime(Data.ftCreationTime,Result)
+  {$else}
+    {$ifdef unix}
+      {$ifdef use_statx}
+        Result:=FileDateToDateTime(data.stx_ctime.tv_sec)
+      {$else}
+        Result:=FileDateToDateTime(data.st_ctime)
+      {$endif}
+    {$else}
+      {$IFDEF SEARCHREC_USEFINDDATA}
+        FileDateToDateTime(Data.Time);
+      {$ELSE}
+        Result:=0;
+      {$ENDIF}
+    {$ENDIF}
+  {$ENDIF}
+end;
+
+function TDateTimeInfoRec.GetLastAccessTime: TDateTime;
+begin
+  {$if defined(windows) and not defined(win16)}
+    FindDataTimeToDateTime(Data.ftLastAccessTime,Result)
+  {$else}
+    {$ifdef unix}
+      {$ifdef use_statx}
+        Result:=FileDateToDateTime(data.stx_atime.tv_sec)
+      {$else}
+        Result:=FileDateToDateTime(data.st_atime)
+      {$endif}
+    {$else}
+      {$IFDEF SEARCHREC_USEFINDDATA}
+        FileDateToDateTime(Data.Time);
+      {$ELSE}
+        Result:=0;
+      {$ENDIF}
+    {$ENDIF}
+  {$ENDIF}
+
+end;
+
+function TDateTimeInfoRec.GetTimeStamp: TDateTime;
+begin
+  {$if defined(windows) and not defined(win16)}
+    FindDataTimeToDateTime(Data.ftLastWriteTime,Result)
+  {$else}
+    {$ifdef unix}
+      {$ifdef use_statx}
+        Result:=FileDateToDateTime(data.stx_mtime.tv_sec)
+      {$else}
+        Result:=FileDateToDateTime(data.st_mtime)
+      {$endif}
+    {$else}
+      {$IFDEF SEARCHREC_USEFINDDATA}
+        FileDateToDateTime(Data.Time);
+      {$ELSE}
+        Result:=0;
+      {$ENDIF}
+    {$ENDIF}
+  {$ENDIF}
+end;
+
+
 { TUnicodeSearchRec }
 
 function TUnicodeSearchRec.GetTimeStamp: TDateTime;
@@ -699,6 +767,16 @@ begin
     Result := FileDateToUniversal(Time);
 end;
 
+function TUnicodeSearchRec.IsDirectory: Boolean;
+begin
+  Result:=(Attr and faDirectory)<>0;
+end;
+
+function TUnicodeSearchRec.IsCurrentOrParentDir: Boolean;
+begin
+  Result:=IsDirectory and ((Name='.') or (Name='..'));
+end;
+
 { TRawbyteSearchRec }
 
 function TRawbyteSearchRec.GetTimeStamp: TDateTime;
@@ -715,6 +793,16 @@ begin
   if not FindDataTimeToUTC(FindData.ftLastWriteTime, Result) then
 {$endif}
     Result := FileDateToUniversal(Time);
+end;
+
+function TRawbyteSearchRec.IsDirectory: Boolean;
+begin
+  Result:=(Attr and faDirectory)<>0;
+end;
+
+function TRawbyteSearchRec.IsCurrentOrParentDir: Boolean;
+begin
+  Result:=IsDirectory and ((Name='.') or (Name='..'));
 end;
 
 { TUnicodeSymLinkRec }
@@ -899,4 +987,23 @@ begin
   Result:=FileNameCasePreserving;
 end;
 {$ENDIF HAS_ISFILENAMECASEPRESERVING}
+
+{$IFNDEF HAS_FILEGETDATETIMEINFO}
+function FileGetDateTimeInfo(const FileName: string;
+  out DateTime: TDateTimeInfoRec; FollowLink: Boolean = True): Boolean;
+{$IFDEF SEARCHREC_USEFINDDATA}
+var
+  Info : TSearchRec;
+{$ENDIF}
+begin
+  {$IFDEF SEARCHREC_USEFINDDATA}
+    Result:=FindFirst(FileName,0,Info)=0;
+    if Result then
+      DateTime.data:=Info.Data;
+  {$ELSE}
+    Result:=False;
+  {$ENDIF}
+end;
+{$ENDIF}
+
 

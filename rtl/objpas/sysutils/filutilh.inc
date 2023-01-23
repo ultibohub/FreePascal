@@ -54,6 +54,32 @@ Type
 {$endif ULTIBO}
 
   // The actual unicode search record
+
+  { TDateTimeInfoRec }
+
+  TDateTimeInfoRec = record
+  private
+{$IFDEF SEARCHREC_USEFINDDATA}
+    Data: TWin32FindData platform;
+{$ENDIF WINDOWS}
+{$IFDEF UNIX}
+  {$ifdef USE_STATX}
+    data : tstatx platform;
+  {$else}
+    data : baseunix.stat platform;
+  {$endif USE_STATX}
+{$ENDIF UNIX}
+
+    function GetCreationTime: TDateTime;
+    function GetLastAccessTime: TDateTime;
+    function GetTimeStamp: TDateTime;
+  public
+    property CreationTime: TDateTime read GetCreationTime;
+    property LastAccessTime: TDateTime read GetLastAccessTime;
+    property TimeStamp: TDateTime read GetTimeStamp;
+  end;
+  { TUnicodeSearchRec }
+
   TUnicodeSearchRec = Record
     Time : Int64 deprecated 'use TimeStamp instead';
     Size : Int64;
@@ -71,9 +97,13 @@ Type
     function GetTimeStamp: TDateTime;
     function GetTimeStampUTC: TDateTime;
   public
+    Function IsDirectory : Boolean; inline;
+    function IsCurrentOrParentDir: Boolean; inline;
     property TimeStamp: TDateTime read GetTimeStamp;
     property TimeStampUTC: TDateTime read GetTimeStampUTC;
   end;
+
+  { TRawbyteSearchRec }
 
   TRawbyteSearchRec = Record
     Time : Int64 deprecated 'use TimeStamp instead';
@@ -92,6 +122,8 @@ Type
     function GetTimeStamp: TDateTime;
     function GetTimeStampUTC: TDateTime;
   public
+    Function IsDirectory : Boolean; inline;
+    function IsCurrentOrParentDir: Boolean; inline;
     property TimeStamp: TDateTime read GetTimeStamp;
     property TimeStampUTC: TDateTime read GetTimeStampUTC;
   end;
