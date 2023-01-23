@@ -656,6 +656,21 @@ begin
 end;
 
 
+{$if defined(ultibo)}
+function FindDataTimeToDateTime(constref aFileTime: FILETIME; out aResult: TDateTime): Boolean;
+var
+  lt: FILETIME;
+  st: TSystemTime;
+begin
+  Result := FileTimeToLocalFileTime(aFileTime, lt);
+  if Result then
+  begin
+    if FileTimeToSystemTime(lt, st) then
+      aResult := SystemTimeToDateTime(st);
+  end;
+end;
+{$endif}
+
 {$if defined(windows) and not defined(win16)}
 function FindDataTimeToDateTime(constref aFileTime: FILETIME; out aResult: TDateTime): Boolean;
 var
@@ -671,7 +686,9 @@ begin
       aResult := SystemTimeToDateTime(st);
   end;
 end;
+{$endif}
 
+{$if (defined(windows) and not defined(win16)) or defined(ultibo)}
 function FindDataTimeToUTC(constref aFileTime: FILETIME; out aResult: TDateTime): Boolean;
 var
   st: TSystemTime;
@@ -686,7 +703,7 @@ end;
 
 function TDateTimeInfoRec.GetCreationTime: TDateTime;
 begin
-  {$if defined(windows) and not defined(win16)}
+  {$if (defined(windows) and not defined(win16)) or defined(ultibo)}
     FindDataTimeToDateTime(Data.ftCreationTime,Result)
   {$else}
     {$ifdef unix}
@@ -707,7 +724,7 @@ end;
 
 function TDateTimeInfoRec.GetLastAccessTime: TDateTime;
 begin
-  {$if defined(windows) and not defined(win16)}
+  {$if (defined(windows) and not defined(win16)) or defined(ultibo)}
     FindDataTimeToDateTime(Data.ftLastAccessTime,Result)
   {$else}
     {$ifdef unix}
@@ -729,7 +746,7 @@ end;
 
 function TDateTimeInfoRec.GetTimeStamp: TDateTime;
 begin
-  {$if defined(windows) and not defined(win16)}
+  {$if (defined(windows) and not defined(win16)) or defined(ultibo)}
     FindDataTimeToDateTime(Data.ftLastWriteTime,Result)
   {$else}
     {$ifdef unix}
