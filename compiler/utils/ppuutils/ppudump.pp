@@ -243,10 +243,11 @@ const
   { 116 } 'Embedded-aarch64',
   { 117 } 'Linux-MIPS64',
   { 118 } 'Linux-MIPS64el',
-  { 119 } 'Ultibo-arm',
-  { 120 } 'Ultibo-i386',
-  { 121 } 'Ultibo-x86-64',
-  { 122 } 'Ultibo-AArch64'
+  { 119 } 'FreeRTos-RiscV32'
+  { 120 } 'Ultibo-arm',
+  { 121 } 'Ultibo-i386',
+  { 122 } 'Ultibo-x86-64',
+  { 123 } 'Ultibo-AArch64'
   );
 
 const

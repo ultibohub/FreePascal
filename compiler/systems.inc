@@ -210,10 +210,11 @@
              system_aarch64_embedded,   { 116 }
              system_mips64_linux,       { 117 }
              system_mips64el_linux,     { 118 }
-             system_arm_ultibo,         { 119 }
-             system_i386_ultibo,        { 120 }
-             system_x86_64_ultibo,      { 121 }
-             system_aarch64_ultibo      { 122 }
+             system_riscv32_freertos    { 119 }
+             system_arm_ultibo,         { 120 }
+             system_i386_ultibo,        { 121 }
+             system_x86_64_ultibo,      { 122 }
+             system_aarch64_ultibo      { 123 }
        );
 
      type
