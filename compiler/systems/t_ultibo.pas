@@ -526,6 +526,11 @@ begin
       begin
        with linkres do
         begin
+         Add('MEMORY');
+         Add('{');
+         Add('    CODE (RX) : ORIGIN = 0x00000000, LENGTH = 0xFFFFFFFF');
+         Add('    DATA (RW) : ORIGIN = 0x00000000, LENGTH = 0xFFFFFFFF');
+         Add('}');
          Add('SECTIONS');
          Add('{');
          if not ImageBaseSetExplicity then
@@ -544,28 +549,28 @@ begin
          Add('    *(.rodata, .rodata.*)');
          Add('    *(.comment)');
          Add('    _etext = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .preinit_array :');
          Add('    {');
          Add('    __preinit_array_start = .;');
          Add('    KEEP(*(.preinit_array))');
          Add('    __preinit_array_end = .;');
-         Add('    }');
+         Add('    } > CODE');
          
          Add('    .init_array :');
          Add('    {');
          Add('    __init_array_start = .;');
          Add('    KEEP(*(.init_array))');
          Add('    __init_array_end = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .fini_array :');
          Add('    {');
          Add('    __fini_array_start = .;');
          Add('    KEEP(*(.fini_array))');
          Add('    __fini_array_end = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .ctors :');
          Add('    {');
@@ -573,7 +578,7 @@ begin
          Add('    KEEP(*(SORT(.ctors.*)))');
          Add('    KEEP(*(.ctors))');
          Add('    __ctors_end = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .dtors :');
          Add('    {');
@@ -581,7 +586,7 @@ begin
          Add('    KEEP(*(SORT(.dtors.*)))');
          Add('    KEEP(*(.dtors))');
          Add('    __dtors_end = .;');
-         Add('    }');
+         Add('    } > CODE');
          
          Add('    .data ALIGN(4096):');
          Add('    {');
@@ -589,18 +594,18 @@ begin
          Add('    *(.data, .data.*)');
          Add('    KEEP(*(.fpc .fpc.n_version .fpc.n_links))');
          Add('    _edata = .;');
-         Add('    }');
+         Add('    } > DATA');
 
          Add('    .bss ALIGN(4096):');
          Add('    {');
          Add('    _bss_start = .;');
          Add('    *(.bss, .bss.*)');
          Add('    *(COMMON)');
-         Add('    }');
+         Add('    } > DATA');
          Add('    _bss_end = ALIGN(4096);');
          Add('}');
          Add('_end = .;');
-         end;
+        end;
       end;
     end;
    end;
@@ -665,6 +670,11 @@ begin
       begin
        with linkres do
         begin
+         Add('MEMORY');
+         Add('{');
+         Add('    CODE (RX) : ORIGIN = 0x0000000000000000, LENGTH = 0xFFFFFFFFFFFFFFFF');
+         Add('    DATA (RW) : ORIGIN = 0x0000000000000000, LENGTH = 0xFFFFFFFFFFFFFFFF');
+         Add('}');
          Add('SECTIONS');
          Add('{');
          if not ImageBaseSetExplicity then
@@ -683,28 +693,28 @@ begin
          Add('    *(.rodata, .rodata.*)');
          Add('    *(.comment)');
          Add('    _etext = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .preinit_array :');
          Add('    {');
          Add('    __preinit_array_start = .;');
          Add('    KEEP(*(.preinit_array))');
          Add('    __preinit_array_end = .;');
-         Add('    }');
+         Add('    } > CODE');
          
          Add('    .init_array :');
          Add('    {');
          Add('    __init_array_start = .;');
          Add('    KEEP(*(.init_array))');
          Add('    __init_array_end = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .fini_array :');
          Add('    {');
          Add('    __fini_array_start = .;');
          Add('    KEEP(*(.fini_array))');
          Add('    __fini_array_end = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .ctors :');
          Add('    {');
@@ -712,7 +722,7 @@ begin
          Add('    KEEP(*(SORT(.ctors.*)))');
          Add('    KEEP(*(.ctors))');
          Add('    __ctors_end = .;');
-         Add('    }');
+         Add('    } > CODE');
 
          Add('    .dtors :');
          Add('    {');
@@ -720,7 +730,7 @@ begin
          Add('    KEEP(*(SORT(.dtors.*)))');
          Add('    KEEP(*(.dtors))');
          Add('    __dtors_end = .;');
-         Add('    }');
+         Add('    } > CODE');
          
          Add('    .data ALIGN(4096):');
          Add('    {');
@@ -728,18 +738,18 @@ begin
          Add('    *(.data, .data.*)');
          Add('    KEEP(*(.fpc .fpc.n_version .fpc.n_links))');
          Add('    _edata = .;');
-         Add('    }');
+         Add('    } > DATA');
 
          Add('    .bss ALIGN(4096):');
          Add('    {');
          Add('    _bss_start = .;');
          Add('    *(.bss, .bss.*)');
          Add('    *(COMMON)');
-         Add('    }');
+         Add('    } > DATA');
          Add('    _bss_end = ALIGN(4096);');
          Add('}');
          Add('_end = .;');
-         end;
+        end;
       end;
     end;
    end;
