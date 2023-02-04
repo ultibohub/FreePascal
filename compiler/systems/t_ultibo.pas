@@ -2,7 +2,7 @@
     This unit implements support import,export,link routines
     for the Ultibo target
 
-    Copyright (c) 2022 by Garry Wood
+    Copyright (c) 2023 by Garry Wood
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -191,8 +191,8 @@ const
 begin
   with Info do
    begin
-     ExeCmd[1]:='ld -g '+platform_select+' $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE -T $RES';
-     DllCmd[1]:='ld -g '+platform_select+' $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP $SONAME -shared -L. -o $EXE $RES';
+     ExeCmd[1]:='ld -g -z noexecstack '+platform_select+' $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP -L. -o $EXE -T $RES';
+     DllCmd[1]:='ld -g -z noexecstack '+platform_select+' $OPT $DYNLINK $STATIC $GCSECTIONS $STRIP $SONAME -shared -L. -o $EXE $RES';
      DllCmd[2]:='strip --strip-unneeded $EXE';
    end;
 end;
@@ -529,7 +529,8 @@ begin
          Add('MEMORY');
          Add('{');
          Add('    CODE (RX) : ORIGIN = 0x00000000, LENGTH = 0xFFFFFFFF');
-         Add('    DATA (RW) : ORIGIN = 0x00000000, LENGTH = 0xFFFFFFFF');
+         Add('    ROM  (R)  : ORIGIN = 0x00000000, LENGTH = 0xFFFFFFFF');
+         Add('    RAM  (RW) : ORIGIN = 0x00000000, LENGTH = 0xFFFFFFFF');
          Add('}');
          Add('SECTIONS');
          Add('{');
@@ -542,66 +543,79 @@ begin
            Add('    .text 0x' + IntToHex(imagebase,SizeOf(imagebase) * 2) + ':');
           end;
          Add('    {');
-         Add('    _text_start = .;');
-         Add('    KEEP(*(.init, .init.*))');
-         Add('    *(.text, .text.*)');
-         Add('    *(.strings)');
-         Add('    *(.rodata, .rodata.*)');
-         Add('    *(.comment)');
-         Add('    _etext = .;');
+         Add('        _text_start = .;');
+         Add('        KEEP(*(.init, .init.*))');
+         Add('        KEEP(*(.plt, .plt.*))');
+         Add('        *(.text, .text.*)');
+         Add('        KEEP(*(.fini, .fini.*))');
+         Add('        _etext = .;');
          Add('    } > CODE');
+
+         Add('    .rodata ALIGN(4096):');
+         Add('    {');
+         Add('        _rodata = .;');
+         Add('        *(.strings)');
+         Add('        *(.rodata, .rodata.*)');
+         Add('        *(.comment)');
+         Add('        _erodata = .;');
+         Add('    } > ROM');
+
+         Add('    .eh_frame :');
+         Add('    {');
+         Add('        *(.eh_frame, .eh_frame.*)');
+         Add('    } > ROM');
+
+         Add('    .data ALIGN(4096):');
+         Add('    {');
+         Add('        _data = .;');
+         Add('        *(.data, .data.*)');
+         Add('        KEEP(*(.fpc .fpc.n_version .fpc.n_links))');
+         Add('        _edata = .;');
+         Add('    } > RAM');
 
          Add('    .preinit_array :');
          Add('    {');
-         Add('    __preinit_array_start = .;');
-         Add('    KEEP(*(.preinit_array))');
-         Add('    __preinit_array_end = .;');
-         Add('    } > CODE');
+         Add('        __preinit_array_start = .;');
+         Add('        KEEP(*(.preinit_array))');
+         Add('        __preinit_array_end = .;');
+         Add('    } > RAM');
          
          Add('    .init_array :');
          Add('    {');
-         Add('    __init_array_start = .;');
-         Add('    KEEP(*(.init_array))');
-         Add('    __init_array_end = .;');
-         Add('    } > CODE');
+         Add('        __init_array_start = .;');
+         Add('        KEEP(*(.init_array))');
+         Add('        __init_array_end = .;');
+         Add('    } > RAM');
 
          Add('    .fini_array :');
          Add('    {');
-         Add('    __fini_array_start = .;');
-         Add('    KEEP(*(.fini_array))');
-         Add('    __fini_array_end = .;');
-         Add('    } > CODE');
+         Add('        __fini_array_start = .;');
+         Add('        KEEP(*(.fini_array))');
+         Add('        __fini_array_end = .;');
+         Add('    } > RAM');
 
          Add('    .ctors :');
          Add('    {');
-         Add('    __ctors_start = .;');
-         Add('    KEEP(*(SORT(.ctors.*)))');
-         Add('    KEEP(*(.ctors))');
-         Add('    __ctors_end = .;');
-         Add('    } > CODE');
+         Add('        __ctors_start = .;');
+         Add('        KEEP(*(SORT(.ctors.*)))');
+         Add('        KEEP(*(.ctors))');
+         Add('        __ctors_end = .;');
+         Add('    } > RAM');
 
          Add('    .dtors :');
          Add('    {');
-         Add('    __dtors_start = .;');
-         Add('    KEEP(*(SORT(.dtors.*)))');
-         Add('    KEEP(*(.dtors))');
-         Add('    __dtors_end = .;');
-         Add('    } > CODE');
-         
-         Add('    .data ALIGN(4096):');
-         Add('    {');
-         Add('    _data = .;');
-         Add('    *(.data, .data.*)');
-         Add('    KEEP(*(.fpc .fpc.n_version .fpc.n_links))');
-         Add('    _edata = .;');
-         Add('    } > DATA');
+         Add('        __dtors_start = .;');
+         Add('        KEEP(*(SORT(.dtors.*)))');
+         Add('        KEEP(*(.dtors))');
+         Add('        __dtors_end = .;');
+         Add('    } > RAM');
 
          Add('    .bss ALIGN(4096):');
          Add('    {');
-         Add('    _bss_start = .;');
-         Add('    *(.bss, .bss.*)');
-         Add('    *(COMMON)');
-         Add('    } > DATA');
+         Add('        _bss_start = .;');
+         Add('        *(.bss, .bss.*)');
+         Add('        *(COMMON)');
+         Add('    } > RAM');
          Add('    _bss_end = ALIGN(4096);');
          Add('}');
          Add('_end = .;');
@@ -676,7 +690,8 @@ begin
          Add('MEMORY');
          Add('{');
          Add('    CODE (RX) : ORIGIN = 0x0000000000000000, LENGTH = 0xFFFFFFFFFFFFFFFF');
-         Add('    DATA (RW) : ORIGIN = 0x0000000000000000, LENGTH = 0xFFFFFFFFFFFFFFFF');
+         Add('    ROM  (R)  : ORIGIN = 0x0000000000000000, LENGTH = 0xFFFFFFFFFFFFFFFF');
+         Add('    RAM  (RW) : ORIGIN = 0x0000000000000000, LENGTH = 0xFFFFFFFFFFFFFFFF');
          Add('}');
          Add('SECTIONS');
          Add('{');
@@ -689,66 +704,79 @@ begin
            Add('    .text 0x' + IntToHex(imagebase,SizeOf(imagebase) * 2) + ':');
           end;
          Add('    {');
-         Add('    _text_start = .;');
-         Add('    KEEP(*(.init, .init.*))');
-         Add('    *(.text, .text.*)');
-         Add('    *(.strings)');
-         Add('    *(.rodata, .rodata.*)');
-         Add('    *(.comment)');
-         Add('    _etext = .;');
+         Add('        _text_start = .;');
+         Add('        KEEP(*(.init, .init.*))');
+         Add('        KEEP(*(.plt, .plt.*))');
+         Add('        *(.text, .text.*)');
+         Add('        KEEP(*(.fini, .fini.*))');
+         Add('        _etext = .;');
          Add('    } > CODE');
+
+         Add('    .rodata ALIGN(4096):');
+         Add('    {');
+         Add('        _rodata = .;');
+         Add('        *(.strings)');
+         Add('        *(.rodata, .rodata.*)');
+         Add('        *(.comment)');
+         Add('        _erodata = .;');
+         Add('    } > ROM');
+
+         Add('    .eh_frame :');
+         Add('    {');
+         Add('        *(.eh_frame, .eh_frame.*)');
+         Add('    } > ROM');
+
+         Add('    .data ALIGN(4096):');
+         Add('    {');
+         Add('        _data = .;');
+         Add('        *(.data, .data.*)');
+         Add('        KEEP(*(.fpc .fpc.n_version .fpc.n_links))');
+         Add('        _edata = .;');
+         Add('    } > RAM');
 
          Add('    .preinit_array :');
          Add('    {');
-         Add('    __preinit_array_start = .;');
-         Add('    KEEP(*(.preinit_array))');
-         Add('    __preinit_array_end = .;');
-         Add('    } > CODE');
+         Add('        __preinit_array_start = .;');
+         Add('        KEEP(*(.preinit_array))');
+         Add('        __preinit_array_end = .;');
+         Add('    } > RAM');
          
          Add('    .init_array :');
          Add('    {');
-         Add('    __init_array_start = .;');
-         Add('    KEEP(*(.init_array))');
-         Add('    __init_array_end = .;');
-         Add('    } > CODE');
+         Add('        __init_array_start = .;');
+         Add('        KEEP(*(.init_array))');
+         Add('        __init_array_end = .;');
+         Add('    } > RAM');
 
          Add('    .fini_array :');
          Add('    {');
-         Add('    __fini_array_start = .;');
-         Add('    KEEP(*(.fini_array))');
-         Add('    __fini_array_end = .;');
-         Add('    } > CODE');
+         Add('        __fini_array_start = .;');
+         Add('        KEEP(*(.fini_array))');
+         Add('        __fini_array_end = .;');
+         Add('    } > RAM');
 
          Add('    .ctors :');
          Add('    {');
-         Add('    __ctors_start = .;');
-         Add('    KEEP(*(SORT(.ctors.*)))');
-         Add('    KEEP(*(.ctors))');
-         Add('    __ctors_end = .;');
-         Add('    } > CODE');
+         Add('        __ctors_start = .;');
+         Add('        KEEP(*(SORT(.ctors.*)))');
+         Add('        KEEP(*(.ctors))');
+         Add('        __ctors_end = .;');
+         Add('    } > RAM');
 
          Add('    .dtors :');
          Add('    {');
-         Add('    __dtors_start = .;');
-         Add('    KEEP(*(SORT(.dtors.*)))');
-         Add('    KEEP(*(.dtors))');
-         Add('    __dtors_end = .;');
-         Add('    } > CODE');
-         
-         Add('    .data ALIGN(4096):');
-         Add('    {');
-         Add('    _data = .;');
-         Add('    *(.data, .data.*)');
-         Add('    KEEP(*(.fpc .fpc.n_version .fpc.n_links))');
-         Add('    _edata = .;');
-         Add('    } > DATA');
+         Add('        __dtors_start = .;');
+         Add('        KEEP(*(SORT(.dtors.*)))');
+         Add('        KEEP(*(.dtors))');
+         Add('        __dtors_end = .;');
+         Add('    } > RAM');
 
          Add('    .bss ALIGN(4096):');
          Add('    {');
-         Add('    _bss_start = .;');
-         Add('    *(.bss, .bss.*)');
-         Add('    *(COMMON)');
-         Add('    } > DATA');
+         Add('        _bss_start = .;');
+         Add('        *(.bss, .bss.*)');
+         Add('        *(COMMON)');
+         Add('    } > RAM');
          Add('    _bss_end = ALIGN(4096);');
          Add('}');
          Add('_end = .;');
