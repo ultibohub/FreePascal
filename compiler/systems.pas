@@ -262,7 +262,7 @@ interface
        systems_linux = [system_i386_linux,system_x86_64_linux,system_powerpc_linux,system_powerpc64_linux,
                        system_arm_linux,system_sparc_linux,system_sparc64_linux,system_m68k_linux,
                        system_x86_6432_linux,system_mipseb_linux,system_mipsel_linux,system_aarch64_linux,
-                       system_riscv32_linux,system_riscv64_linux,system_xtensa_linux];
+                       system_riscv32_linux,system_riscv64_linux,system_xtensa_linux,system_loongarch64_linux];
        systems_dragonfly = [system_x86_64_dragonfly];
        systems_freebsd = [system_aarch64_freebsd,
                           system_i386_freebsd,
@@ -387,7 +387,7 @@ interface
        { all systems that support indirect entry information }
        systems_indirect_entry_information = systems_darwin+
                                             [system_i386_win32,system_x86_64_win64,system_x86_64_linux,
-                                            system_aarch64_win64];
+                                            system_aarch64_win64,system_loongarch64_linux];
 
        { all systems for which weak linking has been tested/is supported }
        systems_weak_linking = systems_darwin + systems_solaris + systems_linux + systems_android + systems_bsd +
@@ -402,7 +402,7 @@ interface
                                    system_riscv32_linux,system_riscv64_linux,
                                    system_aarch64_win64,
                                    system_z80_zxspectrum,system_z80_msxdos,
-                                   system_wasm32_wasi
+                                   system_wasm32_wasi,system_loongarch64_linux
                                   ]+systems_darwin+systems_amigalike;
 
        { all systems that use the PE+ header in the PE/COFF file
@@ -474,11 +474,11 @@ interface
        asms_int_coff = [as_arm_pecoffwince,as_x86_64_pecoff,as_i386_pecoffwince,
                         as_i386_pecoffwdosx,as_i386_pecoff,as_i386_coff];
 
-       cpu2str : array[TSystemCpu] of string[10] =
+       cpu2str : array[TSystemCpu] of string[12] =
             ('','i386','m68k','alpha','powerpc','sparc','vm','ia64','x86_64',
              'mips','arm', 'powerpc64', 'avr', 'mipsel','jvm', 'i8086',
              'aarch64', 'wasm32', 'sparc64', 'riscv32', 'riscv64', 'xtensa',
-             'z80', 'mips64', 'mips64el');
+             'z80', 'mips64', 'mips64el', 'loongarch64');
 
        abiinfo : array[tabi] of tabiinfo = (
          (name: 'DEFAULT'; supported: true),
@@ -1216,6 +1216,10 @@ begin
 {$ifdef mips64el}
   default_target(system_mips64el_linux);
 {$endif mips64el}
+
+{$ifdef loongarch64}
+  default_target(system_loongarch64_linux);
+{$endif loongarch64}
 end;
 
 

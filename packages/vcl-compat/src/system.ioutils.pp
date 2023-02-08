@@ -230,7 +230,7 @@ type
   private
     class function DetectFileEncoding(const aPath: String; out BOMLength: Integer
       ): TEncoding;
-    class procedure GetFileTimestamps(const aFilename: TFileName; var CreateUTC, WriteUTC, AccessUTC: TDateTime);
+    class procedure GetFileTimestamps(const aFilename: TFileName; var aCreate, aWrite, aAccess: TDateTime; IsUTC : Boolean);
   public
     class function IntegerToFileAttributes(const Attributes: Integer): TFileAttributes;
     class function FileAttributesToInteger(const Attributes: TFileAttributes): Integer;
@@ -296,6 +296,9 @@ uses
   {$IfDef MSWINDOWS}
     windows, WinDirs,
   {$EndIf}
+  {$IfDef WINCE}
+    windows,
+  {$EndIf}
   {$IfDef UNIX}
     BaseUnix,
   {$EndIf}
@@ -312,7 +315,7 @@ ResourceString
   errStatFailed = 'Fstat for %a failed. Err.No.: %d';
   {$EndIf}
 
-{$IFDEF WINDOWS}
+{$IFDEF MSWINDOWS}
 Const
   WinAttrs : Array[TFileAttribute] of Integer =
      (FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
@@ -320,7 +323,19 @@ Const
       FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_TEMPORARY,FILE_ATTRIBUTE_SPARSE_FILE,
       FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_COMPRESSED, FILE_ATTRIBUTE_OFFLINE,
       FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_ATTRIBUTE_ENCRYPTED,FILE_ATTRIBUTE_REPARSE_POINT);
+{$ENDIF}
+{$IFDEF WINCE}
+  { Missing attributes are put to zero }
+Const
+  WinAttrs : Array[TFileAttribute] of Integer =
+     (FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
+      FILE_ATTRIBUTE_DIRECTORY,FILE_ATTRIBUTE_ARCHIVE, 0{FILE_ATTRIBUTE_DEVICE},
+      FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_TEMPORARY,0{FILE_ATTRIBUTE_SPARSE_FILE},
+      0{FILE_ATTRIBUTE_REPARSE_POINT}, FILE_ATTRIBUTE_COMPRESSED, 0{FILE_ATTRIBUTE_OFFLINE},
+      0{FILE_ATTRIBUTE_NOT_CONTENT_INDEXED}, 0{FILE_ATTRIBUTE_ENCRYPTED},0{FILE_ATTRIBUTE_REPARSE_POINT});
+{$ENDIF}
 
+{$IFDEF WINDOWS}
 function FileAttributesToFlags(const Attributes: TFileAttributes): Integer;
 
 var
@@ -1384,44 +1399,26 @@ end;
 
 { TFile }
 
-class procedure TFile.GetFileTimestamps(const aFilename: TFileName;
-  var CreateUTC, WriteUTC, AccessUTC: TDateTime);
-  {$IfDef MSWINDOWS}
-  var
-    Info:    TWin32FileAttributeData;
-    DosTime: DWORD;
-  {$endif}
-  {$ifdef UNIX}
-  var
-    Info: stat;
-  {$EndIf}
+class procedure TFile.GetFileTimestamps(const aFilename: TFileName; var aCreate, aWrite, aAccess: TDateTime; IsUTC: Boolean);
+
+var
+  DateTime: TDateTimeInfoRec;
+
 begin
-  {$If Defined(MSWINDOWS)}
-    if not GetFileAttributesEx(PChar(aFileName), GetFileExInfoStandard, @info) then
-      RaiseLastOSError;
-    DosTime:=0;
-    FileTimeToDosDateTime(info.ftCreationTime, LongRec(DosTime).Hi, LongRec(DosTime).Lo);
-    CreateUTC:=FileDateToDateTime(DosTime);
-    FileTimeToDosDateTime(info.ftLastWriteTime, LongRec(DosTime).Hi, LongRec(DosTime).Lo);
-    WriteUTC :=FileDateToDateTime(DosTime);
-    FileTimeToDosDateTime(info.ftLastAccessTime, LongRec(DosTime).Hi, LongRec(DosTime).Lo);
-    AccessUTC:=FileDateToDateTime(DosTime);
-  {$ElseIf Defined(UNIX)}
-    Info:=Default(Stat);
-    if fpstat(aFileName, info) <> 0 then
-      raise EInOutError.CreateFmt(errStatFailed, [aFileName, fpgeterrno]);
-    CreateUTC:=UnixToDateTime(info.st_ctime, True);
-    WriteUTC :=UnixToDateTime(info.st_mtime, True);
-    AccessUTC:=UnixToDateTime(info.st_atime, True);
-  {$Else}
-    if FileAge(aFilename, CreateUTC) then
-    begin
-      WriteUTC := CreateUTC;
-      AccessUTC := CreateUTC;
-    end
-    else
-      raise EInOutError.CreateFmt(SErrFileNotFound, [aFileName]);
-  {$EndIf}
+   if FileGetDateTimeInfo(aFileName,DateTime) then
+     begin
+     aCreate:=DateTime.CreationTime;
+     aWrite:=DateTime.TimeStamp;
+     aAccess:=DateTime.LastAccessTime;
+     if isUTC then
+       begin
+       aCreate:=LocalTimeToUniversal(aCreate);
+       aWrite:=LocalTimeToUniversal(aWrite);
+       aAccess:=LocalTimeToUniversal(aAccess);
+       end;
+     end
+   else
+     raise EInOutError.CreateFmt(SErrFileNotFound, [aFileName]);
 end;
 
 class function TFile.IntegerToFileAttributes(const Attributes: Integer
@@ -1703,8 +1700,14 @@ begin
 end;
 
 class function TFile.GetCreationTime(const aPath: string): TDateTime;
+
+var
+  Dummy1, Dummy2: TDateTime;
 begin
-  Result:=UTCtoLocal(TFile.GetCreationTimeUtc(aPath));
+  Result:=MinDateTime;
+  Dummy1:=MinDateTime;
+  Dummy2:=MinDateTime;
+  GetFileTimestamps(aPath, Result, Dummy1, Dummy2, False);
 end;
 
 class function TFile.GetCreationTimeUtc(const aPath: string): TDateTime;
@@ -1714,12 +1717,17 @@ begin
   Result:=MinDateTime;
   Dummy1:=MinDateTime;
   Dummy2:=MinDateTime;
-  GetFileTimestamps(aPath, Result, Dummy1, Dummy2);
+  GetFileTimestamps(aPath, Result, Dummy1, Dummy2, True);
 end;
 
 class function TFile.GetLastAccessTime(const aPath: string): TDateTime;
+var
+  Dummy1, Dummy2: TDateTime;
 begin
-  Result:=UTCtoLocal(TFile.GetLastAccessTimeUtc(aPath));
+  Result:=MinDateTime;
+  Dummy1:=MinDateTime;
+  Dummy2:=MinDateTime;
+  GetFileTimestamps(aPath, Dummy1, Dummy2, Result, False);
 end;
 
 class function TFile.GetLastAccessTimeUtc(const aPath: string): TDateTime;
@@ -1729,12 +1737,17 @@ begin
   Result:=MinDateTime;
   Dummy1:=MinDateTime;
   Dummy2:=MinDateTime;
-  GetFileTimestamps(aPath, Dummy1, Dummy2, Result);
+  GetFileTimestamps(aPath, Dummy1, Dummy2, Result,True);
 end;
 
 class function TFile.GetLastWriteTime(const aPath: string): TDateTime;
+var
+  Dummy1, Dummy2: TDateTime;
 begin
-  Result:=UTCtoLocal(TFile.GetLastWriteTime(aPath));
+  Result:=MinDateTime;
+  Dummy1:=MinDateTime;
+  Dummy2:=MinDateTime;
+  GetFileTimestamps(aPath, Dummy1, Result, Dummy2, False);
 end;
 
 class function TFile.GetLastWriteTimeUtc(const aPath: string): TDateTime;
@@ -1744,7 +1757,7 @@ begin
   Result:=MinDateTime;
   Dummy1:=MinDateTime;
   Dummy2:=MinDateTime;
-  GetFileTimestamps(aPath, Dummy1, Result, Dummy2);
+  GetFileTimestamps(aPath, Dummy1, Result, Dummy2,True);
 end;
 
 class function TFile.GetSymLinkTarget(const aFileName: string;

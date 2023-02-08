@@ -713,11 +713,7 @@ begin
         Result:=FileDateToDateTime(data.st_ctime)
       {$endif}
     {$else}
-      {$IFDEF SEARCHREC_USEFINDDATA}
-        FileDateToDateTime(Data.Time);
-      {$ELSE}
-        Result:=0;
-      {$ENDIF}
+        Result:=FileDateToDateTime(Data.Time);
     {$ENDIF}
   {$ENDIF}
 end;
@@ -734,14 +730,9 @@ begin
         Result:=FileDateToDateTime(data.st_atime)
       {$endif}
     {$else}
-      {$IFDEF SEARCHREC_USEFINDDATA}
-        FileDateToDateTime(Data.Time);
-      {$ELSE}
-        Result:=0;
-      {$ENDIF}
+      Result:=FileDateToDateTime(Data.Time);
     {$ENDIF}
   {$ENDIF}
-
 end;
 
 function TDateTimeInfoRec.GetTimeStamp: TDateTime;
@@ -756,11 +747,7 @@ begin
         Result:=FileDateToDateTime(data.st_mtime)
       {$endif}
     {$else}
-      {$IFDEF SEARCHREC_USEFINDDATA}
-        FileDateToDateTime(Data.Time);
-      {$ELSE}
-        Result:=0;
-      {$ENDIF}
+       Result:=FileDateToDateTime(Data.Time);
     {$ENDIF}
   {$ENDIF}
 end;
@@ -1008,18 +995,17 @@ end;
 {$IFNDEF HAS_FILEGETDATETIMEINFO}
 function FileGetDateTimeInfo(const FileName: string;
   out DateTime: TDateTimeInfoRec; FollowLink: Boolean = True): Boolean;
-{$IFDEF SEARCHREC_USEFINDDATA}
+
 var
   Info : TSearchRec;
-{$ENDIF}
+
 begin
-  {$IFDEF SEARCHREC_USEFINDDATA}
-    Result:=FindFirst(FileName,0,Info)=0;
-    if Result then
-      DateTime.data:=Info.FindData;
-  {$ELSE}
-    Result:=False;
-  {$ENDIF}
+  Result:=FindFirst(FileName,0,Info)=0;
+  if Result then
+     begin
+     DateTime.data:=Info;
+     FindClose(Info);
+     end;
 end;
 {$ENDIF}
 

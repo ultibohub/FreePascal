@@ -89,7 +89,8 @@ const
     { 21 } 'xtensa',
     { 22 } 'z80',
     { 23 } 'mips64',
-    { 24 } 'mips64el'
+    { 24 } 'mips64el',
+    { 25 } 'loongarch64'
     );
 
   CpuHasController : array[tsystemcpu] of boolean =
@@ -118,7 +119,8 @@ const
     { 21 } true  {'xtensa'},
     { 22 } true  {'z80'},
     { 23 } false {'mips64'},
-    { 24 } false {'mips64el'}
+    { 24 } false {'mips64el'},
+    { 25 } false {'loongarch64'}
     );
 
 { List of all supported system-cpu couples }
@@ -244,10 +246,11 @@ const
   { 117 } 'Linux-MIPS64',
   { 118 } 'Linux-MIPS64el',
   { 119 } 'FreeRTos-RiscV32',
-  { 120 } 'Ultibo-arm',
-  { 121 } 'Ultibo-i386',
-  { 122 } 'Ultibo-x86-64',
-  { 123 } 'Ultibo-AArch64'
+  { 120 } 'Linux-LoongArch64',
+  { 121 } 'Ultibo-arm',
+  { 122 } 'Ultibo-i386',
+  { 123 } 'Ultibo-x86-64',
+  { 124 } 'Ultibo-AArch64'
   );
 
 const

@@ -58,7 +58,8 @@
              cpu_xtensa,                   { 21 }
              cpu_z80,                      { 22 }
              cpu_mips64,                   { 23 }
-             cpu_mips64el                  { 24 }
+             cpu_mips64el,                 { 24 }
+             cpu_loongarch64               { 25 }
        );
 
        tasmmode= (asmmode_none
@@ -211,10 +212,11 @@
              system_mips64_linux,       { 117 }
              system_mips64el_linux,     { 118 }
              system_riscv32_freertos,   { 119 }
-             system_arm_ultibo,         { 120 }
-             system_i386_ultibo,        { 121 }
-             system_x86_64_ultibo,      { 122 }
-             system_aarch64_ultibo      { 123 }
+             system_loongarch64_linux,  { 120 }
+             system_arm_ultibo,         { 121 }
+             system_i386_ultibo,        { 122 }
+             system_x86_64_ultibo,      { 123 }
+             system_aarch64_ultibo      { 124 }
        );
 
      type
