@@ -3483,7 +3483,11 @@ begin
                   stopOptions(1);
                 end;
                inc(Level);
-               skip[level]:=(skip[level-1] or not defined_macro(upper(GetName(opts))));
+               { environment variable? }
+               if (opts[1]='$') and (opts[length(opts)]='$') then
+                 skip[level]:=skip[level-1] or (GetEnvironmentVariable(copy(opts,2,length(opts)-2))='')
+               else
+                 skip[level]:=(skip[level-1] or not defined_macro(upper(GetName(opts))));
              end
            else
             if (s='IFNDEF') then
@@ -3495,7 +3499,11 @@ begin
                   stopOptions(1);
                 end;
                inc(Level);
-               skip[level]:=(skip[level-1] or defined_macro(upper(GetName(opts))));
+               { environment variable? }
+               if (opts[1]='$') and (opts[length(opts)]='$') then
+                 skip[level]:=skip[level-1] or (GetEnvironmentVariable(copy(opts,2,length(opts)-2))<>'')
+               else
+                 skip[level]:=skip[level-1] or defined_macro(upper(GetName(opts)));
              end
            else
             if (s='ELSE') then
@@ -4898,14 +4906,14 @@ begin
 {$endif XTENSA}
 
 {$ifdef cpufpemu}
-  { force fpu emulation on arm/wince, arm/gba, arm/embedded and arm/nds
+  { force fpu emulation on arm/wince, arm/gba, arm/embedded and arm/nds etc.
     if fpu type not explicitly set }
   if not(option.FPUSetExplicitly) and
      ((target_info.system in [system_arm_wince,system_arm_gba,
          system_m68k_amiga,system_m68k_atari,
          system_arm_nds,system_arm_embedded,system_arm_freertos,
          system_riscv32_embedded,system_riscv64_embedded,system_xtensa_linux,
-         system_z80_embedded,system_z80_zxspectrum])
+         system_z80_embedded,system_z80_zxspectrum,system_riscv32_freertos])
 {$ifdef arm}
       or (target_info.abi=abi_eabi)
 {$endif arm}

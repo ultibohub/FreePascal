@@ -319,7 +319,7 @@ interface
        systems_ultibo = [system_arm_ultibo,system_i386_ultibo,system_x86_64_ultibo,system_aarch64_ultibo];
 
        { all FreeRTOS systems }
-       systems_freertos = [system_xtensa_freertos,system_arm_freertos];
+       systems_freertos = [system_xtensa_freertos,system_arm_freertos,system_riscv32_freertos];
 
        { all systems that allow section directive }
        systems_allow_section = systems_embedded+systems_freertos+systems_wasm+[system_powerpc_morphos];
@@ -492,6 +492,12 @@ interface
          (name: 'OLDWIN32GNU'; supported:{$ifdef I386}true{$else}false{$endif}),
          (name: 'AARCH64IOS'; supported:{$ifdef aarch64}true{$else}false{$endif}),
          (name: 'RISCVHF'; supported:{$if defined(riscv32) or defined(riscv64)}true{$else}false{$endif}),
+         (name: 'RISCV32ILP'; supported:{$if defined(riscv32)}true{$else}false{$endif}),
+         (name: 'RISCV32ILPF'; supported:{$if defined(riscv32)}true{$else}false{$endif}),
+         (name: 'RISCV32ILPD'; supported:{$if defined(riscv32)}true{$else}false{$endif}),
+         (name: 'RISCV64LP'; supported:{$if defined(riscv64)}true{$else}false{$endif}),
+         (name: 'RISCV64LPF'; supported:{$if defined(riscv64)}true{$else}false{$endif}),
+         (name: 'RISCV64LPD'; supported:{$if defined(riscv64)}true{$else}false{$endif}),
          (name: 'LINUX386_SYSV'; supported:{$if defined(i386)}true{$else}false{$endif}),
          (name: 'WINDOWED'; supported:{$if defined(xtensa)}true{$else}false{$endif}),
          (name: 'CALL0'; supported:{$if defined(xtensa)}true{$else}false{$endif})
