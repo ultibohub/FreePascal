@@ -1362,7 +1362,11 @@ unit aoptx86;
         RegSet :=
           paramanager.get_volatile_registers_int(current_procinfo.procdef.proccalloption) +
           current_procinfo.saved_regs_int;
-
+(*
+        { Don't use the frame register unless explicitly allowed (fixes i40111) }
+        if ([cs_useebp, cs_userbp] * current_settings.optimizerswitches) = [] then
+          Exclude(RegSet, RS_FRAME_POINTER_REG);
+*)
         for CurrentSuperReg in RegSet do
           begin
             CurrentReg := newreg(R_INTREGISTER, TSuperRegister(CurrentSuperReg), RegSize);
@@ -12403,24 +12407,12 @@ unit aoptx86;
                                       if there are any opposing CMOV pairs that
                                       write to the same register }
                                     for x := 0 to w - 1 do
-                                      if RegWrites[x] = taicpu(hp1).oper[1]^.reg then
+                                      if (RegWrites[x] = taicpu(hp1).oper[1]^.reg) then
                                         begin
-                                          { We have a match.  Move this instruction
-                                            right to the top }
+                                          { We have a match.  Keep this as a MOV }
 
-                                          hp2 := hp1;
                                           { Move ahead in preparation }
                                           GetNextInstruction(hp1, hp1);
-
-                                          asml.Remove(hp2);
-                                          asml.InsertAfter(hp2, hp_prev);
-
-                                          { Note we can't use the trick of inserting before hp_prev
-                                            and then calling TrySwapMovOp with hp_prev2, like with
-                                            the MOV imm,reg optimisations, because hp2 may share a
-                                            register with the comparison }
-                                          if (hp_prev <> p) then
-                                            TrySwapMovCmp(hp_prev, hp2);
 
                                           RegMatch := True;
                                           Break;
@@ -15104,8 +15096,46 @@ unit aoptx86;
 
 
     function TX86AsmOptimizer.PostPeepholeOptCmp(var p : tai) : Boolean;
+      var
+        hp1: tai;
       begin
         Result:=false;
+
+        { Final check to see if CMP/MOV pairs can be changed to MOV/CMP }
+        while GetNextInstruction(p, hp1) and
+          TrySwapMovCmp(p, hp1) do
+          begin
+            if MatchInstruction(hp1, A_MOV, []) then
+              begin
+                if RegInUsedRegs(NR_DEFAULTFLAGS, UsedRegs) then
+                  begin
+                    { A little hacky, but since CMP doesn't read the flags, only
+                      modify them, it's safe if they get scrambled by MOV -> XOR }
+                    ExcludeRegFromUsedRegs(NR_DEFAULTFLAGS, UsedRegs);
+                    Result := PostPeepholeOptMov(hp1);
+{$ifdef x86_64}
+                    if Result and MatchInstruction(hp1, A_XOR, [S_Q]) then
+                      { Used to shrink instruction size }
+                      PostPeepholeOptXor(hp1);
+{$endif x86_64}
+                    IncludeRegInUsedRegs(NR_DEFAULTFLAGS, UsedRegs);
+                  end
+                else
+                  begin
+                    Result := PostPeepholeOptMov(hp1);
+{$ifdef x86_64}
+                    if Result and MatchInstruction(hp1, A_XOR, [S_Q]) then
+                      { Used to shrink instruction size }
+                      PostPeepholeOptXor(hp1);
+{$endif x86_64}
+                  end;
+              end;
+
+            { Enabling this flag is actually a null operation, but it marks
+              the code as 'modified' during this pass }
+            Include(OptsToCheck, aoc_ForceNewIteration);
+          end;
+
         { change "cmp $0, %reg" to "test %reg, %reg" }
         if MatchOpType(taicpu(p),top_const,top_reg) and
            (taicpu(p).oper[0]^.val = 0) then
@@ -15124,6 +15154,42 @@ unit aoptx86;
         hp1,hp2 : tai;
       begin
         Result:=false;
+        { Final check to see if TEST/MOV pairs can be changed to MOV/TEST }
+        if (taicpu(p).opcode = A_TEST) then
+          while GetNextInstruction(p, hp1) and
+            TrySwapMovCmp(p, hp1) do
+            begin
+              if MatchInstruction(hp1, A_MOV, []) then
+                begin
+                  if RegInUsedRegs(NR_DEFAULTFLAGS, UsedRegs) then
+                    begin
+                      { A little hacky, but since TEST doesn't read the flags, only
+                        modify them, it's safe if they get scrambled by MOV -> XOR }
+                      ExcludeRegFromUsedRegs(NR_DEFAULTFLAGS, UsedRegs);
+                      Result := PostPeepholeOptMov(hp1);
+{$ifdef x86_64}
+                      if Result and MatchInstruction(hp1, A_XOR, [S_Q]) then
+                        { Used to shrink instruction size }
+                        PostPeepholeOptXor(hp1);
+{$endif x86_64}
+                      IncludeRegInUsedRegs(NR_DEFAULTFLAGS, UsedRegs);
+                    end
+                  else
+                    begin
+                      Result := PostPeepholeOptMov(hp1);
+{$ifdef x86_64}
+                      if Result and MatchInstruction(hp1, A_XOR, [S_Q]) then
+                        { Used to shrink instruction size }
+                        PostPeepholeOptXor(hp1);
+{$endif x86_64}
+                    end;
+                end;
+
+              { Enabling this flag is actually a null operation, but it marks
+                the code as 'modified' during this pass }
+              Include(OptsToCheck, aoc_ForceNewIteration);
+            end;
+
         { If x is a power of 2 (popcnt = 1), change:
             or  $x, %reg/ref
 
