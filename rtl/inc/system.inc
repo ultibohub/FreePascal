@@ -739,6 +739,14 @@ var
  q, bd, ad, bc, ac: qword;
  carry: qword;
 begin
+  if (l>=Low(int32)) and (l<=High(int32)) then
+    begin
+      { random(longint(l)), inlined. This makes random(NativeType) on 64-bit platforms match 32-bit when possible. }
+      if (l < 0) then
+        inc(l);
+      exit(longint(int64(xsr128_32_u32rand)*l shr 32));
+    end;
+
   if (l < 0) then
     begin
       inc(l);

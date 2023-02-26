@@ -705,22 +705,8 @@ asm
     and      $-16, %r9
     add      %rcx, %r9 { r9 = end of full XMMs in buf1 }
     cmp      %r9, %rcx
-    je       .L16x_Tail
-.balign 16
-.L16x_Body:
-    movdqu   (%rdx), %xmm0
-    movdqu   (%rcx), %xmm1
-    pcmpeqb  %xmm1, %xmm0
-    pmovmskb %xmm0, %eax
-    xor      $65535, %eax
-    jne      .L16x_Found
-    add      $16, %rcx
-    add      $16, %rdx
-    cmp      %rcx, %r9
     jne      .L16x_Body
 .L16x_Tail:
-    cmp      %r9, %r10
-    je       .LNothing
     lea      15(%r9), %eax { check if tails don't cross page boundaries and can be over-read to XMMs }
     lea      15(%rdx), %ecx
     xor      %r9d, %eax
@@ -733,21 +719,38 @@ asm
     pcmpeqb  %xmm1, %xmm0
     pmovmskb %xmm0, %eax
     xor      $65535, %eax
-    je       .LNothing
+    je       .L16x_Nothing
     bsf      %eax, %ecx
     add      %rcx, %r9
     cmp      %r10, %r9 { ignore over-read garbage bytes }
-    jnb      .LNothing
+    jnb      .L16x_Nothing
     movzbl   (%r9), %eax
     movzbl   (%rdx,%rcx), %edx
     sub      %rdx, %rax
     ret
 
+.balign 16
+.L16x_Body:
+    movdqu   (%rdx), %xmm0
+    movdqu   (%rcx), %xmm1
+    pcmpeqb  %xmm1, %xmm0
+    pmovmskb %xmm0, %eax
+    xor      $65535, %eax
+    jne      .L16x_Found
+    add      $16, %rcx
+    add      $16, %rdx
+    cmp      %rcx, %r9
+    jne      .L16x_Body
+    cmp      %r9, %r10
+    jne      .L16x_Tail
+.L16x_Nothing:
+    xor      %eax, %eax
+    ret
+
 .L16x_Found:
     bsf      %eax, %eax
-    movzbl   (%rcx,%rax), %ecx
     movzbl   (%rdx,%rax), %edx
-    mov      %rcx, %rax
+    movzbl   (%rcx,%rax), %eax
     sub      %rdx, %rax
     ret
 
@@ -849,6 +852,97 @@ asm
     jmp      .LDwordwise_Body
 end;
 {$endif FPC_SYSTEM_HAS_COMPAREDWORD}
+
+
+{$ifndef FPC_SYSTEM_HAS_COMPAREWORD}
+{$define FPC_SYSTEM_HAS_COMPAREWORD}
+function CompareWord(Const buf1,buf2;len:SizeInt):SizeInt; assembler; nostackframe;
+asm
+{$ifndef win64}
+    mov      %rdx, %r8
+    mov      %rsi, %rdx
+    mov      %rdi, %rcx
+{$endif win64}
+    mov      %r8, %rax
+    shr      $62, %rax
+    jnz      .LUnbounded
+    lea      (%rcx,%r8,2), %r9
+    cmp      $3, %r8
+    jle      .LWordwise_Test
+    and      $-8, %r8
+    lea      (%rcx,%r8,2), %r8
+    cmp      %r8, %rcx
+    jne      .L8x_Body
+.L8x_Tail:
+    cmp      %r8, %r9
+    je       .LNothing
+    lea      15(%r8), %eax
+    lea      15(%rdx), %ecx
+    xor      %r8d, %eax
+    xor      %edx, %ecx
+    or       %ecx, %eax
+    cmp      $4095, %eax
+    ja       .LCantOverReadBothTails
+    movdqu   (%r8), %xmm0
+    movdqu   (%rdx), %xmm2
+    pcmpeqw  %xmm2, %xmm0
+    pmovmskb %xmm0, %eax
+    xor      $65535, %eax
+    je       .LNothing
+    bsf      %eax, %eax
+    add      %rax, %r8
+    cmp      %r9, %r8
+    jnb      .LNothing
+    movzwl   (%r8), %ecx
+    cmp      %cx, (%rdx,%rax)
+    sbb      %rax, %rax
+    and      $2, %eax
+    sub      $1, %rax
+    ret
+
+.balign 16
+.L8x_Next:
+    add      $16, %rcx
+    add      $16, %rdx
+    cmp      %rcx, %r8
+    je       .L8x_Tail
+.L8x_Body:
+    movdqu   (%rdx), %xmm0
+    movdqu   (%rcx), %xmm1
+    pcmpeqw  %xmm1, %xmm0
+    pmovmskb %xmm0, %eax
+    xor      $65535, %eax
+    je       .L8x_Next
+    bsf      %eax, %eax
+    movzwl   (%rcx,%rax), %ecx
+    cmp      %cx, (%rdx,%rax)
+.LDoSbb:
+    sbb      %rax, %rax
+    and      $2, %eax
+    sub      $1, %rax
+    ret
+
+.LCantOverReadBothTails:
+    mov      %r8, %rcx
+.LWordwise_Body:
+    movzwl   (%rcx), %eax
+    cmp      %ax, (%rdx)
+    jne      .LDoSbb
+.LWordwise_Next:
+    add      $2, %rcx
+    add      $2, %rdx
+.LWordwise_Test:
+    cmp      %r9, %rcx
+    jne      .LWordwise_Body
+.LNothing:
+    xor      %eax, %eax
+    ret
+
+.LUnbounded:
+    mov     %rcx, %r9
+    jmp     .LWordwise_Body
+end;
+{$endif FPC_SYSTEM_HAS_COMPAREWORD}
 
 
 {$define FPC_SYSTEM_HAS_DECLOCKED_LONGINT}
