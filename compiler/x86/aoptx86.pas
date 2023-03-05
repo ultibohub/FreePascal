@@ -4278,6 +4278,8 @@ unit aoptx86;
                                       hp3 := tai(hp2.Previous);
                                       RemoveInstruction(hp2);
 
+                                      Include(OptsToCheck, aoc_ForceNewIteration);
+
                                       { See if there's more we can optimise }
                                       Continue;
                                     end
@@ -4381,7 +4383,8 @@ unit aoptx86;
                                 { Same value - register hasn't changed }
                                 DebugMsg(SPeepholeOptimization + 'Mov2Nop 2 done', hp2);
                                 RemoveInstruction(hp2);
-                                Result := True;
+
+                                Include(OptsToCheck, aoc_ForceNewIteration);
 
                                 { See if there's more we can optimise }
                                 Continue;
@@ -13536,6 +13539,47 @@ unit aoptx86;
                         taicpu(hp2).condition := inverse_cond(taicpu(hp2).condition);
                         Result := True;
                         Exit;
+                      end
+                    else if ((taicpu(p).oper[0]^.val=$ff) or (taicpu(p).oper[0]^.val=$ffff) or (taicpu(p).oper[0]^.val=$ffffffff)) and
+                      MatchOpType(taicpu(hp1),top_const,top_reg) and
+                      (taicpu(p).oper[0]^.val>=taicpu(hp1).oper[0]^.val) and
+                      SuperRegistersEqual(taicpu(p).oper[1]^.reg,taicpu(hp1).oper[1]^.reg) then
+                        { change
+                            and  $ff/$ff/$ffff, reg
+                            cmp  val<=$ff/val<=$ffff/val<=$ffffffff, reg
+                            dealloc reg
+                          to
+                            cmp  val<=$ff/val<=$ffff/val<=$ffffffff, resized reg
+                        }
+                      begin
+                        TransferUsedRegs(TmpUsedRegs);
+                        UpdateUsedRegs(TmpUsedRegs, tai(p.Next));
+                        if not RegUsedAfterInstruction(taicpu(p).oper[1]^.reg, hp1, TmpUsedRegs) then
+                          begin
+                            DebugMsg(SPeepholeOptimization + 'AND/CMP -> CMP', p);
+                            case taicpu(p).oper[0]^.val of
+                              $ff:
+                                begin
+                                  setsubreg(taicpu(hp1).oper[1]^.reg, R_SUBL);
+                                  taicpu(hp1).opsize:=S_B;
+                                end;
+                              $ffff:
+                                begin
+                                  setsubreg(taicpu(hp1).oper[1]^.reg, R_SUBW);
+                                  taicpu(hp1).opsize:=S_W;
+                                end;
+                              $ffffffff:
+                                begin
+                                  setsubreg(taicpu(hp1).oper[1]^.reg, R_SUBD);
+                                  taicpu(hp1).opsize:=S_L;
+                                end;
+                              else
+                                Internalerror(2023030401);
+                            end;
+                            RemoveCurrentP(p);
+                            Result := True;
+                            Exit;
+                          end;
                       end;
 
                   A_MOVZX:
@@ -14609,9 +14653,10 @@ unit aoptx86;
                 taicpu(hp1).clearop(1);
                 taicpu(hp1).ops := 0;
 
-                { A change was made, but not with p, so move forward 1 }
-                p := tai(p.Next);
-                Result := True;
+                { A change was made, but not with p, so don't set Result, but
+                  notify the compiler that a change was made }
+                Include(OptsToCheck, aoc_ForceNewIteration);
+
                 Exit; { and -> btr won't happen because an opsize of S_W won't be optimised anyway }
               end;
           end;
