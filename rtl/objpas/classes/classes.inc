@@ -683,6 +683,13 @@ begin
   InternalQueue(aThread, aMethod, True);
 end;
 
+{$ifdef FPC_HAS_REFERENCE_PROCEDURE}
+class procedure TThread.ForceQueue(aThread: TThread; aMethod: TThreadProcedure); static;
+begin
+  InternalQueue(aThread, aMethod, True);
+end;
+{$endif}
+
 class procedure TThread.RemoveQueuedEvents(aThread: TThread; aMethod: TThreadMethod);
 var
   entry, tmpentry, lastentry: PThreadQueueEntry;
@@ -1404,21 +1411,27 @@ end;
 
 { all targets should at least include the sysres.inc dummy in the system unit to compile this }
 function CreateComponentfromRes(const res : string;Inst : THandle;var Component : TComponent) : Boolean;
+
   var
     ResStream : TResourceStream;
+    ResID : TFPResourceHandle;
+    
   begin
-    result:=true;
 
     if Inst=0 then
       Inst:=HInstance;
-
+    ResId:=System.FindResource(Inst, Res, RT_RCDATA);
+    result:=ResID<>0;
     try
-      ResStream:=TResourceStream.Create(Inst,res,RT_RCDATA);
-      try
-        Component:=ResStream.ReadComponent(Component);
-      finally
-        ResStream.Free;
-      end;
+      if Result then
+        begin
+        ResStream:=TResourceStream.Create(Inst,Res,RT_RCDATA);
+        try
+          Component:=ResStream.ReadComponent(Component);
+        finally
+          ResStream.Free;
+        end;
+        end;
     except
       on EResNotFound do
         result:=false;
