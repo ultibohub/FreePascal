@@ -1793,8 +1793,8 @@ ResourceString
   SWarnCanNotGetFileAge = 'Warning: Failed to get FileAge for %s';
   SWarnExtCommandNotFound = 'Warning: External command "%s" not found but "%s" is older then "%s"';
   SWarnDuplicatePackage = 'Warning: Package %s is already added. Using the existing package';
-  SWarngccNotFound        = 'Could not find libgcc';
-  SWarncrossgccNotFound   = 'Could not find libgcc for cross-configuration';
+  SWarngccNotFound        = 'Could not find gcc';
+  SWarncrossgccNotFound   = 'Could not find gcc for cross-configuration';
   SWarngcclibpath         = 'Warning: Unable to determine the libgcc path.';
 {$IFNDEF HAS_UNIT_PROCESS}
   SWarnNoFCLProcessSupport= 'No FCL-Process support';
@@ -3063,6 +3063,8 @@ begin
       m68k:         result := GetGccDirArch('cpum68k',['-march=68020']);
       mips:         result := GetGccDirArch('cpumips',['-mips32','-EB','-mabi=32']);
       mipsel:       result := GetGccDirArch('cpumipsel',['-mips32','-EL','-mabi=32']);
+      mips64el:     result := GetGccDirArch('cpumipsel',['-mips64','-EL','-mabi=64']);
+      mips64:       result := GetGccDirArch('cpumipsel',['-mips64','-EB','-mabi=64']);
       riscv32:      result := GetGccDirArch('cpuriscv32',['-march=rv32imafdc']);
       riscv64:      result := GetGccDirArch('cpuriscv64',['-march=rv64imafdc']);
       sparc:        result := GetGccDirArch('cpusparc',['-m32']);
@@ -6251,7 +6253,7 @@ begin
       ConsoleOutput := TMemoryStream.Create;
       try
         if Interactive then
-          Log(vlInfo,'Starting "%s" "%s" interactively',[Cmd,Args]);
+          Log(vlInfo,'Starting "%s" "%s" interactively',[Cmd,CmdLine]);
         {$ifdef HAS_UNIT_PROCESS}
         E:=ExecuteFPC(Verbose, Interactive, cmd, args, env, ConsoleOutput);
         {$else}

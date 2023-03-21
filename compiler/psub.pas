@@ -424,6 +424,7 @@ implementation
                         { The library init code is already called and does not
                           need to be in the initfinal table (PFV) }
                         block:=statement_block(_INITIALIZATION);
+                        init_main_block_syms(block);
                      end
                    else if token=_FINALIZATION then
                      begin
@@ -512,6 +513,11 @@ implementation
                        (srsym.typ=procsym) then
                       begin
                         { if vmt=1 then newinstance }
+                        call:=
+                          ccallnode.create(nil,tprocsym(srsym),srsym.owner,
+                            ctypeconvnode.create_internal(load_self_pointer_node,cclassrefdef.create(current_structdef)),
+                            [],nil);
+                        include(call.callnodeflags,cnf_ignore_devirt_wpo);
                         addstatement(newstatement,cifnode.create(
                             caddnode.create_internal(equaln,
                                 ctypeconvnode.create_internal(
@@ -522,9 +528,7 @@ implementation
                                 ctypeconvnode.create_internal(
                                     load_self_pointer_node,
                                     voidpointertype),
-                                ccallnode.create(nil,tprocsym(srsym),srsym.owner,
-                                  ctypeconvnode.create_internal(load_self_pointer_node,cclassrefdef.create(current_structdef)),
-                                  [],nil)),
+                                call),
                             nil));
                       end
                     else

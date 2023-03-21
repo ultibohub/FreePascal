@@ -43,7 +43,7 @@ Type
   TFieldListKind = (flSelect,flInsert,flInsertParams,flUpdate,flWhereKey,flFilter,flOrderby);
   TFieldListKinds = set of TFieldListKind;
 
-  TVariableSource = (vsNone,vsQuery,vsContent,vsRoute,vsHeader,vsData);
+  TVariableSource = (vsNone,vsQuery,vsContent,vsRoute,vsHeader,vsData,vsParam);
   TVariableSources = Set of TVariableSource;
 
 Const
@@ -69,6 +69,7 @@ Type
     function DoGetInputData(aName: UTF8string): TJSONData; virtual; abstract;
     Function GetConnection : TSQLConnection; virtual; abstract;
     Function GetTransaction : TSQLTransaction; virtual; abstract;
+    Function GetUpdateData : TDataset; virtual; abstract;
   Public
     Destructor Destroy; override;
     // Call this to get a HTTP Query variable, header,...
@@ -84,6 +85,8 @@ Type
     Property Connection : TSQLConnection Read GetConnection;
     // Get transaction in use
     Property Transaction : TSQLTransaction Read GetTransaction;
+    // Updated data after PUT/POST/PATCH
+    Property UpdatedData : TDataset Read GetUpdateData;
   end;
 
   { ESQLDBRest }
@@ -138,6 +141,8 @@ Type
   TSQLDBRestFieldClass = Class of TSQLDBRestField;
   TSQLDBRestFieldArray = Array of TSQLDBRestField;
 
+
+
   { TSQLDBRestFieldArrayHelper }
 
   TSQLDBRestFieldArrayHelper = type helper for TSQLDBRestFieldArray
@@ -182,6 +187,51 @@ Type
   end;
   TSQLDBRestFieldListClass = Class of TSQLDBRestFieldList;
 
+  { TSQLDBRestParam }
+
+  TSQLDBRestParam = class(TCollectionItem)
+  private
+    FName: UTF8String;
+    FDefault: UTF8String;
+    FDataType : TFieldType;
+  Protected
+    Function GetDisplayName: string; override;
+  Public
+    Procedure Assign(Source: TPersistent); override;
+  Published
+    Property Name : UTF8String Read FName Write FName;
+    Property DataType : TFieldType Read FDataType Write FDataType;
+    Property DefaultValue : UTF8String Read FDefault Write FDefault;
+  end;
+  TSQLDBRestParamClass = Class of TSQLDBRestParam;
+  TSQLDBRestParamArray = Array of TSQLDBRestParam;
+
+  { TSQLDBRestParamListEnumerator }
+
+  TSQLDBRestParamListEnumerator = Class(TCollectionEnumerator)
+  Public
+    function GetCurrent: TSQLDBRestParam; reintroduce;
+    property Current: TSQLDBRestParam read GetCurrent;
+  end;
+
+
+  { TSQLDBRestParameterList }
+
+  TSQLDBRestParameterList = class(TCollection)
+  private
+    function GetParam(aIndex : Integer): TSQLDBRestParam;
+    procedure SetParam(aIndex : Integer; AValue: TSQLDBRestParam);
+  Public
+    Function GetEnumerator: TSQLDBRestParamListEnumerator;
+    Function IndexOf(Const aName : string) : Integer;
+    Function Find(Const aName : string) : TSQLDBRestParam;
+    Function ParamByName(Const aName : string) : TSQLDBRestParam;
+    Function AddParam(Const aName : string) : TSQLDBRestParam;
+    Property Params[aIndex : Integer] : TSQLDBRestParam Read GetParam Write SetParam;default;
+  end;
+  TSQLDBRestParameterListClass = Class of TSQLDBRestParameterList;
+
+
   { TSQLDBRestResource }
   TSQLDBRestGetDatasetEvent = Procedure (aSender : TObject; aContext : TBaseRestContext; aFieldList : TRestFieldPairArray; aOrderBy : TRestFieldOrderPairArray; aLimit, aOffset : Int64; Var aDataset : TDataset) of object;
   TSQLDBRestCheckParamsEvent = Procedure (aSender : TObject; aContext : TBaseRestContext; aOperation : TRestOperation; Params : TParams) of object;
@@ -203,6 +253,7 @@ Type
     FOnCheckParams: TSQLDBRestCheckParamsEvent;
     FOnGetDataset: TSQLDBRestGetDatasetEvent;
     FOnResourceAllowed: TSQLDBRestAllowResourceEvent;
+    FParameters: TSQLDBRestParameterList;
     FResourceName: UTF8String;
     FTableName: UTF8String;
     FSQL : Array[TSQLKind] of TStrings;
@@ -211,6 +262,7 @@ Type
     function GetSQLTyped(aKind : TSQLKind): TStrings;
     procedure SetAllowedOperations(AValue: TRestOperations);
     procedure SetFields(AValue: TSQLDBRestFieldList);
+    procedure SetParameters(AValue: TSQLDBRestParameterList);
     procedure SetSQL(AIndex: Integer; AValue: TStrings);
   Protected
     Function GetDisplayName: string; override;
@@ -218,8 +270,12 @@ Type
     Class var
       DefaultFieldListClass : TSQLDBRestFieldListClass;
       DefaultFieldClass: TSQLDBRestFieldClass;
+      DefaultParameterListClass : TSQLDBRestParameterListClass;
+      DefaultParamClass : TSQLDBRestParamClass;
     Class function CreateFieldList : TSQLDBRestFieldList; virtual;
+    Class function CreateParamList : TSQLDBRestParameterList; virtual;
     Class function FieldTypeToRestFieldType(aFieldType: TFieldType): TRestFieldType; virtual;
+    Class Constructor Init;
   Public
     Constructor Create(ACollection: TCollection); override;
     Destructor Destroy; override;
@@ -237,10 +293,12 @@ Type
     Function GetResolvedSQl(aKind : TSQLKind; Const AWhere : UTF8String; Const aOrderBy : UTF8String = ''; aLimit : UTF8String = ''; OnlyFields : TSQLDBRestFieldArray = nil) : UTF8String;
     Function ProcessSQl(aSQL : String; Const AWhere : UTF8String; Const aOrderBy : UTF8String = ''; aLimit : UTF8String = '') : UTF8String;
     Procedure PopulateFieldsFromFieldDefs(Defs : TFieldDefs; aIndexFields : TStringArray; aProcessIdentifier : TProcessIdentifier; aMinFieldOpts : TRestFieldOptions);
+    Procedure PopulateParametersFromSQL(const SQL : String; DoClear : Boolean = True);
     Property SQL [aKind : TSQLKind] : TStrings Read GetSQLTyped;
     Property BusinessProcessor : TSQLDBRestCustomBusinessProcessor Read FBusinessProcessor;
   Published
     Property Fields : TSQLDBRestFieldList Read FFields Write SetFields;
+    Property Parameters : TSQLDBRestParameterList Read FParameters Write SetParameters;
     Property Enabled : Boolean Read FEnabled Write FEnabled default true;
     Property InMetadata : Boolean Read FInMetadata Write FInMetadata default true;
     Property ConnectionName : UTF8String read FConnectionName Write FConnectionName;
@@ -383,6 +441,90 @@ Const
 implementation
 
 uses strutils, fpjsonrtti,dbconst, sqldbrestconst;
+
+{ TSQLDBRestParam }
+
+function TSQLDBRestParam.GetDisplayName: string;
+begin
+  Result:=Name;
+  if Result='' then
+    Result:=inherited GetDisplayName;
+end;
+
+procedure TSQLDBRestParam.Assign(Source: TPersistent);
+
+var
+  P : TSQLDBRestParam absolute Source;
+
+begin
+  if Source is TSQLDBRestParam then
+    begin
+    FName:=P.Name;
+    FDataType:=P.DataType;
+    FDefault:=P.DefaultValue;
+    end
+  else
+    inherited Assign(Source);
+end;
+
+{ TSQLDBRestParamListEnumerator }
+
+function TSQLDBRestParamListEnumerator.GetCurrent: TSQLDBRestParam;
+begin
+  Result:=TSQLDBRestParam(Inherited GetCurrent);
+end;
+
+{ TSQLDBRestParameterList }
+
+function TSQLDBRestParameterList.GetParam(aIndex : Integer): TSQLDBRestParam;
+begin
+  Result:=Items[aIndex] as TSQLDBRestParam;
+end;
+
+procedure TSQLDBRestParameterList.SetParam(aIndex : Integer; AValue: TSQLDBRestParam);
+begin
+  Items[aIndex]:=aValue;
+end;
+
+function TSQLDBRestParameterList.GetEnumerator: TSQLDBRestParamListEnumerator;
+begin
+  Result:=TSQLDBRestParamListEnumerator.Create(Self);
+end;
+
+function TSQLDBRestParameterList.IndexOf(const aName: string): Integer;
+begin
+  Result:=Count-1;
+  While (Result>=0) and Not SameText(aName,GetParam(Result).Name) do
+    Dec(Result);
+end;
+
+function TSQLDBRestParameterList.Find(const aName: string): TSQLDBRestParam;
+
+var
+  Idx : Integer;
+
+begin
+  Result:=Nil;
+  Idx:=IndexOf(aName);
+  if (Idx<>-1) then
+    Result:=GetParam(Idx);
+end;
+
+function TSQLDBRestParameterList.ParamByName(const aName: string): TSQLDBRestParam;
+begin
+  Result:=Find(aName);
+  if Result=Nil then
+    Raise ESQLDBRest.CreateFmt(500,SErrUnknownParam,[aName]);
+end;
+
+function TSQLDBRestParameterList.AddParam(const aName: string): TSQLDBRestParam;
+begin
+  if IndexOf(aName)<>-1 then
+    Raise ESQLDBRest.CreateFmt(500,SErrDuplicateParam,[aName]);
+  Result:=Add as TSQLDBRestParam;
+  Result.Name:=aName;
+  Result.DataType:=ftString;
+end;
 
 { TSQLDBRestFieldListEnumerator }
 
@@ -1023,7 +1165,13 @@ end;
 procedure TSQLDBRestResource.SetFields(AValue: TSQLDBRestFieldList);
 begin
   if FFields=AValue then Exit;
-  FFields:=AValue;
+  FFields.Assign(AValue);
+end;
+
+procedure TSQLDBRestResource.SetParameters(AValue: TSQLDBRestParameterList);
+begin
+  if FParameters=AValue then Exit;
+  FParameters.Assign(AValue);
 end;
 
 procedure TSQLDBRestResource.SetSQL(AIndex: Integer; AValue: TStrings);
@@ -1044,6 +1192,7 @@ Var
 begin
   inherited Create(ACollection);
   FFields:=CreateFieldList;
+  FParameters:=CreateParamList;
   FEnabled:=True;
   FInMetadata:=True;
   for K in TSQLKind do
@@ -1103,6 +1252,7 @@ begin
     for K in TSQLKind do
       SQL[K].Assign(R.SQL[K]);
     Fields.Assign(R.Fields);
+    Parameters.Assign(R.Parameters);
     TableName:=R.TableName;
     FResourceName:=R.FResourceName;
     ConnectionName:=R.ConnectionName;
@@ -1348,6 +1498,15 @@ begin
   Result:=Map[aFieldType];
 end;
 
+class constructor TSQLDBRestResource.Init;
+begin
+  DefaultFieldListClass:=TSQLDBRestFieldList;
+  DefaultFieldClass:=TSQLDBRestField;
+  DefaultParameterListClass:=TSQLDBRestParameterList;
+  DefaultParamClass:=TSQLDBRestParam;
+
+end;
+
 procedure TSQLDBRestResource.PopulateFieldsFromFieldDefs(Defs: TFieldDefs; aIndexFields: TStringArray;
   aProcessIdentifier: TProcessIdentifier; aMinFieldOpts: TRestFieldOptions);
 
@@ -1387,10 +1546,40 @@ begin
     end;
 end;
 
+procedure TSQLDBRestResource.PopulateParametersFromSQL(const SQL: String;
+  DoClear: Boolean);
+
+Var
+  Parms : TParams;
+  P : TParam;
+  SRP : TSQLDBRestParam;
+
+begin
+  if DoClear then
+    Parameters.Clear;
+  Parms:=TParams.Create(Nil);
+  try
+    Parms.ParseSQL(SQL,True);
+    for P in Parms do
+      If Parameters.IndexOf(P.Name)=-1 then
+        begin
+        SRP:=Parameters.AddParam(P.Name);
+        SRP.DataType:=ftString;
+        end;
+  finally
+    Parms.Free;
+  end;
+end;
+
 class function TSQLDBRestResource.CreateFieldList: TSQLDBRestFieldList;
 
 begin
   Result:=DefaultFieldListClass.Create(DefaultFieldClass);
+end;
+
+class function TSQLDBRestResource.CreateParamList: TSQLDBRestParameterList;
+begin
+  Result:=DefaultParameterListClass.Create(DefaultParamClass);
 end;
 
 { TSQLDBRestFieldList }
