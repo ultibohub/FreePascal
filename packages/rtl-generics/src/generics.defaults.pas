@@ -330,20 +330,19 @@ type
 
   TComparerService = class abstract
   private type
-    TSelectMethod = function(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer of object;
+    TSelectMethod = function(ATypeData: PTypeData; ASize: SizeInt): Pointer of object;
   private
-    class function SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
-    class function SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
-    class function SelectShortStringEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
-    class function SelectBinaryEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
-    class function SelectDynArrayEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
+    class function SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; virtual; abstract;
+    class function SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; virtual; abstract;
+    class function SelectShortStringEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; virtual; abstract;
+    class function SelectBinaryEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; virtual; abstract;
+    class function SelectDynArrayEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; virtual; abstract;
   private type
     PSpoofInterfacedTypeSizeObject = ^TSpoofInterfacedTypeSizeObject;
     TSpoofInterfacedTypeSizeObject = record
       VMT: Pointer;
       RefCount: LongInt;
       Size: SizeInt;
-      ConstParaRef: Boolean;
     end;
 
     PInstance = ^TInstance;
@@ -364,18 +363,20 @@ type
       Compare: CodePointer;
     end;
 
-    TSelectFunc = function(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+    TSelectFunc = function(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 
   private
-    class function CreateInterface(AVMT: Pointer; ASize: SizeInt; AConstParaRef: Boolean): PSpoofInterfacedTypeSizeObject; static;
+    class function CreateInterface(AVMT: Pointer; ASize: SizeInt): PSpoofInterfacedTypeSizeObject; static;
 
-    class function SelectIntegerComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
-    class function SelectInt64Comparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
-    class function SelectFloatComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
-    class function SelectShortStringComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
-    class function SelectBinaryComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
-    class function SelectDynArrayComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
+    class function SelectIntegerComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; static;
+    class function SelectInt64Comparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; static;
+    class function SelectFloatComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; static;
+    class function SelectShortStringComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; static;
+    class function SelectBinaryComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; static;
+    class function SelectDynArrayComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; static;
   private const
+    UseBinaryMethods: set of TTypeKind = [tkUnknown, tkSet, tkFile, tkArray, tkRecord, tkObject];
+
     // IComparer VMT
     Comparer_Int8_VMT  : TComparerVMT = (STD_RAW_INTERFACE_METHODS; Compare: @TCompare.Int8);
     Comparer_Int16_VMT : TComparerVMT = (STD_RAW_INTERFACE_METHODS; Compare: @TCompare.Int16 );
@@ -504,18 +505,18 @@ type
         (Selector: False; Instance: @Comparer_Pointer_Instance)
       );
   public
-    class function LookupComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer; static;
+    class function LookupComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; static;
   end;
 
   THashService = class(TComparerService)
   public
-    class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
+    class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; virtual; abstract;
   end;
 
   TExtendedHashService = class(THashService)
   public
-    class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function LookupExtendedEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer; virtual; abstract;
+    class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; override;
+    class function LookupExtendedEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; virtual; abstract;
   end;
 
 {$DEFINE HASH_FACTORY := PPEqualityComparerVMT(Self)^.__ClassRef}
@@ -525,11 +526,11 @@ type
 
   THashService<T: THashFactory> = class(THashService)
   private
-    class function SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectShortStringEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectBinaryEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectDynArrayEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
+    class function SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectShortStringEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectBinaryEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectDynArrayEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
   private const
     // IEqualityComparer VMT templates
 {$WARNINGS OFF}
@@ -637,18 +638,18 @@ type
   private
     class constructor Create;
   public
-    class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
+    class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; override;
   end;
 
   { TExtendedHashService }
 
   TExtendedHashService<T: TExtendedHashFactory> = class(TExtendedHashService)
   private
-    class function SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectShortStringEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectBinaryEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
-    class function SelectDynArrayEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
+    class function SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectShortStringEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectBinaryEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
+    class function SelectDynArrayEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer; override;
   private const
     // IExtendedEqualityComparer VMT templates
 {$WARNINGS OFF}
@@ -756,7 +757,7 @@ type
   private
     class constructor Create;
   public
-    class function LookupExtendedEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer; override;
+    class function LookupExtendedEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; override;
   end;
 
   TOnEqualityComparison<T> = function(const ALeft, ARight: T): Boolean of object;
@@ -858,6 +859,28 @@ type
       const AHasher: THasherFunc<T>; const AExtendedHasher: TExtendedHasherFunc<T>); overload;
     constructor Create(const AEqualityComparison: TEqualityComparisonFunc<T>;
       const AExtendedHasher: TExtendedHasherFunc<T>); overload;
+  end;
+
+  TBinaryComparer<T> = class(TInterfacedObject, IComparer<T>)
+  public
+    function Compare(const ALeft, ARight: T): Integer;
+  end;
+
+  TBinaryEqualityComparer<T> = class(TInterfacedObject, IEqualityComparer<T>)
+  private
+    FHashFactory: THashFactoryClass;
+  public
+    constructor Create(AHashFactoryClass: THashFactoryClass);
+    function Equals(const ALeft, ARight: T): Boolean;
+    function GetHashCode(const AValue: T): UInt32;
+  end;
+
+  TBinaryExtendedEqualityComparer<T> = class(TBinaryEqualityComparer<T>, IExtendedEqualityComparer<T>)
+  private
+    FExtendedHashFactory: TExtendedHashFactoryClass;
+  public
+    constructor Create(AHashFactoryClass: TExtendedHashFactoryClass);
+    procedure GetHashList(const AValue: T; AHashList: PUInt32);
   end;
 
   { TDelphiHashFactory }
@@ -1039,10 +1062,9 @@ type
 function BobJenkinsHash(const AData; ALength, AInitData: Integer): Integer; // same result as HashLittle_Delphi, just different interface
 function BinaryCompare(const ALeft, ARight: Pointer; ASize: PtrUInt): Integer; inline;
 
-function _LookupVtableInfo(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt;
-  AConstParaRef: Boolean): Pointer; inline;
+function _LookupVtableInfo(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; inline;
 function _LookupVtableInfoEx(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt;
-  AConstParaRef: Boolean; AFactory: THashFactoryClass): Pointer;
+  AFactory: THashFactoryClass): Pointer;
 
 implementation
 
@@ -1050,7 +1072,10 @@ implementation
 
 class function TComparer<T>.Default: IComparer<T>;
 begin
-  Result := _LookupVtableInfo(giComparer, TypeInfo(T), SizeOf(T), ConstParamIsRef<T>());
+  if GetTypeKind(T) in TComparerService.UseBinaryMethods then begin
+    Result := TBinaryComparer<T>.Create
+  end else
+    Result := _LookupVtableInfo(giComparer, TypeInfo(T), SizeOf(T));
 end;
 
 class function TComparer<T>.Construct(const AComparison: TOnComparison<T>): IComparer<T>;
@@ -1271,10 +1296,7 @@ class function TCompare._Binary(const ALeft, ARight): Integer;
 var
   _self: TComparerService.PSpoofInterfacedTypeSizeObject absolute Self;
 begin
-  if _self.ConstParaRef then
-    Result := CompareMemRange(@ALeft, @ARight, _self.Size)
-  else
-    Result := CompareMemRange(PPointer(@ALeft)^, PPointer(@ARight)^, _self.Size);
+  Result := CompareMemRange(@ALeft, @ARight, _self.Size)
 end;
 
 class function TCompare._DynArray(const ALeft, ARight: Pointer): Integer;
@@ -1533,10 +1555,7 @@ class function TEquals._Binary(const ALeft, ARight): Boolean;
 var
   _self: TComparerService.PSpoofInterfacedTypeSizeObject absolute Self;
 begin
-  if _self.ConstParaRef then
-    Result := CompareMem(@ALeft, @ARight, _self.Size)
-  else
-    Result := CompareMem(PPointer(@ALeft)^, PPointer(@ARight)^, _self.Size);
+  Result := CompareMem(@ALeft, @ARight, _self.Size)
 end;
 
 class function TEquals._DynArray(const ALeft, ARight: Pointer): Boolean;
@@ -2077,16 +2096,15 @@ end;
 
 { TComparerService }
 
-class function TComparerService.CreateInterface(AVMT: Pointer; ASize: SizeInt; AConstParaRef: Boolean): PSpoofInterfacedTypeSizeObject;
+class function TComparerService.CreateInterface(AVMT: Pointer; ASize: SizeInt): PSpoofInterfacedTypeSizeObject;
 begin
     Result := New(PSpoofInterfacedTypeSizeObject);
     Result.VMT      := AVMT;
     Result.RefCount := 0;
     Result.Size     := ASize;
-    Result.ConstParaRef := AConstParaRef;
 end;
 
-class function TComparerService.SelectIntegerComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TComparerService.SelectIntegerComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
   case ATypeData.OrdType of
     otSByte:
@@ -2107,7 +2125,7 @@ begin
   end;
 end;
 
-class function TComparerService.SelectInt64Comparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TComparerService.SelectInt64Comparer(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
   if ATypeData.MaxInt64Value > ATypeData.MinInt64Value then
     Exit(@Comparer_Int64_Instance)
@@ -2116,7 +2134,7 @@ begin
 end;
 
 class function TComparerService.SelectFloatComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
   case ATypeData.FloatType of
     ftSingle:
@@ -2136,7 +2154,7 @@ begin
 end;
 
 class function TComparerService.SelectShortStringComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
   case ASize of
     2: Exit(@Comparer_ShortString1_Instance);
@@ -2148,27 +2166,27 @@ begin
 end;
 
 class function TComparerService.SelectBinaryComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
-  Result := CreateInterface(@Comparer_Binary_VMT, ASize, AConstParaRef);
+  Result := CreateInterface(@Comparer_Binary_VMT, ASize);
 end;
 
-class function TComparerService.SelectDynArrayComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TComparerService.SelectDynArrayComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
-  Result := CreateInterface(@Comparer_DynArray_VMT, ATypeData.elSize, AConstParaRef);
+  Result := CreateInterface(@Comparer_DynArray_VMT, ATypeData.elSize);
 end;
 
-class function TComparerService.LookupComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TComparerService.LookupComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer;
 var
   LInstance: PInstance;
 begin
   if ATypeInfo = nil then
-    Exit(SelectBinaryComparer(Nil, ASize, AConstParaRef))
+    Exit(SelectBinaryComparer(Nil, ASize))
   else
   begin
     LInstance := @ComparerInstances[ATypeInfo.Kind];
     if LInstance.Selector then
-      Result := TSelectFunc(LInstance.SelectorInstance)(GetTypeData(ATypeInfo), ASize, AConstParaRef)
+      Result := TSelectFunc(LInstance.SelectorInstance)(GetTypeData(ATypeInfo), ASize)
     else
       Result := LInstance.Instance;
   end;
@@ -2191,14 +2209,14 @@ end;
 
 { TExtendedHashService }
 
-class function TExtendedHashService.LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TExtendedHashService.LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer;
 begin
-  Result := LookupExtendedEqualityComparer(ATypeInfo, ASize, AConstParaRef);
+  Result := LookupExtendedEqualityComparer(ATypeInfo, ASize);
 end;
 
 { THashService }
 
-class function THashService<T>.SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function THashService<T>.SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
   case ATypeData.OrdType of
     otSByte:
@@ -2220,7 +2238,7 @@ begin
 end;
 
 class function THashService<T>.SelectFloatEqualityComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
   case ATypeData.FloatType of
     ftSingle:
@@ -2240,7 +2258,7 @@ begin
 end;
 
 class function THashService<T>.SelectShortStringEqualityComparer(
-  ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
   case ASize of
     2: Exit(@FEqualityComparer_ShortString1_Instance);
@@ -2252,25 +2270,25 @@ begin
 end;
 
 class function THashService<T>.SelectBinaryEqualityComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
-  Result := CreateInterface(@FEqualityComparer_Binary_VMT, ASize, AConstParaRef);
+  Result := CreateInterface(@FEqualityComparer_Binary_VMT, ASize);
 end;
 
 class function THashService<T>.SelectDynArrayEqualityComparer(
-  ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
-  Result := CreateInterface(@FEqualityComparer_DynArray_VMT, ATypeData.elSize, AConstParaRef);
+  Result := CreateInterface(@FEqualityComparer_DynArray_VMT, ATypeData.elSize);
 end;
 
 class function THashService<T>.LookupEqualityComparer(ATypeInfo: PTypeInfo;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 var
   LInstance: PInstance;
   LSelectMethod: TSelectMethod;
 begin
   if ATypeInfo = nil then
-    Exit(SelectBinaryEqualityComparer(Nil, ASize, AConstParaRef))
+    Exit(SelectBinaryEqualityComparer(Nil, ASize))
   else
   begin
     LInstance := @FEqualityComparerInstances[ATypeInfo.Kind];
@@ -2279,7 +2297,7 @@ begin
     begin
       TMethod(LSelectMethod).Code := LInstance.SelectorInstance;
       TMethod(LSelectMethod).Data := Self;
-      Result := LSelectMethod(GetTypeData(ATypeInfo), ASize, AConstParaRef);
+      Result := LSelectMethod(GetTypeData(ATypeInfo), ASize);
     end;
   end;
 end;
@@ -2403,7 +2421,7 @@ end;
 
 { TExtendedHashService }
 
-class function TExtendedHashService<T>.SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TExtendedHashService<T>.SelectIntegerEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
   case ATypeData.OrdType of
     otSByte:
@@ -2424,7 +2442,7 @@ begin
   end;
 end;
 
-class function TExtendedHashService<T>.SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+class function TExtendedHashService<T>.SelectFloatEqualityComparer(ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
   case ATypeData.FloatType of
     ftSingle:
@@ -2444,7 +2462,7 @@ begin
 end;
 
 class function TExtendedHashService<T>.SelectShortStringEqualityComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
   case ASize of
     2: Exit(@FExtendedEqualityComparer_ShortString1_Instance);
@@ -2456,25 +2474,25 @@ begin
 end;
 
 class function TExtendedHashService<T>.SelectBinaryEqualityComparer(ATypeData: PTypeData;
-  ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ASize: SizeInt): Pointer;
 begin
-  Result := CreateInterface(@FExtendedEqualityComparer_Binary_VMT, ASize, AConstParaRef);
+  Result := CreateInterface(@FExtendedEqualityComparer_Binary_VMT, ASize);
 end;
 
 class function TExtendedHashService<T>.SelectDynArrayEqualityComparer(
-  ATypeData: PTypeData; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ATypeData: PTypeData; ASize: SizeInt): Pointer;
 begin
-  Result := CreateInterface(@FExtendedEqualityComparer_DynArray_VMT, ATypeData.elSize, AConstParaRef);
+  Result := CreateInterface(@FExtendedEqualityComparer_DynArray_VMT, ATypeData.elSize);
 end;
 
 class function TExtendedHashService<T>.LookupExtendedEqualityComparer(
-  ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+  ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer;
 var
   LInstance: PInstance;
   LSelectMethod: TSelectMethod;
 begin
   if ATypeInfo = nil then
-    Exit(SelectBinaryEqualityComparer(Nil, ASize, AConstParaRef))
+    Exit(SelectBinaryEqualityComparer(Nil, ASize))
   else
   begin
     LInstance := @FExtendedEqualityComparerInstances[ATypeInfo.Kind];
@@ -2483,7 +2501,7 @@ begin
     begin
       TMethod(LSelectMethod).Code := LInstance.SelectorInstance;
       TMethod(LSelectMethod).Data := Self;
-      Result := LSelectMethod(GetTypeData(ATypeInfo), ASize, AConstParaRef);
+      Result := LSelectMethod(GetTypeData(ATypeInfo), ASize);
     end;
   end;
 end;
@@ -2609,15 +2627,20 @@ end;
 
 class function TEqualityComparer<T>.Default: IEqualityComparer<T>;
 begin
-  Result := _LookupVtableInfo(giEqualityComparer, TypeInfo(T), SizeOf(T), ConstParamIsRef<T>());
+  if GetTypeKind(T) in TComparerService.UseBinaryMethods then
+    Result := TBinaryEqualityComparer<T>.Create(Nil)
+  else
+    Result := _LookupVtableInfo(giEqualityComparer, TypeInfo(T), SizeOf(T));
 end;
 
 class function TEqualityComparer<T>.Default(AHashFactoryClass: THashFactoryClass): IEqualityComparer<T>;
 begin
-  if AHashFactoryClass.InheritsFrom(TExtendedHashFactory) then
-    Result := _LookupVtableInfoEx(giExtendedEqualityComparer, TypeInfo(T), SizeOf(T), ConstParamIsRef<T>(), AHashFactoryClass)
+  if GetTypeKind(T) in TComparerService.UseBinaryMethods then
+    Result := TBinaryEqualityComparer<T>.Create(AHashFactoryClass)
+  else if AHashFactoryClass.InheritsFrom(TExtendedHashFactory) then
+    Result := _LookupVtableInfoEx(giExtendedEqualityComparer, TypeInfo(T), SizeOf(T), AHashFactoryClass)
   else if AHashFactoryClass.InheritsFrom(THashFactory) then
-    Result := _LookupVtableInfoEx(giEqualityComparer, TypeInfo(T), SizeOf(T), ConstParamIsRef<T>(), AHashFactoryClass);
+    Result := _LookupVtableInfoEx(giEqualityComparer, TypeInfo(T), SizeOf(T), AHashFactoryClass);
 end;
 
 class function  TEqualityComparer<T>.Construct(const AEqualityComparison: TOnEqualityComparison<T>;
@@ -2756,14 +2779,20 @@ end;
 
 class function TExtendedEqualityComparer<T>.Default: IExtendedEqualityComparer<T>;
 begin
-  Result := _LookupVtableInfo(giExtendedEqualityComparer, TypeInfo(T), SizeOf(T), ConstParamIsRef<T>());
+  if GetTypeKind(T) in TComparerService.UseBinaryMethods then
+    Result := TBinaryExtendedEqualityComparer<T>.Create(Nil)
+  else
+    Result := _LookupVtableInfo(giExtendedEqualityComparer, TypeInfo(T), SizeOf(T));
 end;
 
 class function TExtendedEqualityComparer<T>.Default(
   AExtenedHashFactoryClass: TExtendedHashFactoryClass
   ): IExtendedEqualityComparer<T>;
 begin
-  Result := _LookupVtableInfoEx(giExtendedEqualityComparer, TypeInfo(T), SizeOf(T), ConstParamIsRef<T>(), AExtenedHashFactoryClass);
+  if GetTypeKind(T) in TComparerService.UseBinaryMethods then
+    Result := TBinaryExtendedEqualityComparer<T>.Create(Nil)
+  else
+    Result := _LookupVtableInfoEx(giExtendedEqualityComparer, TypeInfo(T), SizeOf(T), AExtenedHashFactoryClass);
 end;
 
 class function TExtendedEqualityComparer<T>.Construct(
@@ -2792,6 +2821,49 @@ class function TExtendedEqualityComparer<T>.Construct(
   const AExtendedHasher: TExtendedHasherFunc<T>): IExtendedEqualityComparer<T>;
 begin
   Result := TDelegatedExtendedEqualityComparerFunc<T>.Create(AEqualityComparison, AExtendedHasher);
+end;
+
+{ TBinaryComparer<T> }
+
+function TBinaryComparer<T>.Compare(const ALeft, ARight: T): Integer;
+begin
+  Result := BinaryCompare(@ALeft, @ARight, SizeOf(T));
+end;
+
+{ TBinaryEqualityComparer<T> }
+
+constructor TBinaryEqualityComparer<T>.Create(AHashFactoryClass: THashFactoryClass);
+begin
+  if not Assigned(AHashFactoryClass) then
+    FHashFactory := TDefaultHashFactory
+  else
+    FHashFactory := AHashFactoryClass;
+end;
+
+function TBinaryEqualityComparer<T>.Equals(const ALeft, ARight: T): Boolean;
+begin
+  Result := CompareMem(@ALeft, @ARight, SizeOf(T));
+end;
+
+function TBinaryEqualityComparer<T>.GetHashCode(const AValue: T): UInt32;
+begin
+  Result := FHashFactory.GetHashCode(@AValue, SizeOf(T), 0);
+end;
+
+{ TBinaryExtendedEqualityComparer<T> }
+
+constructor TBinaryExtendedEqualityComparer<T>.Create(AHashFactoryClass: TExtendedHashFactoryClass);
+begin
+  if not Assigned(AHashFactoryClass) then
+    FExtendedHashFactory := TDelphiDoubleHashFactory
+  else
+    FExtendedHashFactory := AHashFactoryClass;
+  inherited Create(FExtendedHashFactory);
+end;
+
+procedure TBinaryExtendedEqualityComparer<T>.GetHashList(const AValue: T; AHashList: PUInt32);
+begin
+  FExtendedHashFactory.GetHashList(@AValue, SizeOf(T), AHashList, []);
 end;
 
 { TDelphiHashFactory }
@@ -3302,25 +3374,29 @@ begin
   Result := CompareMemRange(ALeft, ARight, ASize);
 end;
 
-function _LookupVtableInfo(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt; AConstParaRef: Boolean): Pointer;
+function _LookupVtableInfo(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer;
 begin
-  Result := _LookupVtableInfoEx(AGInterface, ATypeInfo, ASize, AConstParaRef, nil);
+  Result := _LookupVtableInfoEx(AGInterface, ATypeInfo, ASize, nil);
 end;
 
 function _LookupVtableInfoEx(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt;
-  AConstParaRef: Boolean; AFactory: THashFactoryClass): Pointer;
+  AFactory: THashFactoryClass): Pointer;
 begin
+  if ATypeInfo^.Kind in TComparerService.UseBinaryMethods then begin
+    System.Error(reInvalidCast);
+    Exit(Nil);
+  end;
   case AGInterface of
     giComparer:
         Exit(
-          TComparerService.LookupComparer(ATypeInfo, ASize, AConstParaRef));
+          TComparerService.LookupComparer(ATypeInfo, ASize));
     giEqualityComparer:
       begin
         if AFactory = nil then
           AFactory := TDefaultHashFactory;
 
         Exit(
-          AFactory.GetHashService.LookupEqualityComparer(ATypeInfo, ASize, AConstParaRef));
+          AFactory.GetHashService.LookupEqualityComparer(ATypeInfo, ASize));
       end;
     giExtendedEqualityComparer:
       begin
@@ -3328,7 +3404,7 @@ begin
           AFactory := TDelphiDoubleHashFactory;
 
         Exit(
-          TExtendedHashServiceClass(AFactory.GetHashService).LookupExtendedEqualityComparer(ATypeInfo, ASize, AConstParaRef));
+          TExtendedHashServiceClass(AFactory.GetHashService).LookupExtendedEqualityComparer(ATypeInfo, ASize));
       end;
   else
     System.Error(reRangeError);

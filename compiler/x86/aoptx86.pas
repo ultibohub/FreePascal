@@ -2522,7 +2522,7 @@ unit aoptx86;
           end;
 
         { Check index register }
-        if (ref.index = AOldReg) then
+        if (ref.index = AOldReg) and (getsupreg(ANewReg)<>RS_ESP) then
           begin
             ref.index := ANewReg;
             Result := True;
@@ -6068,6 +6068,7 @@ unit aoptx86;
                       (
                         (
                           (taicpu(hp1).oper[0]^.ref^.index = taicpu(p).oper[1]^.reg) and
+                          (getsupreg(taicpu(p).oper[0]^.ref^.base)<>RS_ESP) and
                           (taicpu(p).oper[0]^.ref^.index = NR_NO)
                         ) or (
                           (taicpu(hp1).oper[0]^.ref^.base = taicpu(p).oper[1]^.reg) and

@@ -213,10 +213,11 @@
              system_mips64el_linux,     { 118 }
              system_riscv32_freertos,   { 119 }
              system_loongarch64_linux,  { 120 }
-             system_arm_ultibo,         { 121 }
-             system_i386_ultibo,        { 122 }
-             system_x86_64_ultibo,      { 123 }
-             system_aarch64_ultibo      { 124 }
+             system_aarch64_iphonesim,  { 121 }
+             system_arm_ultibo,         { 122 }
+             system_i386_ultibo,        { 123 }
+             system_x86_64_ultibo,      { 124 }
+             system_aarch64_ultibo      { 125 }
        );
 
      type

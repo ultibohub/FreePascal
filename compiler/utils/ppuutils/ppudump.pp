@@ -247,10 +247,11 @@ const
   { 118 } 'Linux-MIPS64el',
   { 119 } 'FreeRTos-RiscV32',
   { 120 } 'Linux-LoongArch64',
-  { 121 } 'Ultibo-arm',
-  { 122 } 'Ultibo-i386',
-  { 123 } 'Ultibo-x86-64',
-  { 124 } 'Ultibo-AArch64'
+  { 121 } 'iPhoneSim-AArch64',
+  { 122 } 'Ultibo-arm',
+  { 123 } 'Ultibo-i386',
+  { 124 } 'Ultibo-x86-64',
+  { 125 } 'Ultibo-AArch64'
   );
 
 const

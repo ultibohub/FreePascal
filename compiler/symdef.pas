@@ -658,7 +658,7 @@ interface
 
        tprocnameoption = (pno_showhidden, pno_proctypeoption, pno_paranames,
          pno_ownername, pno_noclassmarker, pno_noleadingdollar,
-         pno_mangledname, pno_noparams);
+         pno_mangledname, pno_noparams, pno_prettynames);
        tprocnameoptions = set of tprocnameoption;
        tproccopytyp = (pc_normal,
 {$ifdef i8086}
@@ -6854,8 +6854,10 @@ implementation
                 else
                   s:=s+'procedure';
               end
+            else if pno_prettynames in pno then
+              rn:=procsym.prettyname
             else
-              rn:=procsym.realname;
+              rn:=procsym.RealName;
             if (pno_noleadingdollar in pno) and
                (rn[1]='$') then
               delete(rn,1,1);
@@ -6875,7 +6877,10 @@ implementation
                   s:=s+':'+module.realmodulename^+'.'
                 else
 	          s:=s+':';
-                hs:=returndef.typesym.realname;
+                if pno_prettynames in pno then
+                  hs:=returndef.typesym.prettyname
+                else
+                  hs:=returndef.typesym.realname;
                 if hs[1]<>'$' then
                   s:=s+returndef.OwnerHierarchyName+hs
                 else
@@ -9353,7 +9358,7 @@ implementation
       begin
         if assigned(objc_fastenumeration) then
           exit;
-        if not(target_info.system in [system_arm_ios,system_i386_iphonesim,system_aarch64_ios,system_x86_64_iphonesim]) then
+        if not(target_info.system in [system_arm_ios,system_i386_iphonesim,system_aarch64_ios,system_x86_64_iphonesim,system_aarch64_iphonesim]) then
           cocoaunit:='COCOAALL'
         else
           cocoaunit:='IPHONEALL';
