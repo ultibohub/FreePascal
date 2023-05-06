@@ -31,9 +31,9 @@ Type
     FEnabled: Boolean;
     FLibraryName: String;
     procedure CheckDisabled;
-    procedure SetCType(AValue: String);
+    procedure SetCType(const AValue: String);
     procedure SetEnabled(AValue: Boolean);
-    procedure SetLibraryName(AValue: String);
+    procedure SetLibraryName(const AValue: String);
   Protected
     Function GetConnectionDef : TConnectionDef;
     Procedure Loaded; override;
@@ -61,7 +61,7 @@ begin
     DatabaseError(SErrConnnected,Self);
 end;
 
-procedure TSQLDBLibraryLoader.SetCType(AValue: String);
+procedure TSQLDBLibraryLoader.SetCType(const AValue: String);
 begin
   if FCType=AValue then Exit;
   CheckDisabled;
@@ -70,7 +70,7 @@ begin
     SetDefaultLibraryName;
 end;
 
-procedure TSQLDBLibraryLoader.SetEnabled(AValue: Boolean);
+procedure TSQLDBLibraryLoader.SetEnabled(aValue: Boolean);
 begin
   if FEnabled=AValue then Exit;
   if (csLoading in ComponentState) then
@@ -82,7 +82,7 @@ begin
       UnloadLibrary;
 end;
 
-procedure TSQLDBLibraryLoader.SetLibraryName(AValue: String);
+procedure TSQLDBLibraryLoader.SetLibraryName(const AValue: String);
 begin
   if FLibraryName=AValue then Exit;
   CheckDisabled;

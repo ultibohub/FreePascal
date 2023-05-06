@@ -346,7 +346,7 @@ Type
     procedure SetAcceptIdleTimeout(AValue: Cardinal);
     procedure SetActive(const AValue: Boolean);
     procedure SetCertificateData(AValue: TCertificateData);
-    procedure SetHostName(AValue: string);
+    procedure SetHostName(const AValue: string);
     procedure SetIdle(AValue: TNotifyEvent);
     procedure SetOnAllowConnect(const AValue: TConnectQuery);
     procedure SetAddress(const AValue: string);
@@ -1464,8 +1464,11 @@ begin
         SetupConnectionHandler;
       CreateServerSocket;
       SetupSocket;
-      StartServerSocket;
-      FreeServerSocket;
+      try
+        StartServerSocket;
+      finally
+        FreeServerSocket;
+      end
       end
     else
       StopServerSocket;
@@ -1477,7 +1480,7 @@ begin
   FCertificateData:=AValue;
 end;
 
-procedure TFPCustomHttpServer.SetHostName(AValue: string);
+procedure TFPCustomHttpServer.SetHostName(const AValue: string);
 begin
   FCertificateData.HostName:=aValue;
 end;

@@ -45,7 +45,7 @@ type
 
     procedure FillExpressList; override;
     procedure HandleUnknownVariable(VarName: string); override;
-    function  GetVariableInfo(VarName: string): TField;
+    function  GetVariableInfo(const VarName: string): TField;
     function  CurrentExpression: string; override;
     function  GetResultType: TExpressionType; override;
 
@@ -57,7 +57,7 @@ type
 
     procedure ClearExpressions; override;
 
-    procedure ParseExpression(AExpression: string); virtual;
+    procedure ParseExpression(const AExpression: string); virtual;
     function ExtractFromBuffer(Buffer: TRecordBuffer): PChar; virtual;
 
     property Dataset: TDataSet read FDataset; // write FDataset;
@@ -394,7 +394,7 @@ begin
     ParseExpression(lExpression);
 end;
 
-function TBufDatasetParser.GetVariableInfo(VarName: string): TField;
+function TBufDatasetParser.GetVariableInfo(const VarName: string): TField;
 begin
   Result := FDataset.FindField(VarName);
 end;
@@ -483,7 +483,7 @@ begin
   FCurrentExpression := EmptyStr;
 end;
 
-procedure TBufDatasetParser.ParseExpression(AExpression: string);
+procedure TBufDatasetParser.ParseExpression(const AExpression: string);
 var
   TempBuffer: TRecordBuffer;
 begin
