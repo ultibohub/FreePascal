@@ -267,11 +267,20 @@ const defdynlinker='/lib/ld-linux-aarch64.so.1';
 {$endif sparc64}
 
 {$ifdef riscv32}
-  const defdynlinker='/lib32/ld.so.1';
+  const defdynlinker_generic='/lib32/ld.so.1';
+  const defdynlinker_soft_float='/lib/ld-linux-riscv32-ilp32.so.1';
+  const defdynlinker_single_float='/lib/ld-linux-riscv32-ilp32f.so.1';
+  const defdynlinker_double_float='/lib/ld-linux-riscv32-ilp32d.so.1';
+  { const defdynlinker_quad_float='/lib/ld-linux-riscv32-ilp32q.so.1'; not yet in ABI list }
+  var defdynlinker : string;
 {$endif riscv32}
 
 {$ifdef riscv64}
-  const defdynlinker='/lib/ld-linux-riscv64-lp64d.so.1';
+  const defdynlinker_soft_float='/lib/ld-linux-riscv64-lp64.so.1';
+  const defdynlinker_single_float='/lib/ld-linux-riscv64-lp64f.so.1';
+  const defdynlinker_double_float='/lib/ld-linux-riscv64-lp64d.so.1';
+  { const defdynlinker_quad_float='/lib/ld-linux-riscv64-lp64q.so.1'; not yet in ABI list }
+  var defdynlinker : string;
 {$endif riscv64}
 
 {$ifdef xtensa}
@@ -291,6 +300,38 @@ begin
     else
       defdynlinker:=defdynlinkerv2;
 {$endif powerpc64}
+{$ifdef riscv32}
+  if defdynlinker='' then
+    begin
+      case target_info.abi of
+        abi_riscv_ilp32:
+          defdynlinker:=defdynlinker_soft_float;
+        abi_riscv_ilp32f:
+          defdynlinker:=defdynlinker_single_float;
+        abi_riscv_hf,
+        abi_riscv_ilp32d:
+          defdynlinker:=defdynlinker_double_float;
+      else
+        defdynlinker:=defdynlinker_generic;
+      end;
+    end;
+{$endif riscv32}
+{$ifdef riscv64}
+  if defdynlinker='' then
+    begin
+      case target_info.abi of
+        abi_riscv_lp64:
+          defdynlinker:=defdynlinker_soft_float;
+        abi_riscv_lp64f:
+          defdynlinker:=defdynlinker_single_float;
+        abi_riscv_hf,
+        abi_riscv_lp64d:
+          defdynlinker:=defdynlinker_double_float;
+      else
+        defdynlinker:=defdynlinker_double_float;
+      end;
+    end;
+{$endif riscv64}
   {
     Search order:
     glibc 2.1+
@@ -402,6 +443,16 @@ begin
   else
     platformopt:=' -b elf64-powerpc -m elf64ppc';
 {$endif powerpc64}
+{$ifdef xtensa}
+  if target_info.endian=endian_little then
+    platformopt:=' -b elf32-xtensa-le -m elf32xtensa'
+  else
+    platformopt:=' -b elf32-xtensa-be -m elf32xtensa';
+  if target_info.abi=abi_xtensa_call0 then
+    platformopt:=platformopt+' --abi-call0'
+  else if target_info.abi=abi_xtensa_windowed then
+    platformopt:=platformopt+' --abi-windowed';
+  {$endif}
 {$ifdef arm}
   platformopt:=' -z noexecstack';
 {$endif arm}
