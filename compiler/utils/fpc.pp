@@ -44,13 +44,124 @@ program fpc;
   {$endif HASAMIGA}
 {$endif UNIX}
 
+Const
+{$ifdef darwin}
+  { the mach-o format supports "fat" binaries whereby }
+  { a single executable contains machine code for     }
+  { several architectures -> it is counter-intuitive  }
+  { and non-standard to use different binary names    }
+  { for cross-compilers vs. native compilers          }
+  CrossSuffix = '';
+{$else not darwin}
+  CrossSuffix = 'ross';
+{$endif not darwin}
+
 
   procedure error(const s : string);
-    begin
-       writeln('Error: ',s);
-       halt(1);
-    end;
 
+  begin
+     writeln('Error: ',s);
+     halt(1);
+  end;
+
+  function processortosuffix(processorstr : string ) : String;
+
+  begin
+    case processorstr of
+      'aarch64': Result := 'a64';
+      'arm': Result := 'arm';
+      'avr': Result := 'avr';
+      'i386': Result := '386';
+      'i8086': Result := '8086';
+      'jvm': Result := 'jvm';  
+      'loongarch64': Result:='loongarch64';
+      'm68k': Result := '68k';
+      'mips': Result := 'mips';
+      'mipsel': Result := 'mipsel';
+      'powerpc': Result := 'ppc';
+      'powerpc64': Result := 'ppc64';
+      'riscv32': Result := 'rv32';
+      'riscv64': Result := 'rv64';
+      'sparc': Result := 'sparc';
+      'sparc64': Result := 'sparc64';
+      'x86_64': Result := 'x64';
+      'xtensa': Result := 'xtensa';
+      'z80': Result := 'z80';
+      'wasm32': Result := 'wasm32'
+      else
+        error('Illegal processor type "'+processorstr+'"');
+    end;
+  end;
+
+  procedure InitPlatform(out ppcbin,processorname : string);
+
+  begin
+    {$ifdef i386}
+         ppcbin:='ppc386';
+         processorname:='i386';
+    {$endif i386}
+    {$ifdef m68k}
+         ppcbin:='ppc68k';
+         processorname:='m68k';
+    {$endif m68k}
+    {$ifdef powerpc}
+         ppcbin:='ppcppc';
+         processorname:='powerpc';
+    {$endif powerpc}
+    {$ifdef powerpc64}
+         ppcbin:='ppcppc64';
+         processorname:='powerpc64';
+    {$endif powerpc64}
+    {$ifdef arm}
+         ppcbin:='ppcarm';
+         processorname:='arm';
+    {$endif arm}
+    {$ifdef aarch64}
+         ppcbin:='ppca64';
+         processorname:='aarch64';
+    {$endif aarch64}
+    {$ifdef sparc}
+         ppcbin:='ppcsparc';
+         processorname:='sparc';
+    {$endif sparc}
+    {$ifdef sparc64}
+         ppcbin:='ppcsparc64';
+          processorname:='sparc64';
+    {$endif sparc64}
+    {$ifdef x86_64}
+         ppcbin:='ppcx64';
+         processorname:='x86_64';
+    {$endif x86_64}
+    {$ifdef mipsel}
+         ppcbin:='ppcmipsel';
+         processorname:='mipsel';
+    {$else : not mipsel}
+      {$ifdef mips}
+         ppcbin:='ppcmips';
+         processorname:='mips';
+      {$endif mips}
+    {$endif not mipsel}
+    {$ifdef riscv32}
+         ppcbin:='ppcrv32';
+         processorname:='riscv32';
+    {$endif riscv32}
+    {$ifdef riscv64}
+         ppcbin:='ppcrv64';
+         processorname:='riscv64';
+    {$endif riscv64}
+    {$ifdef xtensa}
+         ppcbin:='ppcxtensa';
+         processorname:='xtensa';
+    {$endif xtensa}
+    {$ifdef wasm32}
+         ppcbin:='ppcwasm32';
+         processorname:='wasm32';
+    {$endif wasm32}
+    {$ifdef loongarch64}
+         ppcbin:='ppcloongarch64';
+         processorname:='loongarch64';
+    {$endif loongarch64}
+  end;
 
   function SplitPath(Const HStr:String):String;
     var
@@ -110,94 +221,81 @@ program fpc;
        end;
     end;
 
+    function findcompiler(basecompiler,cpusuffix,exesuffix : string) : string;
+
+    begin
+      Result:=basecompiler;
+      if exesuffix<>'' then
+        Result:=Result+'-'+exesuffix;
+      if not findexe(Result) then
+        begin
+          if cpusuffix<>'' Then
+            begin
+              Result:='ppc'+cpusuffix;
+              if exesuffix<>'' then
+                result:=result+'-'+exesuffix;
+              if not findexe(result) then
+                result:='';
+            end;
+        end;
+    end;
+
+    procedure CheckSpecialProcessors(processorstr,processorname,ppcbin,cpusuffix,exesuffix : string);
+
+    begin
+      { -PB is a special code that will show the
+        default compiler and exit immediately. It's
+        main usage is for Makefile }
+      if processorstr='B' then
+        begin
+          { report the full name of the ppcbin }
+          writeln(findcompiler(ppcbin,cpusuffix,exesuffix));
+          halt(0);
+        end;
+      { -PP is a special code that will show the
+         processor and exit immediately. It's
+         main usage is for Makefile }
+      if processorstr='P' then
+        begin
+          { report the processor }
+          writeln(processorname);
+          halt(0);
+        end;
+   end;
+
+
   var
      s              : ansistring;
      cpusuffix,
-     processorname,
+     SourceCPU,
      ppcbin,
      versionStr,
-     processorstr   : string;
+     TargetCPU   : string;
      ppccommandline : array of ansistring;
      ppccommandlinelen : longint;
      i : longint;
      errorvalue     : Longint;
+
+     Procedure AddToCommandLine(S : String);
+
+     begin
+       PPCCommandLine [PPCCommandLineLen] := S;
+       Inc(PPCCommandLineLen);
+     end;
+
   begin
+     ppccommandline:=[];
      setlength(ppccommandline,paramcount);
      ppccommandlinelen:=0;
      cpusuffix     :='';        // if not empty, signals attempt at cross
                                 // compiler.
      extrapath     :='';
-{$ifdef i386}
-     ppcbin:='ppc386';
-     processorname:='i386';
-{$endif i386}
-{$ifdef m68k}
-     ppcbin:='ppc68k';
-     processorname:='m68k';
-{$endif m68k}
-{$ifdef powerpc}
-     ppcbin:='ppcppc';
-     processorname:='powerpc';
-{$endif powerpc}
-{$ifdef powerpc64}
-     ppcbin:='ppcppc64';
-     processorname:='powerpc64';
-{$endif powerpc64}
-{$ifdef arm}
-     ppcbin:='ppcarm';
-     processorname:='arm';
-{$endif arm}
-{$ifdef aarch64}
-     ppcbin:='ppca64';
-     processorname:='aarch64';
-{$endif aarch64}
-{$ifdef sparc}
-     ppcbin:='ppcsparc';
-     processorname:='sparc';
-{$endif sparc}
-{$ifdef sparc64}
-     ppcbin:='ppcsparc64';
-     processorname:='sparc64';
-{$endif sparc64}
-{$ifdef x86_64}
-     ppcbin:='ppcx64';
-     processorname:='x86_64';
-{$endif x86_64}
-{$ifdef mipsel}
-     ppcbin:='ppcmipsel';
-     processorname:='mipsel';
-{$else : not mipsel}
-  {$ifdef mips}
-     ppcbin:='ppcmips';
-     processorname:='mips';
-  {$endif mips}
-{$endif not mipsel}
-{$ifdef riscv32}
-     ppcbin:='ppcrv32';
-     processorname:='riscv32';
-{$endif riscv32}
-{$ifdef riscv64}
-     ppcbin:='ppcrv64';
-     processorname:='riscv64';
-{$endif riscv64}
-{$ifdef xtensa}
-     ppcbin:='ppcxtensa';
-     processorname:='xtensa';
-{$endif xtensa}
-{$ifdef wasm32}
-     ppcbin:='ppcwasm32';
-     processorname:='wasm32';
-{$endif wasm32}
-{$ifdef loongarch64}
-     ppcbin:='ppcloongarch64';
-     processorname:='loongarch64';
-{$endif loongarch64}
      versionstr:='';                      { Default is just the name }
+     initplatform(ppcbin,SourceCPU);
      if ParamCount = 0 then
        begin
          SetLength (PPCCommandLine, 1);
-         PPCCommandLine [PPCCommandLineLen] := '-?F' + ParamStr (0);
-         Inc (PPCCommandLineLen);
+         AddToCommandLine('-?F' + ParamStr (0));
        end
      else
       for i:=1 to paramcount do
@@ -209,124 +307,30 @@ program fpc;
             begin
               if pos('-P',s)=1 then
                  begin
-                   processorstr:=copy(s,3,length(s)-2);
-                  { -PB is a special code that will show the
-                    default compiler and exit immediately. It's
-                     main usage is for Makefile }
-                   if processorstr='B' then
+                   TargetCPU:=copy(s,3,length(s)-2);
+                   CheckSpecialProcessors(TargetCPU,SourceCPU,ppcbin,cpusuffix,versionstr);
+                   if TargetCPU <> SourceCPU then
                      begin
-                       { report the full name of the ppcbin }
-                       if versionstr<>'' then
-                         ppcbin:=ppcbin+'-'+versionstr;
-                       if not findexe(ppcbin) then
-                         begin
-                           if cpusuffix<>'' Then
-                             begin
-                               ppcbin:='ppc'+cpusuffix;
-                               if versionstr<>'' then
-                                 ppcbin:=ppcbin+'-'+versionstr;
-                               findexe(ppcbin);
-                             end;
-                         end;
-                       writeln(ppcbin);
-                       halt(0);
-                     end
-                     { -PP is a special code that will show the
-                       processor and exit immediately. It's
-                       main usage is for Makefile }
-                     else if processorstr='P' then
-                      begin
-                        { report the processor }
-                        writeln(processorname);
-                        halt(0);
-                      end
-                     else
-                       if processorstr <> processorname then
-                         begin
-                           if processorstr='aarch64' then
-                             cpusuffix:='a64'
-                           else if processorstr='arm' then
-                             cpusuffix:='arm'
-                           else if processorstr='avr' then
-                             cpusuffix:='avr'
-                           else if processorstr='i386' then
-                             cpusuffix:='386'
-                           else if processorstr='i8086' then
-                             cpusuffix:='8086'
-                           else if processorstr='jvm' then
-                             cpusuffix:='jvm'
-                           else if processorstr='loongarch64' then
-                             cpusuffix:='loongarch64'
-                           else if processorstr='m68k' then
-                             cpusuffix:='68k'
-                           else if processorstr='mips' then
-                             cpusuffix:='mips'
-                           else if processorstr='mipsel' then
-                             cpusuffix:='mipsel'
-                           else if processorstr='powerpc' then
-                             cpusuffix:='ppc'
-                           else if processorstr='powerpc64' then
-                             cpusuffix:='ppc64'
-                           else if processorstr='riscv32' then
-                             cpusuffix:='rv32'
-                           else if processorstr='riscv64' then
-                             cpusuffix:='rv64'
-                           else if processorstr='sparc' then
-                             cpusuffix:='sparc'
-                           else if processorstr='sparc64' then
-                             cpusuffix:='sparc64'
-                           else if processorstr='x86_64' then
-                             cpusuffix:='x64'
-                           else if processorstr='xtensa' then
-                             cpusuffix:='xtensa'
-                           else if processorstr='z80' then
-                             cpusuffix:='z80'
-                           else if processorstr='wasm32' then
-                             cpusuffix:='wasm32'
-                           else
-                             error('Illegal processor type "'+processorstr+'"');
-
-{$ifndef darwin}
-                           ppcbin:='ppcross'+cpusuffix;
-{$else not darwin}
-                           { the mach-o format supports "fat" binaries whereby }
-                           { a single executable contains machine code for     }
-                           { several architectures -> it is counter-intuitive  }
-                           { and non-standard to use different binary names    }
-                           { for cross-compilers vs. native compilers          }
-                           ppcbin:='ppc'+cpusuffix;
-{$endif not darwin}
-                         end;
+                       cpusuffix:=processortosuffix(TargetCPU);
+                       ppcbin:='ppc'+crosssuffix+cpusuffix;
+                     end;
                  end
               else if pos('-Xp',s)=1 then
                 extrapath:=copy(s,4,length(s)-3)
               else
                 begin
                   if pos('-h',s)=1 then
-                    ppccommandline[ppccommandlinelen] := '-hF' + ParamStr (0)
+                    AddToCommandLine('-hF'+ParamStr(0))
                   else if pos('-?',s)=1 then
-                    ppccommandline[ppccommandlinelen] := '-?F' + ParamStr (0)
+                    AddToCommandLine('-?F'+ParamStr(0))
                   else
-                    ppccommandline[ppccommandlinelen]:=s;
-                  inc(ppccommandlinelen);
+                    AddToCommandLine(S);
                 end;
             end;
        end;
      SetLength(ppccommandline,ppccommandlinelen);
 
-     if versionstr<>'' then
-       ppcbin:=ppcbin+'-'+versionstr;
-     { find the full path to the specified exe }
-     if not findexe(ppcbin) then
-        begin
-          if cpusuffix<>'' Then
-            begin
-              ppcbin:='ppc'+cpusuffix;
-              if versionstr<>'' then
-                ppcbin:=ppcbin+'-'+versionstr;
-              findexe(ppcbin);
-            end;
-        end;
+     ppcbin:=findcompiler(ppcbin,cpusuffix,versionstr);
 
      { call ppcXXX }
      try
@@ -340,3 +344,4 @@ program fpc;
        error(ppcbin+' returned an error exitcode');
      halt(errorvalue);
   end.
+

@@ -30,12 +30,14 @@ uses
 {$ifdef testimpl}
   tests.rtti.impl,
 {$endif}
-  tests.rtti;
+  tests.rtti, tests.value, tests.rtti.types;
 
 var
   Application: TTestRunner;
 
 begin
+  DefaultFormat:=fPlain;
+  DefaultRunAllTests:=True;
   Application := TTestRunner.Create(nil);
   Application.Initialize;
   Application.Title := 'RTL-ObjPas unit tests';
