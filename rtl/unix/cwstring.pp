@@ -38,6 +38,25 @@ implementation
   {$endif}
 {$endif}
 
+{$ifdef dragonfly}
+  { iconv function are included inside libc for DragonFly version 6.3 }
+  { See https://man.dragonflybsd.org/?command=iconv&section=3 }
+  {$ifndef DISABLE_ICONV_LIBC}
+    {$define iconv_is_in_libc}
+  {$endif}
+{$endif}
+
+{ Modern FreeBSD releases also claim to have iconv
+  function inside libc, at least
+  this is stated explicitly in iconv(3) man
+  of FreeBSD from 10.0 release
+  PM 2023-05-05 }
+{$ifdef freebsd}
+  {$ifndef DISABLE_ICONV_LIBC}
+    {$define iconv_is_in_libc}
+  {$endif}
+{$endif}
+
 {$ifndef iconv_is_in_libc}
  {$if defined(haiku)}
    {$linklib textencoding}
@@ -86,7 +105,7 @@ function strcoll (__s1:pchar; __s2:pchar):cint;cdecl;external clib name 'strcoll
 {$ifdef netbsd}
   { NetBSD has a new setlocale function defined in /usr/include/locale.h
     that should be used }
-function setlocale(category: cint; locale: pchar): pchar; cdecl; external clib name '__setlocale_mb_len_max_32';
+function setlocale(category: cint; locale: pchar): pchar; cdecl; external clib name '__setlocale50';
 {$else}
 function setlocale(category: cint; locale: pchar): pchar; cdecl; external clib name 'setlocale';
 {$endif}
