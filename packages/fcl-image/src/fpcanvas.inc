@@ -268,6 +268,13 @@ begin
   FPenPos:=AValue;
 end;
 
+procedure TFPCustomCanvas.SetClipRegion(const AValue: TFPCustomRegion);
+begin
+  if AValue = FClipRegion then exit;
+  FClipRegion.Free;
+  FClipRegion := AValue;
+end;
+
 function TFPCustomCanvas.DoAllowPen (APen : TFPCustomPen) : boolean;
 begin
   result := false;
@@ -786,7 +793,7 @@ begin
   if xm >= width then
     xm := width - 1;
   ym := y + image.height-1;
-  if (ym<0) or (y>width) then exit;
+  if (ym<0) or (y>height) then exit;
   if ym >= height then
     ym := height - 1;
   xi := x;

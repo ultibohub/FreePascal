@@ -1303,6 +1303,9 @@
     RT_ANIICON    = MAKEINTRESOURCE(22);
     RT_HTML       = MAKEINTRESOURCE(23);
     RT_MANIFEST   = MAKEINTRESOURCE(24);
+    DEVICE_NOTIFY_WINDOW_HANDLE          = $00000000;
+    DEVICE_NOTIFY_SERVICE_HANDLE         = $00000001;
+    DEVICE_NOTIFY_ALL_INTERFACE_CLASSES  = $00000004;
 
 
   { EnumServicesStatus  }
@@ -2382,9 +2385,12 @@
      XBUTTON1 = WORD($0001);
      XBUTTON2 = WORD($0002);
   { MoveFileEx  }
-     MOVEFILE_REPLACE_EXISTING = 1;
-     MOVEFILE_COPY_ALLOWED = 2;
-     MOVEFILE_DELAY_UNTIL_REBOOT = 4;
+     MOVEFILE_REPLACE_EXISTING       = $00000001;
+     MOVEFILE_COPY_ALLOWED           = $00000002;
+     MOVEFILE_DELAY_UNTIL_REBOOT     = $00000004;
+     MOVEFILE_WRITE_THROUGH          = $00000008;
+     MOVEFILE_CREATE_HARDLINK        = $00000010;
+     MOVEFILE_FAIL_IF_NOT_TRACKABLE  = $00000020;
   { MsgWaitForMultipleObjects, WaitForMultipleObjectsEx  }
      WAIT_OBJECT_0 = 0;
      WAIT_ABANDONED_0 = $80;
@@ -6415,6 +6421,12 @@ const
     GR_USEROBJECTS      = 1;       { Count of USER objects }
     GR_GDIOBJECTS_PEAK  = 2;       { Peak count of GDI objects }
     GR_USEROBJECTS_PEAK = 4;       { Peak count of USER objects }
+
+    ES_SYSTEM_REQUIRED    = dword($00000001);
+    ES_DISPLAY_REQUIRED   = dword($00000002);
+    ES_USER_PRESENT       = dword($00000004);
+    ES_AWAYMODE_REQUIRED  = dword($00000040);
+    ES_CONTINUOUS         = dword($80000000);
 
 {$endif read_interface}
 
