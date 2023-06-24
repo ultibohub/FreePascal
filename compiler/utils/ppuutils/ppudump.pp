@@ -2876,6 +2876,12 @@ begin
     end;
   writeln;
 
+  if df_unique in defoptions then
+    begin
+      write  ([space,'      OriginalDef : ']);
+      readderef(space);
+    end;
+
   if df_genconstraint in defoptions then
     begin
       ppufile.getset(tppuset1(genconstr));

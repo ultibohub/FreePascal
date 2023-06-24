@@ -210,6 +210,8 @@ interface
 
       TFPCMakeVerbose = (FPCMakeError, FPCMakeInfo, FPCMakeDebug);
 
+      { TFPCMake }
+
       TFPCMake = class
       private
         FStream         : TStream;
@@ -1105,7 +1107,7 @@ implementation
       end;
 
 
-    function TFPCMake.GetTargetRequires(c:TCpu;t:Tos):TStringList;
+        function TFPCMake.GetTargetRequires(c: TCpu; t: TOS): TStringList;
       var
         ReqSec  : TFPCMakeSection;
         ReqList : TStringList;
