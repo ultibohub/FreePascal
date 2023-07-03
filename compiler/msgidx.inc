@@ -479,6 +479,9 @@ const
   parser_e_absolute_sym_cannot_reference_itself=03363;
   parser_e_syscall_format_not_support=03364;
   parser_w_ignoring_published_property=03365;
+  parser_e_wasm_ref_types_can_only_be_passed_by_value=03366;
+  parser_e_promising_exports_not_supported_on_current_platform=03367;
+  parser_e_suspending_externals_not_supported_on_current_platform=03368;
   type_e_mismatch=04000;
   type_e_incompatible_types=04001;
   type_e_not_equal_types=04002;
@@ -601,6 +604,8 @@ const
   type_e_cant_read_write_type_in_iso_mode=04129;
   type_w_array_size_does_not_match_size_of_constant_string=04130;
   type_e_nested_procvar_to_funcref=04131;
+  type_e_cannot_take_address_of_wasm_externref=04132;
+  type_e_cannot_determine_size_of_wasm_reference_type=04133;
   sym_e_id_not_found=05000;
   sym_f_internal_error_in_symtablestack=05001;
   sym_e_duplicate_id=05002;
@@ -688,6 +693,7 @@ const
   sym_e_type_must_be_rec_or_object=05098;
   sym_e_symbol_no_capture=05099;
   sym_f_systemunitnotloaded=05100;
+  sym_e_wasm_ref_types_cannot_be_used_in_records=05101;
   cg_e_parasize_too_big=06009;
   cg_e_file_must_call_by_reference=06012;
   cg_e_cant_use_far_pointer_there=06013;
@@ -1161,9 +1167,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 91091;
+  MsgTxtSize = 91590;
 
   MsgIdxMax : array[1..20] of longint=(
-    28,109,366,132,101,63,148,38,223,71,
+    28,109,369,134,102,63,148,38,223,71,
     68,20,30,1,1,1,1,1,1,1
   );

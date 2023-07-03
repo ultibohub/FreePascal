@@ -510,6 +510,10 @@ implementation
                     if explicit_paraloc then
                       Message(parser_e_paraloc_all_paras);
                 end;
+{$ifdef wasm}
+              if (vs.varspez in [vs_var,vs_constref,vs_out]) and is_wasm_reference_type(vs.vardef) then
+                Message(parser_e_wasm_ref_types_can_only_be_passed_by_value);
+{$endif wasm}
             end;
         until not try_to_consume(_SEMICOLON);
 
@@ -2402,6 +2406,31 @@ begin
              else
                import_nr:=longint(v.svalue);
            end;
+          if (idtoken=_SUSPENDING) then
+           begin
+             if (target_info.system in systems_wasm) then
+              begin
+                consume(_SUSPENDING);
+                include(procoptions,po_wasm_suspending);
+                synthetickind:=tsk_wasm_suspending_first;
+                if idtoken=_FIRST then
+                  consume(_FIRST)
+                else if idtoken=_LAST then
+                  begin
+                    consume(_LAST);
+                    synthetickind:=tsk_wasm_suspending_last;
+                  end;
+              end
+             else
+              begin
+                message(parser_e_suspending_externals_not_supported_on_current_platform);
+                consume(_SUSPENDING);
+                if idtoken=_FIRST then
+                  consume(_FIRST)
+                else if idtoken=_LAST then
+                  consume(_LAST);
+              end;
+           end;
           { default is to used the realname of the procedure }
           if (import_nr=0) and not assigned(import_name) then
             begin
@@ -2481,7 +2510,7 @@ type
    end;
 const
   {Should contain the number of procedure directives we support.}
-  num_proc_directives=54;
+  num_proc_directives=55;
   proc_direcdata:array[1..num_proc_directives] of proc_dir_rec=
    (
     (
@@ -2988,6 +3017,15 @@ const
       mutexclpocall : [];
       mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
       mutexclpo     : [po_interrupt]
+    ),(
+      idtok:_WASMFUNCREF;
+      pd_flags : [pd_procvar];
+      handler  : nil;
+      pocall   : pocall_none;
+      pooption : [po_wasm_funcref];
+      mutexclpocall : [];
+      mutexclpotype : [potype_constructor,potype_destructor,potype_class_constructor,potype_class_destructor];
+      mutexclpo     : [po_interrupt]
     )
    );
 
@@ -3288,7 +3326,7 @@ const
           it because it can already be used somewhere (PFV) }
         if not(po_has_mangledname in pd.procoptions) then
           begin
-            if (po_external in pd.procoptions) then
+            if (po_external in pd.procoptions) and not (po_wasm_suspending in pd.procoptions) then
               begin
                 { External Procedures are only allowed to change the mangledname
                   in their first declaration }

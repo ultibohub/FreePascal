@@ -1160,6 +1160,9 @@ interface
        longintfarpointertype,     { used for MemL[] }
   {$endif i8086}
 {$endif x86}
+{$ifdef wasm}
+       wasmvoidexternreftype,
+{$endif wasm}
        cundefinedtype,
        cformaltype,               { unique formal definition }
        ctypedformaltype,          { unique typed formal definition }

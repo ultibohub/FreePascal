@@ -137,6 +137,7 @@ implementation
 {$ifdef jvm}
     pjvm,jvmdef,
 {$endif jvm}
+    aasmcpu,symcpu,
     nbas,nld,nmem,ncon,
     defcmp,
     paramgr;
@@ -229,7 +230,7 @@ implementation
     end;
 
 
-  function str_parse_method_impl_with_fileinfo(str: ansistring; usefwpd: tprocdef; fileno, lineno: longint; is_classdef: boolean):boolean;
+  function str_parse_method_impl_with_fileinfo(str: ansistring; usefwpd: tprocdef; fileno, lineno: longint; is_classdef: boolean; out result_procdef: tprocdef):boolean;
      var
        oldparse_only: boolean;
        tmpstr: ansistring;
@@ -260,7 +261,7 @@ implementation
       flags:=[];
       if is_classdef then
         include(flags,rpf_classmethod);
-      read_proc(flags,usefwpd);
+      result_procdef:=read_proc(flags,usefwpd);
       parse_only:=oldparse_only;
       { remove the temporary macro input file again }
       current_scanner.closeinputfile;
@@ -271,8 +272,16 @@ implementation
 
 
   function str_parse_method_impl(const str: ansistring; usefwpd: tprocdef; is_classdef: boolean):boolean;
+    var
+      tmpproc: tprocdef;
     begin
-      result:=str_parse_method_impl_with_fileinfo(str, usefwpd, current_scanner.inputfile.ref_index, current_scanner.line_no, is_classdef);
+      result:=str_parse_method_impl_with_fileinfo(str, usefwpd, current_scanner.inputfile.ref_index, current_scanner.line_no, is_classdef, tmpproc);
+    end;
+
+
+  function str_parse_method_impl(const str: ansistring; usefwpd: tprocdef; is_classdef: boolean; out result_procdef: tprocdef):boolean;
+    begin
+      result:=str_parse_method_impl_with_fileinfo(str, usefwpd, current_scanner.inputfile.ref_index, current_scanner.line_no, is_classdef, result_procdef);
     end;
 
 
@@ -869,6 +878,151 @@ implementation
     end;
 {$endif jvm}
 
+
+{$ifdef wasm}
+  procedure addvisibleparameterdeclarations(var str: ansistring; pd: tprocdef);
+    var
+      currpara: tparavarsym;
+      i: longint;
+      firstpara: boolean;
+    begin
+      firstpara:=true;
+      for i:=0 to pd.paras.count-1 do
+        begin
+          currpara:=tparavarsym(pd.paras[i]);
+          if not(vo_is_hidden_para in currpara.varoptions) then
+            begin
+              if not firstpara then
+                str:=str+';';
+              firstpara:=false;
+              case currpara.varspez of
+                vs_constref:
+                  str:=str+'constref ';
+                vs_out:
+                  str:=str+'out ';
+                vs_var:
+                  str:=str+'var ';
+                vs_const:
+                  str:=str+'const ';
+                vs_value:
+                  ;
+                else
+                  internalerror(2023061108);
+              end;
+
+              str:=str+currpara.realname;
+              if currpara.vardef.typ<>formaldef then
+                str:=str+':'+currpara.vardef.fulltypename;
+            end;
+        end;
+    end;
+
+  procedure implement_wasm_suspending(pd: tcpuprocdef; last: Boolean);
+    var
+      str: ansistring;
+      wrapper_name: ansistring;
+    begin
+      wrapper_name:=pd.suspending_wrapper_name;
+
+      if is_void(pd.returndef) then
+        str:='procedure '
+      else
+        str:='function ';
+      str:=str+wrapper_name+'(';
+      if last then
+        begin
+          addvisibleparameterdeclarations(str,pd);
+          if str[Length(str)]<>'(' then
+            str:=str+';';
+          str:=str+'__fpc_wasm_susp: WasmExternRef';
+        end
+      else
+        begin
+          str:=str+'__fpc_wasm_susp: WasmExternRef;';
+          addvisibleparameterdeclarations(str,pd);
+          if str[Length(str)]=';' then
+            delete(str,Length(str),1);
+        end;
+      str:=str+')';
+      if not is_void(pd.returndef) then
+        str:=str+': '+pd.returndef.fulltypename;
+      str:=str+'; external '''+pd.import_dll^+ ''' name '''+pd.import_name^+''';';
+      str_parse_method_impl(str,nil,false);
+
+      str:='var __fpc_wasm_suspender_copy:WasmExternRef; begin __fpc_wasm_suspender_copy:=__fpc_wasm_suspender; ';
+
+      if not is_void(pd.returndef) then
+        str:=str+' result:=';
+
+      str:=str+wrapper_name+'(__fpc_wasm_suspender_copy,';
+      addvisibleparameters(str,pd);
+      if str[Length(str)]=',' then
+        delete(str,Length(str),1);
+      str:=str+');';
+      str:=str+' __fpc_wasm_suspender:=__fpc_wasm_suspender_copy;';
+      str:=str+' end;';
+      str_parse_method_impl(str,pd,false);
+      exclude(pd.procoptions,po_external);
+    end;
+
+  function implement_wasm_promising_wrapper(pd: tcpuprocdef;last:boolean):tprocdef;
+    var
+      str: ansistring;
+      wrapper_name: ansistring;
+    begin
+      wrapper_name:=pd.promising_wrapper_name(last);
+
+      if is_void(pd.returndef) then
+        str:='procedure '
+      else
+        str:='function ';
+      str:=str+wrapper_name+'(';
+      if last then
+        begin
+          addvisibleparameterdeclarations(str,pd);
+          if str[Length(str)]<>'(' then
+            str:=str+';';
+          str:=str+'__fpc_wasm_susp: WasmExternRef';
+        end
+      else
+        begin
+          str:=str+'__fpc_wasm_susp: WasmExternRef;';
+          addvisibleparameterdeclarations(str,pd);
+          if str[Length(str)]=';' then
+            delete(str,Length(str),1);
+        end;
+      str:=str+')';
+      if not is_void(pd.returndef) then
+        str:=str+': '+pd.returndef.fulltypename;
+      str:=str+'; begin __fpc_wasm_suspender:=__fpc_wasm_susp;';
+      if not is_void(pd.returndef) then
+        str:=str+' result:=';
+      str:=str+pd.procsym.RealName+'(';
+      addvisibleparameters(str,pd);
+      if str[Length(str)]=',' then
+        delete(str,Length(str),1);
+      str:=str+'); end;';
+      str_parse_method_impl(str,nil,false,result);
+    end;
+
+  procedure implement_wasm_promising(pd: tcpuprocdef);
+    var
+      new_wrapper_pd: tprocdef;
+    begin
+      if pd.promising_first_export_name<>'' then
+        begin
+          new_wrapper_pd:=implement_wasm_promising_wrapper(pd,false);
+          current_asmdata.asmlists[al_exports].Concat(tai_export_name.create(pd.promising_first_export_name,new_wrapper_pd.mangledname,ie_Func));
+        end;
+      if pd.promising_last_export_name<>'' then
+        begin
+          new_wrapper_pd:=implement_wasm_promising_wrapper(pd,true);
+          current_asmdata.asmlists[al_exports].Concat(tai_export_name.create(pd.promising_last_export_name,new_wrapper_pd.mangledname,ie_Func));
+        end;
+    end;
+{$endif wasm}
+
+
   procedure implement_field_getter(pd: tprocdef);
     var
       i: longint;
@@ -974,7 +1128,7 @@ implementation
   procedure implement_interface_wrapper(pd: tprocdef);
     var
       wrapperinfo: pskpara_interface_wrapper;
-      callthroughpd: tprocdef;
+      callthroughpd, tmpproc: tprocdef;
       str: ansistring;
       fileinfo: tfileposinfo;
     begin
@@ -1002,7 +1156,7 @@ implementation
           fileinfo.line:=1;
           fileinfo.column:=1;
         end;
-      str_parse_method_impl_with_fileinfo(str,pd,fileinfo.fileindex,fileinfo.line,false);
+      str_parse_method_impl_with_fileinfo(str,pd,fileinfo.fileindex,fileinfo.line,false,tmpproc);
       dispose(wrapperinfo);
       pd.skpara:=nil;
     end;
@@ -1109,6 +1263,19 @@ implementation
             tsk_jvm_virtual_clmethod:
               internalerror(2011032801);
 {$endif jvm}
+{$ifdef wasm}
+            tsk_wasm_suspending_first:
+              implement_wasm_suspending(tcpuprocdef(pd),false);
+            tsk_wasm_suspending_last:
+              implement_wasm_suspending(tcpuprocdef(pd),true);
+            tsk_wasm_promising:
+              implement_wasm_promising(tcpuprocdef(pd));
+{$else wasm}
+            tsk_wasm_suspending_first,
+            tsk_wasm_suspending_last,
+            tsk_wasm_promising:
+              internalerror(2023061107);
+{$endif wasm}
             tsk_field_getter:
               implement_field_getter(pd);
             tsk_field_setter:

@@ -446,7 +446,7 @@ scan_e_unexpected_endif=02108_E_$ENDIF directive found without a matching $IF(N)
 #
 # Parser
 #
-# 03365 is the last used one
+# 03368 is the last used one
 #
 % \section{Parser messages}
 % This section lists all parser messages. The parser takes care of the
@@ -1645,12 +1645,18 @@ parser_w_ignoring_published_property=03365_W_This property will not be published
 % On a certain target, not all syntax variants of the syscall directive make sense and thus those making
 % no sense are not supported
 % Declarations like \var{var i: Integer absolute i;} are not allowed
+parser_e_wasm_ref_types_can_only_be_passed_by_value=03366_E_WebAssembly reference types can only be passed by value
+% WebAssembly reference types don't have an in-memory representation and can only be passed by value.
+parser_e_promising_exports_not_supported_on_current_platform=03367_E_Declaring exports as 'promising' is WebAssembly-specific and is not supported on the current platform
+% Promising exports are WebAssembly-specific. They are not allowed on other platforms.
+parser_e_suspending_externals_not_supported_on_current_platform=03368_E_Declaring externals as 'suspending' is WebAssembly-specific and is not supported on the current platform
+% Suspending externals are WebAssembly-specific. They are not allowed on other platforms.
 %
 % \end{description}
 %
 # Type Checking
 #
-# 04131 is the last used one
+# 04133 is the last used one
 #
 % \section{Type checking errors}
 % This section lists all errors that can occur when type checking is
@@ -2106,12 +2112,16 @@ type_e_nested_procvar_to_funcref=04131_E_A nested function variable can not be a
 % Function references can live beyond the scope of the function they're contained in while
 % nested functions assigned to nested function variables can't. Due to this discrepancy
 % in design assigning a nested function variable to a function reference is forbidden.
+type_e_cannot_take_address_of_wasm_externref=04132_E_Cannot take the address of a WebAssembly externref
+% WebAssembly externref types don't have an in-memory representation and therefore, their address cannot be taken.
+type_e_cannot_determine_size_of_wasm_reference_type=04133_E_WebAssembly reference types don't have an observable size
+% WebAssembly reference types are opaque, meaning neither their size, nor their bit pattern can be observed.
 %
 % \end{description}
 #
 # Symtable
 #
-# 05099 is the last used one
+# 05101 is the last used one
 #
 % \section{Symbol handling}
 % This section lists all the messages that concern the handling of symbols.
@@ -2435,6 +2445,9 @@ sym_e_symbol_no_capture=05099_E_Symbol "$1" can not be captured
 sym_f_systemunitnotloaded=05100_F_System unit not loaded.
 % The compiler used a function that requires the system unit to be loaded,
 % but it was not yet loaded. This is an internal compiler error and must be reported.
+sym_e_wasm_ref_types_cannot_be_used_in_records=05101_E_WebAssembly reference types cannot be used inside records, objects, or classes
+% WebAssembly reference types don't have an in-memory representation and therefore
+% cannot be used inside records, objects or classes.
 %
 % \end{description}
 #
