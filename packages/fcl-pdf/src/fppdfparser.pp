@@ -25,7 +25,7 @@ unit fppdfparser;
 interface
 
 uses
-  Types, Typinfo, Classes, SysUtils, fppdfobjects, fppdfscanner, fppdfsource, streamex, fppdfpredict;
+  Types, Typinfo, Classes, SysUtils, fppdfobjects, fppdfscanner, fppdfsource, streamex, fppdfpredict, fppdfcommands;
 
 Const
   PDFMaxTrailerDistance = 6;  // Maximum number of bytes to scan backwards for trailer dictionary end: >>
@@ -2434,7 +2434,12 @@ begin
     aPage:=aDoc.Page[I];
     DoProgress(pkContentStream,I+1,aCount);
     aStream:=GetPageContentStream(aDoc,aPage);
-    ParseContentStream(aPage,aStream,aOnCommand)
+    try
+      ParseContentStream(aPage,aStream,aOnCommand)
+    finally
+      if aStream is TChainedStream then
+        aStream.Free;
+    end;
     end;
 end;
 

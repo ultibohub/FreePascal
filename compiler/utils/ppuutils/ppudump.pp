@@ -4092,6 +4092,8 @@ begin
                      WriteWarning('Invalid x86 pointer type: ' + IntToStr(b));
                  end;
                end;
+             if tsystemcpu(ppufile.header.common.cpu)=cpu_wasm32 then
+               writeln([space,'   WASM externref : ',(getbyte<>0)]);
            end;
 
          iborddef :

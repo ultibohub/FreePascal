@@ -1,17 +1,3 @@
-{ **********************************************************************
-  This file is part of the Free Component Library
-
-  PDF names/constants.
-  Copyright (c) 2022 by Michael Van Canneyt michael@freepascal.org
-
-  See the file COPYING.FPC, included in this distribution,
-  for details about the copyright.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-
-  **********************************************************************}
 unit fppdfconsts;
 
 {$mode ObjFPC}{$H+}
@@ -236,7 +222,33 @@ const
   SCMAPKeyWMode          = 'WMode';
   SCMAPKeyUseCMap        = 'UseCMap';
 
-
+  SPDFExtGStateKeyType  = 'Type';
+  SPDFExtGStateKeyLW    = 'LW';
+  SPDFExtGStateKeyLC    = 'LC';
+  SPDFExtGStateKeyLJ    = 'LJ';
+  SPDFExtGStateKeyML    = 'ML';
+  SPDFExtGStateKeyD     = 'D';
+  SPDFExtGStateKeyRI    = 'RI';
+  SPDFExtGStateKeyOP_U  = 'OP';
+  SPDFExtGStateKeyop_l  = 'op';
+  SPDFExtGStateKeyOPM   = 'OPM';
+  SPDFExtGStateKeyFont  = 'Font';
+  SPDFExtGStateKeyBG    = 'BG';
+  SPDFExtGStateKeyBG2   = 'BG2';
+  SPDFExtGStateKeyUCR   = 'UCR';
+  SPDFExtGStateKeyUCR2  = 'UCR2';
+  SPDFExtGStateKeyTR    = 'TR';
+  SPDFExtGStateKeyTR2   = 'TR2';
+  SPDFExtGStateKeyHT    = 'HT';
+  SPDFExtGStateKeyFL    = 'FL';
+  SPDFExtGStateKeySM    = 'SM';
+  SPDFExtGStateKeySA    = 'SA';
+  SPDFExtGStateKeyBM    = 'BM';
+  SPDFExtGStateKeySMask = 'SMask';
+  SPDFExtGStateKeyCA_U  = 'CA';
+  SPDFExtGStateKeyca_l  = 'ca';
+  SPDFExtGStateKeyAIS   = 'AIS';
+  SPDFExtGStateKeyTK    = 'TK';
 
 
   // CJK Cmaps
@@ -302,6 +314,13 @@ const
   CMAPUniKS_UTF16_V = 'UniKS-UTF16-V';
   CMAPIdentity_H = 'Identity-H';
   CMAPIdentity_V = 'Identity-V';
+
+  SPDFColorSpaceDeviceGray  = 'DeviceGray';
+  SPDFColorSpaceDeviceRGB   = 'DeviceRGB';
+  SPDFColorSpaceDeviceCMYK  = 'DeviceCMYK';
+  SPDFColorSpacePattern     = 'Pattern';
+  SPDFColorSpaceCalGray     = 'CalGray';
+  SPDFColorSpaceCalRGB      = 'CalRGB';
 
 implementation
 
