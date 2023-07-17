@@ -93,12 +93,18 @@ type
       property Capacity : integer read FCapacity write SetCapacity;
   end;
 
+  TResolutionUnit = (ruNone, ruPixelsPerInch, ruPixelsPerCentimeter);
+
   TFPCustomImage = class(TPersistent)
     private
       FOnProgress : TFPImgProgressEvent;
       FExtra : TStringlist;
       FPalette : TFPPalette;
       FHeight, FWidth : integer;
+      //Resolution
+      FResolutionUnit: TResolutionUnit;
+      FResolutionX,
+      FResolutionY: Single;
       procedure SetHeight (Value : integer);
       procedure SetWidth (Value : integer);
       procedure SetExtra (const key:String; const AValue:string);
@@ -114,7 +120,12 @@ type
       procedure SetPixel (x,y:integer; Value:integer);
       function GetPixel (x,y:integer) : integer;
       function GetUsePalette : boolean;
+      procedure SetResolutionUnit(AResolutionUnit: TResolutionUnit);
     protected
+
+      function GetResolutionWidth: Single; virtual;
+      function GetResolutionHeight: Single; virtual;
+
       // Procedures to store the data. Implemented in descendants
       procedure SetInternalColor (x,y:integer; const Value:TFPColor); virtual;
       function GetInternalColor (x,y:integer) : TFPColor; virtual;
@@ -149,6 +160,12 @@ type
       property  Height : integer read FHeight write SetHeight;
       property  Width : integer read FWidth write SetWidth;
       property  Colors [x,y:integer] : TFPColor read GetColor write SetColor; default;
+      //Resolution
+      property ResolutionUnit: TResolutionUnit read FResolutionUnit write SetResolutionUnit;
+      property ResolutionX: Single read FResolutionX write FResolutionX;
+      property ResolutionY: Single read FResolutionY write FResolutionY;
+      property ResolutionWidth: Single read GetResolutionWidth;
+      property ResolutionHeight: Single read GetResolutionHeight;
       // Use of palette for colors
       property  UsePalette : boolean read GetUsePalette write SetUsePalette;
       property  Palette : TFPPalette read FPalette;
@@ -640,7 +657,7 @@ end;
 
 {$ifdef debug}
 function MakeHex (n:TColordata;nr:byte): string;
-const hexnums : array[0..15] of char =
+const hexnums : array[0..15] of AnsiChar =
               ('0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F');
 var r : integer;
 begin

@@ -608,11 +608,14 @@
           ClassName := PVmt(Self)^.vClassName^;
         end;
 
-      class function TObject.ClassNameIs(const name : string) : boolean;
+      class function TObject.ClassNameIs(const name : RTLString) : boolean;
 
+        var
+          SS : ShortString;
+          
         begin
-        // call to ClassName inlined here, this eliminates stack and string copying.
-           ClassNameIs:=ShortCompareText(PVmt(Self)^.vClassName^, name) = 0;
+           SS:=ShortString(Name);
+           ClassNameIs:=ShortCompareText(PVmt(Self)^.vClassName^, SS) = 0;
         end;
 
       class function TObject.InheritsFrom(aclass : TClass) : Boolean;
@@ -985,8 +988,9 @@
           getinterfacetable:=PVmt(Self)^.vIntfTable;
         end;
 
-      class function TObject.UnitName : {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+      class function TObject.UnitName : RTLString;
 {$ifdef FPC_HAS_FEATURE_RTTI}
+
         type
           TClassTypeInfo = {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}packed{$endif}record
             Attributes: Pointer;
@@ -1025,9 +1029,9 @@
         end;
 {$endif ndef FPC_HAS_FEATURE_RTTI}
 
-      class function TObject.QualifiedClassName: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+      class function TObject.QualifiedClassName: RTLString;
         var
-          uname: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+          uname: RTLString;
         begin
           uname := UnitName; //TODO: change 'UnitName' to 'UnitScope' as soon as RTL implement it
           if uname='' then
@@ -1046,7 +1050,7 @@
           result:=PtrInt(Self);
         end;
 
-      function TObject.ToString: {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}ansistring{$else FPC_HAS_FEATURE_ANSISTRINGS}shortstring{$endif FPC_HAS_FEATURE_ANSISTRINGS};
+      function TObject.ToString: RTLString;
         begin
           result:=ClassName;
         end;
@@ -1219,11 +1223,46 @@
 
 
 
-    constructor StoredAttribute.Create(Const aName : string);
+    constructor StoredAttribute.Create(Const aName : shortstring);
     begin
       FName:=aName;
     end;
 
+{****************************************************************************
+                             TInterfaceThunk
+****************************************************************************}
+
+Constructor TInterfaceThunk.Create(aCallback : TThunkCallback);
+
+begin
+  FCallBack:=aCallBack;
+end;
+
+Procedure TInterfaceThunk.Thunk(aMethod: Longint; aCount : Longint; aData : PArgData);
+
+begin
+  if Assigned(FCallBack) then
+    FCallBack(Self,aMethod,aCount,aData); 
+end;
+
+function TInterfaceThunk.QueryInterface({$IFDEF FPC_HAS_CONSTREF}constref{$ELSE}const{$ENDIF} iid : tguid;out obj) : longint;{$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
+
+begin
+  result:=longint(E_NOINTERFACE);
+  if (TMethod(FCallBack).Data<>Nil) then
+    // Query the object that created us, this is normally TVirtualInterface
+    // Take care: do not call QueryInterface, that would create a never-ending loop !!
+    if TObject(TMethod(FCallBack).Data).GetInterface(iid,obj) then
+      result:=S_OK;
+  if (Result<>S_OK) then
+    Result:=Inherited QueryInterface(iid,obj);
+end;
+
+function TInterfaceThunk.InterfaceVMTOffset : word;
+
+begin
+  Result:=0;
+end;
 
 {****************************************************************************
                              Exception Support

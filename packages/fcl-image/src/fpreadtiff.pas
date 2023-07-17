@@ -37,6 +37,9 @@
  Not to do:
    Separate mask (deprecated)
 
+ 2023-07  - Massimo Magnano
+          - added Resolution support
+
 }
 unit FPReadTiff;
 
@@ -54,12 +57,6 @@ type
 
   TTiffCreateCompatibleImgEvent = procedure(Sender: TFPReaderTiff;
                                             ImgFileDir: TTiffIFD) of object;
-
-  TTiffCheckIFDOrder = (
-    tcioSmart,
-    tcioAlways,
-    tcioNever
-    );
 
   { TFPReaderTiff }
 
@@ -81,11 +78,6 @@ type
     procedure SetStreamPos(p: DWord);
     function ReadTiffHeader(QuickTest: boolean; out IFDStart: DWord): boolean; // returns IFD: offset to first IFD
     function ReadIFD(Start: DWord; IFD: TTiffIFD): DWord;// Image File Directory
-    procedure ReadDirectoryEntry(var EntryTag: Word; IFD: TTiffIFD);
-    function ReadEntryUnsigned: DWord;
-    function ReadEntrySigned: Cint32;
-    function ReadEntryRational: TTiffRational;
-    function ReadEntryString: string;
     function ReadByte: Byte;
     function ReadWord: Word;
     function ReadDWord: DWord;
@@ -109,6 +101,11 @@ type
     procedure DecodeLZW(var Buffer: Pointer; var Count: PtrInt);
     procedure DecodeDeflate(var Buffer: Pointer; var Count: PtrInt; ExpectedCount: PtrInt);
   protected
+    procedure ReadDirectoryEntry(var EntryTag: Word; IFD: TTiffIFD); virtual;
+    function ReadEntryUnsigned: DWord;
+    function ReadEntrySigned: Cint32;
+    function ReadEntryRational: TTiffRational;
+    function ReadEntryString: string;
     procedure InternalRead(Str: TStream; AnImage: TFPCustomImage); override;
     function InternalCheck(Str: TStream): boolean; override;
     procedure DoCreateImage(ImgFileDir: TTiffIFD); virtual;
@@ -1518,7 +1515,7 @@ begin
   end;
 end;
 
-function TFPReaderTiff.ReadEntryString: string;
+function TFPReaderTiff.ReadEntryString: AnsiString;
 var
   EntryType: Word;
   EntryCount: LongWord;
@@ -1763,6 +1760,14 @@ var
   TilesAcross, TilesDown: DWord;
   ChunkLeft, ChunkTop, ChunkWidth, ChunkHeight: DWord;
   ChunkBytesPerLine: DWord;
+
+  procedure ReadResolutionValues;
+  begin
+       CurFPImg.ResolutionUnit :=TifResolutionUnitToResolutionUnit(IFD.ResolutionUnit);
+       CurFPImg.ResolutionX :=IFD.XResolution.Numerator/IFD.XResolution.Denominator;
+       CurFPImg.ResolutionY :=IFD.YResolution.Numerator/IFD.YResolution.Denominator;
+  end;
+
 begin
   if (IFD.ImageWidth=0) or (IFD.ImageHeight=0) then
     exit;
@@ -1838,6 +1843,9 @@ begin
     DoCreateImage(IFD);
     CurFPImg:=IFD.Img;
     if CurFPImg=nil then exit;
+
+    //Resolution
+    ReadResolutionValues;
 
     SetFPImgExtras(CurFPImg, IFD);
 
@@ -2461,6 +2469,7 @@ begin
   end;
   Result:=true;
 end;
+
 
 initialization
   if ImageHandlers.ImageReader[TiffHandlerName]=nil then

@@ -1,4 +1,5 @@
-{
+{ **********************************************************************
+
     This file is part of the Free Component Library (FCL)
     Copyright (c) 2020 by Michael Van Canneyt
 
@@ -48,7 +49,7 @@ Works:
 - assign statements
 - char
   - literals
-  - ord(char)  ->  char.charCodeAt()
+  - ord(AnsiChar)  ->  char.charCodeAt()
   - chr(integer)  -> String.fromCharCode(integer)
 - string
   - literals
@@ -294,11 +295,11 @@ Works:
 - dotted unit names, namespaces
 - resourcestring
 - custom ranges
-  - enum, int, char
+  - enum, int, AnsiChar
   - low(), high(), pred(), succ(), ord(),
   - rg(int), int(rg), enum:=rg,
   - rg:=rg, rg1:=rg2, rg:=enum, =, <>,
-  - set of int/enum/char range, in
+  - set of int/enum/AnsiChar range, in
   - array[rg], low(array), high(array), length(array)
 - enumeration  for..in..do
   - enum, enum range, set of enum, set of enum range
@@ -318,7 +319,7 @@ Works:
   - compile time: warnings to errors
   - assign int:=, int+=, enum:=, enum+=, intrange:=, intrange+=,
       enumrange:=, enumrange+=, char:=, char+=, charrange:=, charrange+=
-  - procedure argument int, enum, intrange, enumrange, char, charrange
+  - procedure argument int, enum, intrange, enumrange, vhar, charrange
   - array[index1,index2,...]  read and assign
   - string[index]  read and assign
 - Interfaces:
@@ -1447,8 +1448,8 @@ type
     FTargetPlatform: TPasToJsPlatform;
     FTargetProcessor: TPasToJsProcessor;
   protected
-    function HandleInclude(const Param: String): TToken; override;
-    procedure DoHandleOptimization(OptName, OptValue: string); override;
+    function HandleInclude(const Param: TPasScannerString): TToken; override;
+    procedure DoHandleOptimization(OptName, OptValue: TPasScannerString); override;
   public
     GlobalConvOptsEnabled: TPasToJsConverterOptions;
     GlobalConvOptsDisabled: TPasToJsConverterOptions;
@@ -1568,8 +1569,7 @@ type
       ); override;
     procedure FinishExportSymbol(El: TPasExportSymbol); override;
     procedure ComputeArgumentExpr(const ArgResolved: TPasResolverResult;
-      Access: TArgumentAccess; Expr: TPasExpr; out
-      ExprResolved: TPasResolverResult; SetReferenceFlags: boolean); override;
+      Access: TArgumentAccess; Expr: TPasExpr; out ExprResolved: TPasResolverResult; SetReferenceFlags: boolean); override;
     procedure FindCreatorArrayOfConst(Args: TFPList; ErrorEl: TPasElement);
     function FindProc_ArrLitToArrayOfConst(ErrorEl: TPasElement): TPasFunction; virtual;
     function FindSystemExternalClassType(const aClassName, JSName: string;
@@ -2432,7 +2432,7 @@ var
     );
 
 function CodePointToJSString(u: longword): TJSString;
-function PosLast(c: char; const s: string): integer;
+function PosLast(c: AnsiChar; const s: string): integer;
 
 function JSEquals(A, B: TJSElement): boolean;
 
@@ -2459,7 +2459,7 @@ begin
     Result:=WideChar($D800+((u - $10000) shr 10))+WideChar($DC00+((u - $10000) and $3ff));
 end;
 
-function PosLast(c: char; const s: string): integer;
+function PosLast(c: AnsiChar; const s: string): integer;
 begin
   Result:=length(s);
   while (Result>0) and (s[Result]<>c) do dec(Result);
@@ -2849,7 +2849,7 @@ end;
 
 { TPas2jsPasScanner }
 
-function TPas2jsPasScanner.HandleInclude(const Param: String): TToken;
+function TPas2jsPasScanner.HandleInclude(const Param: TPasScannerString): TToken;
 
   procedure SetStr(s: string);
   var
@@ -2989,7 +2989,7 @@ begin
   Result:=inherited HandleInclude(Param);
 end;
 
-procedure TPas2jsPasScanner.DoHandleOptimization(OptName, OptValue: string);
+procedure TPas2jsPasScanner.DoHandleOptimization(OptName, OptValue: TPasScannerString);
 
   procedure HandleBoolean(o: TPasToJsConverterOption; IsGlobalSwitch: boolean);
   var
@@ -3046,7 +3046,7 @@ var
     {$IFDEF Pas2js}
     TokenPos:=MyTokenPos;
     {$ELSE}
-    TokenPos:=PChar(s)+MyTokenPos-1;
+    TokenPos:=PAnsiChar(s)+MyTokenPos-1;
     {$ENDIF}
   end;
 
@@ -3103,10 +3103,10 @@ begin
   MyTokenPos:=TokenPos;
   {$ELSE}
   {$IFDEF VerbosePas2JS}
-  if (TokenPos<PChar(s)) or (TokenPos>PChar(s)+length(s)) then
+  if (TokenPos<PAnsiChar(s)) or (TokenPos>PAnsiChar(s)+length(s)) then
     Error(nErrRangeCheck,'[20181109104812]');
   {$ENDIF}
-  MyTokenPos:=TokenPos-PChar(s)+1;
+  MyTokenPos:=TokenPos-PAnsiChar(s)+1;
   {$ENDIF}
   StartPos:=MyTokenPos;
   repeat
@@ -6742,7 +6742,7 @@ function TPas2JSResolver.ExtractPasStringLiteral(El: TPasElement;
 }
 var
   p, StartP, i, l: integer;
-  c: Char;
+  c: AnsiChar;
 begin
   Result:='';
   {$IFDEF VerbosePas2JS}
@@ -13640,16 +13640,16 @@ function TPasToJSConverter.ConvertBuiltIn_Ord(El: TParamsExpr;
     Result:=nil;
     OrdValue:=nil;
     ParamValue:=aResolver.Eval(Param,[]);
+    if ParamValue=nil then exit;
     try
-      if ParamValue<>nil then
+      OrdValue:=aResolver.ExprEvaluator.OrdValue(ParamValue,El);
+      if OrdValue=ParamValue then
+        ParamValue:=nil;
+      if OrdValue<>nil then
         begin
-        OrdValue:=aResolver.ExprEvaluator.OrdValue(ParamValue,El);
-        if OrdValue<>nil then
-          begin
-          // ord(constant) -> constant
-          Result:=ConvertConstValue(OrdValue,AContext,El);
-          exit;
-          end;
+        // ord(constant) -> constant
+        Result:=ConvertConstValue(OrdValue,AContext,El);
+        exit;
         end;
     finally
       ReleaseEvalValue(ParamValue);
@@ -22518,7 +22518,7 @@ var
   ReturnSt, RetSt: TJSReturnStatement;
   Obj: TJSObjectLiteral;
   ObjLit: TJSObjectLiteralElement;
-  SetterArgName: Char;
+  SetterArgName: AnsiChar;
 begin
   if El.HelperForType=nil then exit;
   aResolver:=AContext.Resolver;
@@ -23514,7 +23514,7 @@ var
       if (ResolvedEl.BaseType in btAllChars)
           or ((ResolvedEl.BaseType=btRange) and (ResolvedEl.SubType in btAllChars)) then
         begin
-        // convert char variable to int: append  .charCodeAt()
+        // convertchar variable to int: append  .charCodeAt()
         Result:=CreateCallCharCodeAt(Result,0,Expr);
         end
       else if (ResolvedEl.BaseType in btAllJSBooleans)
@@ -27807,7 +27807,7 @@ function TPasToJSConverter.TransformToJSName(ErrorEl: TPasElement;
 // CheckGlobal: check name clashes with global identifiers too
 var
   i: Integer;
-  c: Char;
+  c: AnsiChar;
 begin
   if AContext=nil then ;
   if Pos('.',AName)>0 then

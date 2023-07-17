@@ -101,7 +101,7 @@ begin
 end;
 
 
-function GetLoadErrorStr: String;
+function GetLoadErrorStr: AnsiString;
 begin
   Result:=CurrentDLM.GetLoadErrorStr();
 end;
@@ -183,7 +183,7 @@ begin
   NoDynLibsError;
 end;
 
-function NoGetLoadErrorStr: String; noreturn;
+function NoGetLoadErrorStr: AnsiString; noreturn;
 begin
   NoDynLibsError;
 end;

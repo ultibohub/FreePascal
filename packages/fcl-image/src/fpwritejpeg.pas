@@ -16,22 +16,23 @@
 
   2023-07  - Massimo Magnano
            - procedure inside InternalWrite moved to protected methods (virtual)
+           - added Resolution support
 
 }
 unit FPWriteJPEG;
 
-{$mode objfpc}{$H+}
+{$mode objfpc}
+{$H+}
+{$openstrings on}
 
 interface
 
 uses
-  Classes, SysUtils, FPImage, JPEGLib, FPReadJPEG, JcAPIstd, JcAPImin, JDataDst,
+  Classes, SysUtils, FPImage, JPEGLib, JPEGcomn, JcAPIstd, JcAPImin, JDataDst,
   JcParam, JError;
 
 type
   { TFPWriterJPEG }
-
-  TFPJPEGCompressionQuality = 1..100;   // 100 = best quality, 25 = pretty awful
 
   TFPWriterJPEG = class(TFPCustomImageWriter)
   private
@@ -77,7 +78,7 @@ begin
   if CurInfo=nil then exit;
 end;
 
-procedure FormatMessage(CurInfo: j_common_ptr; var buffer: string);
+procedure FormatMessage(CurInfo: j_common_ptr; var buffer: shortstring);
 begin
   if CurInfo=nil then exit;
   {$ifdef FPC_Debug_Image}
@@ -132,6 +133,10 @@ begin
 
   jpeg_set_defaults(@FInfo);
   jpeg_set_quality(@FInfo, FQuality, True);
+
+  FInfo.density_unit :=ResolutionUnitTodensity_unit(Img.ResolutionUnit);
+  FInfo.X_density :=Round(Img.ResolutionX);
+  FInfo.Y_density :=Round(Img.ResolutionY);
 
   if ProgressiveEncoding then
     jpeg_simple_progression(@FInfo);

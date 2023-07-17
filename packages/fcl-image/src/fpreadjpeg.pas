@@ -19,21 +19,21 @@
 
     2023-07  - Massimo Magnano
              - procedure inside InternalRead moved to protected methods (virtual)
+             - added Resolution support
 }
 unit FPReadJPEG;
 
-{$mode objfpc}{$H+}
-
+{$mode objfpc}
+{$H+}
+{$openstrings on}
 interface
 
 uses
-  Classes, SysUtils, Types, FPImage, JPEGLib, JdAPImin, JDataSrc, JdAPIstd, JmoreCfg;
+  Classes, SysUtils, Types, FPImage, JPEGcomn, JPEGLib, JdAPImin, JDataSrc, JdAPIstd, JmoreCfg;
 
 type
-  { TFPReaderJPEG }
-  { This is a FPImage reader for jpeg images. }
-
-  TFPReaderJPEG = class;
+  //MaxM: these common types should stay only in JPEGcomn units, but we should change LCL uses
+  TFPJPEGCompressionQuality = 1..100;   // 100 = best quality, 25 = pretty awful
 
   PFPJPEGProgressManager = ^TFPJPEGProgressManager;
   TFPJPEGProgressManager = record
@@ -52,6 +52,9 @@ type
     eoUnknown, eoNormal, eoMirrorHor, eoRotate180, eoMirrorVert,
     eoMirrorHorRot270, eoRotate90, eoMirrorHorRot90, eoRotate270
   );
+
+  { TFPReaderJPEG }
+  { This is a FPImage reader for jpeg images. }
 
   TFPReaderJPEG = class(TFPCustomImageReader)
   private
@@ -92,6 +95,7 @@ type
     property MinHeight:integer read FMinHeight write FMinHeight;
   end;
 
+
 implementation
 
 procedure ReadCompleteStreamToStream(SrcStream, DestStream: TStream;
@@ -99,7 +103,7 @@ procedure ReadCompleteStreamToStream(SrcStream, DestStream: TStream;
 var
   NewLength: Integer;
   ReadLen: Integer;
-  Buffer: string;
+  Buffer: AnsiString;
 begin
   if (SrcStream is TMemoryStream) or (SrcStream is TFileStream)
   or (SrcStream is TStringStream)
@@ -139,7 +143,7 @@ begin
   if CurInfo=nil then exit;
 end;
 
-procedure FormatMessage(CurInfo: j_common_ptr; var buffer: string);
+procedure FormatMessage(CurInfo: j_common_ptr; var buffer: shortstring);
 begin
   if CurInfo=nil then exit;
   {$ifdef FPC_Debug_Image}
@@ -207,6 +211,10 @@ begin
 
   FGrayscale := FInfo.jpeg_color_space = JCS_GRAYSCALE;
   FProgressiveEncoding := jpeg_has_multiple_scans(@FInfo);
+
+  Img.ResolutionUnit:=density_unitToResolutionUnit(CompressInfo.density_unit);
+  Img.ResolutionX :=CompressInfo.X_density;
+  Img.ResolutionY :=CompressInfo.Y_density;
 end;
 
 procedure TFPReaderJPEG.ReadPixels(Str: TStream; Img: TFPCustomImage);
