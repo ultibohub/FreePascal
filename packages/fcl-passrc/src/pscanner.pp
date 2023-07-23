@@ -113,6 +113,11 @@ resourcestring
   SWarnIgnoringLinkLib = 'Ignoring LINKLIB directive %s -> %s (Options: %s)';
 
 type
+  {$IF NOT DECLARED(RTLSTRING)}
+    RTLString = ansistring;
+    TRTLStringDynArray = array of RTLString;
+  {$ENDIF}
+
   // String used for scanning
   TPasScannerString = RawByteString;
   // String used for interfacing with PasTree
@@ -2798,7 +2803,7 @@ Var
   B : TBytes;
 
 begin
-  SetLength(B,AStream.Size);
+  SetLength(B{%H-},AStream.Size);
   if Length(B)>0 then
     AStream.Read(B[0],length(B));
   FContent:=TEncoding.Default.GetAnsiString(B);

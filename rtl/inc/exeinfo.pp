@@ -85,7 +85,10 @@ var
 begin
   ReadDebugLink:=ReadDebugLink(e,fn);
   if ReadDebugLink then
-    dbgfn:=fn;
+    if (length(fn)<256) then
+      dbgfn:=fn
+    else
+      ReadDebugLink:=False;
 end;
 
 

@@ -95,11 +95,6 @@ uses
 {$ifdef WINDOWS}
   windows,
 {$endif WINDOWS}
-{$ifndef NO_THREADING}
-{$ifdef UNIX}
-  cthreads,
-{$endif UNIX}
-{$endif NO_THREADING}
   SysUtils, Classes
 {$ifdef HAS_UNIT_PROCESS}
   ,process
@@ -9904,11 +9899,20 @@ end;
 
 
 function TTarget.GetBinFileBase: String;
+
+var
+  S : String;
+
 begin
   if FExeName <> '' then
     Result := FExeName
   else
+    begin
     Result:=Name;
+    for S in Options do
+      if Copy(S,1,2)='-o' then
+        Result:=Copy(S,3);
+    end;
 end;
 
 
@@ -9925,9 +9929,12 @@ end;
 
 function TTarget.GetLibraryFileName(AOS : TOS): String;
 begin
-  result := AddLibraryExtension(GetBinFileBase, AOS);
+  Result:=GetBinFileBase;
+  if ExtractFileExt(Result)='' then
+    result := AddLibraryExtension(Result, AOS);
   if aOS in AllUnixOSes then
-    Result:='lib'+Result;
+    if Copy(Result,1,3)<>'lib' then
+      Result:='lib'+Result;
 end;
 
 

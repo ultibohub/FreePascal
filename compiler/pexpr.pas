@@ -141,6 +141,9 @@ implementation
            end
           else
             begin
+             // string[x] is allowed in system unit since it is a shortstring.
+             if cs_compilesystem in current_settings.moduleswitches then
+               Message(parser_e_nostringaliasinsystem);
               if cs_refcountedstrings in current_settings.localswitches then
                 begin
                   if m_default_unicodestring in current_settings.modeswitches then
@@ -4036,6 +4039,8 @@ implementation
 
              _STRING :
                begin
+                 if cs_compilesystem in current_settings.moduleswitches then
+                   Message(parser_e_nostringaliasinsystem);
                  string_dec(hdef,true);
                  { STRING can be also a type cast }
                  if try_to_consume(_LKLAMMER) then
@@ -5000,6 +5005,11 @@ implementation
      constant. Then the constant is returned.}
     var
       p:tnode;
+      snode : tstringconstnode absolute p;
+      s : string;
+      pw : pcompilerwidestring;
+      pc : pansichar;
+
     begin
       get_stringconst:='';
       p:=comp_expr([ef_accept_equal]);
@@ -5010,8 +5020,16 @@ implementation
           else
             Message(parser_e_illegal_expression);
         end
+      else if (tstringconstnode(p).cst_type in [cst_unicodestring,cst_widestring]) then
+         begin
+           pw:=pcompilerwideString(tstringconstnode(p).value_str);
+           pc:=getmem(getlengthwidestring(pw));
+           unicode2ascii(pw,pc,current_settings.sourcecodepage);
+           get_stringconst:=strpas(pc);
+           freemem(pc);
+         end
       else
-        get_stringconst:=strpas(tstringconstnode(p).value_str);
+        get_stringconst:=strpas(snode.value_str);
       p.free;
     end;
 

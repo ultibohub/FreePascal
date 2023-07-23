@@ -2,7 +2,7 @@
 {$mode objfpc}{$H+}
 program fpmake;
 
-uses fpmkunit;
+uses {$ifdef unix}cthreads,{$endif} fpmkunit;
 
 Var
   T : TTarget;
@@ -322,6 +322,12 @@ begin
         begin
           AddUnit('fpimage');
           AddUnit('qoicomn');
+        end;
+    T:=P.Targets.AddUnit('fpcolorspace.pas');
+      with T.Dependencies do
+        begin
+          AddInclude('fpspectraldata.inc');
+          AddUnit('fpimage');
         end;
       
 

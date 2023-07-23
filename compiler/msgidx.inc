@@ -482,6 +482,8 @@ const
   parser_e_wasm_ref_types_can_only_be_passed_by_value=03366;
   parser_e_promising_exports_not_supported_on_current_platform=03367;
   parser_e_suspending_externals_not_supported_on_current_platform=03368;
+  parser_w_widechar_set_reduced=03369;
+  parser_e_nostringaliasinsystem=03370;
   type_e_mismatch=04000;
   type_e_incompatible_types=04001;
   type_e_not_equal_types=04002;
@@ -1167,9 +1169,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 91606;
+  MsgTxtSize = 91764;
 
   MsgIdxMax : array[1..20] of longint=(
-    28,109,369,134,102,63,148,38,223,71,
+    28,109,371,134,102,63,148,38,223,71,
     68,20,30,1,1,1,1,1,1,1
   );

@@ -4261,7 +4261,7 @@ begin
          end;
        'L' : begin  // -XLO is link order -XLA is link alias. -XLD avoids load defaults.
                     // these are not aggregable.
-               if (j=length(more)) or not (more[j+1] in ['O','A','D']) then
+               if (j=length(more)) or not (more[j+1] in ['O','A','D','L']) then
                  IllegalPara(opt)
                else
                  begin
@@ -4276,7 +4276,18 @@ begin
                            if not LinkLibraryOrder.AddWeight(s) Then
                               IllegalPara(opt);
                           end;
-                    'D' : include(init_settings.globalswitches,cs_link_no_default_lib_order)
+                    'D' : include(init_settings.globalswitches,cs_link_no_default_lib_order);
+                    'L' :
+                      begin
+                        if UnsetBool(More, j, opt, false) then
+                          exclude(init_settings.globalswitches,cs_link_lld)
+                        else
+                          begin
+                            include(init_settings.globalswitches,cs_link_lld);
+                            include(init_settings.globalswitches,cs_link_extern);
+                          end;
+                       LinkerSetExplicitly:=true;
+                     end
                    else
                      IllegalPara(opt);
                     end; {case}
@@ -4728,6 +4739,7 @@ procedure read_arguments(cmd:TCmdStr);
         def_system_macro('FPC_HAS_LWSYNC');
       {$endif}
 
+      def_system_macro('FPC_HAS_ANSICHAR_CHAR');
       { currently, all supported CPUs have an internal sar implementation }
         def_system_macro('FPC_HAS_INTERNAL_SAR');
       {$ifdef SUPPORT_GET_FRAME}
