@@ -18,9 +18,6 @@
 program fpcmkcfg;
 
 uses
-{$ifdef unix}
-  cthreads,
-{$endif}
   fpmkunit,
   SysUtils,
   Classes,
