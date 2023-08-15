@@ -32,7 +32,7 @@ begin
         begin
           AddInclude('cursorfont.inc');
         end;
-    T:=P.Targets.AddProgram('fd2pascal.pp');
+    // T:=P.Targets.AddProgram('fd2pascal.pp');
 
     P.Sources.AddSrc('README.txt');
 
@@ -94,6 +94,9 @@ begin
     // 'srs.xbm
     // 'bm1.xbm
     // 'porsche.xpm
+
+
+    P.NamespaceMap:='namespaces.lst';
 
 {$ifndef ALLPACKAGES}
     Run;

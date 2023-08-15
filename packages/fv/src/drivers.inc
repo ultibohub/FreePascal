@@ -31,11 +31,13 @@
 {                                                          }
 {**********************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 {$ifdef FV_UNICODE}
 UNIT UDrivers;
 {$else FV_UNICODE}
 UNIT Drivers;
 {$endif FV_UNICODE}
+{$ENDIF FPC_DOTTEDUNITS}
 
 {<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}
                                   INTERFACE
@@ -65,6 +67,58 @@ UNIT Drivers;
   {$INLINE ON}
 {$endif}
 
+{$IFDEF FPC_DOTTEDUNITS}
+USES
+   {$IFDEF OS_WINDOWS}                                { WIN/NT CODE }
+         WinApi.Windows,                                     { Standard unit }
+   {$ENDIF}
+
+   {$IFDEF OS_WIN16}                                  { WIN16 CODE }
+         WinApi.WinProcs, WinApi.WinTypes,                          { Standard units }
+         System.Console.Crt,                                         { used for Delay() }
+   {$ENDIF}
+
+   {$ifdef OS_DOS}
+     TP.DOS,
+   {$endif OS_DOS}
+
+   {$IFDEF OS_OS2}                                    { OS2 CODE }
+     {$IFDEF PPC_Virtual}                             { VIRTUAL PASCAL UNITS }
+       OS2Api.os2def, OS2Base, OS2PMAPI,                     { Standard units }
+     {$ENDIF}
+     {$IFDEF PPC_Speed}                               { SPEED PASCAL UNITS }
+       BseDos, Os2Def,                                { Standard units }
+     {$ENDIF}
+     {$IFDEF PPC_FPC}                                 { FPC UNITS }
+       OS2Api.doscalls, Os2Def,                              { Standard units }
+     {$ENDIF}
+   {$ENDIF}
+
+   {$IFDEF OS_UNIX}
+       UnixApi.Types,UnixApi.Base,UnixApi.Unix,
+   {$ENDIF}
+
+   {$IFDEF OS_NETWARE_LIBC}
+      Api.Libc,
+   {$ENDIF}
+   {$IFDEF OS_NETWARE_CLIB}
+      NetWareApi.nwserv,
+   {$ENDIF}
+
+   {$IFDEF OS_AMIGA}
+      dos, Amiga.Core.Amigados,
+   {$ENDIF}
+
+   System.Console.Video,
+   FreeVision.Sysmsg,
+{$ifdef FV_UNICODE}
+   FreeVision.UfvCommon,
+   System.Unicode.Graphemebreakproperty,
+{$else FV_UNICODE}
+   FreeVision.Fvcommon,
+{$endif FV_UNICODE}
+   System.Objects;                                 { GFV standard units }
+{$ELSE FPC_DOTTEDUNITS}
 USES
    {$IFDEF OS_WINDOWS}                                { WIN/NT CODE }
          Windows,                                     { Standard unit }
@@ -119,6 +173,7 @@ USES
    FVCommon,
 {$endif FV_UNICODE}
    Objects;                                 { GFV standard units }
+{$ENDIF FPC_DOTTEDUNITS}
 
 {***************************************************************************}
 {                              PUBLIC CONSTANTS                             }
@@ -316,7 +371,7 @@ TYPE
    END;
    PEvent = ^TEvent;
 
-   TVideoMode = {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}TVideoMode;                     { Screen mode }
+   TVideoMode = {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}TVideoMode;                     { Screen mode }
 
 {---------------------------------------------------------------------------}
 {                    ERROR HANDLER FUNCTION DEFINITION                      }
@@ -671,11 +726,18 @@ VAR
 {<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}
                                IMPLEMENTATION
 {<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}
+{$IFDEF FPC_DOTTEDUNITS}
+{ API Units }
+  USES
+  FreeVision.Fvconsts,
+  System.Console.Keyboard,System.Console.Mouse;
+{$ELSE FPC_DOTTEDUNITS}
 { API Units }
   USES
   FVConsts,
   {$IFDEF OS_ULTIBO}ConsoleKeyboard{$ELSE}Keyboard{$ENDIF},
   {$IFDEF OS_ULTIBO}ConsoleMouse{$ELSE}Mouse{$ENDIF};
+{$ENDIF FPC_DOTTEDUNITS}
 
 {***************************************************************************}
 {                        PRIVATE INTERNAL CONSTANTS                         }
@@ -942,7 +1004,7 @@ procedure DetectVideo;
 VAR
   CurrMode : TVideoMode;
 begin
-  { Video.InitVideo; Incompatible with BP
+  { {$IFDEF FPC_DOTTEDUNITS}System.Console.{$ENDIF}Video.InitVideo; Incompatible with BP
     and forces a screen clear which is often a bad thing PM }
   GetVideoMode(CurrMode);
   ScreenMode:=CurrMode;
@@ -952,7 +1014,7 @@ end;
 {  DetectMouse -> Platforms DOS/DPMI/WIN/NT/OS2 - Updated 19May98 LdB       }
 FUNCTION DetectMouse: Byte;inline;
 begin
-  DetectMouse:={$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}DetectMouse;
+  DetectMouse:={$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}DetectMouse;
 end;
 
 {***************************************************************************}
@@ -966,14 +1028,14 @@ end;
 {$ifdef FV_UNICODE}
 FUNCTION EgcWidth(Const EGC: Sw_String): Sw_Integer;
 BEGIN
-   Result := {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC);
+   Result := {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC);
 END;
 {$endif FV_UNICODE}
 
 {$ifdef FV_UNICODE}
 FUNCTION StrWidth(Const S: Sw_String): Sw_Integer;
 BEGIN
-   Result := {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}StringDisplayWidth(S);
+   Result := {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}StringDisplayWidth(S);
 END;
 {$else FV_UNICODE}
 FUNCTION StrWidth(Const S: Sw_String): Sw_Integer;
@@ -993,7 +1055,7 @@ BEGIN
    Result := 0;
    for EGC in TUnicodeStringExtendedGraphemeClustersEnumerator.Create(S) do
      if EGC <> '~' then
-       Inc(Result, {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
+       Inc(Result, {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
 END;
 {$else FV_UNICODE}
 FUNCTION CStrLen (Const S: String): Sw_Integer;
@@ -1019,7 +1081,7 @@ BEGIN
      begin
        If (Attr <> 0) Then P^.Attribute := Attr;        { Copy attribute }
        P^.ExtendedGraphemeCluster := EGC;               { Copy string AnsiChar }
-       Inc(P, {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
+       Inc(P, {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
      end;
 END;
 {$else FV_UNICODE}
@@ -1050,7 +1112,7 @@ BEGIN
            If (Lo(Attrs) <> 0) Then
              P^.Attribute := Lo(Attrs);                   { Copy attribute }
            P^.ExtendedGraphemeCluster:=EGC;               { Copy string AnsiChar }
-           Inc(P, {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));  { Next position }
+           Inc(P, {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));  { Next position }
          end
        else
          begin
@@ -1108,7 +1170,7 @@ BEGIN
     begin
       if DestWidth <= 0 then
         exit;
-      Dec(DestWidth, {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
+      Dec(DestWidth, {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
       if DestWidth < 0 then
         begin
           If (Attr <> 0) Then P^.Attribute := Attr;
@@ -1117,7 +1179,7 @@ BEGIN
         end;
       If (Attr <> 0) Then P^.Attribute := Attr;        { Copy attribute }
       P^.ExtendedGraphemeCluster := EGC;               { Copy string AnsiChar }
-      Inc(P, {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
+      Inc(P, {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ExtendedGraphemeClusterDisplayWidth(EGC));
     end;
 END;
 {$else FV_UNICODE}
@@ -1246,7 +1308,7 @@ END;
 {---------------------------------------------------------------------------}
 FUNCTION GetShiftState: Byte;
 begin
-  GetShiftState:={$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}GetKeyEventShiftState({$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}PollShiftStateEvent);
+  GetShiftState:={$IFDEF FPC_DOTTEDUNITS}System.Console.Keyboard.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}{$ENDIF}GetKeyEventShiftState({$IFDEF FPC_DOTTEDUNITS}System.Console.Keyboard.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}{$ENDIF}PollShiftStateEvent);
 end;
 
 {---------------------------------------------------------------------------}
@@ -1257,9 +1319,9 @@ var
   key      : TEnhancedKeyEvent;
   keycode  : Word;
 begin
-  if {$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}PollEnhancedKeyEvent<>NilEnhancedKeyEvent then
+  if {$IFDEF FPC_DOTTEDUNITS}System.Console.Keyboard.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}{$ENDIF}PollEnhancedKeyEvent<>NilEnhancedKeyEvent then
    begin
-     key:={$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}GetEnhancedKeyEvent;
+     key:={$IFDEF FPC_DOTTEDUNITS}System.Console.Keyboard.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}{$ENDIF}GetEnhancedKeyEvent;
      keycode:=key.VirtualScanCode;
      // some kbds still honour old XT E0 prefix. (org IBM ps/2, win98?) bug #8978
      if (keycode and $FF = $E0) and
@@ -1325,7 +1387,7 @@ procedure HideMouse;
 begin
 { Is mouse hidden yet?
   If (HideCount = 0) Then}
-    {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}HideMouse;
+    {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}HideMouse;
 {  Inc(HideCount);}
 end;
 
@@ -1337,7 +1399,7 @@ begin
 {  if HideCount>0 then
     dec(HideCount);
   if (HideCount=0) then}
-   {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}ShowMouse;
+   {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}ShowMouse;
 end;
 
 {---------------------------------------------------------------------------}
@@ -1345,11 +1407,11 @@ end;
 {---------------------------------------------------------------------------}
 procedure GetMouseEvent (Var Event: TEvent);
 var
-  e : {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}TMouseEvent;
+  e : {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}TMouseEvent;
 begin
-  if {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}PollMouseEvent(e) then
+  if {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}PollMouseEvent(e) then
    begin
-     {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}GetMouseEvent(e);
+     {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}GetMouseEvent(e);
      MouseWhere.X:=e.x;
      MouseWhere.Y:=e.y;
      Event.Double:=false;
@@ -1409,7 +1471,7 @@ var
 begin
   if PollSystemEvent(SysEvent) then
     begin
-      SysMsg.GetSystemEvent(SysEvent);
+      {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Sysmsg.GetSystemEvent(SysEvent);
       case SysEvent.typ of
       SysNothing :
         Event.What:=evNothing;
@@ -1455,14 +1517,14 @@ PROCEDURE InitEvents;
 BEGIN
   If (ButtonCount <> 0) Then
     begin                   { Mouse is available }
-     {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}InitMouse;                                 { Hook the mouse }
+     {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}InitMouse;                                 { Hook the mouse }
      { this is required by the use of HideCount variable }
-     {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}ShowMouse;                                 { visible by default }
+     {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}ShowMouse;                                 { visible by default }
      { HideCount:=0;  }
      LastButtons := 0;                                { Clear last buttons }
      DownButtons := 0;                                { Clear down buttons }
-     MouseWhere.X:={$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}GetMouseX;
-     MouseWhere.Y:={$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}GetMouseY;                   { Get mouse position }
+     MouseWhere.X:={$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}GetMouseX;
+     MouseWhere.Y:={$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}GetMouseY;                   { Get mouse position }
      LastWhere.x:=MouseWhere.x;
      LastWhereX:=MouseWhere.x;
      LastWhere.y:=MouseWhere.y;
@@ -1478,7 +1540,7 @@ END;
 PROCEDURE DoneEvents;
 BEGIN
   DoneSystemMsg;
-  {$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}DoneMouse;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}DoneMouse;
   MouseEvents:=false;
 END;
 
@@ -1496,7 +1558,7 @@ const
 procedure initkeyboard;inline;
 
 begin
-  {$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}initkeyboard;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Keyboard.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}{$ENDIF}initkeyboard;
 end;
 
 {---------------------------------------------------------------------------}
@@ -1506,7 +1568,7 @@ end;
 procedure donekeyboard;inline;
 
 begin
-  {$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}donekeyboard;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Keyboard.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleKeyboard.{$ELSE}Keyboard.{$ENDIF}{$ENDIF}donekeyboard;
 end;
 
 {---------------------------------------------------------------------------}
@@ -1527,17 +1589,17 @@ begin
     StoreScreenMode.Col:=0;
 
 {$ifdef FV_UNICODE}
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}InitEnhancedVideo;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}InitEnhancedVideo;
 {$else FV_UNICODE}
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}InitVideo;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}InitVideo;
 {$endif FV_UNICODE}
-  if {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}errorcode<>viook then
+  if {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}errorcode<>viook then
     exit;
   GetVideoMode(StartupScreenMode);
   GetVideoMode(ScreenMode);
 {$ifdef OS_WINDOWS}
   { Force the console to the current screen mode }
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(ScreenMode);
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetVideoMode(ScreenMode);
 {$endif OS_WINDOWS}
 
   If (StoreScreenMode.Col<>0) and
@@ -1545,14 +1607,14 @@ begin
      (StoreScreenMode.row<>ScreenMode.row) or
      (StoreScreenMode.col<>ScreenMode.col)) then
     begin
-      {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(StoreScreenMode);
+      {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetVideoMode(StoreScreenMode);
       GetVideoMode(ScreenMode);
     end;
 
   if ScreenWidth > MaxViewWidth then
     ScreenWidth := MaxViewWidth;
-  ScreenWidth:={$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ScreenWidth;
-  ScreenHeight:={$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ScreenHeight;
+  ScreenWidth:={$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ScreenWidth;
+  ScreenHeight:={$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ScreenHeight;
   VideoInitialized:=true;
   initvideo:=true;
 end;
@@ -1564,10 +1626,10 @@ PROCEDURE DoneVideo;
 BEGIN
   if not VideoInitialized then
     exit;
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetVideoMode(StartupScreenMode);
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ClearScreen;
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}SetCursorPos(0,0);
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}DoneVideo;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetVideoMode(StartupScreenMode);
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ClearScreen;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetCursorPos(0,0);
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}DoneVideo;
   VideoInitialized:=false;
 END;
 
@@ -1576,7 +1638,7 @@ END;
 {---------------------------------------------------------------------------}
 PROCEDURE ClearScreen;
 BEGIN
-  {$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}ClearScreen;
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ClearScreen;
 END;
 
 {---------------------------------------------------------------------------}

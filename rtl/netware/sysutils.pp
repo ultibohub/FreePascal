@@ -14,17 +14,26 @@
 
  **********************************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{ force ansistrings }
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses TP.DOS;
+{$ELSE FPC_DOTTEDUNITS}
 uses DOS;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$I nwsys.inc}
 {$I errno.inc}
@@ -79,8 +88,13 @@ CONST
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysConst;
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$define FPC_FEXPAND_DRIVES}
 {$define FPC_FEXPAND_VOLUMES}

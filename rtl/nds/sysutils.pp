@@ -20,14 +20,19 @@
 
  **********************************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{ force ansistrings }
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
@@ -43,8 +48,13 @@ interface
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.SysConst;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   sysconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 { Include platform independent implementation part }
 {$i sysutils.inc}

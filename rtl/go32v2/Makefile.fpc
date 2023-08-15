@@ -26,7 +26,6 @@ nortl=y
 [install]
 fpcpackage=y
 [default]
-fpcdir=../..
 target=go32v2
 cpu=i386
 [compiler]
@@ -233,17 +232,8 @@ ucomplex$(PPUEXT) : $(INC)/ucomplex.pp math$(PPUEXT) system$(PPUEXT)
 	$(COMPILER) $(INC)/ucomplex.pp
 	$(EXECPPAS)
 
-fpwidestring$(PPUEXT): $(OBJPASDIR)/fpwidestring.pp charset$(PPUEXT) system$(PPUEXT)
-        $(COMPILER) $(OBJPASDIR)/fpwidestring.pp
-
 character$(PPUEXT): $(OBJPASDIR)/character.pas sysutils$(PPUEXT) objpas$(PPUEXT) rtlconst$(PPUEXT) unicodedata$(PPUEXT) system$(PPUEXT)
         $(COMPILER) $(OBJPASDIR)/character.pas
-
-unicodedata$(PPUEXT) : $(OBJPASDIR)/unicodedata.pas system$(PPUEXT)
-        $(COMPILER) -Fi$(OBJPASDIR) $(OBJPASDIR)/unicodedata.pas
-
-sortbase$(PPUEXT) : $(INC)/sortbase.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $<
 
 #
 # Other system-dependent RTL Units
@@ -264,17 +254,3 @@ ctypes$(PPUEXT) : $(INC)/ctypes.pp system$(PPUEXT)
 	$(COMPILER) $(INC)/ctypes.pp
 	$(EXECPPAS)
 
-softfpu$(PPUEXT) : $(INC)/softfpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
-	$(COMPILER) $<
-
-sfpux80$(PPUEXT) : $(INC)/sfpux80.pp $(INC)/softfpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
-	$(COMPILER) $<
-
-sfpu128$(PPUEXT) : $(INC)/sfpu128.pp $(INC)/softfpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
-	$(COMPILER) $<
-
-ufloatx80$(PPUEXT) : $(INC)/ufloatx80.pp sfpux80$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $<
-
-ufloat128$(PPUEXT) : $(INC)/ufloat128.pp sfpu128$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $<

@@ -12,7 +12,9 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
                                 
   **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit jswriter;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$i fcl-js.inc}
 
@@ -20,11 +22,19 @@ unit jswriter;
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  {$ifdef pas2js}
+  JS,
+  {$endif}
+  System.SysUtils, System.Classes, Js.Base, Js.Tree;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   {$ifdef pas2js}
   JS,
   {$endif}
   SysUtils, Classes, jsbase, jstree;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Type
   {$ifdef pas2js}
@@ -273,6 +283,14 @@ begin
   // conversion magic
   SetCodePage(RawByteString(Result), CP_ACP, False);
 end;
+
+{$ifndef FPC_DOTTEDUNITS}
+function LeftStr(const s: UnicodeString; Count: SizeInt): UnicodeString; overload;
+begin
+  Result:=copy(s,1,Count);
+end;
+{$endif}
+
 {$endif}
 
 function QuoteJSString(const S: TJSString; Quote: TJSChar): TJSString;
@@ -803,7 +821,7 @@ begin
                 val(copy(S,i+1,length(S)),Exp,Code);
                 if Code=0 then
                   begin
-                  S2:='1E'+IntToStr(Exp+1);
+                  S2:='1E'+TJSString(IntToStr(Exp+1));
                   if S[1]='-' then
                     S2:='-'+S2;
                   end;
@@ -843,7 +861,7 @@ begin
                 Delete(S,length(S),1);
               if S[length(S)]='.' then
                 Delete(S,length(S),1);
-              S2:=S+'E'+IntToStr(Exp);
+              S2:=S+'E'+TJSString(IntToStr(Exp));
               j:=Pos('.',S);
               if j>0 then
                 begin
@@ -890,7 +908,7 @@ begin
             else
               begin
               // e.g. 1.1E+0010  -> 1.1E10
-              S:=LeftStr(S,i)+IntToStr(Exp);
+              S:=LeftStr(S,i)+TJSString(IntToStr(Exp));
               if (i >= 4) and (s[i-1] = '0') and (s[i-2] = '.') then
                 // e.g. 1.0E22 -> 1E22
                 Delete(S, i-2, 2);
@@ -966,7 +984,7 @@ begin
     end
   else
     begin
-    OldParams:=FD.Params;
+    OldParams:=FD.{%H-}Params;
     For I:=0 to OldParams.Count-1 do
       begin
       write(OldParams[i]);

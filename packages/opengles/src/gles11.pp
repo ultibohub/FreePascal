@@ -1,10 +1,17 @@
 
 {$mode objfpc}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit gles11;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.CTypes;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   ctypes;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {
   Automatically converted by H2Pas 1.0.0 from gles.h
@@ -1063,8 +1070,13 @@ uses
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysUtils{$ifndef ultibo}, System.DynLibs{$endif}, System.Math{$ifdef ultibo}, Core.Syscalls{$endif};
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysutils{$ifndef ultibo}, dynlibs{$endif}, math{$ifdef ultibo}, Syscalls{$endif};
+{$ENDIF FPC_DOTTEDUNITS}
 
   {$ifndef ultibo}
   var

@@ -42,7 +42,6 @@ nortl=y
 fpcpackage=y
 
 [default]
-fpcdir=../..
 target=palmos
 
 [compiler]
@@ -71,9 +70,6 @@ endif
 
 # Paths
 OBJPASDIR=$(RTL)/objpas
-GRAPHDIR=$(INC)/graph
-
-
 
 [rules]
 .NOTPARALLEL:

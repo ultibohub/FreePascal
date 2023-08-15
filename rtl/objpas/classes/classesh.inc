@@ -13,21 +13,24 @@
 
  **********************************************************************}
 
-{$H+}
-
-
 {$ifdef CLASSESINLINE}{$inline on}{$endif}
+{$MACRO ON}
+{$IFDEF FPC_DOTTEDUNITS}
+{$DEFINE TYU:=System.Types}
+{$ELSE}
+{$DEFINE TYU:=Types}
+{$ENDIF}
 
 
 type
    { extra types to compile with FPC }
    HRSRC =  TFPResourceHandle deprecated;
-   TComponentName = string;
+   TComponentName = type string;
    THandle = System.THandle;
 
-   TPoint=Types.TPoint;
-   TRect=Types.TRect;
-   TSmallPoint=Types.TSmallPoint;
+   TPoint=TYU.TPoint;
+   TRect=TYU.TRect;
+   TSmallPoint=TYU.TSmallPoint;
 
 {$ifndef FPC_HAS_FEATURE_DYNLIBS}
    HMODULE = ptrint; 
@@ -60,13 +63,13 @@ const
 
 type
   TSeekOrigin = (soBeginning, soCurrent, soEnd);
-  TDuplicates = Types.TDuplicates;
+  TDuplicates = TYU.TDuplicates;
 
 // For Delphi and backwards compatibility.
 const
-  dupIgnore = Types.dupIgnore;
-  dupAccept = Types.dupAccept;
-  dupError  = Types.dupError;
+  dupIgnore = TYU.dupIgnore;
+  dupAccept = TYU.dupAccept;
+  dupError  = TYU.dupError;
 
 { TFileStream create mode }
 const
@@ -77,12 +80,12 @@ const
 
 { TParser special tokens }
 
-  toEOF     = AnsiChar(0);
-  toSymbol  = AnsiChar(1);
-  toString  = AnsiChar(2);
-  toInteger = AnsiChar(3);
-  toFloat   = AnsiChar(4);
-  toWString = AnsiChar(5);
+  toEOF     = Char(0);
+  toSymbol  = Char(1);
+  toString  = Char(2);
+  toInteger = Char(3);
+  toFloat   = Char(4);
+  toWString = Char(5);
 
 Const
   FilerSignature : Array[1..4] of Ansichar = 'TPF0';
@@ -200,8 +203,8 @@ Type
   PPointerList = ^TPointerList;
   TPointerList = array[0..MaxListSize - 1] of Pointer;
   TListSortCompare = function (Item1, Item2: Pointer): Integer;
-  TListCallback = Types.TListCallback;
-  TListStaticCallback = Types.TListStaticCallback;
+  TListCallback = TYU.TListCallback;
+  TListStaticCallback = TYU.TListStaticCallback;
 
 
 {$IFNDEF FPC_TESTGENERICS}
@@ -624,9 +627,9 @@ type
     FMissingNameValueSeparatorAction: TMissingNameValueSeparatorAction;
     FSpecialCharsInited : boolean;
     FAlwaysQuote: Boolean;
-    FQuoteChar : AnsiChar;
-    FDelimiter : AnsiChar;
-    FNameValueSeparator : AnsiChar;
+    FQuoteChar : Char;
+    FDelimiter : Char;
+    FNameValueSeparator : Char;
     FUpdateCount: Integer;
     FAdapter: IStringsAdapter;
     FLBS : TTextLineBreakStyle;
@@ -654,19 +657,19 @@ type
     procedure SetUseLocale(AValue: Boolean);
     procedure SetWriteBOM(AValue: Boolean);
     procedure SetValue(const Name, Value: string);
-    procedure SetDelimiter(c:AnsiChar);
-    procedure SetQuoteChar(c:AnsiChar);
-    procedure SetNameValueSeparator(c:AnsiChar);
+    procedure SetDelimiter(c:Char);
+    procedure SetQuoteChar(c:Char);
+    procedure SetNameValueSeparator(c:Char);
     procedure WriteData(Writer: TWriter);
     procedure DoSetTextStr(const Value: string; DoClear : Boolean);
-    Function GetDelimiter : AnsiChar;
-    Function GetNameValueSeparator : AnsiChar;
-    Function GetQuoteChar: AnsiChar;
+    Function GetDelimiter : Char;
+    Function GetNameValueSeparator : Char;
+    Function GetQuoteChar: Char;
     Function GetLineBreak : String;
     procedure SetLineBreak(const S : String);
     Function GetSkipLastLineBreak : Boolean;
     procedure SetSkipLastLineBreak(const AValue : Boolean);
-    Procedure DoSetDelimitedText(const AValue: string; DoClear,aStrictDelimiter : Boolean; aQuoteChar,aDelimiter : AnsiChar);
+    Procedure DoSetDelimitedText(const AValue: string; DoClear,aStrictDelimiter : Boolean; aQuoteChar,aDelimiter : Char);
   protected
     function CompareStrings(const s1,s2 : string) : Integer; virtual;
     procedure DefineProperties(Filer: TFiler); override;
@@ -716,7 +719,7 @@ type
     procedure SetStrings(TheStrings: array of string); overload; virtual;
     Procedure AddText(Const S : String); virtual;
     procedure AddCommaText(const S: String);
-    procedure AddDelimitedText(const S: String; ADelimiter: AnsiChar; AStrictDelimiter: Boolean); overload;
+    procedure AddDelimitedText(const S: String; ADelimiter: Char; AStrictDelimiter: Boolean); overload;
     procedure AddDelimitedtext(const S: String); overload;
     procedure Append(const S: string);
     procedure Assign(Source: TPersistent); override;
@@ -736,7 +739,7 @@ type
     procedure ForEach(aCallback: TStringsForeachMethodExObj);
     function GetEnumerator: TStringsEnumerator;
     procedure GetNameValue(Index : Integer; Out AName,AValue : String);
-    function GetText: PAnsiChar; virtual;
+    function GetText: PChar; virtual;
     function IndexOf(const S: string): Integer; virtual;
     function IndexOf(const S: string; aStart : Integer): Integer; virtual;
     function IndexOfName(const Name: string): Integer; virtual;
@@ -767,22 +770,22 @@ type
     function Shift : String;
     Procedure Slice(fromIndex: integer; aList : TStrings);
     Function Slice(fromIndex: integer) : TStrings;
-    procedure SetText(TheText: PAnsiChar); virtual;
+    procedure SetText(TheText: PChar); virtual;
     property AlwaysQuote: Boolean read FAlwaysQuote write FAlwaysQuote;
     property Capacity: Integer read GetCapacity write SetCapacity;
     property CommaText: string read GetCommaText write SetCommaText;
     property Count: Integer read GetCount;
     property DefaultEncoding: TEncoding read FDefaultEncoding write SetDefaultEncoding;
     property DelimitedText: string read GetDelimitedText write SetDelimitedText;
-    property Delimiter: AnsiChar read GetDelimiter write SetDelimiter;
+    property Delimiter: Char read GetDelimiter write SetDelimiter;
     property Encoding: TEncoding read FEncoding;
     property LineBreak : string Read GetLineBreak write SetLineBreak;
     Property MissingNameValueSeparatorAction : TMissingNameValueSeparatorAction Read GetMissingNameValueSeparatorAction Write SetMissingNameValueSeparatorAction;
     property Names[Index: Integer]: string read GetName;
-    Property NameValueSeparator : AnsiChar Read GetNameValueSeparator Write SetNameValueSeparator;
+    Property NameValueSeparator : Char Read GetNameValueSeparator Write SetNameValueSeparator;
     property Objects[Index: Integer]: TObject read GetObject write PutObject;
     property Options: TStringsOptions read FOptions write FOptions;
-    property QuoteChar: AnsiChar read GetQuoteChar write SetQuoteChar;
+    property QuoteChar: Char read GetQuoteChar write SetQuoteChar;
     Property SkipLastLineBreak : Boolean Read GetSkipLastLineBreak Write SetSkipLastLineBreak;
     // Same as SkipLastLineBreak but for Delphi compatibility. Note it has opposite meaning.
     Property TrailingLineBreak : Boolean Read GetTrailingLineBreak Write SetTrailingLineBreak;
@@ -1265,10 +1268,11 @@ type
   protected
   public
     constructor Create(const ABytes: TBytes); override; overload;
-    constructor Create(const AString: string = ''); overload;
+    constructor Create; overload;
+    constructor Create(const AString: AnsiString); overload;
     constructor CreateRaw(const AString: RawByteString); overload;
-    constructor Create(const AString: string; AEncoding: TEncoding; AOwnsEncoding: Boolean = True); overload;
-    constructor Create(const AString: string; ACodePage: Integer); overload;
+    constructor Create(const AString: Ansistring; AEncoding: TEncoding; AOwnsEncoding: Boolean = True); overload;
+    constructor Create(const AString: Ansistring; ACodePage: Integer); overload;
     // UnicodeString versions
     constructor Create(const AString: UnicodeString); overload;
     constructor Create(const AString: UnicodeString; AEncoding: TEncoding; AOwnsEncoding: Boolean = True); overload;
@@ -1420,15 +1424,15 @@ type
     function ReadDate: TDateTime; virtual; abstract;
 {$endif}
     function ReadCurrency: Currency; virtual; abstract;
-    function ReadIdent(ValueType: TValueType): String; virtual; abstract;
+    function ReadIdent(ValueType: TValueType): RawByteString; virtual; abstract;
     function ReadInt8: ShortInt; virtual; abstract;
     function ReadInt16: SmallInt; virtual; abstract;
     function ReadInt32: LongInt; virtual; abstract;
     function ReadInt64: Int64; virtual; abstract;
     function ReadSet(EnumType: Pointer): Integer; virtual; abstract;
     procedure ReadSignature; virtual; abstract;
-    function ReadStr: String; virtual; abstract;
-    function ReadString(StringType: TValueType): String; virtual; abstract;
+    function ReadStr: RawByteString; virtual; abstract;
+    function ReadString(StringType: TValueType): RawByteString; virtual; abstract;
     function ReadWideString: WideString;virtual;abstract;
     function ReadUnicodeString: UnicodeString;virtual;abstract;
     procedure SkipComponent(SkipComponentInfos: Boolean); virtual; abstract;
@@ -1485,15 +1489,15 @@ type
     function ReadDate: TDateTime; override;
 {$endif}
     function ReadCurrency: Currency; override;
-    function ReadIdent(ValueType: TValueType): String; override;
+    function ReadIdent(ValueType: TValueType): RawByteString; override;
     function ReadInt8: ShortInt; override;
     function ReadInt16: SmallInt; override;
     function ReadInt32: LongInt; override;
     function ReadInt64: Int64; override;
     function ReadSet(EnumType: Pointer): Integer; override;
     procedure ReadSignature; override;
-    function ReadStr: String; override;
-    function ReadString(StringType: TValueType): String; override;
+    function ReadStr: RawByteString; override;
+    function ReadString(StringType: TValueType): RawByteString; override;
     function ReadWideString: WideString;override;
     function ReadUnicodeString: UnicodeString;override;
     procedure SkipComponent(SkipComponentInfos: Boolean); override;
@@ -1550,21 +1554,21 @@ type
     FOnPropertyNotFound: TPropertyNotFoundEvent;
     FOnFindComponentClass: TFindComponentClassEvent;
     FOnCreateComponent: TCreateComponentEvent;
-    FPropName: string;
+    FPropName: rawbytestring;
     FCanHandleExcepts: Boolean;
     FOnReadStringProperty:TReadWriteStringPropertyEvent;
     procedure DoFixupReferences;
-    function FindComponentClass(const AName, anUnitName, AClassName: string): TComponentClass;
+    function FindComponentClass(const AName, anUnitName, AClassName: rawbytestring): TComponentClass;
     procedure Lock;
     procedure Unlock;
   protected
     function Error(const Message: string): Boolean; virtual;
-    function FindMethod(ARoot: TComponent; const AMethodName: string): CodePointer; virtual;
+    function FindMethod(ARoot: TComponent; const AMethodName: rawbytestring): CodePointer; virtual;
     procedure ReadProperty(AInstance: TPersistent);
     procedure ReadPropValue(Instance: TPersistent; PropInfo: Pointer);
     procedure PropertyError;
     procedure ReadData(Instance: TComponent);
-    property PropName: string read FPropName;
+    property PropName: rawbytestring read FPropName;
     property CanHandleExceptions: Boolean read FCanHandleExcepts;
     function CreateDriver(Stream: TStream; BufSize: Integer): TAbstractObjectReader; virtual;
   public
@@ -1601,7 +1605,7 @@ type
     function ReadDate: TDateTime;
 {$endif}
     function ReadCurrency: Currency;
-    function ReadIdent: string;
+    function ReadIdent: rawbytestring;
     function ReadInteger: Longint;
     function ReadInt64: Int64;
     function ReadSet(EnumType: Pointer): Integer;
@@ -1610,7 +1614,7 @@ type
     function ReadRootComponent(ARoot: TComponent): TComponent;
     function ReadVariant: Variant;
     procedure ReadSignature;
-    function ReadString: string;
+    function ReadString: RawBytestring;
     function ReadWideString: WideString;
     function ReadUnicodeString: UnicodeString;
     function ReadValue: TValueType;
@@ -1669,7 +1673,7 @@ type
     procedure WriteVariant(const Value: Variant); virtual; abstract;
     procedure WriteMethodName(const Name: String); virtual; abstract;
     procedure WriteSet(Value: LongInt; SetType: Pointer); virtual; abstract;
-    procedure WriteString(const Value: String); virtual; abstract;
+    procedure WriteString(const Value: RawByteString); virtual; abstract;
     procedure WriteWideString(const Value: WideString);virtual;abstract;
     procedure WriteUnicodeString(const Value: UnicodeString);virtual;abstract;
   end;
@@ -1719,8 +1723,8 @@ type
     procedure WriteUInt64(Value: QWord); override;
     procedure WriteMethodName(const Name: String); override;
     procedure WriteSet(Value: LongInt; SetType: Pointer); override;
-    procedure WriteStr(const Value: String); // write shortstring
-    procedure WriteString(const Value: String); override;
+    procedure WriteStr(const Value: RawByteString); // write shortstring
+    procedure WriteString(const Value: RawByteString); override;
     procedure WriteWideString(const Value: WideString); override;
     procedure WriteUnicodeString(const Value: UnicodeString); override;
     procedure WriteVariant(const VarValue: Variant);override;
@@ -1815,17 +1819,17 @@ type
   TParser = class(TObject)
   private
     fStream : TStream;
-    fBuf : PAnsiChar;
+    fBuf : PChar;
     fBufLen : integer;
     fPos : integer;
     fDeltaPos : integer;
-    fFloatType : AnsiChar;
+    fFloatType : Char;
     fSourceLine : integer;
-    fToken : AnsiChar;
+    fToken : Char;
     fEofReached : boolean;
     fLastTokenStr : string;
     fLastTokenWStr : widestring;
-    function GetTokenName(aTok : AnsiChar) : string;
+    function GetTokenName(aTok : Char) : string;
     procedure LoadBuffer;
     procedure CheckLoadBuffer; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
     procedure ProcessChar; {$ifdef CLASSESINLINE} inline; {$endif CLASSESINLINE}
@@ -1852,13 +1856,13 @@ type
   public
     constructor Create(Stream: TStream);
     destructor Destroy; override;
-    procedure CheckToken(T: AnsiChar);
+    procedure CheckToken(T: Char);
     procedure CheckTokenSymbol(const S: string);
     procedure Error(const Ident: string);
     procedure ErrorFmt(const Ident: string; const Args: array of const);
     procedure ErrorStr(const Message: string);
     procedure HexToBinary(Stream: TStream);
-    function NextToken: AnsiChar;
+    function NextToken: Char;
     function SourcePos: Longint;
     function TokenComponentIdent: string;
 {$ifndef FPUNONE}
@@ -1868,9 +1872,9 @@ type
     function TokenString: string;
     function TokenWideString: WideString;
     function TokenSymbolIs(const S: string): Boolean;
-    property FloatType: AnsiChar read fFloatType;
+    property FloatType: Char read fFloatType;
     property SourceLine: Integer read fSourceLine;
-    property Token: AnsiChar read fToken;
+    property Token: Char read fToken;
   end;
 
 { TThread }

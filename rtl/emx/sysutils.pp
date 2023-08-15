@@ -14,18 +14,28 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{ force ansistrings }
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+ TP.DOS;
+{$ELSE FPC_DOTTEDUNITS}
 uses
  Dos;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE HAS_SLEEP}
 
@@ -42,8 +52,13 @@ uses
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysConst;
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE FPC_FEXPAND_UNC} (* UNC paths are supported *)
 {$DEFINE FPC_FEXPAND_DRIVES} (* Full paths begin with drive specification *)
@@ -736,11 +751,11 @@ begin
    end
   else
    begin
-    Err := DOS.DosError;
+    Err := {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.DosError;
     GetMem (SR, SizeOf (SearchRec));
     Rslt.FindHandle := longint(SR);
-    DOS.FindFirst (Path, Attr, SR^);
-    InternalFindFirst := -DOS.DosError;
+    {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.FindFirst (Path, Attr, SR^);
+    InternalFindFirst := -{$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.DosError;
     if DosError = 0 then
      begin
       Rslt.Time := SR^.Time;
@@ -751,7 +766,7 @@ begin
       Name := SR^.Name;
       SetCodePage(Name, DefaultFileSystemCodePage, false);
      end;
-    DOS.DosError := Err;
+    {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.DosError := Err;
    end;
 end;
 
@@ -799,7 +814,7 @@ begin
     SR := PSearchRec (Rslt.FindHandle);
     if SR <> nil then
      begin
-      DOS.FindNext (SR^);
+      {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.FindNext (SR^);
       InternalFindNext := -DosError;
       if DosError = 0 then
        begin
@@ -828,7 +843,7 @@ begin
     else
         begin
             SR := PSearchRec (Handle);
-            DOS.FindClose (SR^);
+            {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.FindClose (SR^);
             FreeMem (SR, SizeOf (SearchRec));
         end;
     Handle := 0;
@@ -1298,7 +1313,7 @@ begin
     raise E;
   end else
   begin
-   Dos.Exec (Path, ComLine);
+   {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}Dos.Exec (Path, ComLine);
    if DosError <> 0 then
     begin
     if ComLine = '' then

@@ -16,18 +16,28 @@
 
 {$inline on}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
-{$MODESWITCH out}
-{ force ansistrings }
+{$MODESWITCH OUT}
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  WinApi.WinTypes;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   wintypes;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE HAS_SLEEP}
 
@@ -42,8 +52,13 @@ uses
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysConst,TP.DOS,WinApi.WinProcs;
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysconst,dos,winprocs;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE FPC_FEXPAND_UNC} (* UNC paths are supported *)
 {$DEFINE FPC_FEXPAND_DRIVES} (* Full paths begin with drive specification *)

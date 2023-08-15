@@ -18,7 +18,9 @@
     Filtering messages by number and type.
     Registering messages with number, pattern and type (error, warning, note, etc).
 }
+{$IFNDEF FPC_DOTTEDUNITS}
 unit Pas2jsLogger;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode objfpc}{$H+}
 {$WARN 6018 off : Unreachable code}
@@ -26,6 +28,22 @@ unit Pas2jsLogger;
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  {$IFDEF Pas2JS}
+  JS,
+  {$IFDEF NodeJS}
+  Node.FS,
+  {$ENDIF}
+  {$ENDIF}
+  Pas2Js.Utils,
+  {$IFDEF HASFILESYSTEM}
+  Pas2Js.Files.Utils,
+  {$ENDIF}
+  System.Types, System.Classes, System.SysUtils,
+  Pascal.Tree, Pascal.Scanner,
+  Js.Tree, Js.Base, Js.Writer, FpJson.Data;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   {$IFDEF Pas2JS}
   JS,
@@ -40,6 +58,7 @@ uses
   Types, Classes, SysUtils,
   PasTree, PScanner,
   jstree, jsbase, jswriter, fpjson;
+{$ENDIF FPC_DOTTEDUNITS}
 
 const
   ExitCodeErrorInternal = 1; // internal error
@@ -453,7 +472,7 @@ begin
     jstObject: Result:='{:OBJECT:}';
     jstReference: Result:='{:REFERENCE:}';
     JSTCompletion: Result:='{:COMPLETION:}';
-    else Result:='{:Unknown ValueType '+IntToStr(ord(Element.ValueType))+':}';
+    else Result:='{:Unknown ValueType '+IntToStr(ord(Element.ValueType))+':}'{%H-};
     end;
   end;
   Result:=StringOfChar(' ',Indent)+Result;
@@ -1019,7 +1038,7 @@ begin
   mtHint: Result:='Hint';
   mtInfo: Result:='Info';
   mtDebug: Result:='Debug';
-  else Result:='Verbose';
+  else Result:='Verbose'{%H-};
   end;
 end;
 

@@ -1,6 +1,6 @@
 {
     $Id: header,v 1.1 2000/07/13 06:33:45 michael Exp $
-    This file is part of the Free Component Library (FCL)
+    This file is part of the Free Component Library (Fcl)
     Copyright (c) 1999-2000 by the Free Pascal development team
 
     See the file COPYING.FPC, included in this distribution,
@@ -25,11 +25,17 @@
 {$mode objfpc}
 {$H+}
 { $DEFINE CGIDEBUG}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit HTTPDefs;
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.TypInfo, System.Classes, System.SysUtils, FpWeb.Http.Protocol, Fcl.UriParser;
+{$ELSE FPC_DOTTEDUNITS}
 uses typinfo, Classes, Sysutils, httpprotocol, uriparser;
+{$ENDIF FPC_DOTTEDUNITS}
 
 const
   DefaultTimeOut = 15;
@@ -91,13 +97,13 @@ const
 
   NoHTTPFields    = 28;
 
-  HTTPDateFmt     = httpProtocol.HTTPDateFmt;
-  SCookieExpire   = httpProtocol.SCookieExpire;
-  SCookieDomain   = httpProtocol.SCookieDomain;
-  SCookiePath     = httpProtocol.SCookiePath;
-  SCookieSecure   = httpProtocol.SCookieSecure;
-  SCookieHttpOnly = httpProtocol.SCookieHttpOnly;
-  SCookieSameSite = httpProtocol.SCookieSameSite;
+  HTTPDateFmt     = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.HTTPDateFmt;
+  SCookieExpire   = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.SCookieExpire;
+  SCookieDomain   = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.SCookieDomain;
+  SCookiePath     = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.SCookiePath;
+  SCookieSecure   = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.SCookieSecure;
+  SCookieHttpOnly = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.SCookieHttpOnly;
+  SCookieSameSite = {$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.SCookieSameSite;
 
   HTTPMonths : array[1..12] of string[3] = (
     'Jan', 'Feb', 'Mar', 'Apr',
@@ -310,13 +316,13 @@ type
 
   TStreamingMimeItems = class(TMimeItems)
   private
-    FBuffer: string;
+    FBuffer: Ansistring;
     FBufferCount: SizeInt;
     FCurrentItem: TMimeItem;
     FMimeEndFound: Boolean;
     FAtStart: Boolean;
   protected
-    procedure SetBoundary(const AValue: string); override;
+    procedure SetBoundary(const AValue: String); override;
     procedure ProcessStreamingMultiPart(const State: TContentStreamingState; const Buf; const Size: Integer); override;
     class function SupportsStreamingProcessing: Boolean; override;
   end;
@@ -520,7 +526,7 @@ type
     constructor Create; override;
     destructor destroy; override;
     Function GetNextPathInfo : String;
-    Function ToString: ansistring; override;
+    Function ToString: RTLString; override;
     Property RequestID : String Read FRequestID;
     Property RouteParams[AParam : String] : String Read GetRP Write SetRP;
     Property ReturnedPathInfo : String Read FReturnedPathInfo Write FReturnedPathInfo;
@@ -576,7 +582,7 @@ type
     Procedure SendHeaders;
     Procedure SendResponse; // Delphi compatibility
     Procedure SendRedirect(const TargetURL:String);
-    Function ToString: ansistring; override;
+    Function ToString: RTLstring; override;
     // Set Code and CodeText. Send content if aSend=True
     Procedure SetStatus(aStatus : Cardinal; aSend : Boolean = False);
     Property Request : TRequest Read FRequest;
@@ -741,11 +747,19 @@ Const
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+{$ifdef CGIDEBUG}
+  dbugintf,
+{$endif}
+  System.StrUtils;
+{$ELSE FPC_DOTTEDUNITS}
 uses
 {$ifdef CGIDEBUG}
   dbugintf,
 {$endif}
   strutils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Resourcestring
   SErrContentAlreadySent        = 'HTTP Response content was already sent';
@@ -783,19 +797,19 @@ end;
 Function HTTPDecode(const AStr: String): String;
 
 begin
-  Result:=httpProtocol.HTTPDecode(AStr);
+  Result:={$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.HTTPDecode(AStr);
 end;
 
 Function HTTPEncode(const AStr: String): String;
 
 begin
-  Result:=httpProtocol.HTTPEncode(AStr);
+  Result:={$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.HTTPEncode(AStr);
 end;
 
 Function IncludeHTTPPathDelimiter(const AStr: String): String;
 
 begin
-  Result:=httpProtocol.IncludeHTTPPathDelimiter(AStr);
+  Result:={$IFDEF FPC_DOTTEDUNITS}FpWeb.Http.Protocol{$ELSE}httpProtocol{$ENDIF}.IncludeHTTPPathDelimiter(AStr);
 end;
 
 { -------------------------------------------------------------------
@@ -841,13 +855,19 @@ end;
 { TStreamingMimeItems }
 
 procedure TStreamingMimeItems.ProcessStreamingMultiPart(const State: TContentStreamingState; const Buf; const Size: Integer);
+
+Const
+   DashDash : AnsiString = '--';
+   CRLFDashDash : AnsiString = #13#10'--';
+
 var
   bl: SizeInt;
   p: SizeInt;
   BufEnd: SizeInt;
   LeadingLineEndMissing: Boolean;
   Bound,EndBound : RawByteString;
-  
+  Sep : AnsiString;
+
 begin
   // The length of the boundary, including the leading CR/LF, '--' and trailing '--' or
   // CR/LF.
@@ -878,14 +898,14 @@ begin
 
   FBufferCount := 1;
   repeat
-  if FAtStart and CompareMem(@FBuffer[1], PChar('--'+FBoundary), Length(FBoundary)+2) then
+  if FAtStart and CompareMem(@FBuffer[1], PAnsiChar(EndBound), Length(Bound)+2) then
     begin
     // Sometimes a mime-message (mistakenly) does not start with CR/LF.
     p := 1;
     LeadingLineEndMissing := True;
     end
   else
-    p := Pos(#13#10'--'+FBoundary, FBuffer, FBufferCount);
+    p := Pos(CRLFDashDash+Bound, FBuffer, FBufferCount);
   if (P > 0) and (P < Size) then
     begin
     if Assigned(FCurrentItem) then
@@ -896,8 +916,14 @@ begin
     else
       begin
       if FAtStart and (P > 1) then
+        begin
         // Add the preamble to the content
+        {$IF SIZEOF(CHAR)=2}
+        FPreamble := UTF8Decode(Copy(FBuffer, FBufferCount, P-1));
+        {$ELSE}
         FPreamble := Copy(FBuffer, FBufferCount, P-1);
+        {$ENDIF}
+        end;
       end;
     FAtStart := False;
     Inc(P, bl);
@@ -907,7 +933,8 @@ begin
       LeadingLineEndMissing := False;
       end;
     FBufferCount := P;
-    if (Copy(FBuffer,p-2,2)='--') then
+    Sep:=Copy(FBuffer,p-2,2);
+    if (Sep=DashDash) then
       FMimeEndFound := True;
     end;
   if not Assigned(FCurrentItem) and not FMimeEndFound then
@@ -2227,7 +2254,7 @@ begin
   P:=PathInfo;
 {$ifdef CGIDEBUG}SendDebug(Format('Pathinfo: "%s" "%s"',[P,FReturnedPathInfo]));{$ENDIF}
   if (P <> '') and (P[length(P)] = '/') then
-    Delete(P, length(P), 1);//last char is '/'
+    Delete(P, length(P), 1); // last char is '/'
   If (P<>'') and (P[1]='/') then
     Delete(P,1,1);
   Delete(P,1,Length(IncludeHTTPPathDelimiter(FReturnedPathInfo)));
@@ -2240,7 +2267,7 @@ begin
  {$ifdef CGIDEBUG}SendDebug(Format('Pathinfo: "%s" "%s" : %s',[P,FReturnedPathInfo,Result]));{$ENDIF}
 end;
 
-function TRequest.ToString: ansistring;
+function TRequest.ToString: rtlstring;
 begin
   Result:='['+RequestID+'] : '+URL;
 end;
@@ -2951,7 +2978,7 @@ begin
     end;
 end;
 
-function TResponse.ToString: ansistring;
+function TResponse.ToString: rtlstring;
 begin
   if assigned(Request) then
     Result:=Request.ToString

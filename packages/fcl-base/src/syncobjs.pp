@@ -13,16 +13,24 @@
  **********************************************************************}
 {$mode objfpc}
 {$h+}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit syncobjs;
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
 uses
-  sysutils
+{$IFDEF FPC_DOTTEDUNITS}
   {$IFNDEF VER3_2}
-  ,system.timespan
+  system.timespan,
   {$ENDIF}
-  ;
+  System.SysUtils;
+{$ELSE FPC_DOTTEDUNITS}
+  {$IFNDEF VER3_2}
+  system.timespan,
+  {$ENDIF}
+  sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 type
   PSecurityAttributes = Pointer;
@@ -74,10 +82,10 @@ type
       function WaitFor(Timeout : Cardinal=INFINITE) : TWaitResult;overload;
       {$IFNDEF VER3_2}
       function WaitFor(const Timeout : TTimespan) : TWaitResult;overload;
-      {$ENDIF}
       {$IFDEF MSWINDOWS}
         class function WaitForMultiple(const HandleObjs: THandleObjectArray; Timeout: Cardinal; AAll: Boolean; out SignaledObj: THandleObject; UseCOMWait: Boolean = False; Len: Integer = 0): TWaitResult;
       {$ENDIF MSWINDOWS}
+      {$ENDIF VER3_2}
       property Handle : TEventHandle read FHandle;
       property LastError : Integer read FLastError;
    end;
@@ -150,7 +158,11 @@ type
 implementation
 
 {$ifdef MSWindows}
+{$IFDEF FPC_DOTTEDUNITS}
+uses WinApi.Windows;
+{$ELSE}
 uses Windows;
+{$ENDIF}
 {$endif}
 
 
@@ -254,6 +266,7 @@ begin
 end;
 {$ENDIF}
 
+{$IFNDEF VER3_2}
 {$IFDEF MSWINDOWS}
 class function THandleObject.WaitForMultiple(const HandleObjs: THandleObjectArray; Timeout: Cardinal; AAll: Boolean; out SignaledObj: THandleObject; UseCOMWait: Boolean = False; Len: Integer = 0): TWaitResult;
 const COWAIT_DEFAULT = 0;
@@ -277,7 +290,7 @@ begin
     raise ESyncObjectException.CreateFmt(SErrEventMaxObjects, [MAXIMUM_WAIT_OBJECTS]);
 
   for HandleIndex := 0 to Len - 1 do
-    WOHandles[HandleIndex] := Windows.HANDLE(HandleObjs[HandleIndex].Handle);
+    WOHandles[HandleIndex] := {$IFDEF FPC_DOTTEDUNITS}WinApi.{$ENDIF}Windows.HANDLE(HandleObjs[HandleIndex].Handle);
 
   // what about UseCOMWait?
   if UseCOMWait Then
@@ -323,7 +336,8 @@ begin
       Result := wrError;
   end;
 end;
-{$endif}
+{$endif MSWINDOWS}
+{$ENDIF VER_3_2}
 
 destructor THandleObject.Destroy;
 begin

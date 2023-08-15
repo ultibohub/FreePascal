@@ -16,19 +16,29 @@
 
 {$inline on}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
-{$MODESWITCH out}
-{ force ansistrings }
+{$MODESWITCH OUT}
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 {$hugecode on}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  {DOSApi.GO32,}TP.DOS;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   {go32,}dos;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE HAS_SLEEP}
 
@@ -43,8 +53,13 @@ uses
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysConst;
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE FPC_FEXPAND_UNC} (* UNC paths are supported *)
 {$DEFINE FPC_FEXPAND_DRIVES} (* Full paths begin with drive specification *)
@@ -375,7 +390,7 @@ begin
   //!! Sr := New(PSearchRec);
   getmem(sr,sizeof(searchrec));
   Rslt.FindHandle := Sr;
-  DOS.FindFirst(Path, Attr, Sr^);
+  {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.FindFirst(Path, Attr, Sr^);
   result := -DosError;
   if result = 0 then
    begin
@@ -395,7 +410,7 @@ begin
   Sr := PSearchRec(Rslt.FindHandle);
   if Sr <> nil then
    begin
-     DOS.FindNext(Sr^);
+     {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.FindNext(Sr^);
      result := -DosError;
      if result = 0 then
       begin
@@ -418,7 +433,7 @@ begin
     begin
       //!! Dispose(Sr);
       // This call is non dummy if LFNSupport is true PM
-      DOS.FindClose(SR^);
+      {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}DOS.FindClose(SR^);
       freemem(sr,sizeof(searchrec));
     end;
   Handle := nil;
@@ -868,16 +883,16 @@ var
   CommandLine: RawByteString;
 
 begin
-  dos.exec_ansistring(path,comline);
+  {$IFDEF FPC_DOTTEDUNITS}TP.{$endif}dos.exec_ansistring(path,comline);
 
-  if (Dos.DosError <> 0) then
+  if ({$IFDEF FPC_DOTTEDUNITS}TP.{$endif}Dos.DosError <> 0) then
     begin
       if ComLine <> '' then
        CommandLine := Path + ' ' + ComLine
       else
        CommandLine := Path;
-      e:=EOSError.CreateFmt(SExecuteProcessFailed,[CommandLine,Dos.DosError]);
-      e.ErrorCode:=Dos.DosError;
+      e:=EOSError.CreateFmt(SExecuteProcessFailed,[CommandLine,{$IFDEF FPC_DOTTEDUNITS}TP.{$endif}Dos.DosError]);
+      e.ErrorCode:={$IFDEF FPC_DOTTEDUNITS}TP.{$endif}Dos.DosError;
       raise e;
     end;
   Result := DosExitCode;

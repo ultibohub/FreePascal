@@ -30,7 +30,6 @@ nortl=y
 [install]
 fpcpackage=y
 [default]
-fpcdir=../..
 target=msxdos
 cpu=z80
 [compiler]
@@ -197,17 +196,8 @@ cpall$(PPUEXT): $(RTL)/charmaps/cpall.pas system$(PPUEXT) charset$(PPUEXT)
         $(COMPILER) -Fu$(INC) -Fi$(RTL)/charmaps $(RTL)/charmaps/cpall.pas
 	$(EXECPPAS)
 
-fpwidestring$(PPUEXT): $(OBJPASDIR)/fpwidestring.pp unicodedata$(PPUEXT) charset$(PPUEXT) objpas$(PPUEXT) system$(PPUEXT)
-        $(COMPILER) $(OBJPASDIR)/fpwidestring.pp
-
 character$(PPUEXT): $(OBJPASDIR)/character.pas sysutils$(PPUEXT) objpas$(PPUEXT) rtlconsts$(PPUEXT) unicodedata$(PPUEXT) system$(PPUEXT)
         $(COMPILER) $(OBJPASDIR)/character.pas
-
-unicodedata$(PPUEXT) : $(OBJPASDIR)/unicodedata.pas objpas$(PPUEXT) system$(PPUEXT)
-        $(COMPILER) -Fi$(OBJPASDIR) $(OBJPASDIR)/unicodedata.pas
-
-sortbase$(PPUEXT) : $(INC)/sortbase.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $<
 
 #
 # Other system-dependent RTL Units

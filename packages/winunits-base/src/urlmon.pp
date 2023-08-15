@@ -6,12 +6,19 @@
   Copyright (c) Microsoft Corporation. All rights reserved.
 }
 
+{$IFNDEF FPC_DOTTEDUNITS}
 Unit urlmon;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+Uses
+  WinApi.Windows, WinApi.Activex;
+{$ELSE FPC_DOTTEDUNITS}
 Uses
   windows, activex;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Const
   liburlmon = 'urlmon.dll';
@@ -1073,7 +1080,7 @@ Function URLOpenStream(p1 : IUnknown; p2 : PAnsiChar; p3 : DWORD; p4 : IBindStat
 Function URLOpenStreamA(p1 : IUnknown; p2 : PAnsiChar; p3 : DWORD; p4 : IBindStatusCallback) : HResult; stdcall; external liburlmon;
 Function URLOpenStreamW(p1 : IUnknown; p2 : PWideChar; p3 : DWORD; p4 : IBindStatusCallback) : HResult; stdcall; external liburlmon;
 Function WriteHitLogging(const Logginginfo : THIT_LOGGING_INFO) : BOOL; stdcall; external liburlmon;
-Procedure ReleaseBindInfo(const bindinfo : TBindInfo); stdcall; external liburlmon; external liburlmon;
+Procedure ReleaseBindInfo(const bindinfo : TBindInfo); stdcall; external liburlmon; 
 
 implementation
 

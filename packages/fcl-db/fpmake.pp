@@ -97,7 +97,6 @@ begin
       with T.Dependencies do
         begin
         AddUnit('db');
-        AddUnit('sqldb');
         AddUnit('bufdataset');
         end;
 
@@ -874,6 +873,7 @@ begin
     T:=P.Targets.AddExampleProgram('toolsunit.pas');
     // database.ini.txt
     // README.txt
+    P.NamespaceMap:='namespaces.lst';
 
     end;
 end;

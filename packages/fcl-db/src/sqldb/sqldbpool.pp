@@ -1,12 +1,19 @@
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sqldbpool;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode objfpc}
 {$H+}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.Classes, System.SysUtils, Data.Db, Data.Sqldb, Data.SqlDb.Pq, System.SyncObjs, System.Contnrs;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   Classes, SysUtils, db, sqldb, pqconnection, syncobjs, contnrs;
+{$ENDIF FPC_DOTTEDUNITS}
 
 const
   DefaultDisconnectTimeOut = 10*60; // Number of seconds before connection is considered old and is discarded.
@@ -150,7 +157,7 @@ type
     function CreateKey(aDef : TSQLDBConnectionDef) : String; virtual;
     function CreateDef: TSQLDBConnectionDef;
     function DoFindConnection(const aConnectionDef: TSQLDBConnectionDef): TSQLConnection; virtual;
-    procedure DoDisconnect(Item: TObject; const Key: string; var Continue: Boolean);
+    procedure DoDisconnect(Item: TObject; const Key: ansistring; var Continue: Boolean);
   public
     Constructor Create(aOwner : TComponent); override;
     Destructor Destroy; override;
@@ -232,7 +239,11 @@ type
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.TypInfo, System.DateUtils;
+{$ELSE FPC_DOTTEDUNITS}
 uses typinfo, dateutils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Resourcestring
   SFindingConnection = 'Finding Connection (%s)';
@@ -1113,7 +1124,7 @@ result:=TSQLConnection(FPool[key]);
 end;
 *)
 
-procedure TSQLDBConnectionPool.DoDisconnect(Item: TObject; const Key: string;
+procedure TSQLDBConnectionPool.DoDisconnect(Item: TObject; const Key: ansistring;
   var Continue: Boolean);
 
 Var
@@ -1199,13 +1210,13 @@ Type
   private
     FCount : Integer;
   Public
-    Procedure DoCount(Item: TObject; const Key: string; var Continue: Boolean);
+    Procedure DoCount(Item: TObject; const Key: ansistring; var Continue: Boolean);
     Property Count : Integer Read FCount;
   end;
 
 { TConnectionCounter }
 
-procedure TConnectionCounter.DoCount(Item: TObject; const Key: string; var Continue: Boolean);
+procedure TConnectionCounter.DoCount(Item: TObject; const Key: Ansistring; var Continue: Boolean);
 begin
   FCount:=FCount+(Item as TConnectionList).Count;
   Continue:=True;

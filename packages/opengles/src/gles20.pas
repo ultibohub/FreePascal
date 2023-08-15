@@ -31,7 +31,9 @@
  ** This document is licensed under the SGI Free Software B License Version
  ** 2.0. For details, see http://oss.sgi.com/projects/FreeB/ 
  **}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit gles20;
+{$ENDIF FPC_DOTTEDUNITS}
 {$mode objfpc}
 {$ifdef linux}
   {$define EGL}
@@ -47,7 +49,25 @@ unit gles20;
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses 
+  System.SysUtils
+  {$ifndef ultibo}
+    ,System.DynLibs
+  {$endif}
+  {$ifdef X}
+    ,Api.X11.X,Api.X11.Xlib
+  {$endif}
+  {$ifdef Windows}
+    ,WinApi.Windows
+  {$endif}
+  {$ifdef ultibo}
+    ,Core.Syscalls
+  {$endif}
+  ;
+{$ELSE FPC_DOTTEDUNITS}
 uses SysUtils{$ifndef ultibo},dynlibs{$endif}{$ifdef X},x,xlib{$endif}{$ifdef windows},Windows{$endif}{$ifdef ultibo},Syscalls{$endif};
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$IFDEF FPC}
 {$PACKRECORDS C}
@@ -1694,7 +1714,7 @@ implementation
 {$ifndef ultibo}
   function glGetProcAddress(ahlib:tlibhandle;ProcName:PAnsiChar):pointer;
     begin
-      result:=dynlibs.GetProcAddress(ahlib,ProcName);
+      result:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}dynlibs.GetProcAddress(ahlib,ProcName);
 {$ifdef EGL}
       if assigned(eglGetProcAddress) and not assigned(result) then
         result:=eglGetProcAddress(ProcName);
@@ -1796,7 +1816,7 @@ implementation
   procedure LoadEGL(lib : PAnsiChar);
     begin
       FreeEGL;
-      EGLLib:=dynlibs.LoadLibrary(lib);
+      EGLLib:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}dynlibs.LoadLibrary(lib);
       if EGLLib=0 then
         raise Exception.Create(format('Could not load library: %s',[lib]));
 
@@ -2020,7 +2040,7 @@ implementation
   procedure LoadGLESv2(lib : PAnsiChar);
     begin
       FreeGLESv2;
-      GLESv2Lib:=dynlibs.LoadLibrary(lib);
+      GLESv2Lib:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}dynlibs.LoadLibrary(lib);
       if GLESv2Lib=0 then
         raise Exception.Create(format('Could not load library: %s',[lib]));
 

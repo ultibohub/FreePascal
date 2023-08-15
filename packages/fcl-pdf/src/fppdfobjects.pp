@@ -14,7 +14,9 @@
 
   **********************************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit fppdfobjects;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode ObjFPC}{$H+}
 {$modeswitch advancedrecords}
@@ -25,9 +27,11 @@ unit fppdfobjects;
 interface
 
 uses
-  TypInfo,
-  Types,
-  rtlConsts, SysUtils, Classes, Contnrs, fppdfconsts;
+{$IFDEF FPC_DOTTEDUNITS}
+  System.TypInfo, System.Types, System.RtlConsts, System.SysUtils, System.Classes, System.Contnrs, FpPdf.Consts;
+{$ELSE FPC_DOTTEDUNITS}
+  TypInfo, Types, rtlConsts, SysUtils, Classes, Contnrs, fppdfconsts;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Const
   PDFTextArraySpaceTreshold = 200;
@@ -1060,7 +1064,6 @@ end;
 
 procedure TPDFPath.AddSegment(aSegment: TPDFPathSegment);
 begin
-  Writeln('Adding : ',aSegment.Description);
   if (FCount=Length(FSegments)) then
     SetLength(FSegments,Length(FSegments)+SegmentDelta);
 
@@ -1887,7 +1890,6 @@ Var
   S : String;
 
 begin
-  Writeln('Registering ',classname,' for command ',RegisterCommandName,' and type ',CommandType);
   S:=RegisterCommandName;
   If S<>'' then
     RegisterCommand(S,Self);
@@ -2122,10 +2124,6 @@ begin
         begin
         aParent:=TPDFIndirect(Obj);
         Obj:=TPDFIndirect(aParent).ObjectDict;
-        if assigned(Obj) then
-            Writeln('Indirect resource : ', TPDFDictionary(Obj).GetDescription)
-        else
-          Writeln('Indirect object ',aParent.ObjectID,'does not have a dict');
         end;
       end;
     if Obj is TPDFDictionary then

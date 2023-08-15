@@ -12,13 +12,19 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit dos;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode fpc}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses WinApi.Windows;
+{$ELSE FPC_DOTTEDUNITS}
 uses windows;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Const
   Max_Path = MaxPathLen;
@@ -268,7 +274,7 @@ begin
           Inc(i);
         end;
       until (i > 24) or not FindNextFile(h, fd);
-      Windows.FindClose(h);
+      {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.FindClose(h);
     end;
   end;
   GetDriveName:=DriveNames[drive - 2];
@@ -399,7 +405,7 @@ end;
 Procedure FindClose(Var f: SearchRec);
 begin
   If F.FindHandle <> Invalid_Handle_value then
-    Windows.FindClose(F.FindHandle);
+    {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.FindClose(F.FindHandle);
 end;
 
 

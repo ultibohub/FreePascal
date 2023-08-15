@@ -13,14 +13,19 @@
 
  **********************************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{ force ansistrings }
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
@@ -44,8 +49,13 @@ interface
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.SysConst;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   sysconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE FPC_FEXPAND_UNC} (* UNC paths are supported *)
 {$DEFINE FPC_FEXPAND_DRIVES} (* Full paths begin with drive specification *)

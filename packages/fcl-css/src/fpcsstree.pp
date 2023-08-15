@@ -13,14 +13,21 @@
 
  **********************************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit fpCSSTree;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode ObjFPC}{$H+}
 {$codepage utf8}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.Contnrs, System.RtlConsts, System.SysUtils, System.Classes, System.Math;
+{$ELSE FPC_DOTTEDUNITS}
 uses Contnrs, RtlConsts, SysUtils, Classes, Math;
+{$ENDIF FPC_DOTTEDUNITS}
+
 
 Type
   ECSSException = class(Exception);

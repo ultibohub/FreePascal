@@ -14,19 +14,30 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{ force ansistrings }
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  TP.DOS,
+  WinApi.Windows;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   dos,
   windows;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE HAS_SLEEP}
 {$DEFINE HAS_OSERROR}
@@ -45,7 +56,7 @@ uses
 {$i sysutilh.inc}
 
 type
-  TSystemTime = Windows.TSystemTime;
+  TSystemTime = {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.TSystemTime;
 
   EWinCEError = class(Exception)
   public
@@ -63,8 +74,13 @@ Var
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysConst;
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE FPC_NOGENERICANSIROUTINES}
 {$define HASEXPANDUNCFILENAME}
@@ -241,13 +257,13 @@ end;
 
 Function DosToWinTime (DTime:longint; out Wtime : TFileTime):longbool;
 begin
-  DosToWinTime:=dos.DosToWinTime(DTime, Wtime);
+  DosToWinTime:={$ifdef FPC_DOTTEDUNITS}TP.{$endif}dos.DosToWinTime(DTime, Wtime);
 end;
 
 
 Function WinToDosTime (Const Wtime : TFileTime; out DTime:longint):longbool;
 begin
-  WinToDosTime:=dos.WinToDosTime(Wtime, DTime);
+  WinToDosTime:={$ifdef FPC_DOTTEDUNITS}TP.{$endif}dos.WinToDosTime(Wtime, DTime);
 end;
 
 
@@ -260,7 +276,7 @@ begin
   Handle := FindFirstFile(PWideChar(FileName), FindData);
   if Handle <> INVALID_HANDLE_VALUE then
     begin
-      Windows.FindClose(Handle);
+      {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.FindClose(Handle);
       if (FindData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
         If WinToDosTime(FindData.ftLastWriteTime,tmpdtime) then
           begin
@@ -374,7 +390,7 @@ end;
 Procedure InternalFindClose (var Handle: THandle; var FindData: TFindData);
 begin
    if Handle <> INVALID_HANDLE_VALUE then
-     Windows.FindClose(Handle);
+     {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.FindClose(Handle);
 end;
 
 
@@ -425,7 +441,7 @@ end;
 
 Function DeleteFile (Const FileName : UnicodeString) : Boolean;
 begin
-  DeleteFile:=Windows.DeleteFile(PWideChar(FileName));
+  DeleteFile:={$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.DeleteFile(PWideChar(FileName));
 end;
 
 
@@ -441,13 +457,13 @@ end;
 
 function diskfree(drive : byte) : int64;
 begin
-  Result := Dos.diskfree(drive);
+  Result := {$ifdef FPC_DOTTEDUNITS}TP.{$endif}Dos.diskfree(drive);
 end;
 
 
 function disksize(drive : byte) : int64;
 begin
-  Result := Dos.disksize(drive);
+  Result := {$ifdef FPC_DOTTEDUNITS}TP.{$endif}Dos.disksize(drive);
 end;
 
 
@@ -458,12 +474,12 @@ end;
 
 Procedure GetLocalTime(var SystemTime: TSystemTime);
 begin
-  windows.Getlocaltime(SystemTime);
+  {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}windows.Getlocaltime(SystemTime);
 end;
 
 function GetUniversalTime(var SystemTime: TSystemTime): Boolean;
 begin
-  windows.GetSystemTime(SystemTime);
+  {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}windows.GetSystemTime(SystemTime);
   Result:=True;
 end;
 
@@ -738,7 +754,7 @@ end;
 Procedure Sleep(Milliseconds : Cardinal);
 
 begin
-  Windows.Sleep(MilliSeconds)
+  {$ifdef FPC_DOTTEDUNITS}WinApi.{$endif}Windows.Sleep(MilliSeconds)
 end;
 
 Function GetLastOSError : Integer;

@@ -38,7 +38,6 @@ nortl=y
 fpcpackage=y
 
 [default]
-fpcdir=../..
 target=dragonfly
 
 [compiler]
@@ -68,13 +67,8 @@ UNIXINC=$(RTL)/unix
 UNITPREFIX=rtl
 CPU_UNITS=
 
-ifeq ($(findstring 1.0.,$(FPC_VERSION)),)
 SYSTEMUNIT=system
 loaders+=gprt0
-else
-SYSTEMUNIT=sysbsd
-override FPCOPT+=-dUNIX
-endif
 
 ifeq ($(ARCH),x86_64)
 CPU_UNITS=x86 ports cpu
@@ -257,12 +251,6 @@ charset$(PPUEXT) : $(INC)/charset.pp $(SYSTEMUNIT)$(PPUEXT)
 cpall$(PPUEXT): $(RTL)/charmaps/cpall.pas system$(PPUEXT) charset$(PPUEXT)
         $(COMPILER) -Fu$(INC) -Fi$(RTL)/charmaps $(RTL)/charmaps/cpall.pas
 
-fpwidestring$(PPUEXT): $(OBJPASDIR)/fpwidestring.pp character$(PPUEXT) unixcp$(PPUEXT)
-        $(COMPILER) $(OBJPASDIR)/fpwidestring.pp
-
-sortbase$(PPUEXT) : $(INC)/sortbase.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-        $(COMPILER) $(INC)/sortbase.pp
-
 #
 # Other system-dependent RTL Units
 #
@@ -284,17 +272,3 @@ ctypes$(PPUEXT) :  $(INC)/ctypes.pp $(SYSTEMUNIT)$(PPUEXT)
 
 cwstring$(PPUEXT) : $(UNIXINC)/cwstring.pp $(SYSTEMUNIT)$(PPUEXT) sysutils$(PPUEXT) baseunix$(PPUEXT) unix$(PPUEXT) unixtype$(PPUEXT) ctypes$(PPUEXT) dynlibs$(PPUEXT)
 
-softfpu$(PPUEXT) : $(INC)/softfpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
-	$(COMPILER) $<
-
-sfpux80$(PPUEXT) : $(INC)/sfpux80.pp $(INC)/softfpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
-	$(COMPILER) $<
-
-sfpu128$(PPUEXT) : $(INC)/sfpu128.pp $(INC)/softfpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
-	$(COMPILER) $<
-
-ufloatx80$(PPUEXT) : $(INC)/ufloatx80.pp sfpux80$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $<
-
-ufloat128$(PPUEXT) : $(INC)/ufloat128.pp sfpu128$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $<

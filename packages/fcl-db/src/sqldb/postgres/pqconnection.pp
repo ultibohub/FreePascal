@@ -1,4 +1,6 @@
- unit PQConnection;
+{$IFNDEF FPC_DOTTEDUNITS}
+unit PQConnection;
+{$ENDIF FPC_DOTTEDUNITS}
 {
     This file is part of the Free Pascal run time library.
     Copyright (c) 1999-2022 by Michael van Canney and other members of the
@@ -22,6 +24,15 @@
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.Classes, System.Types, System.SysUtils, Data.Sqldb, Data.Db, Data.Consts,Data.BufDataset,
+{$IfDef LinkDynamically}
+  Api.Postgres3dyn;
+{$Else}
+  Api.Postgres3;
+{$EndIf}
+{$ELSE FPC_DOTTEDUNITS}
 uses
   Classes, Types, SysUtils, sqldb, db, dbconst,bufdataset,
 {$IfDef LinkDynamically}
@@ -29,6 +40,7 @@ uses
 {$Else}
   postgres3;
 {$EndIf}
+{$ENDIF FPC_DOTTEDUNITS}
 
 type
   TPQCursor = Class;
@@ -68,7 +80,7 @@ type
     Function CheckConnectionStatus(doRaise : Boolean = True) : Boolean;
     Function DescribePrepared(StmtName : String): PPGresult;
     Function Exec(aSQL : String; aClearResult : Boolean; aError : String = '') : PPGresult;
-    function ExecPrepared(stmtName: AnsiString; nParams:longint; paramValues:PPchar; paramLengths:Plongint;paramFormats:Plongint; aClearResult : Boolean) : PPGresult;
+    function ExecPrepared(stmtName: AnsiString; nParams:longint; paramValues:PPAnsichar; paramLengths:Plongint;paramFormats:Plongint; aClearResult : Boolean) : PPGresult;
     procedure CheckResultError(var res: PPGresult; Actions : TCheckResultActions; const ErrMsg: string);
     Property Connection : TPQConnection Read FCOnnection;
     Property NativeConn : PPGConn Read FNativeConn;
@@ -216,7 +228,11 @@ type
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.Math, System.StrUtils, Data.FMTBcd;
+{$ELSE FPC_DOTTEDUNITS}
 uses math, strutils, FmtBCD;
+{$ENDIF FPC_DOTTEDUNITS}
 
 ResourceString
   SErrRollbackFailed = 'Rollback transaction failed';
@@ -831,7 +847,7 @@ Var
 
 begin
   S:=StmtName;
-  Result:=PQdescribePrepared(FNativeConn,pchar(S));
+  Result:=PQdescribePrepared(FNativeConn,pansichar(S));
 end;
 
 function TPGHandle.Exec(aSQL: String; aClearResult: Boolean; aError: String): PPGresult;
@@ -856,7 +872,7 @@ begin
 end;
 
 function TPGHandle.ExecPrepared(stmtName: AnsiString; nParams: longint;
-  paramValues: PPchar; paramLengths: Plongint; paramFormats: Plongint;
+  paramValues: PPAnsichar; paramLengths: Plongint; paramFormats: Plongint;
   aClearResult: Boolean): PPGresult;
 
 var

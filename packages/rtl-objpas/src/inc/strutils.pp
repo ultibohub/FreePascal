@@ -15,12 +15,19 @@
 {$mode objfpc}
 {$h+}
 {$inline on}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit StrUtils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.SysUtils, System.Types;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   SysUtils, Types;
+{$ENDIF FPC_DOTTEDUNITS}
 
 { ---------------------------------------------------------------------
     Case insensitive search/replace
@@ -218,8 +225,8 @@ function IsWordPresent(const W, S: string; const WordDelims: TSysCharSet): Boole
 function FindPart(const HelpWilds, InputStr: string): SizeInt;
 function IsWild(InputStr, Wilds: string; IgnoreCase: Boolean): Boolean;
 function XorString(const Key, Src: ShortString): ShortString;
-function XorEncode(const Key, Source: string): string;
-function XorDecode(const Key, Source: string): string;
+function XorEncode(const Key, Source: Ansistring): Ansistring;
+function XorDecode(const Key, Source: Ansistring): Ansistring;
 function GetCmdLineArg(const Switch: string; SwitchChars: TSysCharSet): string;
 function Numb2USA(const S: string): string;
 function Hex2Dec(const S: string): Longint;
@@ -300,7 +307,11 @@ Function SplitCommandLine(S : UnicodeString) : TUnicodeStringArray;
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.SysConst; // HexDigits
+{$ELSE FPC_DOTTEDUNITS}
 uses sysconst; // HexDigits
+{$ENDIF FPC_DOTTEDUNITS}
 
 (*
   FindMatchesBoyerMooreCaseSensitive
@@ -861,7 +872,7 @@ Function StringReplace(const S, OldPattern, NewPattern: string; Flags: TReplaceF
 
 begin
   Case Algorithm of
-    sraDefault    : Result:=sysutils.StringReplace(S,OldPattern,NewPattern,Flags,aCount);
+    sraDefault    : Result:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.StringReplace(S,OldPattern,NewPattern,Flags,aCount);
     sraManySmall  : Result:=StringReplaceFast(S,OldPattern,NewPattern,Flags,aCount);
     sraBoyerMoore : Result:=StringReplaceBoyerMoore(S,OldPattern,NewPattern,Flags,aCount);
   end;
@@ -872,13 +883,13 @@ end;
 function StringReplace(const S, OldPattern, NewPattern: unicodestring; Flags: TReplaceFlags): unicodestring;
 
 begin
-  Result:=sysutils.StringReplace(S,OldPattern,NewPattern,Flags);
+  Result:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.StringReplace(S,OldPattern,NewPattern,Flags);
 end;
 
 function StringReplace(const S, OldPattern, NewPattern: widestring; Flags: TReplaceFlags): widestring;
 
 begin
-  Result:=sysutils.StringReplace(S,OldPattern,NewPattern,Flags);
+  Result:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.StringReplace(S,OldPattern,NewPattern,Flags);
 end;
 {$ENDIF}
 
@@ -2832,7 +2843,7 @@ end;
 
 function IntToBin(Value: Longint; Digits, Spaces: Integer): string;
 var endpos : integer;
-    p,p2:PAnsiChar;
+    p,p2:PChar;
     k: integer;
 begin
   Result:='';
@@ -2864,13 +2875,13 @@ begin
 end;
 
 function IntToBin(Value: Longint; Digits: Integer): string;
-var p,p2 : PAnsiChar;
+var p,p2 : PChar;
 begin
   result:='';
   if digits<=0 then exit;
   setlength(result,digits);
-  p:=PAnsiChar(pointer(@result[digits]));
-  p2:=PAnsiChar(pointer(@result[1]));
+  p:=PChar(pointer(@result[digits]));
+  p2:=PChar(pointer(@result[1]));
   // typecasts because we want to keep intto* delphi compat and take an integer
   while (p>=p2) and (cardinal(value)>0) do     
     begin
@@ -2884,13 +2895,13 @@ begin
 end;
 
 function intToBin(Value: int64; Digits:integer): string;
-var p,p2 : PAnsiChar;
+var p,p2 : PChar;
 begin
   result:='';
   if digits<=0 then exit;
   setlength(result,digits);
-  p:=PAnsiChar(pointer(@result[digits]));
-  p2:=PAnsiChar(pointer(@result[1]));
+  p:=PChar(pointer(@result[digits]));
+  p2:=PChar(pointer(@result[1]));
   // typecasts because we want to keep intto* delphi compat and take a signed val
   // and avoid warnings
   while (p>=p2) and (qword(value)>0) do     
@@ -3056,7 +3067,7 @@ begin
       Result[i]:=Chr(Byte(Key[1 + ((i - 1) mod Length(Key))]) xor Ord(Src[i]));
 end;
 
-function XorEncode(const Key, Source: string): string;
+function XorEncode(const Key, Source: Ansistring): Ansistring;
 
 var
   i: Integer;
@@ -3074,7 +3085,7 @@ begin
     end;
 end;
 
-function XorDecode(const Key, Source: string): string;
+function XorDecode(const Key, Source: Ansistring): Ansistring;
 var
   i: Integer;
   C: AnsiChar;

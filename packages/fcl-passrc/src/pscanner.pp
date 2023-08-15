@@ -14,12 +14,25 @@
 
  **********************************************************************}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit PScanner;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$i fcl-passrc.inc}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  {$ifdef pas2js}
+  js,
+  {$IFDEF NODEJS}
+  Node.FS,
+  {$ENDIF}
+  System.Types,
+  {$endif}
+  System.SysUtils, System.Classes;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   {$ifdef pas2js}
   js,
@@ -29,6 +42,7 @@ uses
   Types,
   {$endif}
   SysUtils, Classes;
+{$ENDIF FPC_DOTTEDUNITS}
 
 // message numbers
 const
@@ -1297,6 +1311,7 @@ const
   Digits = ['0'..'9'];
   Letters = ['a'..'z','A'..'Z'];
   HexDigits = ['0'..'9','a'..'f','A'..'F'];
+  
 Var
   SortedTokens : array of TToken;
   LowerCaseTokens  : Array[ttoken] of TPasScannerString;
@@ -3766,7 +3781,7 @@ end;
 function TPascalScanner.DoFetchTextToken:TToken;
 var
   TokenStart, StartP : {$ifdef UsePChar}PAnsiChar{$else}integer{$endif};
-  I,SectionLength : Integer;
+  SectionLength : Integer;
   {$ifndef UsePChar}
   s: TPasScannerString;
   l: integer;
@@ -3852,10 +3867,10 @@ begin
   SetLength(FCurTokenString, SectionLength);
   if SectionLength > 0 then
     Move(StartP^, FCurTokenString[1], SectionLength);
-  Writeln('String: ',UTF8String(FCurTokenString),length(FCurTokenString));
-  For I:=2 to Length(FCurTokenString)-1 do
-    Write(hexStr(Ord(FCurtokenString[I]),2));
-  Writeln;
+  //Writeln('String: ',UTF8String(FCurTokenString),length(FCurTokenString));
+  //For I:=2 to Length(FCurTokenString)-1 do
+  //  Write(hexStr(Ord(FCurtokenString[I]),2));
+  //Writeln;
   {$else}
   FCurTokenString:=FCurTokenString+copy(FCurLine,StartP,SectionLength);
   {$endif}
@@ -5146,7 +5161,7 @@ function TPascalScanner.HandleMultilineCommentOldStyle: TToken;
 
 var
   {$ifdef UsePChar}
-  TokenStart: PChar;
+  TokenStart: PAnsiChar;
   OldLength: integer;
   Ch: AnsiChar;
   LE: String[2];
@@ -5243,7 +5258,7 @@ function TPascalScanner.HandleMultilineComment: TToken;
 
 var
   {$ifdef UsePChar}
-  TokenStart: PChar;
+  TokenStart: PAnsiChar;
   OldLength: integer;
   Ch: AnsiChar;
   LE: String[2];

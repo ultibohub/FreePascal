@@ -14,18 +14,28 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{ force ansistrings }
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
 {$H+}
+{$ENDIF}
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  NTApi.NDK;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   ndk;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE HAS_SLEEP}
 {$DEFINE HAS_CREATEGUID}
@@ -52,8 +62,13 @@ type
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+  uses
+    System.SysConst, NTApi.NDKUtils;
+{$ELSE FPC_DOTTEDUNITS}
   uses
     sysconst, ndkutils;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE FPC_NOGENERICANSIROUTINES}
 

@@ -13,14 +13,21 @@
 
  **********************************************************************
 }
+{$IFNDEF FPC_DOTTEDUNITS}
 unit FPTiffCmn;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode objfpc}{$H+}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.Classes, System.SysUtils, FpImage;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   Classes, sysutils, FPimage;
+{$ENDIF FPC_DOTTEDUNITS}
 
 type
   TTiffRational = packed record
@@ -101,6 +108,17 @@ const
   TiffPlanarConfigurationChunky = 1; //Chunky format
   TiffPlanarConfigurationPlanar = 2; //Planar format
 
+  GEOTIFF_MODELPIXELSCALE = 33550;
+  GEOTIFF_MODELTIEPOINT = 33922;
+  GEOTIFF_MODELTRANSFORMATION = 34264;
+  GEOTIFF_KEYDIRECTORY = 34735;
+  GEOTIFF_DOUBLEPARAMS = 34736;
+  GEOTIFF_ASCIIPARAMS = 34737;
+
+  TIFF_ByteOrderBIG = $4D4D;   //'MM';
+  TIFF_ByteOrderNOBIG = $4949; //'II';
+
+
 type
   TTiffChunkType = (
     tctStrip,
@@ -113,24 +131,31 @@ type
     tcioNever
     );
 
+  TTiffHeader = packed record
+    ByteOrder: Word;
+    case Version:Word of
+    42 : (IFDStart:DWord);
+    43 : (BigTIFF_padA, BigTiff_padB:Word) //Follow a 64 Bit IFDStart
+  end;
+
   { TTiffIFD - Image File Directory }
 
   TTiffIFD = class
   public
-    IFDStart: DWord; // tiff position
-    IFDNext: DWord; // tiff position
+    IFDStart: SizeUInt; // tiff position
+    IFDNext: SizeUInt; // tiff position
     Artist: AnsiString;
-    BitsPerSample: DWord; // tiff position of entry
+    BitsPerSample: SizeUInt; // tiff position of entry
     BitsPerSampleArray: array of Word;
     CellLength: DWord;
     CellWidth: DWord;
-    ColorMap: DWord;// tiff position of entry
+    ColorMap: SizeUInt;// tiff position of entry
     Compression: DWord;
     Predictor: Word;
     Copyright: AnsiString;
     DateAndTime: AnsiString;
     DocumentName: AnsiString;
-    ExtraSamples: DWord;// tiff position of entry
+    ExtraSamples: SizeUInt;// tiff position of entry
     FillOrder: DWord;
     HostComputer: AnsiString;
     ImageDescription: AnsiString;
@@ -151,15 +176,16 @@ type
     RowsPerStrip: DWord;
     SamplesPerPixel: DWord;
     Software: AnsiString;
-    StripByteCounts: DWord;// tiff position of entry
-    StripOffsets: DWord; // tiff position of entry
+    StripByteCounts: SizeUInt;// tiff position of entry
+    StripOffsets: SizeUInt; // tiff position of entry
     TileWidth: DWord;
     TileLength: DWord; // = Height
-    TileOffsets: DWord; // tiff position of entry
-    TileByteCounts: DWord; // tiff position of entry
+    TileOffsets: SizeUInt; // tiff position of entry
+    TileByteCounts: SizeUInt; // tiff position of entry
     Tresholding: DWord;
     XResolution: TTiffRational;
     YResolution: TTiffRational;
+    YCbCr_LumaRed, YCbCr_LumaGreen, YCbCr_LumaBlue :Single;
     // image
     Img: TFPCustomImage;
     FreeImg: boolean;
@@ -211,7 +237,7 @@ var
   i: Integer;
 begin
   for i:=Img.ExtraCount-1 downto 0 do
-    if SysUtils.CompareText(copy(Img.ExtraKey[i],1,4),'Tiff')=0 then
+    if CompareText(copy(Img.ExtraKey[i],1,4),'Tiff')=0 then
       Img.RemoveExtra(Img.ExtraKey[i]);
 end;
 
@@ -221,7 +247,7 @@ var
 begin
   ClearTiffExtras(DestImg);
   for i:=SrcImg.ExtraCount-1 downto 0 do
-    if SysUtils.CompareText(copy(SrcImg.ExtraKey[i],1,4),'Tiff')=0 then
+    if CompareText(copy(SrcImg.ExtraKey[i],1,4),'Tiff')=0 then
       DestImg.Extra[SrcImg.ExtraKey[i]]:=SrcImg.ExtraValue[i];
 end;
 
@@ -446,6 +472,11 @@ end;
 constructor TTiffIFD.Create;
 begin
   PlanarConfiguration:=TiffPlanarConfigurationChunky;
+
+  //Use the Standard 601 Constants
+  YCbCr_LumaRed:=0;
+  YCbCr_LumaGreen:=0;
+  YCbCr_LumaBlue:=0;
 end;
 
 destructor TTiffIFD.Destroy;

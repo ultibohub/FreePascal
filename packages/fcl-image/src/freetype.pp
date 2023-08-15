@@ -15,7 +15,9 @@
 {$mode objfpc}
 {$h+}
 
+{$IFNDEF FPC_DOTTEDUNITS}
 unit freetype;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$IFNDEF ULTIBO}
 {$DEFINE DYNAMIC}
@@ -23,7 +25,11 @@ unit freetype;
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.SysUtils, System.Classes, System.Math, {$IFDEF DYNAMIC}Api.Freetypehdyn{$ELSE}Api.Freetypeh{$ENDIF}, FpImage.Common;
+{$ELSE FPC_DOTTEDUNITS}
 uses sysutils, classes, math, {$IFDEF DYNAMIC}freetypehdyn{$ELSE}freetypeh{$ENDIF}, FPImgCmn;
+{$ENDIF FPC_DOTTEDUNITS}
 
 { TODO : take resolution in account to find the size }
 { TODO : speed optimization: search glyphs with a hash-function/tree/binary search/... }

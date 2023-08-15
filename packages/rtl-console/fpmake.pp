@@ -152,6 +152,8 @@ begin
      end;
 
     T:=P.Targets.AddUnit('unixkvmbase.pp',AllUnixOSes);
+
+    P.NamespaceMap:='namespaces.lst';
   end
 end;
 

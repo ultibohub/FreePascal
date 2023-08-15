@@ -1,7 +1,9 @@
 {$ifndef NO_SMART_LINK}
 {$smartlink on}
 {$endif}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit ZLib;
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
@@ -14,8 +16,13 @@ interface
 
 {$packrecords c}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.CTypes{$ifdef ultibo},Core.Syscalls{$endif};
+{$ELSE FPC_DOTTEDUNITS}
 uses
   ctypes{$ifdef ultibo},Syscalls{$endif};
+{$ENDIF FPC_DOTTEDUNITS}
 
 const
 {$ifdef netware}  {zlib.nlm comes with netware6}

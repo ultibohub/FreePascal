@@ -12,7 +12,9 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit dos;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 Const
@@ -64,8 +66,13 @@ Const
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+   System.Strings;
+{$ELSE FPC_DOTTEDUNITS}
 uses
    strings;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$DEFINE HAS_GETMSCOUNT}
 {$DEFINE HAS_GETSHORTNAME}
@@ -438,7 +445,7 @@ function FindNextFile  (hFindFile: THandle; var lpFindFileData: TWinFindData): L
 function FindCloseFile (hFindFile: THandle): LongBool;
   stdcall; external 'kernel32' name 'FindClose';
 
-Procedure StringToPchar (Var S : String);
+Procedure StringToPchar (Var S : ShortString);
 Var L : Longint;
 begin
   L:=ord(S[0]);
@@ -446,7 +453,7 @@ begin
   S[L]:=#0;
 end;
 
-Procedure PCharToString (Var S : String);
+Procedure PCharToString (Var S : ShortString);
 Var L : Longint;
 begin
   L:=strlen(PAnsiChar(@S[0]));
@@ -478,6 +485,10 @@ end;
 
 
 procedure findfirst(const path : pathstr;attr : word;var f : searchRec);
+
+var
+  S : ShortString;
+
 begin
   fillchar(f,sizeof(f),0);
   { no error }
@@ -485,11 +496,12 @@ begin
   F.Name:=Path;
   F.Attr:=attr;
   F.ExcludeAttr:=(not Attr) and ($1e); {hidden,sys,dir,volume}
-  StringToPchar(f.name);
+  S:=f.name;
+  StringToPchar(S);
 
   { FindFirstFile is a Win32 Call }
   F.WinFindData.dwFileAttributes:=DosToWinAttr(f.attr);
-  F.FindHandle:=FindFirstFile (PAnsiChar(@f.Name),F.WinFindData);
+  F.FindHandle:=FindFirstFile (PAnsiChar(@S),F.WinFindData);
 
   If F.FindHandle=Invalid_Handle_value then
    begin
@@ -548,7 +560,7 @@ function GetShortPathName(lpszLongPath:PAnsiChar; lpszShortPath:PAnsiChar; cchBu
     stdcall; external 'kernel32' name 'GetShortPathNameA';
 
 
-Function FSearch(path: pathstr; dirlist: string): pathstr;
+Function FSearch(path: pathstr; dirlist: shortstring): pathstr;
 var
   p1     : longint;
   s      : searchrec;
@@ -660,7 +672,7 @@ begin
 end;
 
 { change to short filename if successful win32 call PM }
-function GetShortName(var p : String) : boolean;
+function GetShortName(var p : shortString) : boolean;
 var
   buffer   : array[0..255] of AnsiChar;
   ret : longint;
@@ -686,11 +698,11 @@ begin
 end;
 
 { change to long filename if successful DOS call PM }
-function GetLongName(var p : String) : boolean;
+function GetLongName(var p : shortString) : boolean;
 
 var
   SR: SearchRec;
-  FullFN, FinalFN, TestFN: string;
+  FullFN, FinalFN, TestFN: shortstring;
   Found: boolean;
   SPos: byte;
 begin
@@ -789,7 +801,7 @@ begin
 end;
 
 
-Function EnvStr (Index: longint): string;
+Function EnvStr (Index: longint): shortstring;
 var
    hp,p : PAnsiChar;
    count,i : longint;
@@ -815,9 +827,9 @@ begin
 end;
 
 
-Function  GetEnv(envvar: string): string;
+Function  GetEnv(envvar: shortstring): shortstring;
 var
-   s : string;
+   s : shortstring;
    i : longint;
    hp,p : PAnsiChar;
 begin

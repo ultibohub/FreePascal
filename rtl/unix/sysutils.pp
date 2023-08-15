@@ -13,12 +13,18 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sysutils;
+{$ENDIF FPC_DOTTEDUNITS}
 interface
 
 {$MODE objfpc}
 {$MODESWITCH OUT}
-{$H+} // will result in unicode string in unicode RTL
+{$IFDEF UNICODERTL}
+{$MODESWITCH UNICODESTRINGS}
+{$ELSE}
+{$H+}
+{$ENDIF}
 
 {$modeswitch typehelpers}
 {$modeswitch advancedrecords}
@@ -46,10 +52,17 @@ interface
 { OS has an ansistring/single byte environment variable API }
 {$define SYSUTILS_HAS_ANSISTR_ENVVAR_IMPL}
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+{$IFDEF LINUX}LinuxApi,{$ENDIF}
+{$IFDEF FreeBSD}freebsd,{$ENDIF}
+  UnixApi.Base, UnixApi.Unix,UnixApi.Errors,System.SysConst,UnixApi.Types;
+{$ELSE FPC_DOTTEDUNITS}
 uses
 {$IFDEF LINUX}linux,{$ENDIF}
 {$IFDEF FreeBSD}freebsd,{$ENDIF}
   baseunix, Unix,errors,sysconst,Unixtype;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$IF defined(LINUX) or defined(FreeBSD)}
 {$DEFINE HAVECLOCKGETTIME}
@@ -96,11 +109,19 @@ procedure UnhookSignal(RtlSigNum: Integer; OnlyIfHooked: Boolean = True);
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+Uses
+{$ifdef android}
+  dl,
+{$endif android}
+  {$ifdef FPC_USE_LIBC}System.InitC{$ELSE}UnixApi.SysCall{$ENDIF},  UnixApi.Utils;
+{$ELSE FPC_DOTTEDUNITS}
 Uses
 {$ifdef android}
   dl,
 {$endif android}
   {$ifdef FPC_USE_LIBC}initc{$ELSE}Syscall{$ENDIF},  unixutil;
+{$ENDIF FPC_DOTTEDUNITS}
 
 type
   tsiginfo = record
@@ -976,9 +997,9 @@ end;
 Function FindGetFileInfo(const s: RawByteString; var f: TAbstractSearchRec; var Name: RawByteString):boolean;
 Var
 {$ifdef USE_STATX}
-  stx : linux.tstatx;
+  stx : {$ifdef FPC_DOTTEDUNITS}LinuxApi.{$else}linux.{$endif}tstatx;
 {$endif USE_STATX}
-  st : baseunix.stat;
+  st : BU.stat;
   WinAttr : longint;
 begin
 {$ifdef USE_STATX}
@@ -1212,7 +1233,7 @@ var
 begin
   SystemOldName:=ToSingleByteFileSystemEncodedFileName(OldName);
   SystemNewName:=ToSingleByteFileSystemEncodedFileName(NewName);
-  RenameFile:=BaseUnix.FpRename(pointer(SystemOldName),pointer(SystemNewName))>=0;
+  RenameFile:=BU.FpRename(pointer(SystemOldName),pointer(SystemNewName))>=0;
 end;
 
 
@@ -1529,7 +1550,7 @@ end;
 
 Function GetEnvironmentVariable(Const EnvVar : AnsiString) : AnsiString;
 begin
-  Result:=BaseUnix.FPGetenv(PAnsiChar(pointer(EnvVar)));
+  Result:=BU.FPGetenv(PAnsiChar(pointer(EnvVar)));
 end;
 
 Function GetEnvironmentVariableCount : Integer;

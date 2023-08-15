@@ -12,7 +12,9 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit sqldbrestschema;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode objfpc}
 {$H+}
@@ -21,8 +23,13 @@ unit sqldbrestschema;
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.Classes, System.SysUtils, System.Contnrs, Data.Db, Data.Sqldb, FpJson.Data;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   Classes, SysUtils, contnrs, db, sqldb, fpjson;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Type
   TRestFieldType = (rftUnknown,rftInteger,rftLargeInt,rftFloat,rftDate,rftTime,rftDateTime,rftString,rftBoolean,rftBlob);
@@ -238,6 +245,7 @@ Type
   TSQLDBRestAllowRecordEvent = Procedure (aSender : TObject; aContext : TBaseRestContext; aDataSet : TDataset; var allowRecord : Boolean) of object;
   TSQLDBRestAllowResourceEvent = Procedure (aSender : TObject; aContext : TBaseRestContext; var allowResource : Boolean) of object;
   TSQLDBRestAllowedOperationsEvent = Procedure (aSender : TObject; aContext : TBaseRestContext; var aOperations : TRestOperations) of object;
+  TSQLDBRestOnGetWhere = Procedure(Sender : TObject; aContext : TBaseRestContext; aKind : TSQLKind; var aWhere : UTF8String) of object;
   TProcessIdentifier = Function (const S: UTF8String): UTF8String of object;
 
   TSQLDBRestResource = class(TCollectionItem)
@@ -252,6 +260,7 @@ Type
     FOnAllowRecord: TSQLDBRestAllowRecordEvent;
     FOnCheckParams: TSQLDBRestCheckParamsEvent;
     FOnGetDataset: TSQLDBRestGetDatasetEvent;
+    FOnGetWhere: TSQLDBRestOnGetWhere;
     FOnResourceAllowed: TSQLDBRestAllowResourceEvent;
     FParameters: TSQLDBRestParameterList;
     FResourceName: UTF8String;
@@ -294,6 +303,7 @@ Type
     Function ProcessSQl(const aSQL : String; Const AWhere : UTF8String; Const aOrderBy : UTF8String = ''; const aLimit : UTF8String = '') : UTF8String;
     Procedure PopulateFieldsFromFieldDefs(Defs : TFieldDefs; aIndexFields : TStringArray; aProcessIdentifier : TProcessIdentifier; aMinFieldOpts : TRestFieldOptions);
     Procedure PopulateParametersFromSQL(const SQL : String; DoClear : Boolean = True);
+    function DoCompleteWhere(aContext : TBaseRestContext; aKind: TSQLKind; const aWhere: UTF8String ): UTF8String;
     Property SQL [aKind : TSQLKind] : TStrings Read GetSQLTyped;
     Property BusinessProcessor : TSQLDBRestCustomBusinessProcessor Read FBusinessProcessor;
   Published
@@ -314,6 +324,7 @@ Type
     Property OnGetDataset : TSQLDBRestGetDatasetEvent Read FOnGetDataset Write FOnGetDataset;
     Property OnCheckParams : TSQLDBRestCheckParamsEvent Read FOnCheckParams Write FOnCheckParams;
     Property OnAllowRecord : TSQLDBRestAllowRecordEvent Read FOnAllowRecord Write FOnAllowRecord;
+    Property OnGetWhere : TSQLDBRestOnGetWhere Read FOnGetWhere Write FOnGetWhere;
   end;
 
   { TSQLDBRestResourceList }
@@ -390,6 +401,7 @@ Type
     Procedure CheckParams(aContext : TBaseRestContext; aOperation : TRestoperation; P : TParams); virtual; abstract;
     Function GetDataset(aContext : TBaseRestContext; aFieldList : TRestFieldPairArray; aOrderBy : TRestFieldOrderPairArray; aLimit, aOffset : Int64) : TDataset; virtual;abstract;
     Function AllowRecord(aContext : TBaseRestContext;aDataset : TDataset) : Boolean; virtual; abstract;
+    Function ProcessWhereSQL(aContext : TBaseRestContext; aKind : TSQLKind; const aWhere : UTF8String) : UTF8String; virtual;
   Public
     Property Resource : TSQLDBRestResource Read FResource;
     Property ResourceName : UTF8String Read FResourceName Write SetResourceName;
@@ -405,6 +417,7 @@ Type
     FOnAllowRecord: TSQLDBRestAllowRecordEvent;
     FOnCheckParams: TSQLDBRestCheckParamsEvent;
     FOnGetDataset: TSQLDBRestGetDatasetEvent;
+    FOnGetWhere: TSQLDBRestOnGetWhere;
     FOnResourceAllowed: TSQLDBRestAllowResourceEvent;
     FSchema: TSQLDBRestSchema;
     FAfterDatabaseRead: TRestDatabaseEvent;
@@ -419,6 +432,7 @@ Type
     Procedure CheckParams(aContext : TBaseRestContext; aOperation : TRestoperation; P : TParams); override;
     Function GetDataset(aContext : TBaseRestContext; aFieldList : TRestFieldPairArray; aOrderBy : TRestFieldOrderPairArray; aLimit, aOffset : Int64) : TDataset; override;
     Function AllowRecord(aContext : TBaseRestContext; aDataset : TDataset) : Boolean; override;
+    Function ProcessWhereSQL(aContext : TBaseRestContext; aKind : TSQLKind; const aWhere : UTF8String) : UTF8String; override;
   Published
     Property Schema : TSQLDBRestSchema Read GetSchema Write SetSchema;
     Property ResourceName;
@@ -427,6 +441,7 @@ Type
     Property OnAllowResource : TSQLDBRestAllowResourceEvent Read FOnResourceAllowed Write FOnResourceAllowed;
     Property OnAllowedOperations : TSQLDBRestAllowedOperationsEvent Read FOnAllowedOperations Write FOnAllowedOperations;
     Property OnAllowRecord : TSQLDBRestAllowRecordEvent Read FOnAllowRecord Write FOnAllowRecord;
+    Property OnGetWhere : TSQLDBRestOnGetWhere Read FOnGetWhere Write FOnGetWhere;
   Published
     Property BeforeDatabaseUpdate : TRestDatabaseEvent Read FBeforeDatabaseUpdate Write FBeforeDatabaseUpdate;
     Property AfterDatabaseUpdate : TRestDatabaseEvent Read FAfterDatabaseUpdate Write FAfterDatabaseUpdate;
@@ -440,7 +455,11 @@ Const
 
 implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.StrUtils, FpJson.Rtti,Data.Consts, FpWeb.RestBridge.Consts;
+{$ELSE FPC_DOTTEDUNITS}
 uses strutils, fpjsonrtti,dbconst, sqldbrestconst;
+{$ENDIF FPC_DOTTEDUNITS}
 
 { TSQLDBRestParam }
 
@@ -596,6 +615,15 @@ begin
   Result:=Nil;
 end;
 
+function TSQLDBRestCustomBusinessProcessor.ProcessWhereSQL(aContext : TBaseRestContext; aKind : TSQLKind; const aWhere: UTF8String
+  ): UTF8String;
+begin
+  Result:=aWhere;
+  // Silence compiler
+  if aKind<>skSelect then
+    ;
+end;
+
 { TSQLDBRestBusinessProcessor }
 
 procedure TSQLDBRestBusinessProcessor.SetSchema(AValue: TSQLDBRestSchema);
@@ -657,6 +685,14 @@ begin
   Result:=True;
   if Assigned(FOnAllowRecord) then
     FOnAllowRecord(Self,acontext,aDataset,Result);
+end;
+
+function TSQLDBRestBusinessProcessor.ProcessWhereSQL(aContext : TBaseRestContext; aKind: TSQLKind;
+  const aWhere: UTF8String): UTF8String;
+begin
+  Result:=inherited ProcessWhereSQL(aContext, aKind, aWhere);
+  if Assigned(FOnGetWhere) then
+    FOnGetWhere(Self,aContext,aKind,Result);
 end;
 
 
@@ -1431,6 +1467,16 @@ begin
   Result:=ProcessSQL(Result,aWhere,aOrderBy,aLimit);
 end;
 
+function TSQLDBRestResource.DoCompleteWhere(aContext : TBaseRestContext; aKind: TSQLKind;const aWhere : UTF8String) : UTF8String;
+
+begin
+  Result:=aWhere;
+  if Assigned(OnGetWhere) then
+    FOnGetWhere(Self,aContext, aKind,Result);
+  if Assigned(BusinessProcessor) then
+    Result:=BusinessProcessor.ProcessWhereSQL(aContext, aKind, Result);
+end;
+
 function TSQLDBRestResource.ProcessSQl(const aSQL: String; const AWhere: UTF8String;
   const aOrderBy: UTF8String; const aLimit: UTF8String): UTF8String;
 
@@ -1533,7 +1579,7 @@ begin
     O:=aMinFieldOpts;
     if FD.Required then
        Include(O,foRequired);
-    If AnsiIndexStr(FN,aIndexFields)<>-1 then
+    If IndexStr(FN,aIndexFields)<>-1 then
       begin
       Include(O,foInKey);
       Exclude(O,foFilter);

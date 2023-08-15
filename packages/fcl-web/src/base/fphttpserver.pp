@@ -1,6 +1,6 @@
 {
     $Id: header,v 1.1 2000/07/13 06:33:45 michael Exp $
-    This file is part of the Free Component Library (FCL)
+    This file is part of the Free Component Library (Fcl)
     Copyright (c) 2011- by the Free Pascal development team
     
     Simple HTTP server component.
@@ -13,15 +13,23 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+{$IFNDEF FPC_DOTTEDUNITS}
 unit fphttpserver;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode objfpc}{$H+}
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  System.Classes, System.SysUtils, System.Net.Sockets, System.Net.Sslbase, System.Net.Sslsockets, System.Net.Ssockets, System.Net.Resolve, FpWeb.Http.Defs, FpWeb.Http.Protocol,
+  Fcl.ThreadPool;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   Classes, SysUtils, sockets, sslbase, sslsockets, ssockets, resolve, httpdefs, httpprotocol,
   fpthreadpool;
+{$ENDIF FPC_DOTTEDUNITS}
 
 Const
   ReadBufLen = 4096;
@@ -699,7 +707,7 @@ procedure TFPHTTPServerConnectionListHandler.CloseConnectionSocket(aConnection: 
 begin
   if Not aConnection.IsUpgraded then
     begin
-    sockets.CloseSocket(aConnection.Socket.Handle);
+    {$IFDEF FPC_DOTTEDUNITS}System.Net.{$ENDIF}Sockets.CloseSocket(aConnection.Socket.Handle);
     aConnection.FKeepAlive:=False; // to exit the keep-alive loop for hanging sockets
     end;
 end;
@@ -808,7 +816,7 @@ end;
 procedure TFPSimpleConnectionHandler.CloseSockets;
 begin
   if Assigned(FConnection) then
-    sockets.CloseSocket(FConnection.Socket.Handle);
+    {$IFDEF FPC_DOTTEDUNITS}System.Net.{$ENDIF}Sockets.CloseSocket(FConnection.Socket.Handle);
 end;
 
 
@@ -1078,10 +1086,10 @@ procedure TFPHTTPConnection.ReadRequestContent(
 
 Var
   P,L,R : integer;
-  S : String;
+  S : TBytes;
 
 begin
-  S:='';
+  S:=[];
   L:=ARequest.ContentLength;
   If (L>0) then
     begin
@@ -1091,11 +1099,10 @@ begin
       begin
       if P>L then
         P:=L;
-      Move(FBuffer[1],S[1],P);
+      Move(FBuffer[1],S[0],P);
       FBuffer:='';
       L:=L-P;
       end;
-    P:=P+1;
     R:=1;
     While (L>0) and (R>0) do
       begin
@@ -1109,7 +1116,7 @@ begin
         end;
       end;  
     end;
-  ARequest.InitContent(S);
+  ARequest.ContentBytes:=S;
 end;
 
 function TFPHTTPConnection.ReadRequestHeaders: TFPHTTPConnectionRequest;

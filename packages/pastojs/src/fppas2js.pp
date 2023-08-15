@@ -453,7 +453,9 @@ ToDos:
 Debugging this unit: -d<x>
    VerbosePas2JS
 *)
+{$IFNDEF FPC_DOTTEDUNITS}
 unit FPPas2Js;
+{$ENDIF FPC_DOTTEDUNITS}
 
 {$mode objfpc}{$H+}
 {$inline on}
@@ -471,6 +473,16 @@ unit FPPas2Js;
 
 interface
 
+{$IFDEF FPC_DOTTEDUNITS}
+uses
+  {$ifdef pas2js}
+  {$else}
+  Fcl.AVLTree,
+  {$endif}
+  System.Classes, System.SysUtils, System.Math, System.Contnrs,
+  Js.Base, Js.Tree, Js.Writer,
+  Pascal.Tree, Pascal.Scanner, Pascal.ResolveEval, Pascal.Resolver;
+{$ELSE FPC_DOTTEDUNITS}
 uses
   {$ifdef pas2js}
   {$else}
@@ -479,6 +491,7 @@ uses
   Classes, SysUtils, math, contnrs,
   jsbase, jstree, jswriter,
   PasTree, PScanner, PasResolveEval, PasResolver;
+{$ENDIF FPC_DOTTEDUNITS}
 
 // message numbers
 const
@@ -18892,27 +18905,24 @@ var
   Call: TJSCallExpression;
   HasRTTIMembers: Boolean;
 begin
-  Call:=nil;
-  try
-    // module.$rtti.$Record("typename",{});
-    Call:=CreateRTTINewType(El,GetBIName(pbifnRTTINewRecord),false,FuncContext,ObjLit);
-    if ObjLit=nil then
-      RaiseInconsistency(20190105141430,El);
+  // module.$rtti.$Record("typename",{});
+  Call:=CreateRTTINewType(El,GetBIName(pbifnRTTINewRecord),false,FuncContext,ObjLit);
+  if ObjLit=nil then
+  begin
+    Call.Free;
 
-    HasRTTIMembers:=CreateRTTIMembers(El,Src,FuncContext,MembersSrc,MembersFuncContext,Call,false);
-    if not HasRTTIMembers then
-      begin
-      // no published members, add "module.$rtti.$Record..."
-      if Src=MembersSrc then
-        AddToSourceElements(Src,Call)
-      else
-        Src.Statements.InsertNode(0).Node:=Call;
-      end;
-
-    Call:=nil;
-  finally
-      Call.Free;
+    RaiseInconsistency(20190105141430,El);
   end;
+
+  HasRTTIMembers:=CreateRTTIMembers(El,Src,FuncContext,MembersSrc,MembersFuncContext,Call,false);
+  if not HasRTTIMembers then
+    begin
+    // no published members, add "module.$rtti.$Record..."
+    if Src=MembersSrc then
+      AddToSourceElements(Src,Call)
+    else
+      Src.Statements.InsertNode(0).Node:=Call;
+    end;
 end;
 
 function TPasToJSConverter.CreateDelayedInitMembersFunction(PosEl: TPasElement;
@@ -21226,6 +21236,8 @@ begin
         begin
         if aResolver.GetProcTemplateTypes(TPasProcedure(P))<>nil then
           continue; // parametrized functions cannot be published
+        if (P.CustomData as TPas2JSProcedureScope).SpecializedFromItem<>nil then
+          continue; // specialized function cannot be published
         NewEl:=CreateRTTIMemberMethod(Members,i,MembersFuncContext);
         end
       else if C=TPasProperty then
