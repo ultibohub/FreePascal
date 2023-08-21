@@ -5313,7 +5313,6 @@ unit aoptx86;
         { Search for:
             test  $x,(reg/ref)
             jne   @lbl1
-            ...
             test  $y,(reg/ref) (same register or reference)
             jne   @lbl1
 
@@ -5481,6 +5480,16 @@ unit aoptx86;
                         (FirstValue = -1) or
                         (SecondValue = -1) or
                         MatchOperand(taicpu(hp1_dist).oper[0]^, taicpu(hp1).oper[0]^)
+                      ) and
+                      (
+                        { In this situation, the TEST/JNE pairs must be adjacent (fixes #40366) }
+
+                        { Always adjacent under -O2 and under }
+                        not(cs_opt_level3 in current_settings.optimizerswitches) or
+                        (
+                          GetNextInstruction(hp1, hp1_last) and
+                          (hp1_last = p_dist)
+                        )
                       ) then
                       begin
                         { Same jump location... can be a register since nothing's changed }
@@ -5492,15 +5501,29 @@ unit aoptx86;
                         if IsJumpToLabel(taicpu(hp1_dist)) then
                           TAsmLabel(taicpu(hp1_dist).oper[0]^.ref^.symbol).DecRefs;
 
-                        DebugMsg(SPeepholeOptimization + 'TEST/JNE/TEST/JNE merged', p);
-                        RemoveInstruction(hp1_dist);
-
                         { Only remove the second test if no jumps or other conditional instructions follow }
                         TransferUsedRegs(TmpUsedRegs);
                         UpdateUsedRegs(TmpUsedRegs, tai(p.Next));
                         UpdateUsedRegs(TmpUsedRegs, tai(hp1.Next));
-                        if not RegUsedAfterInstruction(NR_DEFAULTFLAGS, p_dist, TmpUsedRegs) then
-                          RemoveInstruction(p_dist);
+                        UpdateUsedRegs(TmpUsedRegs, tai(p_dist.Next));
+                        if not RegUsedAfterInstruction(NR_DEFAULTFLAGS, hp1_dist, TmpUsedRegs) then
+                          begin
+                            DebugMsg(SPeepholeOptimization + 'TEST/JNE/TEST/JNE merged', p);
+                            RemoveInstruction(p_dist);
+
+                            { Remove the first jump, not the second, to keep
+                              any register deallocations between the second
+                              TEST/JNE pair in the same place.  Aids future
+                              optimisation. }
+                            RemoveInstruction(hp1);
+                          end
+                        else
+                          begin
+                            DebugMsg(SPeepholeOptimization + 'TEST/JNE/TEST/JNE merged (second TEST preserved)', p);
+
+                            { Remove second jump in this instance }
+                            RemoveInstruction(hp1_dist);
+                          end;
 
                         Result := True;
                         Exit;
@@ -11714,6 +11737,10 @@ unit aoptx86;
 
         ConstRegs: array[0..MAX_CMOV_REGISTERS - 1] of TRegister;
         ConstVals: array[0..MAX_CMOV_REGISTERS - 1] of TCGInt;
+        ConstSizes: array[0..MAX_CMOV_REGISTERS - 1] of TSubRegister; { May not match ConstRegs if one is shared over multiple CMOVs. }
+        ConstMovs: array[0..MAX_CMOV_REGISTERS - 1] of tai; { Location of initialisation instruction }
+
+        ConstWriteSizes: array[0..first_int_imreg - 1] of TSubRegister; { Largest size of register written. }
 
         { Tries to convert a mov const,%reg instruction into a CMOV by reserving a
           new register to store the constant }
@@ -11721,7 +11748,7 @@ unit aoptx86;
           var
             RegSize: TSubRegister;
             CurrentVal: TCGInt;
-            NewReg: TRegister;
+            ANewReg: TRegister;
             X: ShortInt;
           begin
             Result := False;
@@ -11739,8 +11766,10 @@ unit aoptx86;
                 RegSize := R_SUBW;
               S_L:
                 RegSize := R_SUBD;
+{$ifdef x86_64}
               S_Q:
                 RegSize := R_SUBQ;
+{$endif x86_64}
               else
                 InternalError(2021100401);
             end;
@@ -11751,6 +11780,7 @@ unit aoptx86;
               if ConstVals[X] = CurrentVal then
                 begin
                   ConstRegs[StoredCount] := ConstRegs[X];
+                  ConstSizes[StoredCount] := RegSize;
                   ConstVals[StoredCount] := CurrentVal;
                   Result := True;
 
@@ -11759,16 +11789,17 @@ unit aoptx86;
                   Exit;
                 end;
 
-            NewReg := GetIntRegisterBetween(RegSize, TmpUsedRegs, search_start_p, stop_search_p, True);
-            if NewReg = NR_NO then
+            ANewReg := GetIntRegisterBetween(R_SUBWHOLE, TmpUsedRegs, search_start_p, stop_search_p, True);
+            if ANewReg = NR_NO then
               { No free registers }
               Exit;
 
             { Reserve the register so subsequent TryCMOVConst calls don't all end
               up vying for the same register }
-            IncludeRegInUsedRegs(NewReg, TmpUsedRegs);
+            IncludeRegInUsedRegs(ANewReg, TmpUsedRegs);
 
-            ConstRegs[StoredCount] := NewReg;
+            ConstRegs[StoredCount] := ANewReg;
+            ConstSizes[StoredCount] := RegSize;
             ConstVals[StoredCount] := CurrentVal;
 
             Inc(StoredCount);
@@ -12239,10 +12270,13 @@ unit aoptx86;
                      l := 0;
                      c := 0;
 
-                     { Initialise RegWrites, ConstRegs and ConstVals }
+                     { Initialise RegWrites, ConstRegs, ConstVals, ConstSizes, ConstWriteSizes and ConstMovs }
                      FillChar(RegWrites[0], MAX_CMOV_INSTRUCTIONS * 2 * SizeOf(TRegister), 0);
                      FillChar(ConstRegs[0], MAX_CMOV_REGISTERS * SizeOf(TRegister), 0);
                      FillChar(ConstVals[0], MAX_CMOV_REGISTERS * SizeOf(TCGInt), 0);
+                     FillChar(ConstSizes[0], MAX_CMOV_REGISTERS * SizeOf(TSubRegister), 0);
+                     FillChar(ConstWriteSizes[0], first_int_imreg * SizeOf(TOpSize), 0);
+                     FillChar(ConstMovs[0], MAX_CMOV_REGISTERS * SizeOf(taicpu), 0);
 
                      RefModified := False;
                      while assigned(hp1) and
@@ -12338,7 +12372,7 @@ unit aoptx86;
                                           below) }
                                         if not TmpUsedRegs[R_INTREGISTER].IsUsed(ConstRegs[x]) then
                                           begin
-                                            hp_new := taicpu.op_const_reg(A_MOV, taicpu(hp1).opsize, taicpu(hp1).oper[0]^.val, ConstRegs[x]);
+                                            hp_new := taicpu.op_const_reg(A_MOV, subreg2opsize(R_SUBWHOLE), taicpu(hp1).oper[0]^.val, ConstRegs[X]);
                                             taicpu(hp_new).fileinfo := taicpu(hp_prev).fileinfo;
 
                                             asml.InsertBefore(hp_new, hp_flagalloc);
@@ -12346,14 +12380,20 @@ unit aoptx86;
                                               TrySwapMovOp(hp_prev2, hp_new);
 
                                             IncludeRegInUsedRegs(ConstRegs[x], TmpUsedRegs);
+
+                                            ConstMovs[X] := hp_new;
                                           end
                                         else
                                         { We just need an instruction between hp_prev and hp1
                                           where we know the register is marked as in use }
                                           hp_new := hpmov1;
 
+                                        { Keep track of largest write for this register so it can be optimised later }
+                                        if (getsubreg(taicpu(hp1).oper[1]^.reg) > ConstWriteSizes[getsupreg(ConstRegs[X])]) then
+                                          ConstWriteSizes[getsupreg(ConstRegs[X])] := getsubreg(taicpu(hp1).oper[1]^.reg);
+
                                         AllocRegBetween(ConstRegs[x], hp_new, hp1, UsedRegs);
-                                        taicpu(hp1).loadreg(0, ConstRegs[x]);
+                                        taicpu(hp1).loadreg(0, newreg(R_INTREGISTER, getsupreg(ConstRegs[X]), ConstSizes[X]));
                                         Inc(x);
                                       end;
 
@@ -12364,6 +12404,14 @@ unit aoptx86;
                                 UpdateUsedRegs(tai(hp1.next));
                                 GetNextInstruction(hp1, hp1);
                               until (hp1 = hp_lblxxx);
+
+                              { Update initialisation MOVs to the smallest possible size }
+                              for c := 0 to x - 1 do
+                                if Assigned(ConstMovs[c]) then
+                                  begin
+                                    taicpu(ConstMovs[c]).opsize := subreg2opsize(ConstWriteSizes[Word(ConstRegs[c])]);
+                                    setsubreg(taicpu(ConstMovs[c]).oper[1]^.reg, ConstWriteSizes[Word(ConstRegs[c])]);
+                                  end;
 
                               hp2 := hp_lblxxx;
                               repeat
@@ -12591,7 +12639,8 @@ unit aoptx86;
                                         RegMatch := False;
 
                                         for x := 0 to c - 1 do
-                                          if (ConstVals[x] = taicpu(hp1).oper[0]^.val) then
+                                          if (ConstVals[x] = taicpu(hp1).oper[0]^.val) and
+                                            (getsubreg(taicpu(hp1).oper[1]^.reg) = ConstSizes[X]) then
                                             begin
                                               RegMatch := True;
 
@@ -12602,20 +12651,26 @@ unit aoptx86;
                                                 below) }
                                               if not TmpUsedRegs[R_INTREGISTER].IsUsed(ConstRegs[x]) then
                                                 begin
-                                                  hp_new := taicpu.op_const_reg(A_MOV, taicpu(hp1).opsize, taicpu(hp1).oper[0]^.val, ConstRegs[x]);
+                                                  hp_new := taicpu.op_const_reg(A_MOV, subreg2opsize(R_SUBWHOLE), taicpu(hp1).oper[0]^.val, ConstRegs[X]);
                                                   asml.InsertBefore(hp_new, hp_flagalloc);
                                                   if Assigned(hp_prev2) then
                                                     TrySwapMovOp(hp_prev2, hp_new);
 
                                                   IncludeRegInUsedRegs(ConstRegs[x], TmpUsedRegs);
+
+                                                  ConstMovs[X] := hp_new;
                                                 end
                                               else
                                                 { We just need an instruction between hp_prev and hp1
                                                   where we know the register is marked as in use }
                                                 hp_new := hpmov2;
 
+                                              { Keep track of largest write for this register so it can be optimised later }
+                                              if (getsubreg(taicpu(hp1).oper[1]^.reg) > ConstWriteSizes[getsupreg(ConstRegs[X])]) then
+                                                ConstWriteSizes[getsupreg(ConstRegs[X])] := getsubreg(taicpu(hp1).oper[1]^.reg);
+
                                               AllocRegBetween(ConstRegs[x], hp_new, hp1, UsedRegs);
-                                              taicpu(hp1).loadreg(0, ConstRegs[x]);
+                                              taicpu(hp1).loadreg(0, newreg(R_INTREGISTER, getsupreg(ConstRegs[X]), ConstSizes[X]));
                                               Break;
                                             end;
 
@@ -12673,7 +12728,8 @@ unit aoptx86;
                                         RegMatch := False;
 
                                         for x := 0 to c - 1 do
-                                          if (ConstVals[x] = taicpu(hp1).oper[0]^.val) then
+                                          if (ConstVals[x] = taicpu(hp1).oper[0]^.val) and
+                                            (getsubreg(taicpu(hp1).oper[1]^.reg) = ConstSizes[X]) then
                                             begin
                                               RegMatch := True;
 
@@ -12684,20 +12740,26 @@ unit aoptx86;
                                                 below) }
                                               if not TmpUsedRegs[R_INTREGISTER].IsUsed(ConstRegs[x]) then
                                                 begin
-                                                  hp_new := taicpu.op_const_reg(A_MOV, taicpu(hp1).opsize, taicpu(hp1).oper[0]^.val, ConstRegs[x]);
+                                                  hp_new := taicpu.op_const_reg(A_MOV, subreg2opsize(R_SUBWHOLE), taicpu(hp1).oper[0]^.val, ConstRegs[X]);
                                                   asml.InsertBefore(hp_new, hp_flagalloc);
                                                   if Assigned(hp_prev2) then
                                                     TrySwapMovOp(hp_prev2, hp_new);
 
                                                   IncludeRegInUsedRegs(ConstRegs[x], TmpUsedRegs);
+
+                                                  ConstMovs[X] := hp_new;
                                                 end
                                               else
                                                 { We just need an instruction between hp_prev and hp1
                                                   where we know the register is marked as in use }
                                                 hp_new := hpmov1;
 
+                                              { Keep track of largest write for this register so it can be optimised later }
+                                              if (getsubreg(taicpu(hp1).oper[1]^.reg) > ConstWriteSizes[getsupreg(ConstRegs[X])]) then
+                                                ConstWriteSizes[getsupreg(ConstRegs[X])] := getsubreg(taicpu(hp1).oper[1]^.reg);
+
                                               AllocRegBetween(ConstRegs[x], hp_new, hp1, UsedRegs);
-                                              taicpu(hp1).loadreg(0, ConstRegs[x]);
+                                              taicpu(hp1).loadreg(0, newreg(R_INTREGISTER, getsupreg(ConstRegs[X]), ConstSizes[X]));
                                               Break;
                                             end;
 
@@ -12711,6 +12773,14 @@ unit aoptx86;
 
                                 GetNextInstruction(hp1, hp1);
                               until (hp1 = hp_jump); { Stop at the jump, not lbl xxx }
+
+                              { Update initialisation MOVs to the smallest possible size }
+                              for x := 0 to c - 1 do
+                                if Assigned(ConstMovs[x]) then
+                                  begin
+                                    taicpu(ConstMovs[x]).opsize := subreg2opsize(ConstWriteSizes[Word(ConstRegs[x])]);
+                                    setsubreg(taicpu(ConstMovs[x]).oper[1]^.reg, ConstWriteSizes[Word(ConstRegs[x])]);
+                                  end;
 
                               UpdateUsedRegs(tai(hp_jump.next));
                               UpdateUsedRegs(tai(hp_lblyyy.next));
