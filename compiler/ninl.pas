@@ -446,12 +446,6 @@ implementation
               ((def.typ=objectdef) and not is_object(def)) then
             internalerror(201202101);
 
-          if df_generic in current_procinfo.procdef.defoptions then
-            begin
-              result:=cpointerconstnode.create(0,def);
-              exit;
-            end;
-
           { extra '$' prefix because on darwin the result of makemangledname
             is prefixed by '_' and hence adding a '$' at the start of the
             prefix passed to makemangledname doesn't help (the whole point of
@@ -496,7 +490,18 @@ implementation
       begin
         if not assigned(left) or (left.nodetype<>typen) then
           internalerror(2012032102);
+
         def:=ttypenode(left).typedef;
+        if df_generic in current_procinfo.procdef.defoptions then
+          begin
+            { don't allow as a default parameter value }
+            if block_type<>bt_const then
+              result:=cpointerconstnode.create(0,def)
+            else
+              result:=cerrornode.create;
+            exit;
+          end;
+
         result:=nil;
         case def.typ of
           enumdef,
