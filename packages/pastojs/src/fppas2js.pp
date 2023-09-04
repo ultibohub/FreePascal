@@ -484,10 +484,6 @@ uses
   Pascal.Tree, Pascal.Scanner, Pascal.ResolveEval, Pascal.Resolver;
 {$ELSE FPC_DOTTEDUNITS}
 uses
-  {$ifdef pas2js}
-  {$else}
-  AVL_Tree,
-  {$endif}
   Classes, SysUtils, math, contnrs,
   jsbase, jstree, jswriter,
   PasTree, PScanner, PasResolveEval, PasResolver;
@@ -21219,7 +21215,7 @@ begin
       // check visibility
       case mt of
       mtClass:
-        if P.Visibility<>visPublished then continue;
+        if (P.Visibility<>visPublished) and (not P.InheritsFrom(TPasConstructor) or (P.Visibility <> visPublic)) then continue;
       mtInterface: ; // all members of an interface are published
       mtRecord:
         // a published record publishes all non private members
