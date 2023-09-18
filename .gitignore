@@ -105,3 +105,4 @@ fpmake
 packages/fcl-db/tests/database.ini
 /rtl/ultibo
 /packages/ultibounits
+/rtl/namespaced/ultibo
