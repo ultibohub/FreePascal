@@ -450,7 +450,7 @@ DXETYPEUNIT=DOSApi.Dxetype
 DYNLIBSUNIT=System.DynLibs
 EMU387UNIT=DOSApi.EMU387
 EMXUNIT=DOSApi.EMX
-ERRORSUNIT=System.Errors
+ERRORSUNIT=UnixApi.Errors
 ESP32UNIT=System.Esp32
 ESP8266UNIT=System.Esp8266
 ESP8266RTOS_30300UNIT=System.Esp8266rtos_30300
@@ -459,13 +459,14 @@ ESPIDF_40100UNIT=System.Espidf_40100
 ESPIDF_40200UNIT=System.Espidf_40200
 ESPIDF_40400UNIT=System.Espidf_40400
 EXEUNIT=OS2Api.exe
-EXEINFOUNIT=System.Exeinfo
+EXEINFOUNIT=System.ExeInfo
 EXTPASUNIT=extpas
 FE310G000UNIT=EmbeddedApi.fe310g000
 FE310G002UNIT=EmbeddedApi.fe310g002
 FGLUNIT=System.FGL
 FPCMEMDLLUNIT=System.FPCMemDLL
 FPCYLIXUNIT=fpcylix
+FPINTRESUNIT=fpintres
 FPWIDESTRINGUNIT=System.FPWideString
 FREEBSDUNIT=FreeBSDApi.FreeBSD
 GD32VF103XXUNIT=EmbeddedApi.gd32vf103xx
@@ -497,6 +498,7 @@ LPC8XXUNIT=EmbeddedApi.lpc8xx
 LSTRINGSUNIT=System.LStrings
 MACOSUNIT=MacOSApi.MacOS
 MACOSTPUNIT=MacOSApi.MacOSTP
+MACPASUNIT=macpas
 MACUTILSUNIT=MacOSApi.MacUtils
 MAILBOXUNIT=EmbeddedApi.mailbox
 MATHUNIT=System.Math
@@ -525,6 +527,7 @@ NWSERVUNIT=NetWareApi.Nwserv
 NWSNUTUNIT=NetWareApi.Nwsnut
 OBJCUNIT=objc
 OBJCBASEUNIT=objcbase
+OBJPASUNIT=objpas
 OS2DEFUNIT=OS2Api.os2def
 PAGEMEMUNIT=System.PageMem
 PILOTUNIT=PalmApi.Pilot
@@ -598,6 +601,7 @@ UNIXUNIT=UnixApi.Unix
 UNIXCPUNIT=UnixApi.CP
 UNIXTYPEUNIT=UnixApi.Types
 UNIXUTILUNIT=UnixApi.Utils
+UUCHARUNIT=uuchar
 VIOCALLSUNIT=OS2Api.viocalls
 WASIAPIUNIT=WASIApi.WASIApi
 WASIUTILUNIT=WASIApi.WASIUtil
@@ -611,8 +615,6 @@ WINSYSUTUNIT=WinApi.WinSysUt
 WINTYPESUNIT=WinApi.WinTypes
 X86UNIT=System.X86
 XMC4500UNIT=EmbeddedApi.xmc4500
-EXEINFOUNIT=System.ExeInfo
-ERRORSUNIT=UnixApi.Errors
 else
 AIOUNIT=aio
 ALLWINNER_A20UNIT=allwinner_a20
@@ -710,6 +712,7 @@ FE310G002UNIT=fe310g002
 FGLUNIT=fgl
 FPCMEMDLLUNIT=fpcmemdll
 FPCYLIXUNIT=fpcylix
+FPINTRESUNIT=fpintres
 FPWIDESTRINGUNIT=fpwidestring
 FREEBSDUNIT=freebsd
 GD32VF103XXUNIT=gd32vf103xx
@@ -742,6 +745,7 @@ LSTRINGSUNIT=lstrings
 MACOSUNIT=macos
 MACOSTPUNIT=macostp
 MACUTILSUNIT=macutils
+MACPASUNIT=macpas
 MAILBOXUNIT=mailbox
 MATHUNIT=math
 MESSAGESUNIT=messages
@@ -769,6 +773,7 @@ NWSERVUNIT=nwserv
 NWSNUTUNIT=nwsnut
 OBJCUNIT=objc
 OBJCBASEUNIT=objcbase
+OBJPASUNIT=objpas
 OS2DEFUNIT=os2def
 PAGEMEMUNIT=pagemem
 PILOTUNIT=pilot
@@ -842,6 +847,7 @@ UNIXUNIT=unix
 UNIXCPUNIT=unixcp
 UNIXTYPEUNIT=unixtype
 UNIXUTILUNIT=unixutil
+UUCHARUNIT=uuchar
 VIOCALLSUNIT=viocalls
 WASIAPIUNIT=wasiapi
 WASIUTILUNIT=wasiutil
@@ -865,12 +871,12 @@ OPT:=$(OPT) -dFPC_DOTTEDUNITS
 BASEINCLUDE=$(INC) $(PROCINC)
 BASESOURCE=$(INC) $(PROCINC) $($(COMMONUNIT))
 endif
-CPUNITSBASE=$(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $(CP1255UNIT) $(CP1256UNIT) $(CP1257UNIT) $(CP1258UNIT) \
+CP_UNITS=$(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $(CP1255UNIT) $(CP1256UNIT) $(CP1257UNIT) $(CP1258UNIT) \
       $(CP437UNIT) $(CP646UNIT) $(CP737UNIT) $(CP775UNIT) $(CP850UNIT) $(CP852UNIT) $(CP855UNIT) $(CP856UNIT) $(CP857UNIT) $(CP860UNIT) $(CP861UNIT) $(CP862UNIT) \
       $(CP863UNIT) $(CP864UNIT) $(CP865UNIT) $(CP866UNIT) $(CP869UNIT) $(CP874UNIT) $(CP3021UNIT) $(CP8859_1UNIT) $(CP8859_2UNIT) $(CP8859_3UNIT) $(CP8859_4UNIT) \
       $(CP8859_5UNIT) $(CP8859_6UNIT) $(CP8859_7UNIT) $(CP8859_8UNIT) $(CP8859_9UNIT) $(CP8859_10UNIT) $(CP8859_11UNIT) \
       $(CP8859_13UNIT) $(CP8859_14UNIT) $(CP8859_15UNIT) $(CP8859_16UNIT) $(CPKOI8_RUNIT) $(CPKOI8_UUNIT)
-CPUNITS=$(addprefix $(NS_CPUNITS),$(CPUNITSBASE))
+CP_UNITS_SRC=$(addsuffix .pas,$(addprefix $(RTL)/charmaps/,$(CP_UNITS)))
 RTL=..
 INC=$(RTL)/inc
 COMMON=$(RTL)/common
@@ -886,7 +892,7 @@ ifeq ($(findstring $(ARCH),i386 x86_64 arm),$(ARCH))
 CPU_UNITS=cpu
 endif
 ifeq ($(ARCH),i386)
-CPU_UNITS+=mmx
+CPU_UNITS+=$(MMXUNIT)
 endif
 SYSTEMUNIT=system
 ifdef RELEASE
@@ -894,40 +900,40 @@ override FPCOPT+=-Ur
 endif
 OBJPASDIR=$(RTL)/objpas
 ifeq ($(CPU_OS_TARGET),i386-android)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) uuchar unixtype ctypes baseunix strings objpas macpas iso7185 extpas syscall unixutil fpintres heaptrc lineinfo lnfodwrf termio unix linux initc cmem linuxvcs sysutils typinfo math charset cpall character getopts errors dl dynlibs types  sysconst cthreads sortbase classes fgl  rtlconsts dos cwstring fpcylix unixcp fpwidestring softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) $(UUCHARUNIT) unixtype ctypes baseunix $(STRINGSUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) syscall unixutil $(FPINTRESUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) termio unix linux initc $(CMEMUNIT) linuxvcs sysutils typinfo math $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types  sysconst cthreads $(SORTBASEUNIT) classes $(FGLUNIT)  rtlconsts dos cwstring fpcylix $(UNIXCPUNIT) $(FPWIDESTRINGUNIT) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),x86_64-android)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) uuchar unixtype ctypes baseunix strings objpas macpas iso7185 extpas syscall unixutil fpintres heaptrc lineinfo lnfodwrf termio unix linux initc cmem linuxvcs sysutils typinfo math charset cpall character getopts errors dl dynlibs types  sysconst cthreads sortbase classes fgl  rtlconsts dos cwstring fpcylix unixcp fpwidestring softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) $(UUCHARUNIT) unixtype ctypes baseunix $(STRINGSUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) syscall unixutil $(FPINTRESUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) termio unix linux initc $(CMEMUNIT) linuxvcs sysutils typinfo math $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types  sysconst cthreads $(SORTBASEUNIT) classes $(FGLUNIT)  rtlconsts dos cwstring fpcylix $(UNIXCPUNIT) $(FPWIDESTRINGUNIT) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),arm-android)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) uuchar unixtype ctypes baseunix strings objpas macpas iso7185 extpas syscall unixutil fpintres heaptrc lineinfo lnfodwrf termio unix linux initc cmem linuxvcs sysutils typinfo math charset cpall character getopts errors dl dynlibs types  sysconst cthreads sortbase classes fgl  rtlconsts dos cwstring fpcylix unixcp fpwidestring softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) $(UUCHARUNIT) unixtype ctypes baseunix $(STRINGSUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) syscall unixutil $(FPINTRESUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) termio unix linux initc $(CMEMUNIT) linuxvcs sysutils typinfo math $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types  sysconst cthreads $(SORTBASEUNIT) classes $(FGLUNIT)  rtlconsts dos cwstring fpcylix $(UNIXCPUNIT) $(FPWIDESTRINGUNIT) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),mipsel-android)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) uuchar unixtype ctypes baseunix strings objpas macpas iso7185 extpas syscall unixutil fpintres heaptrc lineinfo lnfodwrf termio unix linux initc cmem linuxvcs sysutils typinfo math charset cpall character getopts errors dl dynlibs types  sysconst cthreads sortbase classes fgl  rtlconsts dos cwstring fpcylix unixcp fpwidestring softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) $(UUCHARUNIT) unixtype ctypes baseunix $(STRINGSUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) syscall unixutil $(FPINTRESUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) termio unix linux initc $(CMEMUNIT) linuxvcs sysutils typinfo math $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types  sysconst cthreads $(SORTBASEUNIT) classes $(FGLUNIT)  rtlconsts dos cwstring fpcylix $(UNIXCPUNIT) $(FPWIDESTRINGUNIT) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),jvm-android)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) uuchar unixtype ctypes baseunix strings objpas macpas iso7185 extpas syscall unixutil fpintres heaptrc lineinfo lnfodwrf termio unix linux initc cmem linuxvcs sysutils typinfo math charset cpall character getopts errors dl dynlibs types  sysconst cthreads sortbase classes fgl  rtlconsts dos cwstring fpcylix unixcp fpwidestring softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) $(UUCHARUNIT) unixtype ctypes baseunix $(STRINGSUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) syscall unixutil $(FPINTRESUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) termio unix linux initc $(CMEMUNIT) linuxvcs sysutils typinfo math $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types  sysconst cthreads $(SORTBASEUNIT) classes $(FGLUNIT)  rtlconsts dos cwstring fpcylix $(UNIXCPUNIT) $(FPWIDESTRINGUNIT) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),aarch64-android)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) uuchar unixtype ctypes baseunix strings objpas macpas iso7185 extpas syscall unixutil fpintres heaptrc lineinfo lnfodwrf termio unix linux initc cmem linuxvcs sysutils typinfo math charset cpall character getopts errors dl dynlibs types  sysconst cthreads sortbase classes fgl  rtlconsts dos cwstring fpcylix unixcp fpwidestring softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=$(SYSTEMUNIT) $(SYSINIT_UNITS) $(CPU_UNITS) $(UUCHARUNIT) unixtype ctypes baseunix $(STRINGSUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) syscall unixutil $(FPINTRESUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) termio unix linux initc $(CMEMUNIT) linuxvcs sysutils typinfo math $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types  sysconst cthreads $(SORTBASEUNIT) classes $(FGLUNIT)  rtlconsts dos cwstring fpcylix $(UNIXCPUNIT) $(FPWIDESTRINGUNIT) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),i386-android)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u unicodedata
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),x86_64-android)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u unicodedata
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),arm-android)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u unicodedata
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),mipsel-android)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u unicodedata
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),jvm-android)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u unicodedata
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),aarch64-android)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u unicodedata
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),i386-android)
 override TARGET_LOADERS+=$(LOADERS)
@@ -1038,7 +1044,7 @@ endif
 ifeq ($(CPU_OS_TARGET),aarch64-android)
 override COMPILER_TARGETDIR+=.
 endif
-override SHARED_LIBUNITS=$(SYSTEMUNIT) objpas strings dos unix baseunix unixtype unixutil sysutils typinfo math $(CPU_UNITS) getopts errors sockets sortbase classes fgl sysconst rtlconsts 
+override SHARED_LIBUNITS=$(SYSTEMUNIT) $(OBJPASUNIT) $(STRINGSUNIT) dos unix baseunix unixtype unixutil sysutils typinfo math $(CPU_UNITS) $(GETOPTSUNIT) $(ERRORSUNIT) sockets $(SORTBASEUNIT) classes $(FGLUNIT) sysconst rtlconsts 
 ifdef REQUIRE_UNITSDIR
 override UNITSDIR+=$(REQUIRE_UNITSDIR)
 endif
@@ -2387,7 +2393,7 @@ MACPAS_DEPS=$(INC)/macpas.pp \
 	    $(MACPAS_DEPS_OS)  $(MACPAS_DEPS_CPU)
 macpas$(PPUEXT) : $(MACPAS_DEPS)
 	$(COMPILER) $(MACPAS_OPT) $<
-ISO7185_DEPS= $(INC)/$(ISO7185UNIT).pp \
+ISO7185_DEPS= $(INC)/iso7185.pp \
 	      $(SYSTEMUNIT)$(PPUEXT) \
 	      $(ISO7185_DEPS_OS) $(ISO7185_DEPS_CPU)
 iso7185$(PPUEXT) : $(ISO7185_DEPS)
@@ -2446,6 +2452,7 @@ ufloat128$(PPUEXT) : $(UFLOAT128_DEPS)
 System.UFloat128$(PPUEXT) : $(NSINC)/System.UFloat128.pp $(UFLOAT128_DEPS)
 	$(COMPILER) $(UFLOAT128_OPT) $<
 STRINGS_DEPS=$(INC)/strings.pp $(INC)/stringsi.inc $(PROCINC)/stringss.inc $(PROCINC)/strings.inc \
+	     $(INC)/genstr.inc $(INC)/genstrs.inc $(INC)/cgenstr.inc \
 	     $(SYSTEMUNIT)$(PPUEXT)  \
 	     $(STRINGS_DEPS_OS)
 strings$(PPUEXT) : $(STRINGS_DEPS)
@@ -2666,7 +2673,7 @@ unicodedata$(PPUEXT) : $(UNICODEDATA_DEPS)
 	$(COMPILER) -Fi$(OBJPASDIR) $(UNICODEDATA_OPT) $<
 System.CodePages.unicodedata$(PPUEXT) : $(NSINC)/System.CodePages.unicodedata.pas $(UNICODEDATA_DEPS)
 	$(COMPILER) -Fi$(OBJPASDIR) $(UNICODEDATA_OPT) $<
-CPALL_DEPS=$(RTL)/charmaps/cpall.pas \
+CPALL_DEPS=$(RTL)/charmaps/cpall.pas $(CP_UNITS_SRC) \
 	  system$(PPUEXT) $(CHARSETUNIT)$(PPUEXT) \
 	  $(CPALL_DEPS_OS) $(CPALL_DEPS_CPU)
 cpall$(PPUEXT): $(CPALL_DEPS)  
@@ -2991,14 +2998,6 @@ dllprt0$(OEXT) : dllprt0.as
 	$(AS) $(ASTARGET) -o $(UNITTARGETDIRPREFIX)dllprt0$(OEXT) --defsym CPU$(CPUBITS)=1 dllprt0.as
 $(SYSTEMUNIT)$(PPUEXT) : $(LINUXINC)/$(SYSTEMUNIT).pp $(SYSDEPS)
 	$(COMPILER) $(FPC_SYSTEM_OPT) -Us -Sg $(LINUXINC)/$(SYSTEMUNIT).pp
-uuchar$(PPUEXT): $(SYSTEMUNIT)$(PPUEXT) $(INC)/uuchar.pp
-	$(COMPILER) $(INC)/uuchar.pp
-objpas$(PPUEXT): $(OBJPASDIR)/objpas.pp $(INC)/except.inc $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/objpas.pp
-strings$(PPUEXT) : $(INC)/strings.pp $(INC)/stringsi.inc\
-		   $(PROCINC)/strings.inc $(PROCINC)/stringss.inc\
-		   $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/strings.pp
 unix$(PPUEXT) : $(UNIXINC)/unix.pp strings$(PPUEXT) baseunix$(PPUEXT) $(INC)/textrec.inc $(INC)/filerec.inc \
 		 $(LINUXINC)/unxconst.inc $(UNIXINC)/timezone.inc $(SYSTEMUNIT)$(PPUEXT) \
 		 $(LINUXINC)/unxfunc.inc unixandroid.inc cwstring$(PPUEXT)
@@ -3017,76 +3016,42 @@ baseunix$(PPUEXT) : $(UNIXINC)/baseunix.pp $(LINUXINC)/errno.inc $(LINUXINC)/pty
 	$(COMPILER) $(UNIXINC)/baseunix.pp
 dl$(PPUEXT) : $(UNIXINC)/dl.pp $(SYSTEMUNIT)$(PPUEXT) ctypes$(PPUEXT) dlandroid.inc
 	$(COMPILER) $(UNIXINC)/dl.pp
-dynlibs$(PPUEXT) : $(INC)/dynlibs.pas $(UNIXINC)/dynlibs.inc dl$(PPUEXT) objpas$(PPUEXT)
+dynlibs$(PPUEXT) : $(INC)/dynlibs.pas $(UNIXINC)/dynlibs.inc dl$(PPUEXT) $(OBJPASUNIT)$(PPUEXT)
 	$(COMPILER) $(INC)/dynlibs.pas
 initc$(PPUEXT) : $(UNIXINC)/initc.pp ctypes$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(UNIXINC)/initc.pp
-unixcp$(PPUEXT) : $(UNIXINC)/unixcp.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT) baseunix$(PPUEXT)
-	$(COMPILER) $(UNIXINC)/unixcp.pp
 dos$(PPUEXT) : $(UNIXINC)/dos.pp $(INC)/filerec.inc $(INC)/textrec.inc strings$(PPUEXT) \
 	       unix$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(UNIXINC)/dos.pp
 sysutils$(PPUEXT) : $(UNIXINC)/sysutils.pp $(wildcard $(OBJPASDIR)/sysutils/*.inc) \
-		    objpas$(PPUEXT) unix$(PPUEXT) errors$(PPUEXT) sysconst$(PPUEXT)
+		    $(OBJPASUNIT)$(PPUEXT) unix$(PPUEXT) $(ERRORSUNIT)$(PPUEXT) sysconst$(PPUEXT)
 	$(COMPILER) -Fi$(OBJPASDIR)/sysutils $(UNIXINC)/sysutils.pp
 classes$(PPUEXT) : $(UNIXINC)/classes.pp $(wildcard $(OBJPASDIR)/classes/*.inc) \
-		   sysutils$(PPUEXT) typinfo$(PPUEXT) rtlconsts$(PPUEXT) fgl$(PPUEXT) sortbase$(PPUEXT)
+		   sysutils$(PPUEXT) typinfo$(PPUEXT) rtlconsts$(PPUEXT) $(FGLUNIT)$(PPUEXT) sortbase$(PPUEXT)
 	$(COMPILER) -Fi$(OBJPASDIR)/classes $(UNIXINC)/classes.pp
-typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp objpas$(PPUEXT) sysutils$(PPUEXT) rtlconsts$(PPUEXT)
+typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT) rtlconsts$(PPUEXT)
 	$(COMPILER) -Sg $(OBJPASDIR)/typinfo.pp
-character$(PPUEXT): $(OBJPASDIR)/character.pas objpas$(PPUEXT) sysutils$(PPUEXT) rtlconsts$(PPUEXT)
-	$(COMPILER) $(OBJPASDIR)/character.pas
-math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+math$(PPUEXT): $(OBJPASDIR)/math.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/math.pp
-fgl$(PPUEXT) : $(OBJPASDIR)/fgl.pp objpas$(PPUEXT) types$(PPUEXT) system$(PPUEXT) sysutils$(PPUEXT) sortbase$(PPUEXT)
-	$(COMPILER) $(OBJPASDIR)/fgl.pp
-types$(PPUEXT) : $(OBJPASDIR)/types.pp objpas$(PPUEXT) math$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+types$(PPUEXT) : $(OBJPASDIR)/types.pp $(OBJPASUNIT)$(PPUEXT) math$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/types.pp
-sysconst$(PPUEXT) : $(OBJPASDIR)/sysconst.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+sysconst$(PPUEXT) : $(OBJPASDIR)/sysconst.pp $(OBJPASUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/sysconst.pp
-rtlconsts$(PPUEXT) : $(OBJPASDIR)/rtlconsts.pp objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+rtlconsts$(PPUEXT) : $(OBJPASDIR)/rtlconsts.pp $(OBJPASUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/rtlconsts.pp
-macpas$(PPUEXT) : $(INC)/macpas.pp objpas$(PPUEXT) math$(PPUEXT)
-	$(COMPILER) $(INC)/macpas.pp $(REDIR)
 ifneq ($(findstring $(ARCH),x86_64 i386),)
-cpu$(PPUEXT) : $(PROCINC)/cpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT) sysutils$(PPUEXT)
+cpu$(PPUEXT) : $(PROCINC)/cpu.pp $(SYSTEMUNIT)$(PPUEXT) $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT)
 else
-cpu$(PPUEXT) : $(PROCINC)/cpu.pp $(SYSTEMUNIT)$(PPUEXT) objpas$(PPUEXT)
+cpu$(PPUEXT) : $(PROCINC)/cpu.pp $(SYSTEMUNIT)$(PPUEXT) $(OBJPASUNIT)$(PPUEXT)
 endif
 	$(COMPILER) $(PROCINC)/cpu.pp
-mmx$(PPUEXT) : $(PROCINC)/mmx.pp cpu$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(PROCINC)/mmx.pp
-getopts$(PPUEXT) : $(INC)/getopts.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/getopts.pp
-heaptrc$(PPUEXT) : $(INC)/heaptrc.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) -Sg $(INC)/heaptrc.pp
-lineinfo$(PPUEXT) : $(INC)/lineinfo.pp $(SYSTEMUNIT)$(PPUEXT) sysutils$(PPUEXT)
-	$(COMPILER) $(INC)/lineinfo.pp
-lnfodwrf$(PPUEXT) : $(INC)/lnfodwrf.pp $(SYSTEMUNIT)$(PPUEXT) sysutils$(PPUEXT) lineinfo$(PPUEXT)
-	$(COMPILER) $(INC)/lnfodwrf.pp
-charset$(PPUEXT) : $(INC)/charset.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/charset.pp
-cpall$(PPUEXT): $(RTL)/charmaps/cpall.pas system$(PPUEXT) charset$(PPUEXT)
-	$(COMPILER) -Fu$(INC) -Fi$(RTL)/charmaps $(RTL)/charmaps/cpall.pas
-iso7185$(PPUEXT) : $(INC)/iso7185.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/iso7185.pp
-extpas$(PPUEXT) : $(INC)/extpas.pp dos$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/extpas.pp
-fpintres$(PPUEXT) : $(INC)/fpintres.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/fpintres.pp
-errors$(PPUEXT) : $(UNIXINC)/errors.pp strings$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(UNIXINC)/errors.pp
-callspec$(PPUEXT) : $(INC)/callspec.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/callspec.pp
-cmem$(PPUEXT) : $(INC)/cmem.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/cmem.pp
 cthreads$(PPUEXT) : $(UNIXINC)/cthreads.pp $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(UNIXINC)/cthreads.pp
 cwstring$(PPUEXT) : cwstring.pp $(SYSTEMUNIT)$(PPUEXT) dynlibs$(PPUEXT)
 	$(COMPILER) cwstring.pp
 ctypes$(PPUEXT) :  $(INC)/ctypes.pp $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(INC)/ctypes.pp
-fpcylix$(PPUEXT) : $(LINUXINC)/fpcylix.pp cthreads$(PPUEXT) cwstring$(PPUEXT) dynlibs$(PPUEXT) objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+fpcylix$(PPUEXT) : $(LINUXINC)/fpcylix.pp cthreads$(PPUEXT) cwstring$(PPUEXT) dynlibs$(PPUEXT) $(OBJPASUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(LINUXINC)/fpcylix.pp
 termio$(PPUEXT) : $(LINUXINC)/termio.pp $(SYSTEMUNIT)$(PPUEXT) baseunix$(PPUEXT)
 	$(COMPILER) $(LINUXINC)/termio.pp

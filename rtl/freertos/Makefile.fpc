@@ -12,8 +12,8 @@ loaders=$(LOADERS)
 # not all targets include enough features to build all units so
 # the common units which are not compiled for all CPUs are stored in
 # CPU_SPECIFIC_COMMON_UNITS
-units=$(SYSTEMUNIT) $(CPU_UNITS) uuchar objpas iso7185 extpas heapmgr consoleio  $(CPU_SPECIFIC_COMMON_UNITS) \
-# macpas iso7185 strings
+units=$(SYSTEMUNIT) $(CPU_UNITS) $(UUCHARUNIT) objpas $(ISO7185UNIT) $(EXTPASUNIT) heapmgr consoleio  $(CPU_SPECIFIC_COMMON_UNITS) \
+# $(MACPASUNIT) $(ISO7185UNIT) $(STRINGSUNIT)
        $(STRINGSUNIT) \
        $(SORTBASEUNIT) \
        $(DOSUNIT) \
@@ -21,13 +21,7 @@ units=$(SYSTEMUNIT) $(CPU_UNITS) uuchar objpas iso7185 extpas heapmgr consoleio 
        $(CHARSETUNIT) $(CPALLUNIT) \
        $(SYSCONSTUNIT) \
        $(CHARACTERUNIT)
-implicitunits=$(EXEINFOUNIT) \
-      $(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $(CP1255UNIT) $(CP1256UNIT) $(CP1257UNIT) $(CP1258UNIT) \
-      $(CP437UNIT) $(CP646UNIT) $(CP737UNIT) $(CP775UNIT) $(CP850UNIT) $(CP852UNIT) $(CP855UNIT) $(CP856UNIT) $(CP857UNIT) $(CP860UNIT) $(CP861UNIT) $(CP862UNIT) \
-      $(CP863UNIT) $(CP864UNIT) $(CP865UNIT) $(CP866UNIT) $(CP869UNIT) $(CP874UNIT) $(CP3021UNIT) $(CP8859_1UNIT) $(CP8859_2UNIT) $(CP8859_3UNIT) $(CP8859_4UNIT) \
-      $(CP8859_5UNIT) $(CP8859_6UNIT) $(CP8859_7UNIT) $(CP8859_8UNIT) $(CP8859_9UNIT) $(CP8859_10UNIT) $(CP8859_11UNIT) \
-      $(CP8859_13UNIT) $(CP8859_14UNIT) $(CP8859_15UNIT) $(CP8859_16UNIT) $(CPKOI8_RUNIT) $(CPKOI8_UUNIT) \
-      $(UNICODEDATAUNIT)
+implicitunits=$(EXEINFOUNIT) $(CP_UNITS) $(UNICODEDATAUNIT)
 
 #rsts=math rtlconsts varutils typinfo variants classes sysconst dateutil
 
@@ -77,7 +71,7 @@ DOSDIR=.
 DOS_DEPS_OS=objpas$(PPUEXT)
 
 ifeq ($(ARCH),arm)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 ifeq ($(SUBARCH),armv7m)
 CPU_UNITS=stm32f103xe cortexm3 cortexm4 # thumb2_bare
 CPU_UNITS_DEFINED=1
@@ -179,7 +173,7 @@ endif
 endif
 
 ifeq ($(ARCH),i386)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 CPU_UNITS=multiboot
 CPU_UNITS_DEFINED=1
 ifeq ($(CPU_UNITS_DEFINED),)
@@ -188,7 +182,7 @@ endif
 endif
 
 ifeq ($(ARCH),x86_64)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 # CPU_UNITS=multiboot
 endif
 
@@ -198,7 +192,7 @@ CPU_SPECIFIC_COMMON_UNITS=sysutils math
 endif
 
 ifeq ($(ARCH),mipsel)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 ifeq ($(SUBARCH),pic32mx)
 CPU_UNITS=pic32mx1xxfxxxb pic32mx2xxfxxxb pic32mx1xxfxxxc pic32mx2xxfxxxc pic32mx1xxfxxxd pic32mx2xxfxxxd pic32mx7x5fxxxl pic32mx7x5fxxxh
 CPU_UNITS_DEFINED=1
@@ -209,7 +203,7 @@ endif
 endif
 
 ifeq ($(ARCH),riscv32)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 ifeq ($(SUBARCH),rv32imc)
 override FPCOPT+=-Cprv32imc
 CPU_UNITS=esp32c3 esp32c3idf_50000
@@ -221,7 +215,7 @@ endif
 endif
 
 ifeq ($(ARCH),riscv64)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 CPU_UNITS=
 CPU_UNITS_DEFINED=1
 ifeq ($(CPU_UNITS_DEFINED),)
@@ -230,7 +224,7 @@ endif
 endif
 
 ifeq ($(ARCH),xtensa)
-CPU_SPECIFIC_COMMON_UNITS=sysutils math classes fgl macpas typinfo types rtlconsts getopts lineinfo
+CPU_SPECIFIC_COMMON_UNITS=sysutils math classes $(FGLUNIT) $(MACPASUNIT) typinfo types rtlconsts $(GETOPTSUNIT) $(LINEINFOUNIT)
 ifeq ($(SUBARCH),lx6)
 CPU_UNITS=esp32 espidf_40100 espidf_40200 espidf_40400
 CPU_UNITS_DEFINED=1
@@ -272,7 +266,7 @@ startup$(OEXT) : $(CPU_TARGET)/startup.s
         $(AS) $(ASTARGET) -o $(UNITTARGETDIRPREFIX)startup$(OEXT) $(CPU_TARGET)/startup.s  -mabi=32 -march=pic32mx -mtune=pic32mx -W -EL  -msym32
 
 #
-# Base Units (System, strings, os-dependent-base-unit)
+# Base Units (System, $(STRINGSUNIT), os-dependent-base-unit)
 #
 
 $(SYSTEMUNIT)$(PPUEXT) : $(SYSTEMUNIT).pp $(SYSDEPS) $(INC)/softfpu.pp
@@ -283,10 +277,6 @@ consoleio$(PPUEXT) : consoleio.pp $(SYSTEMUNIT)$(PPUEXT)
 
 heapmgr$(PPUEXT) : heapmgr.pp $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $<
-
-
-macpas$(PPUEXT) : $(INC)/macpas.pp objpas$(PPUEXT) math$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-        $(COMPILER) $(INC)/macpas.pp $(REDIR)
 
 #
 # Unit specific rules

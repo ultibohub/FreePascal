@@ -7,9 +7,9 @@ main=rtl
 
 [target]
 loaders=cprt0 crti crtn
-units=system uuchar dos objpas objects strings \
+units=system $(UUCHARUNIT) dos $(OBJPASUNIT) objects $(STRINGSUNIT) \
       sysutils typinfo math \
-      cpu mmx getopts heaptrc lineinfo posix
+      cpu $(MMXUNIT) $(GETOPTSUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) posix
 rsts=math typinfo
 
 [require]
@@ -90,16 +90,6 @@ dllprt$(OEXT) : $(CPU_TARGET)/dllprt.as
 system$(PPUEXT) : system.pp $(SYSDEPS)
         $(COMPILER) $(FPC_SYSTEM_OPT) -Us -Sg system.pp
 
-uuchar$(PPUEXT): $(SYSTEMUNIT)$(PPUEXT) $(INC)/uuchar.pp
-
-objpas$(PPUEXT): $(OBJPASDIR)/objpas.pp $(INC)/except.inc system$(PPUEXT)
-        $(COMPILER) -I$(OBJPASDIR) $(OBJPASDIR)/objpas.pp
-
-strings$(PPUEXT) : $(INC)/strings.pp $(INC)/stringsi.inc\
-                   $(PROCINC)/strings.inc $(PROCINC)/stringss.inc\
-                   system$(PPUEXT)
-
-
 #
 # TP7 Compatible RTL Units
 #
@@ -113,13 +103,13 @@ dos$(PPUEXT) : dos.pp $(INC)/filerec.inc $(INC)/textrec.inc strings$(PPUEXT) \
 #
 
 sysutils$(PPUEXT) : $(POSIXINC)/sysutils.pp $(wildcard $(OBJPASDIR)/*.inc) \
-                    objpas$(PPUEXT) dos$(PPUEXT)
+                    $(OBJPASUNIT)$(PPUEXT) dos$(PPUEXT)
         $(COMPILER) -I$(OBJPASDIR) $(POSIXINC)/sysutils.pp
 
-typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp objpas$(PPUEXT)
+typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp $(OBJPASUNIT)$(PPUEXT)
         $(COMPILER) -Sg $(OBJPASDIR)/typinfo.pp
 
-math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+math$(PPUEXT): $(OBJPASDIR)/math.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT)
         $(COMPILER) $(OBJPASDIR)/math.pp
 
 #
@@ -127,16 +117,6 @@ math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT)
 #
 
 cpu$(PPUEXT) : $(PROCINC)/cpu.pp system$(PPUEXT)
-
-mmx$(PPUEXT) : $(PROCINC)/mmx.pp cpu$(PPUEXT) system$(PPUEXT)
-
-getopts$(PPUEXT) : $(INC)/getopts.pp system$(PPUEXT)
-
-heaptrc$(PPUEXT) : $(INC)/heaptrc.pp system$(PPUEXT)
-        $(COMPILER) -Sg $(INC)/heaptrc.pp
-
-lineinfo$(PPUEXT) : $(INC)/lineinfo.pp system$(PPUEXT)
-
 
 #
 # Other system-dependent RTL Units

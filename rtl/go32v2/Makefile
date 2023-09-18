@@ -451,7 +451,7 @@ DXETYPEUNIT=DOSApi.Dxetype
 DYNLIBSUNIT=System.DynLibs
 EMU387UNIT=DOSApi.EMU387
 EMXUNIT=DOSApi.EMX
-ERRORSUNIT=System.Errors
+ERRORSUNIT=UnixApi.Errors
 ESP32UNIT=System.Esp32
 ESP8266UNIT=System.Esp8266
 ESP8266RTOS_30300UNIT=System.Esp8266rtos_30300
@@ -460,13 +460,14 @@ ESPIDF_40100UNIT=System.Espidf_40100
 ESPIDF_40200UNIT=System.Espidf_40200
 ESPIDF_40400UNIT=System.Espidf_40400
 EXEUNIT=OS2Api.exe
-EXEINFOUNIT=System.Exeinfo
+EXEINFOUNIT=System.ExeInfo
 EXTPASUNIT=extpas
 FE310G000UNIT=EmbeddedApi.fe310g000
 FE310G002UNIT=EmbeddedApi.fe310g002
 FGLUNIT=System.FGL
 FPCMEMDLLUNIT=System.FPCMemDLL
 FPCYLIXUNIT=fpcylix
+FPINTRESUNIT=fpintres
 FPWIDESTRINGUNIT=System.FPWideString
 FREEBSDUNIT=FreeBSDApi.FreeBSD
 GD32VF103XXUNIT=EmbeddedApi.gd32vf103xx
@@ -498,6 +499,7 @@ LPC8XXUNIT=EmbeddedApi.lpc8xx
 LSTRINGSUNIT=System.LStrings
 MACOSUNIT=MacOSApi.MacOS
 MACOSTPUNIT=MacOSApi.MacOSTP
+MACPASUNIT=macpas
 MACUTILSUNIT=MacOSApi.MacUtils
 MAILBOXUNIT=EmbeddedApi.mailbox
 MATHUNIT=System.Math
@@ -526,6 +528,7 @@ NWSERVUNIT=NetWareApi.Nwserv
 NWSNUTUNIT=NetWareApi.Nwsnut
 OBJCUNIT=objc
 OBJCBASEUNIT=objcbase
+OBJPASUNIT=objpas
 OS2DEFUNIT=OS2Api.os2def
 PAGEMEMUNIT=System.PageMem
 PILOTUNIT=PalmApi.Pilot
@@ -599,6 +602,7 @@ UNIXUNIT=UnixApi.Unix
 UNIXCPUNIT=UnixApi.CP
 UNIXTYPEUNIT=UnixApi.Types
 UNIXUTILUNIT=UnixApi.Utils
+UUCHARUNIT=uuchar
 VIOCALLSUNIT=OS2Api.viocalls
 WASIAPIUNIT=WASIApi.WASIApi
 WASIUTILUNIT=WASIApi.WASIUtil
@@ -612,8 +616,6 @@ WINSYSUTUNIT=WinApi.WinSysUt
 WINTYPESUNIT=WinApi.WinTypes
 X86UNIT=System.X86
 XMC4500UNIT=EmbeddedApi.xmc4500
-EXEINFOUNIT=System.ExeInfo
-ERRORSUNIT=UnixApi.Errors
 else
 AIOUNIT=aio
 ALLWINNER_A20UNIT=allwinner_a20
@@ -711,6 +713,7 @@ FE310G002UNIT=fe310g002
 FGLUNIT=fgl
 FPCMEMDLLUNIT=fpcmemdll
 FPCYLIXUNIT=fpcylix
+FPINTRESUNIT=fpintres
 FPWIDESTRINGUNIT=fpwidestring
 FREEBSDUNIT=freebsd
 GD32VF103XXUNIT=gd32vf103xx
@@ -743,6 +746,7 @@ LSTRINGSUNIT=lstrings
 MACOSUNIT=macos
 MACOSTPUNIT=macostp
 MACUTILSUNIT=macutils
+MACPASUNIT=macpas
 MAILBOXUNIT=mailbox
 MATHUNIT=math
 MESSAGESUNIT=messages
@@ -770,6 +774,7 @@ NWSERVUNIT=nwserv
 NWSNUTUNIT=nwsnut
 OBJCUNIT=objc
 OBJCBASEUNIT=objcbase
+OBJPASUNIT=objpas
 OS2DEFUNIT=os2def
 PAGEMEMUNIT=pagemem
 PILOTUNIT=pilot
@@ -843,6 +848,7 @@ UNIXUNIT=unix
 UNIXCPUNIT=unixcp
 UNIXTYPEUNIT=unixtype
 UNIXUTILUNIT=unixutil
+UUCHARUNIT=uuchar
 VIOCALLSUNIT=viocalls
 WASIAPIUNIT=wasiapi
 WASIUTILUNIT=wasiutil
@@ -866,12 +872,12 @@ OPT:=$(OPT) -dFPC_DOTTEDUNITS
 BASEINCLUDE=$(INC) $(PROCINC)
 BASESOURCE=$(INC) $(PROCINC) $($(COMMONUNIT))
 endif
-CPUNITSBASE=$(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $(CP1255UNIT) $(CP1256UNIT) $(CP1257UNIT) $(CP1258UNIT) \
+CP_UNITS=$(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $(CP1255UNIT) $(CP1256UNIT) $(CP1257UNIT) $(CP1258UNIT) \
       $(CP437UNIT) $(CP646UNIT) $(CP737UNIT) $(CP775UNIT) $(CP850UNIT) $(CP852UNIT) $(CP855UNIT) $(CP856UNIT) $(CP857UNIT) $(CP860UNIT) $(CP861UNIT) $(CP862UNIT) \
       $(CP863UNIT) $(CP864UNIT) $(CP865UNIT) $(CP866UNIT) $(CP869UNIT) $(CP874UNIT) $(CP3021UNIT) $(CP8859_1UNIT) $(CP8859_2UNIT) $(CP8859_3UNIT) $(CP8859_4UNIT) \
       $(CP8859_5UNIT) $(CP8859_6UNIT) $(CP8859_7UNIT) $(CP8859_8UNIT) $(CP8859_9UNIT) $(CP8859_10UNIT) $(CP8859_11UNIT) \
       $(CP8859_13UNIT) $(CP8859_14UNIT) $(CP8859_15UNIT) $(CP8859_16UNIT) $(CPKOI8_RUNIT) $(CPKOI8_UUNIT)
-CPUNITS=$(addprefix $(NS_CPUNITS),$(CPUNITSBASE))
+CP_UNITS_SRC=$(addsuffix .pas,$(addprefix $(RTL)/charmaps/,$(CP_UNITS)))
 RTL=..
 INC=../inc
 COMMON=$(RTL)/common
@@ -889,10 +895,10 @@ ifdef NO_EXCEPTIONS_IN_SYSTEM
 override FPCOPT+=-dNO_EXCEPTIONS_IN_SYSTEM
 endif
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
-override TARGET_UNITS+=system uuchar objpas macpas iso7185 extpas strings go32 dpmiexcp initc ports profile dxetype dxeload emu387 dos cmem sortbase sysutils classes math typinfo cpu mmx getopts heaptrc lineinfo lnfodwrf ctypes fgl msmouse charset cpall character fpwidestring unicodedata types sysconst rtlconst softfpu sfpux80 ufloatx80 sfpu128 ufloat128
+override TARGET_UNITS+=system $(UUCHARUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(STRINGSUNIT) go32 dpmiexcp initc $(PORTSUNIT) profile dxetype dxeload emu387 dos $(CMEMUNIT) $(SORTBASEUNIT) sysutils classes math typinfo cpu $(MMXUNIT) $(GETOPTSUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) ctypes $(FGLUNIT) msmouse $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(FPWIDESTRINGUNIT) $(UNICODEDATAUNIT) types sysconst rtlconst $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
-override TARGET_IMPLICITUNITS+=exeinfo cp1250 cp1251 cp1252 cp1253 cp1254 cp1255 cp1256 cp1257 cp1258 cp437 cp646 cp737 cp775 cp850 cp852 cp855 cp856 cp857 cp860 cp861 cp862 cp863 cp864 cp865 cp866 cp869 cp874 cp3021 cp8859_1 cp8859_2 cp8859_3 cp8859_4 cp8859_5 cp8859_6 cp8859_7 cp8859_8 cp8859_9 cp8859_10 cp8859_11 cp8859_13 cp8859_14 cp8859_15 cp8859_16 cpkoi8_r cpkoi8_u
+override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS)
 endif
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
 override TARGET_LOADERS+=prt0 exceptn fpu
@@ -2255,7 +2261,7 @@ MACPAS_DEPS=$(INC)/macpas.pp \
 	    $(MACPAS_DEPS_OS)  $(MACPAS_DEPS_CPU)
 macpas$(PPUEXT) : $(MACPAS_DEPS)
 	$(COMPILER) $(MACPAS_OPT) $<
-ISO7185_DEPS= $(INC)/$(ISO7185UNIT).pp \
+ISO7185_DEPS= $(INC)/iso7185.pp \
 	      $(SYSTEMUNIT)$(PPUEXT) \
 	      $(ISO7185_DEPS_OS) $(ISO7185_DEPS_CPU)
 iso7185$(PPUEXT) : $(ISO7185_DEPS)
@@ -2314,6 +2320,7 @@ ufloat128$(PPUEXT) : $(UFLOAT128_DEPS)
 System.UFloat128$(PPUEXT) : $(NSINC)/System.UFloat128.pp $(UFLOAT128_DEPS)
 	$(COMPILER) $(UFLOAT128_OPT) $<
 STRINGS_DEPS=$(INC)/strings.pp $(INC)/stringsi.inc $(PROCINC)/stringss.inc $(PROCINC)/strings.inc \
+	     $(INC)/genstr.inc $(INC)/genstrs.inc $(INC)/cgenstr.inc \
 	     $(SYSTEMUNIT)$(PPUEXT)  \
 	     $(STRINGS_DEPS_OS)
 strings$(PPUEXT) : $(STRINGS_DEPS)
@@ -2534,7 +2541,7 @@ unicodedata$(PPUEXT) : $(UNICODEDATA_DEPS)
 	$(COMPILER) -Fi$(OBJPASDIR) $(UNICODEDATA_OPT) $<
 System.CodePages.unicodedata$(PPUEXT) : $(NSINC)/System.CodePages.unicodedata.pas $(UNICODEDATA_DEPS)
 	$(COMPILER) -Fi$(OBJPASDIR) $(UNICODEDATA_OPT) $<
-CPALL_DEPS=$(RTL)/charmaps/cpall.pas \
+CPALL_DEPS=$(RTL)/charmaps/cpall.pas $(CP_UNITS_SRC) \
 	  system$(PPUEXT) $(CHARSETUNIT)$(PPUEXT) \
 	  $(CPALL_DEPS_OS) $(CPALL_DEPS_CPU)
 cpall$(PPUEXT): $(CPALL_DEPS)  
@@ -2846,23 +2853,6 @@ prt0$(OEXT) : v2prt0.as
 system$(PPUEXT) : system.pp $(SYSDEPS)
 	$(COMPILER) $(FPC_SYSTEM_OPT) -Us -Sg system.pp
 	$(EXECPPAS)
-uuchar$(PPUEXT): $(SYSTEMUNIT)$(PPUEXT) $(INC)/uuchar.pp
-	$(COMPILER) $(INC)/uuchar.pp
-	$(EXECPPAS)
-objpas$(PPUEXT): $(OBJPASDIR)/objpas.pp $(INC)/except.inc system$(PPUEXT)
-	$(COMPILER) -Fi$(OBJPASDIR) $(OBJPASDIR)/objpas.pp
-	$(EXECPPAS)
-strings$(PPUEXT) : $(INC)/strings.pp $(INC)/stringsi.inc \
-		   $(PROCINC)/strings.inc $(PROCINC)/stringss.inc \
-		   system$(PPUEXT)
-	$(COMPILER) $(INC)/strings.pp
-	$(EXECPPAS)
-iso7185$(PPUEXT) : $(INC)/iso7185.pp system$(PPUEXT)
-	$(COMPILER) $(INC)/iso7185.pp
-	$(EXECPPAS)
-extpas$(PPUEXT) : $(INC)/extpas.pp dos$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/extpas.pp
-	$(EXECPPAS)
 go32$(PPUEXT) : go32.pp system$(PPUEXT)
 	$(COMPILER) go32.pp
 	$(EXECPPAS)
@@ -2885,65 +2875,35 @@ emu387$(PPUEXT) : emu387.pp fpu$(OEXT) strings$(PPUEXT) dxeload$(PPUEXT) \
 		  dpmiexcp$(PPUEXT)
 	$(COMPILER) emu387.pp
 	$(EXECPPAS)
-ports$(PPUEXT) : ports.pp system$(PPUEXT)
-	$(COMPILER) ports.pp
-	$(EXECPPAS)
 dos$(PPUEXT) : dos.pp $(INC)/filerec.inc $(INC)/textrec.inc \
 	       go32$(PPUEXT) strings$(PPUEXT) system$(PPUEXT)
 	$(COMPILER) dos.pp
 	$(EXECPPAS)
 sysutils$(PPUEXT) : sysutils.pp $(wildcard $(OBJPASDIR)/sysutils/*.inc) \
-		    objpas$(PPUEXT) dos$(PPUEXT) go32$(PPUEXT) sysconst$(PPUEXT)
+		    $(OBJPASUNIT)$(PPUEXT) dos$(PPUEXT) go32$(PPUEXT) sysconst$(PPUEXT)
 	$(COMPILER) -Fi$(OBJPASDIR)/sysutils sysutils.pp
 	$(EXECPPAS)
 classes$(PPUEXT) : classes.pp $(wildcard $(OBJPASDIR)/classes/*.inc) \
-		   sysutils$(PPUEXT) typinfo$(PPUEXT) rtlconst$(PPUEXT) types$(PPUEXT) fgl$(PPUEXT) \
+		   sysutils$(PPUEXT) typinfo$(PPUEXT) rtlconst$(PPUEXT) types$(PPUEXT) $(FGLUNIT)$(PPUEXT) \
 		   sortbase$(PPUEXT)
 	$(COMPILER) -Fi$(OBJPASDIR)/classes classes.pp
-fgl$(PPUEXT) : $(OBJPASDIR)/fgl.pp objpas$(PPUEXT) types$(PPUEXT) system$(PPUEXT) sysutils$(PPUEXT) sortbase$(PPUEXT)
-	$(COMPILER) $(OBJPASDIR)/fgl.pp
-	$(EXECPPAS)
-math$(PPUEXT): $(OBJPASDIR)/math.pp objpas$(PPUEXT) sysutils$(PPUEXT)
+math$(PPUEXT): $(OBJPASDIR)/math.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/math.pp
 	$(EXECPPAS)
-typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp objpas$(PPUEXT) rtlconst$(PPUEXT)
+typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp $(OBJPASUNIT)$(PPUEXT) rtlconst$(PPUEXT)
 	$(COMPILER) -Sg -Fi$(OBJPASDIR) $(OBJPASDIR)/typinfo.pp
 	$(EXECPPAS)
-types$(PPUEXT) : $(OBJPASDIR)/types.pp objpas$(PPUEXT) math$(PPUEXT)
+types$(PPUEXT) : $(OBJPASDIR)/types.pp $(OBJPASUNIT)$(PPUEXT) math$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/types.pp
 	$(EXECPPAS)
 rtlconst$(PPUEXT) : $(OBJPASDIR)/rtlconst.pp
 	$(COMPILER) -Fi$(OBJPASDIR) $(OBJPASDIR)/rtlconst.pp
 	$(EXECPPAS)
-sysconst$(PPUEXT) : $(OBJPASDIR)/sysconst.pp objpas$(PPUEXT)
+sysconst$(PPUEXT) : $(OBJPASDIR)/sysconst.pp $(OBJPASUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/sysconst.pp
-	$(EXECPPAS)
-macpas$(PPUEXT) : $(INC)/macpas.pp objpas$(PPUEXT) math$(PPUEXT)
-	$(COMPILER) $(INC)/macpas.pp $(REDIR)
 	$(EXECPPAS)
 cpu$(PPUEXT) : $(PROCINC)/cpu.pp system$(PPUEXT)
 	$(COMPILER) $(PROCINC)/cpu.pp
-	$(EXECPPAS)
-mmx$(PPUEXT) : $(PROCINC)/mmx.pp cpu$(PPUEXT) system$(PPUEXT)
-	$(COMPILER) $(PROCINC)/mmx.pp
-	$(EXECPPAS)
-getopts$(PPUEXT) : $(INC)/getopts.pp system$(PPUEXT)
-	$(COMPILER) $(INC)/getopts.pp
-	$(EXECPPAS)
-heaptrc$(PPUEXT) : $(INC)/heaptrc.pp system$(PPUEXT)
-	$(COMPILER) -Sg $(INC)/heaptrc.pp
-	$(EXECPPAS)
-lineinfo$(PPUEXT) : $(INC)/lineinfo.pp system$(PPUEXT)
-	$(COMPILER) $(INC)/lineinfo.pp
-	$(EXECPPAS)
-lnfodwrf$(PPUEXT) : $(INC)/lnfodwrf.pp system$(PPUEXT)
-	$(COMPILER) $(INC)/lnfodwrf.pp
-	$(EXECPPAS)
-charset$(PPUEXT) : $(INC)/charset.pp system$(PPUEXT)
-	$(COMPILER) $(INC)/charset.pp
-	$(EXECPPAS)
-cpall$(PPUEXT): $(RTL)/charmaps/cpall.pas system$(PPUEXT) charset$(PPUEXT)
-	$(COMPILER) -Fu$(INC) -Fi$(RTL)/charmaps $(RTL)/charmaps/cpall.pas
 	$(EXECPPAS)
 matrix$(PPUEXT) : $(INC)/matrix.pp $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(INC)/matrix.pp
@@ -2951,16 +2911,8 @@ matrix$(PPUEXT) : $(INC)/matrix.pp $(SYSTEMUNIT)$(PPUEXT)
 ucomplex$(PPUEXT) : $(INC)/ucomplex.pp math$(PPUEXT) system$(PPUEXT)
 	$(COMPILER) $(INC)/ucomplex.pp
 	$(EXECPPAS)
-character$(PPUEXT): $(OBJPASDIR)/character.pas sysutils$(PPUEXT) objpas$(PPUEXT) rtlconst$(PPUEXT) unicodedata$(PPUEXT) system$(PPUEXT)
-	$(COMPILER) $(OBJPASDIR)/character.pas
 msmouse$(PPUEXT) : msmouse.pp system$(PPUEXT)
 	$(COMPILER) msmouse.pp
-	$(EXECPPAS)
-callspec$(PPUEXT) : $(INC)/callspec.pp system$(PPUEXT)
-	$(COMPILER) $(INC)/callspec.pp
-	$(EXECPPAS)
-cmem$(PPUEXT) : $(INC)/cmem.pp $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/cmem.pp
 	$(EXECPPAS)
 ctypes$(PPUEXT) : $(INC)/ctypes.pp system$(PPUEXT)
 	$(COMPILER) $(INC)/ctypes.pp
