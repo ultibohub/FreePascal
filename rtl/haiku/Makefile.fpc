@@ -42,9 +42,9 @@ libversion=2.0.0
 libunits=$(SYSTEMUNIT) $(OBJPASUNIT) $(STRINGSUNIT) \
       unix  \
       dos \
-      sysutils typinfo math \
+      sysutils typinfo $(MATHUNIT) \
       $(CPU_UNITS) $(GETOPTSUNIT) $(HEAPTRCUNIT) \
-      $(ERRORSUNIT) dynlibs
+      $(ERRORSUNIT) $(DYNLIBSUNIT)
 
 
 [prerules]
@@ -55,6 +55,8 @@ UNIXINC=$(RTL)/unix
 HAIKUINC=$(RTL)/haiku
 SYSINITUNITS=si_c si_dllc
 UNITPREFIX=rtl
+DYNLIBS_DEPS_OS=$(DLUNIT)$(PPUEXT)
+DYNLIBSINCDIR=$(UNIXINC)
 
 ifeq ($(ARCH),i386)
 LOADERS=cprt0 dllcprt0

@@ -12,9 +12,9 @@ units=system $(UUCHARUNIT) $(OBJPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(CPALLUNI
 implicitunits=ndk ndkutils ddk \
       ctypes $(STRINGSUNIT) \
 #      $(HEAPTRCUNIT)
-#      initc $(CMEMUNIT) dynlibs signals \
+#      initc $(CMEMUNIT) $(DYNLIBSUNIT) signals \
       dos \
-      rtlconsts sysconst sysutils math types \
+      rtlconsts sysconst sysutils $(MATHUNIT) types \
       typinfo $(FGLUNIT) classes \
       $(CPU_UNITS) $(CHARSETUNIT) $(GETOPTSUNIT) \
       $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT) \
@@ -25,7 +25,7 @@ implicitunits=ndk ndkutils ddk \
 
 # shared=$(DLLS)
 
-rsts=math typinfo classes sysconst
+rsts=$(MATHUNIT) typinfo classes sysconst
 
 [require]
 nortl=y
@@ -48,6 +48,7 @@ COMMON=$(RTL)/common
 PROCINC=$(RTL)/$(CPU_TARGET)
 DDKINC=ddk
 NDKINC=ndk
+# Not used DYNLIBSINCDIR=$(WINDIR)
 
 UNITPREFIX=rtl
 SYSTEMUNIT=system

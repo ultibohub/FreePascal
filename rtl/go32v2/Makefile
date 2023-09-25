@@ -877,7 +877,11 @@ CP_UNITS=$(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $
       $(CP863UNIT) $(CP864UNIT) $(CP865UNIT) $(CP866UNIT) $(CP869UNIT) $(CP874UNIT) $(CP3021UNIT) $(CP8859_1UNIT) $(CP8859_2UNIT) $(CP8859_3UNIT) $(CP8859_4UNIT) \
       $(CP8859_5UNIT) $(CP8859_6UNIT) $(CP8859_7UNIT) $(CP8859_8UNIT) $(CP8859_9UNIT) $(CP8859_10UNIT) $(CP8859_11UNIT) \
       $(CP8859_13UNIT) $(CP8859_14UNIT) $(CP8859_15UNIT) $(CP8859_16UNIT) $(CPKOI8_RUNIT) $(CPKOI8_UUNIT)
+ifdef FPC_DOTTEDUNITS
+CP_UNITS_SRC=$(addsuffix .pas,$(addprefix $(NSINC)/,$(CP_UNITS)))
+else
 CP_UNITS_SRC=$(addsuffix .pas,$(addprefix $(RTL)/charmaps/,$(CP_UNITS)))
+endif
 RTL=..
 INC=../inc
 COMMON=$(RTL)/common
@@ -895,7 +899,7 @@ ifdef NO_EXCEPTIONS_IN_SYSTEM
 override FPCOPT+=-dNO_EXCEPTIONS_IN_SYSTEM
 endif
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
-override TARGET_UNITS+=system $(UUCHARUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(STRINGSUNIT) go32 dpmiexcp initc $(PORTSUNIT) profile dxetype dxeload emu387 dos $(CMEMUNIT) $(SORTBASEUNIT) sysutils classes math typinfo cpu $(MMXUNIT) $(GETOPTSUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) ctypes $(FGLUNIT) msmouse $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(FPWIDESTRINGUNIT) $(UNICODEDATAUNIT) types sysconst rtlconst $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
+override TARGET_UNITS+=system $(UUCHARUNIT) $(OBJPASUNIT) $(MACPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(STRINGSUNIT) go32 dpmiexcp initc $(PORTSUNIT) profile dxetype dxeload emu387 dos $(CMEMUNIT) $(SORTBASEUNIT) sysutils classes $(MATHUNIT) typinfo cpu $(MMXUNIT) $(GETOPTSUNIT) $(HEAPTRCUNIT) $(LINEINFOUNIT) $(LNFODWRFUNIT) ctypes $(FGLUNIT) msmouse $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(FPWIDESTRINGUNIT) $(UNICODEDATAUNIT) types sysconst rtlconst $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
 override TARGET_IMPLICITUNITS+=$(EXEINFOUNIT) $(CP_UNITS)
@@ -904,7 +908,7 @@ ifeq ($(CPU_OS_TARGET),i386-go32v2)
 override TARGET_LOADERS+=prt0 exceptn fpu
 endif
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
-override TARGET_RSTS+=math typinfo classes sysconst
+override TARGET_RSTS+=$(MATHUNIT) typinfo classes sysconst
 endif
 override INSTALL_FPCPACKAGE=y y
 ifeq ($(CPU_OS_TARGET),i386-go32v2)
@@ -2210,6 +2214,9 @@ endif
 ifndef NSBSDDIR
 NSBSDDIR=$(NSDIR)/bsd
 endif
+ifndef TERMIODIR
+TERMIODIR=$(OSDIR)
+endif
 ifndef NSWINDOWSDIR
 NSWINDOWSDIR=$(NSDIR)/windows
 endif
@@ -2337,6 +2344,11 @@ System.Ports$(PPUEXT) :  $(NSINC)/System.Ports.$(PORTSUNITEXT) $(PORTS_DEPS)
 DYNLIBS_DEPS=$(INC)/dynlibs.pas $(DYNLIBSINCDIR)/dynlibs.inc \
 	     objpas$(PPUEXT) $(RTLCONSTSUNIT)$(PPUEXT) $(SYSUTILSUNIT)$(PPUEXT) \
 	     $(DYNLIBS_DEPS_OS) $(DYNLIBS_DEPS_CPU)
+ifdef DYNLIBSINCDIR
+  ifndef DYNLIBS_OPT
+    DYNLIBS_OPT=-Fi$(DYNLIBSINCDIR)
+  endif
+endif
 dynlibs$(PPUEXT) : $(DYNLIBS_DEPS)
 	$(COMPILER) $(DYNLIBS_OPT) $<
 System.DynLibs$(PPUEXT) : $(NSINC)/System.DynLibs.pas $(DYNLIBS_DEPS)
@@ -2366,18 +2378,25 @@ linuxvcs$(PPUEXT): $(LINUXVCS_DEPS)
 	$(COMPILER) $(LINUXVCS_OPT) $<
 LinuxApi.Vcs$(PPUEXT): $(NSOSDIR)/LinuxApi.Vcs.pp $(LINUXVCS_DEPS)
 	$(COMPILER) $(LINUXVCS_OPT) $<
-FPCYLIX_DEPS=fpcylix.pp \
+FPCYLIX_DEPS=../linux/fpcylix.pp \
 	     $(CTHREADSUNIT)$(PPUEXT) $(CWSTRINGUNIT)$(PPUEXT) $(DYNLIBSUNIT)$(PPUEXT) \
 	     objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	     $(FPCYLIX_DEPS_OS)  $(FPCYLIX_DEPS_CPU)
 fpcylix$(PPUEXT) : $(FPCYLIX_DEPS)
 	$(COMPILER) $(FPCYLIX_OPT) $<
-TERMIO_DEPS=$(OSDIR)/termio.pp $(BASEUNIXUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
+TERMIO_DEPS=$(TERMIODIR)/termio.pp $(UNIXINC)/ttyname.inc $(TERMIODIR)/termios.inc \
+	    $(TERMIODIR)/termiosproc.inc $(BASEUNIXUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	    $(TERMIO_DEPS_OS) $(TERMIO_DEPS_CPU)
 termio$(PPUEXT) : $(TERMIO_DEPS)
 	$(COMPILER) $(TERMIO_OPT) $<
 UnixApi.TermIO$(PPUEXT) : $(NSINC)/UnixApi.TermIO.pp $(TERMIO_DEPS)
 	$(COMPILER) $(TERMIO_OPT) $<
+CONSOLE_DEPS= console.pp $(BASEUNIXUNIT)$(PPUEXT) $(TERMIOUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
+	    $(CONSOLE_DEPS_OS) $(CONSOLE_DEPS_CPU)
+console$(PPUEXT) : $(CONSOLE_DEPS)
+	$(COMPILER) $(CONSOLE_OPT) $<
+System.Console$(PPUEXT) : $(NSOSDIR)/System.Console.pp $(CONSOLE_DEPS)
+	$(COMPILER) $(CONSOLE_OPT) $<
 DOS_DEPS=$(DOSDIR)/dos.$(DOSUNITEXT)  $(INC)/filerec.inc $(INC)/textrec.inc \
 	 $(STRINGSUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	 $(DOS_DEPS_OS) $(DOS_DEPS_CPU)
@@ -2423,7 +2442,7 @@ character$(PPUEXT): $(CHARACTER_DEPS)
 	$(COMPILER) $(CHARACTER_OPT) $<
 System.Character$(PPUEXT): $(NSINC)/System.Character.pas $(CHARACTER_DEPS)
 	$(COMPILER) $(CHARACTER_OPT) -Fi$(OBJPASDIR) $<
-MATH_DEPS= $(OBJPASDIR)/math.pp \
+MATH_DEPS= $(OBJPASDIR)/math.pp $(PROCINC)/mathu.inc \
 	   objpas$(PPUEXT) $(SYSUTILSUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	   $(MATH_DEPS_OS) $(MATH_DEPS_CPU)
 math$(PPUEXT): $(MATH_DEPS)
@@ -2887,13 +2906,10 @@ classes$(PPUEXT) : classes.pp $(wildcard $(OBJPASDIR)/classes/*.inc) \
 		   sysutils$(PPUEXT) typinfo$(PPUEXT) rtlconst$(PPUEXT) types$(PPUEXT) $(FGLUNIT)$(PPUEXT) \
 		   sortbase$(PPUEXT)
 	$(COMPILER) -Fi$(OBJPASDIR)/classes classes.pp
-math$(PPUEXT): $(OBJPASDIR)/math.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT)
-	$(COMPILER) $(OBJPASDIR)/math.pp
-	$(EXECPPAS)
 typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp $(OBJPASUNIT)$(PPUEXT) rtlconst$(PPUEXT)
 	$(COMPILER) -Sg -Fi$(OBJPASDIR) $(OBJPASDIR)/typinfo.pp
 	$(EXECPPAS)
-types$(PPUEXT) : $(OBJPASDIR)/types.pp $(OBJPASUNIT)$(PPUEXT) math$(PPUEXT)
+types$(PPUEXT) : $(OBJPASDIR)/types.pp $(OBJPASUNIT)$(PPUEXT) $(MATHUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/types.pp
 	$(EXECPPAS)
 rtlconst$(PPUEXT) : $(OBJPASDIR)/rtlconst.pp
@@ -2908,7 +2924,7 @@ cpu$(PPUEXT) : $(PROCINC)/cpu.pp system$(PPUEXT)
 matrix$(PPUEXT) : $(INC)/matrix.pp $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(INC)/matrix.pp
 	$(EXECPPAS)
-ucomplex$(PPUEXT) : $(INC)/ucomplex.pp math$(PPUEXT) system$(PPUEXT)
+ucomplex$(PPUEXT) : $(INC)/ucomplex.pp $(MATHUNIT)$(PPUEXT) system$(PPUEXT)
 	$(COMPILER) $(INC)/ucomplex.pp
 	$(EXECPPAS)
 msmouse$(PPUEXT) : msmouse.pp system$(PPUEXT)

@@ -876,7 +876,11 @@ CP_UNITS=$(CP1250UNIT) $(CP1251UNIT) $(CP1252UNIT) $(CP1253UNIT) $(CP1254UNIT) $
       $(CP863UNIT) $(CP864UNIT) $(CP865UNIT) $(CP866UNIT) $(CP869UNIT) $(CP874UNIT) $(CP3021UNIT) $(CP8859_1UNIT) $(CP8859_2UNIT) $(CP8859_3UNIT) $(CP8859_4UNIT) \
       $(CP8859_5UNIT) $(CP8859_6UNIT) $(CP8859_7UNIT) $(CP8859_8UNIT) $(CP8859_9UNIT) $(CP8859_10UNIT) $(CP8859_11UNIT) \
       $(CP8859_13UNIT) $(CP8859_14UNIT) $(CP8859_15UNIT) $(CP8859_16UNIT) $(CPKOI8_RUNIT) $(CPKOI8_UUNIT)
+ifdef FPC_DOTTEDUNITS
+CP_UNITS_SRC=$(addsuffix .pas,$(addprefix $(NSINC)/,$(CP_UNITS)))
+else
 CP_UNITS_SRC=$(addsuffix .pas,$(addprefix $(RTL)/charmaps/,$(CP_UNITS)))
+endif
 RTL=..
 INC=$(RTL)/inc
 COMMON=$(RTL)/common
@@ -885,6 +889,10 @@ OSPROCINC=$(RTL)/aix/$(CPU_TARGET)
 UNIXINC=$(RTL)/unix
 UNITPREFIX=rtl
 CPU_UNITS=
+DYNLIBS_DEPS_OS=$(DLUNIT)$(PPUEXT)
+DYNLIBSINCDIR=$(UNIXINC)
+DL_DEPS_OS=$(DLUNIT)aix.inc
+TERMIO_DEPS_OS=$(UNIXTYPEUNIT)$(PPUEXT) $(CTYPESUNIT)$(PPUEXT)
 SYSTEMUNIT=system
 ifeq ($(ARCH),i386)
 CPU_UNITS=cpu $(MMXUNIT)
@@ -899,10 +907,10 @@ endif
 override FPCOPT+=-dFPC_USE_LIBC
 OBJPASDIR=$(RTL)/objpas
 ifeq ($(CPU_OS_TARGET),powerpc-aix)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(UUCHARUNIT) unixtype ctypes $(STRINGSUNIT) $(OBJPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(MACPASUNIT) $(HEAPTRCUNIT) baseunix unixutil termio unix initc $(CMEMUNIT) $(LNFOGDBUNIT) sysutils typinfo math $(SORTBASEUNIT) $(FGLUNIT) classes $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(UNIXCPUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types sysconst rtlconsts cthreads dos cwstring $(FPWIDESTRINGUNIT) $(FPINTRESUNIT) $(CPU_UNITS) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
+override TARGET_UNITS+=$(SYSTEMUNIT) $(UUCHARUNIT) unixtype ctypes $(STRINGSUNIT) $(OBJPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(MACPASUNIT) $(HEAPTRCUNIT) baseunix unixutil $(TERMIOUNIT) unix initc $(CMEMUNIT) $(LNFOGDBUNIT) sysutils typinfo $(MATHUNIT) $(SORTBASEUNIT) $(FGLUNIT) classes $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(UNIXCPUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) $(DLUNIT) $(DYNLIBSUNIT) types sysconst rtlconsts cthreads dos cwstring $(FPWIDESTRINGUNIT) $(FPINTRESUNIT) $(CPU_UNITS) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),powerpc64-aix)
-override TARGET_UNITS+=$(SYSTEMUNIT) $(UUCHARUNIT) unixtype ctypes $(STRINGSUNIT) $(OBJPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(MACPASUNIT) $(HEAPTRCUNIT) baseunix unixutil termio unix initc $(CMEMUNIT) $(LNFOGDBUNIT) sysutils typinfo math $(SORTBASEUNIT) $(FGLUNIT) classes $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(UNIXCPUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) dl dynlibs types sysconst rtlconsts cthreads dos cwstring $(FPWIDESTRINGUNIT) $(FPINTRESUNIT) $(CPU_UNITS) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
+override TARGET_UNITS+=$(SYSTEMUNIT) $(UUCHARUNIT) unixtype ctypes $(STRINGSUNIT) $(OBJPASUNIT) $(ISO7185UNIT) $(EXTPASUNIT) $(MACPASUNIT) $(HEAPTRCUNIT) baseunix unixutil $(TERMIOUNIT) unix initc $(CMEMUNIT) $(LNFOGDBUNIT) sysutils typinfo $(MATHUNIT) $(SORTBASEUNIT) $(FGLUNIT) classes $(CHARSETUNIT) $(CPALLUNIT) $(CHARACTERUNIT) $(UNIXCPUNIT) $(GETOPTSUNIT) $(ERRORSUNIT) $(DLUNIT) $(DYNLIBSUNIT) types sysconst rtlconsts cthreads dos cwstring $(FPWIDESTRINGUNIT) $(FPINTRESUNIT) $(CPU_UNITS) $(SOFTFPUUNIT) $(SFPUX80UNIT) $(UFLOATX80UNIT) $(SFPU128UNIT) $(UFLOAT128UNIT)
 endif
 ifeq ($(CPU_OS_TARGET),powerpc-aix)
 override TARGET_IMPLICITUNITS+=$(CP_UNITS) $(UNICODEDATAUNIT)
@@ -911,10 +919,10 @@ ifeq ($(CPU_OS_TARGET),powerpc64-aix)
 override TARGET_IMPLICITUNITS+=$(CP_UNITS) $(UNICODEDATAUNIT)
 endif
 ifeq ($(CPU_OS_TARGET),powerpc-aix)
-override TARGET_RSTS+=math typinfo classes sysconst rtlconst
+override TARGET_RSTS+=$(MATHUNIT) typinfo classes sysconst rtlconst
 endif
 ifeq ($(CPU_OS_TARGET),powerpc64-aix)
-override TARGET_RSTS+=math typinfo classes sysconst rtlconst
+override TARGET_RSTS+=$(MATHUNIT) typinfo classes sysconst rtlconst
 endif
 override INSTALL_FPCPACKAGE=y y
 ifeq ($(CPU_OS_TARGET),powerpc-aix)
@@ -2199,6 +2207,9 @@ endif
 ifndef NSBSDDIR
 NSBSDDIR=$(NSDIR)/bsd
 endif
+ifndef TERMIODIR
+TERMIODIR=$(OSDIR)
+endif
 ifndef NSWINDOWSDIR
 NSWINDOWSDIR=$(NSDIR)/windows
 endif
@@ -2326,6 +2337,11 @@ System.Ports$(PPUEXT) :  $(NSINC)/System.Ports.$(PORTSUNITEXT) $(PORTS_DEPS)
 DYNLIBS_DEPS=$(INC)/dynlibs.pas $(DYNLIBSINCDIR)/dynlibs.inc \
 	     objpas$(PPUEXT) $(RTLCONSTSUNIT)$(PPUEXT) $(SYSUTILSUNIT)$(PPUEXT) \
 	     $(DYNLIBS_DEPS_OS) $(DYNLIBS_DEPS_CPU)
+ifdef DYNLIBSINCDIR
+  ifndef DYNLIBS_OPT
+    DYNLIBS_OPT=-Fi$(DYNLIBSINCDIR)
+  endif
+endif
 dynlibs$(PPUEXT) : $(DYNLIBS_DEPS)
 	$(COMPILER) $(DYNLIBS_OPT) $<
 System.DynLibs$(PPUEXT) : $(NSINC)/System.DynLibs.pas $(DYNLIBS_DEPS)
@@ -2355,18 +2371,25 @@ linuxvcs$(PPUEXT): $(LINUXVCS_DEPS)
 	$(COMPILER) $(LINUXVCS_OPT) $<
 LinuxApi.Vcs$(PPUEXT): $(NSOSDIR)/LinuxApi.Vcs.pp $(LINUXVCS_DEPS)
 	$(COMPILER) $(LINUXVCS_OPT) $<
-FPCYLIX_DEPS=fpcylix.pp \
+FPCYLIX_DEPS=../linux/fpcylix.pp \
 	     $(CTHREADSUNIT)$(PPUEXT) $(CWSTRINGUNIT)$(PPUEXT) $(DYNLIBSUNIT)$(PPUEXT) \
 	     objpas$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	     $(FPCYLIX_DEPS_OS)  $(FPCYLIX_DEPS_CPU)
 fpcylix$(PPUEXT) : $(FPCYLIX_DEPS)
 	$(COMPILER) $(FPCYLIX_OPT) $<
-TERMIO_DEPS=$(OSDIR)/termio.pp $(BASEUNIXUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
+TERMIO_DEPS=$(TERMIODIR)/termio.pp $(UNIXINC)/ttyname.inc $(TERMIODIR)/termios.inc \
+	    $(TERMIODIR)/termiosproc.inc $(BASEUNIXUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	    $(TERMIO_DEPS_OS) $(TERMIO_DEPS_CPU)
 termio$(PPUEXT) : $(TERMIO_DEPS)
 	$(COMPILER) $(TERMIO_OPT) $<
 UnixApi.TermIO$(PPUEXT) : $(NSINC)/UnixApi.TermIO.pp $(TERMIO_DEPS)
 	$(COMPILER) $(TERMIO_OPT) $<
+CONSOLE_DEPS= console.pp $(BASEUNIXUNIT)$(PPUEXT) $(TERMIOUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
+	    $(CONSOLE_DEPS_OS) $(CONSOLE_DEPS_CPU)
+console$(PPUEXT) : $(CONSOLE_DEPS)
+	$(COMPILER) $(CONSOLE_OPT) $<
+System.Console$(PPUEXT) : $(NSOSDIR)/System.Console.pp $(CONSOLE_DEPS)
+	$(COMPILER) $(CONSOLE_OPT) $<
 DOS_DEPS=$(DOSDIR)/dos.$(DOSUNITEXT)  $(INC)/filerec.inc $(INC)/textrec.inc \
 	 $(STRINGSUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	 $(DOS_DEPS_OS) $(DOS_DEPS_CPU)
@@ -2412,7 +2435,7 @@ character$(PPUEXT): $(CHARACTER_DEPS)
 	$(COMPILER) $(CHARACTER_OPT) $<
 System.Character$(PPUEXT): $(NSINC)/System.Character.pas $(CHARACTER_DEPS)
 	$(COMPILER) $(CHARACTER_OPT) -Fi$(OBJPASDIR) $<
-MATH_DEPS= $(OBJPASDIR)/math.pp \
+MATH_DEPS= $(OBJPASDIR)/math.pp $(PROCINC)/mathu.inc \
 	   objpas$(PPUEXT) $(SYSUTILSUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT) \
 	   $(MATH_DEPS_OS) $(MATH_DEPS_CPU)
 math$(PPUEXT): $(MATH_DEPS)
@@ -2864,9 +2887,7 @@ classes$(PPUEXT) : $(UNIXINC)/classes.pp $(wildcard $(OBJPASDIR)/classes/*.inc) 
 	$(COMPILER) -Fi$(OBJPASDIR)/classes $(UNIXINC)/classes.pp
 typinfo$(PPUEXT): $(OBJPASDIR)/typinfo.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT) rtlconsts$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) -Sg $(OBJPASDIR)/typinfo.pp
-math$(PPUEXT): $(OBJPASDIR)/math.pp $(OBJPASUNIT)$(PPUEXT) sysutils$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(OBJPASDIR)/math.pp
-types$(PPUEXT) : $(OBJPASDIR)/types.pp $(OBJPASUNIT)$(PPUEXT) math$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
+types$(PPUEXT) : $(OBJPASDIR)/types.pp $(OBJPASUNIT)$(PPUEXT) $(MATHUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/types.pp
 sysconst$(PPUEXT) : $(OBJPASDIR)/sysconst.pp $(OBJPASUNIT)$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(OBJPASDIR)/sysconst.pp
@@ -2879,22 +2900,12 @@ else
 cpu$(PPUEXT) : $(PROCINC)/cpu.pp $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(PROCINC)/cpu.pp
 endif
-dynlibs$(PPUEXT) : $(INC)/dynlibs.pas $(UNIXINC)/dynlibs.inc dl$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(INC)/dynlibs.pas
-termio$(PPUEXT) : termio.pp unixtype$(PPUEXT) baseunix$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) termio.pp
 cthreads$(PPUEXT) : $(UNIXINC)/cthreads.pp sysutils$(PPUEXT) baseunix$(PPUEXT) unixtype$(PPUEXT) unix$(PPUEXT) $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(UNIXINC)/cthreads.pp
-cwstring$(PPUEXT) : $(UNIXINC)/cwstring.pp $(SYSTEMUNIT)$(PPUEXT) sysutils$(PPUEXT) baseunix$(PPUEXT) unix$(PPUEXT) unixtype$(PPUEXT) ctypes$(PPUEXT) dynlibs$(PPUEXT)
+cwstring$(PPUEXT) : $(UNIXINC)/cwstring.pp $(SYSTEMUNIT)$(PPUEXT) sysutils$(PPUEXT) baseunix$(PPUEXT) unix$(PPUEXT) unixtype$(PPUEXT) ctypes$(PPUEXT) $(DYNLIBSUNIT)$(PPUEXT)
 	$(COMPILER) $(UNIXINC)/cwstring.pp
 gpm$(PPUEXT): gpm.pp unix$(PPUEXT) baseunix$(PPUEXT) sockets$(PPUEXT)
 ctypes$(PPUEXT) :  $(INC)/ctypes.pp $(SYSTEMUNIT)$(PPUEXT) unixtype$(PPUEXT)
 	$(COMPILER) $(INC)/ctypes.pp
-fpcylix$(PPUEXT) :  fpcylix.pp $(SYSTEMUNIT)$(PPUEXT) dynlibs$(PPUEXT) $(OBJPASUNIT)$(PPUEXT)
-	$(COMPILER) fpcylix.pp
-dl$(PPUEXT) : $(SYSTEMUNIT)$(PPUEXT)
-	$(COMPILER) $(UNIXINC)/dl.pp
 initc$(PPUEXT) : $(SYSTEMUNIT)$(PPUEXT)
 	$(COMPILER) $(UNIXINC)/initc.pp
-console$(PPUEXT) : baseunix$(PPUEXT) termio$(PPUEXT)
-	$(COMPILER) $<
