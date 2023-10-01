@@ -541,6 +541,12 @@ override RTLOPT+=$(RTLOPTLEVEL4)
 override LOCALOPT+=$(OPTNEW)
 override RTLOPT+=$(OPTNEW)
 endif
+else
+ifdef COMPDATESTR
+ifeq ($(FPC_VERSION),$(PACKAGE_VERSION))
+override LOCALOPT+=-DD$(COMPDATESTR)
+endif
+endif
 endif
 override OPT=
 MSGFILES=$(wildcard msg/error*.msg)
