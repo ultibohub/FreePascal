@@ -217,6 +217,7 @@ const
   nAwaitWithoutPromise = 3144;
   nSymbolCannotBeExportedFromALibrary = 3145;
   nForLoopControlVarMustBeSimpleLocalVar = 3146;
+  nIllegalCharConst = 3147;
 
   // using same IDs as FPC
   nVirtualMethodXHasLowerVisibility = 3250; // was 3050
@@ -374,6 +375,7 @@ resourcestring
   sAwaitWithoutPromise = 'Await without promise';
   sSymbolCannotBeExportedFromALibrary = 'The symbol cannot be exported from a library';
   sForLoopControlVarMustBeSimpleLocalVar = 'For loop control variable must be simple local variable';
+  sIllegalCharConst = 'Illegal char constant';
 
 type
   { TResolveData - base class for data stored in TPasElement.CustomData }
@@ -4293,7 +4295,7 @@ var
   end;
 {$ENDIF}
 
-  procedure AddSrc(h: AnsiString);
+  procedure AddSrc(h: {$IFDEF PAS2JS}String{$ELSE}AnsiString{$ENDIF});
   {$ifdef FPC_HAS_CPSTRING}
   var
     ValueAnsi: TResEvalString;
