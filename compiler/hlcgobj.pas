@@ -126,6 +126,8 @@ unit hlcgobj;
 
           {# Emit a label to the instruction stream. }
           procedure a_label(list : TAsmList;l : tasmlabel); inline;
+          {# Emit a label that can be a target of a Pascal goto statement to the instruction stream. }
+          procedure a_label_pascal_goto_target(list : TAsmList;l : tasmlabel); inline;
 
           {# Allocates register r by inserting a pai_realloc record }
           procedure a_reg_alloc(list : TAsmList;r : tregister); inline;
@@ -391,6 +393,7 @@ unit hlcgobj;
           procedure a_cmp_ref_loc_label(list: TAsmList; size: tdef;cmp_op: topcmp; const ref: treference; const loc: tlocation; l : tasmlabel);virtual;
 
           procedure a_jmp_always(list : TAsmList;l: tasmlabel); virtual;abstract;
+          procedure a_jmp_always_pascal_goto(list : TAsmList;l: tasmlabel);virtual;
 {$ifdef cpuflags}
           procedure a_jmp_flags(list : TAsmList;const f : TResFlags;l: tasmlabel); virtual; abstract;
 
@@ -899,6 +902,11 @@ implementation
   procedure thlcgobj.a_label(list: TAsmList; l: tasmlabel); inline;
     begin
       cg.a_label(list,l);
+    end;
+
+  procedure thlcgobj.a_label_pascal_goto_target(list : TAsmList;l : tasmlabel); inline;
+    begin
+      cg.a_label_pascal_goto_target(list,l);
     end;
 
   procedure thlcgobj.a_reg_alloc(list: TAsmList; r: tregister);
@@ -3351,6 +3359,12 @@ implementation
         else
           internalerror(2010120432);
       end;
+    end;
+
+
+  procedure thlcgobj.a_jmp_always_pascal_goto(list : TAsmList;l: tasmlabel);
+    begin
+      a_jmp_always(list,l);
     end;
 
 

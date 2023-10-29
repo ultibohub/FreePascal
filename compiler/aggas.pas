@@ -1691,6 +1691,58 @@ implementation
                writer.AsmWrite(', ');
                writer.AsmWriteLn(tai_import_name(hp).importname);
              end;
+           ait_wasm_structured_instruction:
+             begin
+               { What we output for these is not valid llvm-mc output
+                 and we only print it for compiler debug purposes.
+                 These shouldn't be present in the final asmlist. }
+               if hp is tai_wasmstruc_block then
+                 begin
+                   writer.AsmWriteLn('.err block {');
+                   WriteTree(tai_wasmstruc_block(hp).inner_asmlist);
+                   writer.AsmWriteLn('.err } end block');
+                 end
+               else if hp is tai_wasmstruc_loop then
+                 begin
+                   writer.AsmWriteLn('.err loop {');
+                   WriteTree(tai_wasmstruc_loop(hp).inner_asmlist);
+                   writer.AsmWriteLn('.err } end loop');
+                 end
+               else if hp is tai_wasmstruc_if then
+                 begin
+                   writer.AsmWriteLn('.err if {');
+                   WriteTree(tai_wasmstruc_if(hp).then_asmlist);
+                   writer.AsmWriteLn('.err } else {');
+                   WriteTree(tai_wasmstruc_if(hp).else_asmlist);
+                   writer.AsmWriteLn('.err } endif');
+                 end
+               else if hp is tai_wasmstruc_try then
+                 begin
+                   writer.AsmWriteLn('.err try {');
+                   WriteTree(tai_wasmstruc_try(hp).try_asmlist);
+                   if hp is tai_wasmstruc_try_catch then
+                     with tai_wasmstruc_try_catch(hp) do
+                       begin
+                         for i:=low(catch_list) to high(catch_list) do
+                           begin
+                             writer.AsmWriteLn('.err catch');
+                             WriteTree(catch_list[i].asmlist);
+                           end;
+                         if assigned(catch_all_asmlist) then
+                           begin
+                             writer.AsmWriteLn('.err catch_all');
+                             WriteTree(catch_all_asmlist);
+                           end;
+                         writer.AsmWriteLn('.err } end try');
+                       end
+                   else if hp is tai_wasmstruc_try_delegate then
+                     writer.AsmWriteLn('.err } delegate')
+                   else
+                     writer.AsmWriteLn('.err unknown try structured instruction: ' + hp.ClassType.ClassName);
+                 end
+               else
+                 writer.AsmWriteLn('.err structured instruction: ' + hp.ClassType.ClassName);
+             end;
 {$endif WASM}
 
            else

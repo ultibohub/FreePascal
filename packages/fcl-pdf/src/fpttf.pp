@@ -171,6 +171,7 @@ uses
   ,WinApi.Windows  // for SHGetFolderPath API call used by gTTFontCache.ReadStandardFonts() method
   ,WinApi.Shlobj
   ,WinApi.Activex
+  ,System.Registry
   {$endif}
   {$if (defined(LINUX) or defined(BSD)) and not defined(DARWIN)}
   , Api.Libfontconfig
@@ -865,7 +866,7 @@ begin
   // configure the search pattern,
   // assume "name" is a std::string with the desired font name in it
   res:=family+':style='+style;
-  pat := FcNameParse(PChar(res));
+  pat := FcNameParse(PAnsiChar(res));
   FcConfigSubstitute(config, pat, FcMatchPattern);
   FcDefaultSubstitute(pat);
 

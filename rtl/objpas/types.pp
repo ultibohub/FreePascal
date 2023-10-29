@@ -62,6 +62,8 @@ type
 
   TBooleanDynArray = array of Boolean;
   TByteDynArray = array of Byte;
+  TClassicByteDynArray = TByteDynArray;
+  
   TCardinalDynArray = array of Cardinal;
   TInt64DynArray = array of Int64;
   TIntegerDynArray = array of Integer;
@@ -80,6 +82,8 @@ type
 {$ELSE}
   TStringDynArray = Array of AnsiString;
 {$ENDIF}
+
+  TClassicStringDynArray = TStringDynArray;
 
   TObjectDynArray = array of TObject;
   TWordDynArray = array of Word;

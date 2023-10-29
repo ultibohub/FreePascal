@@ -26,8 +26,8 @@ unit cpupi;
 interface
 
   uses
-    cutils,globtype,aasmdata,
-    procinfo,cpuinfo, symtype,aasmbase,cgbase,
+    cutils,globtype,aasmdata,aasmcpu,aasmtai,
+    procinfo,cpubase,cpuinfo, symtype,aasmbase,cgbase,
     psub, cclasses;
 
   type
@@ -35,24 +35,39 @@ interface
     { tcpuprocinfo }
 
     tcpuprocinfo=class(tcgprocinfo)
+    private
+      FFirstFreeLocal: Integer;
+      FAllocatedLocals: array of TWasmBasicType;
+      FGotoTargets: TFPHashObjectList;
+
+      function ConvertBranchTargetNumbersToLabels(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      function ConvertIfToBrIf(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      function ConvertLoopToBr(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      function StripBlockInstructions(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+
+      { used for allocating locals during the postprocess_code stage (i.e. after register allocation) }
+      function AllocWasmLocal(wbt: TWasmBasicType): Integer;
     public
       { label to the nearest local exception handler }
       CurrRaiseLabel : tasmlabel;
 
       constructor create(aparent: tprocinfo); override;
+      destructor destroy; override;
       function calc_stackframe_size : longint;override;
       procedure setup_eh; override;
       procedure generate_exit_label(list: tasmlist); override;
       procedure postprocess_code; override;
       procedure set_first_temp_offset;override;
+      procedure add_goto_target(l : tasmlabel);
+      function is_goto_target(l : tasmsymbol): Boolean;
     end;
 
 implementation
 
     uses
-      systems,verbose,globals,cpubase,tgcpu,aasmcpu,aasmtai,cgexcept,
+      systems,verbose,globals,tgcpu,cgexcept,
       tgobj,paramgr,symconst,symdef,symtable,symcpu,cgutils,pass_2,parabase,
-      fmodule,hlcgobj,hlcgcpu,defutil;
+      fmodule,hlcgobj,hlcgcpu,defutil,itcpugas;
 
 {*****************************************************************************
                      twasmexceptionstatehandler_noexceptions
@@ -348,11 +363,80 @@ implementation
                            tcpuprocinfo
 *****************************************************************************}
 
+    function tcpuprocinfo.ConvertBranchTargetNumbersToLabels(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      var
+        instr: taicpu;
+        bl: taicpu_wasm_structured_instruction;
+        l: TAsmLabel;
+      begin
+        result.typ:=amfrtNoChange;
+        if ai.typ<>ait_instruction then
+          exit;
+        instr:=taicpu(ai);
+        if not (instr.opcode in [a_br,a_br_if]) then
+          exit;
+        if instr.ops<>1 then
+          internalerror(2023101601);
+        if instr.oper[0]^.typ<>top_const then
+          exit;
+        bl:=blockstack[instr.oper[0]^.val];
+        l:=bl.getlabel;
+        instr.loadsymbol(0,l,0);
+      end;
+
+    function tcpuprocinfo.ConvertIfToBrIf(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      begin
+        result.typ:=amfrtNoChange;
+        if (ai.typ=ait_wasm_structured_instruction) and (taicpu_wasm_structured_instruction(ai).wstyp=aitws_if) then
+          begin
+            result.typ:=amfrtNewList;
+            result.newlist:=TAsmList.Create;
+            tai_wasmstruc_if(ai).ConvertToBrIf(result.newlist,@AllocWasmLocal);
+          end;
+      end;
+
+    function tcpuprocinfo.ConvertLoopToBr(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      begin
+        result.typ:=amfrtNoChange;
+        if (ai.typ=ait_wasm_structured_instruction) and (taicpu_wasm_structured_instruction(ai).wstyp=aitws_loop) then
+          begin
+            result.typ:=amfrtNewList;
+            result.newlist:=TAsmList.Create;
+            tai_wasmstruc_loop(ai).ConvertToBr(result.newlist);
+          end;
+      end;
+
+    function tcpuprocinfo.StripBlockInstructions(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
+      var
+        instr: taicpu;
+      begin
+        result.typ:=amfrtNoChange;
+        if ai.typ<>ait_instruction then
+          exit;
+        instr:=taicpu(ai);
+        if instr.opcode in [a_block,a_end_block] then
+          result.typ:=amfrtDeleteAi;
+      end;
+
+    function tcpuprocinfo.AllocWasmLocal(wbt: TWasmBasicType): Integer;
+      begin
+        SetLength(FAllocatedLocals,Length(FAllocatedLocals)+1);
+        FAllocatedLocals[High(FAllocatedLocals)]:=wbt;
+        result:=High(FAllocatedLocals)+FFirstFreeLocal;
+      end;
+
     constructor tcpuprocinfo.create(aparent: tprocinfo);
       begin
         inherited create(aparent);
+        FGotoTargets:=TFPHashObjectList.Create(false);
         if ts_wasm_bf_exceptions in current_settings.targetswitches then
           current_asmdata.getjumplabel(CurrRaiseLabel);
+      end;
+
+    destructor tcpuprocinfo.destroy;
+      begin
+        FGotoTargets.Free;
+        inherited destroy;
       end;
 
     function tcpuprocinfo.calc_stackframe_size: longint;
@@ -522,13 +606,14 @@ implementation
           blockstack.free;
         end;
 
-      procedure resolve_labels_pass2(asmlist: TAsmList);
+      function resolve_labels_pass2(asmlist: TAsmList): Boolean;
         var
           hp: tai;
           instr: taicpu;
           hlabel: tasmsymbol;
           cur_nesting_depth: longint;
         begin
+          Result:=true;
           cur_nesting_depth:=0;
           hp:=tai(asmlist.first);
           while assigned(hp) do
@@ -571,9 +656,7 @@ implementation
                               instr.loadconst(0,cur_nesting_depth-instr.oper[0]^.ref^.symbol.nestingdepth)
                             else
                               begin
-{$ifndef EXTDEBUG}
-                                internalerror(2021102007);
-{$endif EXTDEBUG}
+                                result:=false;
                                 hlabel:=tasmsymbol(instr.oper[0]^.ref^.symbol);
                                 asmlist.insertafter(tai_comment.create(strpnew('Unable to find destination of label '+hlabel.name)),hp);
                               end;
@@ -590,40 +673,294 @@ implementation
             Message1(parser_f_unsupported_feature,'unbalanced nesting level');
         end;
 
-      procedure resolve_labels(asmlist: TAsmList);
+      function resolve_labels_simple(asmlist: TAsmList): Boolean;
+        begin
+          if not assigned(asmlist) then
+            exit(true);
+          resolve_labels_pass1(asmlist);
+          result:=resolve_labels_pass2(asmlist);
+        end;
+
+      procedure resolve_labels_via_state_machine(asmlist: TAsmList);
+        var
+          blocks: TFPHashObjectList;
+          curr_block, tmplist: TAsmList;
+          hp, hpnext: tai;
+          block_nr, machine_state, target_block_index: Integer;
+          state_machine_loop_start_label, state_machine_exit: TAsmLabel;
+        begin
+          blocks:=TFPHashObjectList.Create;
+          curr_block:=TAsmList.Create;
+          blocks.Add('.start',curr_block);
+          repeat
+            hp:=tai(asmlist.First);
+            if assigned(hp) then
+              begin
+                asmlist.Remove(hp);
+                if hp.typ=ait_label then
+                  begin
+                    curr_block:=TAsmList.Create;
+                    blocks.Add(tai_label(hp).labsym.Name,curr_block);
+                  end;
+                curr_block.Concat(hp);
+              end;
+          until not assigned(hp);
+          { asmlist is now empty }
+          asmlist.Concat(tai_comment.Create(strpnew('labels resolved via state machine')));
+          machine_state:=AllocWasmLocal(wbt_i32);
+          asmlist.Concat(tai_comment.Create(strpnew('machine state is in local '+tostr(machine_state))));
+          asmlist.Concat(taicpu.op_const(a_i32_const,0));
+          asmlist.Concat(taicpu.op_const(a_local_set,machine_state));
+          asmlist.Concat(taicpu.op_none(a_block));
+          asmlist.Concat(taicpu.op_none(a_loop));
+          current_asmdata.getjumplabel(state_machine_loop_start_label);
+          asmlist.concat(tai_label.create(state_machine_loop_start_label));
+          current_asmdata.getjumplabel(state_machine_exit);
+          for block_nr:=0 to blocks.Count-1 do
+            asmlist.Concat(taicpu.op_none(a_block));
+          for block_nr:=0 to blocks.Count-1 do
+            begin
+              { TODO: this sequence can be replaced with a single br_table instruction }
+              asmlist.Concat(taicpu.op_const(a_local_get,machine_state));
+              asmlist.Concat(taicpu.op_const(a_i32_const,block_nr));
+              asmlist.Concat(taicpu.op_none(a_i32_eq));
+              asmlist.Concat(taicpu.op_const(a_br_if,block_nr));
+            end;
+          asmlist.Concat(taicpu.op_none(a_unreachable));
+          tmplist:=TAsmList.Create;
+          for block_nr:=0 to blocks.Count-1 do
+            begin
+              asmlist.Concat(taicpu.op_none(a_end_block));
+              asmlist.Concat(tai_comment.Create(strpnew('block '+tostr(block_nr)+' for label '+blocks.NameOfIndex(block_nr))));
+              curr_block:=TAsmList(blocks[block_nr]);
+              hp:=tai(curr_block.First);
+              while assigned(hp) do
+                begin
+                  hpnext:=tai(hp.next);
+                  if (hp.typ=ait_instruction) and (taicpu(hp).opcode in [a_br,a_br_if]) and
+                     (taicpu(hp).ops=1) and
+                     (taicpu(hp).oper[0]^.typ=top_ref) and
+                     assigned(taicpu(hp).oper[0]^.ref^.symbol) then
+                    begin
+                      target_block_index:=blocks.FindIndexOf(taicpu(hp).oper[0]^.ref^.symbol.Name);
+                      curr_block.InsertBefore(tai_comment.Create(strpnew(
+                        'branch '+gas_op2str[taicpu(hp).opcode]+
+                        ' '+taicpu(hp).oper[0]^.ref^.symbol.Name+
+                        ' target_block_index='+tostr(target_block_index))),hp);
+                      if target_block_index<>-1 then
+                        begin
+                          tmplist.Clear;
+                          if taicpu(hp).opcode=a_br_if then
+                            tmplist.Concat(taicpu.op_none(a_if));
+                          tmplist.Concat(taicpu.op_const(a_i32_const,target_block_index));
+                          tmplist.Concat(taicpu.op_const(a_local_set,machine_state));
+                          tmplist.Concat(taicpu.op_sym(a_br,state_machine_loop_start_label));
+                          if taicpu(hp).opcode=a_br_if then
+                            tmplist.Concat(taicpu.op_none(a_end_if));
+                          curr_block.insertListAfter(hp,tmplist);
+                          curr_block.Remove(hp);
+                        end;
+                    end;
+                  hp:=hpnext;
+                end;
+              if block_nr<(blocks.Count-1) then
+                begin
+                  curr_block.Concat(taicpu.op_const(a_i32_const,block_nr+1));
+                  curr_block.Concat(taicpu.op_const(a_local_set,machine_state));
+                  curr_block.Concat(taicpu.op_sym(a_br,state_machine_loop_start_label));
+                end
+              else
+                curr_block.Concat(taicpu.op_sym(a_br,state_machine_exit));
+              asmlist.concatList(curr_block);
+            end;
+          tmplist.Free;
+          asmlist.Concat(taicpu.op_none(a_end_loop));
+          asmlist.Concat(taicpu.op_none(a_end_block));
+          asmlist.concat(tai_label.create(state_machine_exit));
+        end;
+
+      procedure filter_start_exit_code(asmlist: TAsmList; out entry_code, proc_body, exit_code: TAsmList);
+        var
+          hp, hpnext, hpprev: tai;
+        begin
+          entry_code:=TAsmList.Create;
+          proc_body:=TAsmList.Create;
+          exit_code:=TAsmList.Create;
+          repeat
+            hp:=tai(asmlist.First);
+            if assigned(hp) then
+              begin
+                hpnext:=tai(hp.next);
+                if (hp.typ=ait_instruction) and (taicpu(hp).opcode=a_block) then
+                  break;
+                asmlist.Remove(hp);
+                entry_code.Concat(hp);
+                hp:=hpnext;
+              end;
+          until not assigned(hp);
+          repeat
+            hp:=tai(asmlist.Last);
+            if assigned(hp) then
+              begin
+                hpprev:=tai(hp.Previous);
+                if (hp.typ=ait_instruction) and (taicpu(hp).opcode=a_end_block) then
+                  break;
+                asmlist.Remove(hp);
+                exit_code.Insert(hp);
+                hp:=hpprev;
+              end;
+          until not assigned(hp);
+          proc_body.insertList(asmlist);
+        end;
+
+      procedure resolve_labels_of_asmlist_with_try_blocks_recursive(asmlist: TAsmList);
+        var
+          hp: tai;
+          i: Integer;
         begin
           if not assigned(asmlist) then
             exit;
-          resolve_labels_pass1(asmlist);
-          resolve_labels_pass2(asmlist);
+          hp:=tai(asmlist.First);
+          while assigned(hp) do
+            begin
+              if hp.typ=ait_wasm_structured_instruction then
+                begin
+                  if not (taicpu_wasm_structured_instruction(hp).wstyp in [aitws_try_catch,aitws_try_delegate]) then
+                    internalerror(2023102201);
+                  resolve_labels_of_asmlist_with_try_blocks_recursive(tai_wasmstruc_try(hp).try_asmlist);
+                  if taicpu_wasm_structured_instruction(hp).wstyp=aitws_try_catch then
+                    with tai_wasmstruc_try_catch(hp) do
+                      begin
+                        for i:=low(catch_list) to high(catch_list) do
+                          resolve_labels_of_asmlist_with_try_blocks_recursive(catch_list[i].asmlist);
+                        resolve_labels_of_asmlist_with_try_blocks_recursive(catch_all_asmlist);
+                      end
+                  else if taicpu_wasm_structured_instruction(hp).wstyp=aitws_try_delegate then
+                    {nothing}
+                  else
+                    internalerror(2023102202);
+                end;
+              hp:=tai(hp.next);
+            end;
+          resolve_labels_via_state_machine(asmlist);
         end;
 
-      var
-       templist : TAsmList;
-       l : TWasmLocal;
-       first: Boolean;
-       local: tai_local;
-      begin
-        templist:=TAsmList.create;
-        local:=nil;
-        first:=true;
-        l:=ttgwasm(tg).localvars.first;
-        while Assigned(l) do
+      procedure resolve_labels_complex(var asmlist: TAsmList);
+        var
+          entry_code, proc_body, exit_code: TAsmList;
+        begin
+          filter_start_exit_code(asmlist,entry_code,proc_body,exit_code);
+          asmlist.Free;
+          asmlist:=proc_body;
+          proc_body:=nil;
+
+          wasm_convert_to_structured_asmlist(asmlist);
+
+          map_structured_asmlist(asmlist,@ConvertBranchTargetNumbersToLabels);
+          map_structured_asmlist(asmlist,@ConvertIfToBrIf);
+          map_structured_asmlist(asmlist,@ConvertLoopToBr);
+
+          wasm_convert_to_flat_asmlist(asmlist);
+
+          map_structured_asmlist(asmlist,@StripBlockInstructions);
+
+          wasm_convert_to_structured_asmlist(asmlist);
+
+          resolve_labels_of_asmlist_with_try_blocks_recursive(asmlist);
+
+          wasm_convert_to_flat_asmlist(asmlist);
+
+          asmlist.insertList(entry_code);
+          entry_code.free;
+          asmlist.concatList(exit_code);
+          exit_code.free;
+
+          if not resolve_labels_simple(asmlist) then
+            internalerror(2023102101);
+        end;
+
+        function prepare_locals: TAsmList;
+          var
+            local: tai_local;
+            first: Boolean;
+            l : TWasmLocal;
           begin
-            local:=tai_local.create(l.typ);
-            local.first:=first;
-            first:=false;
-            templist.Concat(local);
-            l:=l.nextseq;
+            result:=TAsmList.create;
+            local:=nil;
+            first:=true;
+            l:=ttgwasm(tg).localvars.first;
+            FFirstFreeLocal:=Length(findfirst_tai_functype(aktproccode).functype.params);
+            while Assigned(l) do
+              begin
+                local:=tai_local.create(l.typ);
+                local.first:=first;
+                first:=false;
+                result.Concat(local);
+                l:=l.nextseq;
+                Inc(FFirstFreeLocal);
+              end;
           end;
-        if assigned(local) then
-          local.last:=true;
-        aktproccode.insertListAfter(findfirst_tai_functype(aktproccode),templist);
-        templist.Free;
+
+        procedure add_extra_allocated_locals(localslist: TAsmList);
+          var
+            t: TWasmBasicType;
+          begin
+            for t in FAllocatedLocals do
+              localslist.Concat(tai_local.create(t));
+          end;
+
+        procedure insert_localslist(destlist,localslist: TAsmList);
+          begin
+            if assigned(localslist) then
+              begin
+                tai_local(localslist.Last).last:=true;
+                destlist.insertListAfter(findfirst_tai_functype(destlist),localslist);
+              end;
+          end;
+
+        procedure check_goto_br_instructions(list: TAsmList);
+          var
+            hp: tai;
+          begin
+            hp:=tai(list.first);
+            while assigned(hp) do
+              begin
+                if (hp.typ=ait_instruction) and (taicpu(hp).is_br_generated_by_goto) then
+                  begin
+                    if (taicpu(hp).opcode<>a_br) or
+                       (taicpu(hp).ops<>1) or
+                       (taicpu(hp).oper[0]^.typ<>top_ref) or
+                       (taicpu(hp).oper[0]^.ref^.offset<>0) or
+                       (taicpu(hp).oper[0]^.ref^.base<>NR_NO) or
+                       (taicpu(hp).oper[0]^.ref^.index<>NR_NO) or
+                       (taicpu(hp).oper[0]^.ref^.symbol=nil) then
+                      internalerror(2023102203);
+                    if not is_goto_target(taicpu(hp).oper[0]^.ref^.symbol) then
+                      internalerror(2023102204);
+                  end;
+                hp:=tai(hp.next);
+              end;
+          end;
+
+      var
+        localslist: TAsmList;
+        labels_resolved: Boolean;
+      begin
+        check_goto_br_instructions(aktproccode);
+
+        localslist:=prepare_locals;
 
         replace_local_frame_pointer(aktproccode);
 
-        resolve_labels(aktproccode);
+        labels_resolved:=resolve_labels_simple(aktproccode);
+{$ifndef DEBUG_WASM_GOTO}
+        if not labels_resolved then
+{$endif DEBUG_WASM_GOTO}
+          resolve_labels_complex(aktproccode);
+
+        add_extra_allocated_locals(localslist);
+        insert_localslist(aktproccode,localslist);
+        localslist.Free;
 
         inherited postprocess_code;
       end;
@@ -645,6 +982,16 @@ implementation
         procdef.init_paraloc_info(calleeside);
         sz := procdef.calleeargareasize;
         tg.setfirsttemp(sz);
+      end;
+
+    procedure tcpuprocinfo.add_goto_target(l: tasmlabel);
+      begin
+        FGotoTargets.Add(l.Name,l);
+      end;
+
+    function tcpuprocinfo.is_goto_target(l: tasmsymbol): Boolean;
+      begin
+        result:=FGotoTargets.FindIndexOf(l.Name)<>-1;
       end;
 
 

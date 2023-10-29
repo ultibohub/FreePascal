@@ -1851,6 +1851,11 @@ type
     function Add(const S: string): Integer; override;
   end;
 
+  TUnsortedCompilerOptionsStringList = class(TStringList)
+  public
+    constructor Create;
+  end;
+
 var
   CustomFpmakeCommandlineOptions: TStrings;
   CustomFpMakeCommandlineValues: TStrings;
@@ -2934,7 +2939,7 @@ end;
 procedure AddCustomFpmakeCommandlineOption(const ACommandLineOption, HelpMessage : string);
 begin
   if not assigned(CustomFpmakeCommandlineOptions) then
-    CustomFpmakeCommandlineOptions := TStringList.Create;
+    CustomFpmakeCommandlineOptions := TUnsortedCompilerOptionsStringList.Create;
   CustomFpmakeCommandlineOptions.Values[ACommandLineOption]:=HelpMessage;
 end;
 
@@ -3008,7 +3013,7 @@ begin
   Result:=Nil;
   If (S='') then
     Exit;
-  Result:=TStringList.Create;
+  Result:=TUnsortedCompilerOptionsStringList.Create;
   Repeat
     P:=Pos(' ',S);
     If P=0 then
@@ -3598,7 +3603,7 @@ constructor TPackageVariant.Create(ACollection: TCollection);
 begin
   inherited Create(ACollection);
   FTargets := TTargets.Create(TTarget);
-  FOptions := TStringList.Create;
+  FOptions := TUnsortedCompilerOptionsStringList.Create;
   FIncludePath:=TConditionalStrings.Create(TConditionalString);
   FSourcePath:=TConditionalStrings.Create(TConditionalString);
 end;
@@ -3614,9 +3619,7 @@ end;
 
 procedure TPackageVariant.AddOption(const aValue: string);
 begin
-  // Cannot use duplicates, requires ordering
-  if Options.Indexof(aValue)=-1 then
-    Options.Add(aValue);
+  Options.Add(aValue);
 end;
 
 { TPackageVariants }
@@ -3805,6 +3808,16 @@ begin
       DupError : Error(SDuplicateString,0)
     end;
   inherited Add(S);
+end;
+
+{****************************************************************************
+                           TUnsortedCompilerOptionsStringList
+****************************************************************************}
+
+constructor  TUnsortedCompilerOptionsStringList.Create;
+begin
+  Inherited Create;
+  Duplicates:=DupAccept;
 end;
 
 {****************************************************************************
@@ -4626,14 +4639,14 @@ end;
 function TPackage.GetOptions: TStrings;
 begin
   If (FOptions=Nil) then
-    FOptions:=TStringList.Create;
+    FOptions:=TUnsortedCompilerOptionsStringList.Create;
   Result:=FOptions;
 end;
 
 function TPackage.GetTransmitOptions: TStrings;
 begin
   If (FTransmitOptions=Nil) then
-    FTransmitOptions:=TStringList.Create;
+    FTransmitOptions:=TUnsortedCompilerOptionsStringList.Create;
   Result:=FTransmitOptions;
 end;
 
@@ -4873,8 +4886,7 @@ begin
     begin
     PackageVariants := TPackageVariants(FPackageVariants.Items[i]);
     for S in PackageVariants.ActivePackageVariant.Options do
-      if ACompilerOptions.IndexOf(S)=-1 then
-        ACompilerOptions.Add(S);
+      ACompilerOptions.Add(S);
     end;
 end;
 
@@ -5392,7 +5404,7 @@ end;
 function TCustomDefaults.GetOptions: TStrings;
 begin
   If (FOptions=Nil) then
-    FOptions:=TStringList.Create;
+    FOptions:=TUnsortedCompilerOptionsStringList.Create;
   Result:=FOptions;
 end;
 
@@ -5664,9 +5676,7 @@ end;
 
 procedure TCustomDefaults.AddOption(const aValue: string);
 begin
-  // Cannot use duplicates, requires ordering
-  if Options.Indexof(aValue)=-1 then
-    Options.Add(aValue);
+  Options.Add(aValue);
 end;
 
 function TCustomDefaults.IsBuildDifferentFromTarget: boolean;
@@ -6366,7 +6376,7 @@ begin
     else if assigned(CustomFpmakeCommandlineOptions) and CheckCustomOption(I,CustOptName) then
       begin
       if not assigned(CustomFpMakeCommandlineValues) then
-        CustomFpMakeCommandlineValues := TStringList.Create;
+        CustomFpMakeCommandlineValues := TUnsortedCompilerOptionsStringList.Create;
       CustomFpMakeCommandlineValues.Values[CustOptName]:=OptionArg(I, true)
       end
     else if (not CheckBuildOptionSetValue(I)) and (not CheckPackageVariantOptionSetValue(I))
@@ -10099,7 +10109,7 @@ end;
 function TTarget.GetOptions: TStrings;
 begin
   If Foptions=Nil then
-    FOptions:=TStringList.Create;
+    FOptions:=TUnsortedCompilerOptionsStringList.Create;
   Result:=FOptions;
 end;
 
@@ -10458,9 +10468,7 @@ end;
 
 procedure TTarget.AddOption(const aValue: String);
 begin
-  // Cannot use duplicates, requires ordering
-  if Options.IndexOf(aValue)=-1 then
-    Options.Add(aValue);
+  Options.Add(aValue);
 end;
 
 
@@ -11114,7 +11122,7 @@ end;
 function TCommand.GetOptions: TStrings;
 begin
   If (FOptions=Nil) then
-    FOptions:=TStringList.Create;
+    FOptions:=TUnsortedCompilerOptionsStringList.Create;
   Result:=FOptions;
 end;
 
