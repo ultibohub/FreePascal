@@ -1241,7 +1241,16 @@ implementation
                 objreloc:=TOmfRelocation.CreateGroup(CurrObjSec.Size,TObjSectionGroup(GroupsList.Find('DGROUP')),RELOC_SEGREL);
               CurrObjSec.ObjRelocations.Add(objreloc);
             end;
-        CurrObjSec.write(data,len);
+        case len of
+          1:
+            CurrObjSec.write(data,1);
+          2:
+            CurrObjSec.writeInt16LE(int16(data));
+          4:
+            CurrObjSec.writeInt32LE(int32(data));
+          else
+            internalerror(2023110201);
+        end;
       end;
 
     procedure TOmfObjData.AddImportSymbol(const libname, symname,
@@ -3472,7 +3481,7 @@ cleanup:
             omfsec.Data.read(w,2);
             w:=LEtoN(w);
             Inc(w,fixupamount);
-            w:=LEtoN(w);
+            w:=NtoLE(w);
             omfsec.Data.seek(objreloc.DataOffset);
             omfsec.Data.write(w,2);
           end;
@@ -3485,7 +3494,7 @@ cleanup:
             omfsec.Data.read(lw,4);
             lw:=LEtoN(lw);
             Inc(lw,fixupamount);
-            lw:=LEtoN(lw);
+            lw:=NtoLE(lw);
             omfsec.Data.seek(objreloc.DataOffset);
             omfsec.Data.write(lw,4);
           end;
@@ -3498,7 +3507,7 @@ cleanup:
             omfsec.Data.read(w,2);
             w:=LEtoN(w);
             Inc(w,framebase shr 4);
-            w:=LEtoN(w);
+            w:=NtoLE(w);
             omfsec.Data.seek(DataOffset);
             omfsec.Data.write(w,2);
             Header.AddRelocation(omfsec.MZExeUnifiedLogicalSegment.MemBasePos shr 4,

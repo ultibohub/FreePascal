@@ -32,6 +32,7 @@ Type
     TImageIndex = type Integer;
 
     TColorRec = record
+     class var ColorToRGB: function (Color: TColor): Longint;
                  class operator := (AColor : TColor): TColorRec; inline;
                  class operator := (AColor : TColorRec): TColor; inline;
       const
@@ -223,6 +224,7 @@ Type
       SysMenuHighlight           = TColor($FF00001D) platform;
       SysMenuBar                 = TColor($FF00001E) platform;
       SysNone                    = TColor($1FFFFFFF) platform;
+      Null                       = TColor($00000000);
       SysDefault                 = TColor($20000000) platform;
       var
         case Integer of
@@ -410,9 +412,33 @@ Type
     {$ENDIF}
   end;
   TAlphaColorRec = TAlphaColors;
+  PAlphaColorRec = ^TAlphaColorRec;
+
 
   TAlphaColorF = record
+  Public
     R, G, B, A: Single;
+  const
+    Epsilon = 1.5259E-05; // 1 / 65535, minimal value for TPixelFormat.RGBA16 components
+
+    class function Create(const R, G, B: Single; const A: Single = 1): TAlphaColorF; overload; static; inline;
+    class function Create(const aColor: TAlphaColor): TAlphaColorF; overload; static; inline;
+
+    class operator +(const aColor1, aColor2: TAlphaColorF): TAlphaColorF;
+    class operator -(const aColor1, aColor2: TAlphaColorF): TAlphaColorF;
+    class operator =(const aColor1, aColor2: TAlphaColorF): Boolean;
+    class operator <>(const aColor1, aColor2: TAlphaColorF): Boolean;
+    class operator -(const aColor: TAlphaColorF): TAlphaColorF;
+    class operator *(const aColor1, aColor2: TAlphaColorF): TAlphaColorF;
+    class operator *(const aColor: TAlphaColorF; const aFactor: Single): TAlphaColorF;
+    class operator *(const aFactor: Single; const aColor: TAlphaColorF): TAlphaColorF; inline;
+    class operator /(const aColor: TAlphaColorF; const aFactor: Single): TAlphaColorF; inline;
+
+    function PremultipliedAlpha: TAlphaColorF;
+    function UnpremultipliedAlpha: TAlphaColorF;
+
+    function Clamp: TAlphaColorF;
+    function ToAlphaColor: TAlphaColor;
   end;
 
 
@@ -444,8 +470,10 @@ const
   mrNoToAll = mrNone + 9;
   mrYesToAll = mrNone + 10;
   mrClose = mrNone + 11;
-  mrLast = mrClose;
-
+  mrContinue = mrNone + 12;
+  mrTryAgain = mrNone + 13;
+  mrLast = mrTryAgain;
+  
   // String representation of ModalResult values
   ModalResultStr: array[mrNone..mrLast] of shortstring = (
     'mrNone',
@@ -459,23 +487,44 @@ const
     'mrAll',
     'mrNoToAll',
     'mrYesToAll',
-    'mrClose');
+    'mrClose',
+    'mrContinue',
+    'mrTryAgain');
 
 // CONTROLS
 type
   TCloseAction = (caNone, caHide, caFree, caMinimize);
+  TCloseActions = set of  TCloseAction;
+  
   TMouseButton = (mbLeft, mbRight, mbMiddle, mbExtra1, mbExtra2);
+  TMouseButtons = set of TMouseButton;
+  
   TTabOrder = -1..32767;
+  
   TDragKind = (dkDrag, dkDock);
+  TDragKinds = set of TDragKind;
+  
   TDragMode = (dmManual , dmAutomatic);
+  TDragModes = set of TDragMode;
+  
   TDragState = (dsDragEnter, dsDragLeave, dsDragMove);
+  TDragStates = set of TDragState;
+  
   TDragMessage = (dmDragEnter, dmDragLeave, dmDragMove, dmDragDrop,
                   dmDragCancel,dmFindTarget);
+  TDragMessages = set of TDragMessage;
 
   TAnchorKind = (akTop, akLeft, akRight, akBottom);
   TAnchors = set of TAnchorKind;
-  TAnchorSideReference = (asrTop, asrBottom, asrCenter);
+  TAnchorKinds = TAnchors;
 
+  TAnchorSideReference = (asrTop, asrBottom, asrCenter);
+  TAnchorSideReferences = set of TAnchorSideReference;
+
+  TScrollCode = (scLineUp, scLineDown, scPageUp, scPageDown, scPosition,
+                scTrack, scTop, scBottom, scEndScroll);
+  TScrollCodes = set of TScrollCode;
+  
   TCursor = -32768..32767;
 
 const
@@ -532,10 +581,175 @@ type
 
 // PRINTERS
   TPrinterOrientation = (poPortrait,poLandscape,poReverseLandscape,poReversePortrait);
+  TPrinterOrientations = set of TPrinterOrientation;
+  
   TPrinterCapability  = (pcCopies, pcOrientation, pcCollation);
   TPrinterCapabilities= Set of TPrinterCapability;
+  
+  TPrinterState = (psNoHandle, psHandleIC, psHandleDC);
+  TPrinterStates = set of TPrinterState;
+  
+
+// Gestures
+const
+  sgiNoGesture       =  0;
+  sgiLeft            =  1;
+  sgiRight           =  2;
+  sgiUp              =  3;
+  sgiDown            =  4;
+  sgiUpLeft          =  5;
+  sgiUpRight         =  6;
+  sgiDownLeft        =  7;
+  sgiDownRight       =  8;
+  sgiLeftUp          =  9;
+  sgiLeftDown        = 10;
+  sgiRightUp         = 11;
+  sgiRightDown       = 12;
+  sgiUpDown          = 13;
+  sgiDownUp          = 14;
+  sgiLeftRight       = 15;
+  sgiRightLeft       = 16;
+  sgiUpLeftLong      = 17;
+  sgiUpRightLong     = 18;
+  sgiDownLeftLong    = 19;
+  sgiDownRightLong   = 20;
+  sgiScratchout      = 21;
+  sgiTriangle        = 22;
+  sgiSquare          = 23;
+  sgiCheck           = 24;
+  sgiCurlicue        = 25;
+  sgiDoubleCurlicue  = 26;
+  sgiCircle          = 27;
+  sgiDoubleCircle    = 28;
+  sgiSemiCircleLeft  = 29;
+  sgiSemiCircleRight = 30;
+  sgiChevronUp       = 31;
+  sgiChevronDown     = 32;
+  sgiChevronLeft     = 33;
+  sgiChevronRight    = 34;
+  
+  sgiFirst           = sgiLeft;
+  sgiLast            = sgiChevronRight;
+
+  // ID range for custom gestures 
+ 
+  cgiFirst = -512;
+  cgiLast  = -1;
+
+  // Range for registered custom gestures
+  rgiFirst = -1024;
+  rgiLast  = -513;
+
+  // Interactive gesture ID range.
+  igiFirst = 256;
+  igiLast  = 511;
+
+const
+  // Interactive gesture IDs
+  igiBegin         = igiFirst + 1;
+  igiEnd           = igiFirst + 2;
+  igiZoom          = igiFirst + 3;
+  igiPan           = igiFirst + 4;
+  igiRotate        = igiFirst + 5;
+  igiTwoFingerTap  = igiFirst + 6;
+  igiPressAndTap   = igiFirst + 7;
+  igiLongTap       = igiFirst + 8;
+  igiDoubleTap     = igiFirst + 9;
+
+// Edit controls
+
+Type
+  TEditCharCase = (ecNormal, ecUpperCase, ecLowerCase);
+
+  // Forms
+  
+  TWindowState = (wsNormal, wsMinimized, wsMaximized, wsFullScreen);
+  TWindowStates = Set of TWindowState;
+  
+  TBorderIcon = (biSystemMenu, biMinimize, biMaximize, biHelp);
+  TBorderIcons = set of TBorderIcon;
+    
+  // Dialogs
+  TOpenOption = (ofReadOnly, ofOverwritePrompt, ofHideReadOnly,
+    ofNoChangeDir, ofShowHelp, ofNoValidate, ofAllowMultiSelect,
+    ofExtensionDifferent, ofPathMustExist, ofFileMustExist, ofCreatePrompt,
+    ofShareAware, ofNoReadOnlyReturn, ofNoTestFileCreate, ofNoNetworkButton,
+    ofNoLongNames, ofOldStyleDialog, ofNoDereferenceLinks, ofEnableIncludeNotify,
+    ofEnableSizing, ofDontAddToRecent, ofForceShowHidden);
+  TOpenOptions = set of TOpenOption;
+
+  TOpenOptionEx = (ofExNoPlacesBar);
+  TOpenOptionsEx = set of TOpenOptionEx;
+
+  TDialogType = (Standard, Directory);
+
+  TPrintRange = (prAllPages, prSelection, prPageNums);
+  TPrintDialogOption = (poPrintToFile, poPageNums, poSelection, poWarning,
+    poHelp, poDisablePrintToFile);
+  TPrintDialogOptions = set of TPrintDialogOption;
+
+  TPageSetupDialogOption = (psoDefaultMinMargins, psoDisableMargins,
+      psoDisableOrientation, psoDisablePagePainting, psoDisablePaper, psoDisablePrinter,
+      psoMargins, psoMinMargins, psoShowHelp, psoWarning, psoNoNetworkButton);
+    TPageSetupDialogOptions = set of TPageSetupDialogOption;
+
+  TPageMeasureUnits = (pmDefault, pmMillimeters, pmInches);
+
+  TCalDayOfWeek = (dowMonday, dowTuesday, dowWednesday, dowThursday,
+    dowFriday, dowSaturday, dowSunday, dowLocaleDefault);
+
+function IsPositiveResult(const AModalResult: TModalResult): Boolean;
+function IsNegativeResult(const AModalResult: TModalResult): Boolean;
+function IsAbortResult(const AModalResult: TModalResult): Boolean;
+function IsAnAllResult(const AModalResult: TModalResult): Boolean;
+function StripAllFromResult(const AModalResult: TModalResult): TModalResult;
+
 
 implementation
+
+function IsPositiveResult(const AModalResult: TModalResult): Boolean;
+
+begin
+  Result:=aModalResult in [mrOk,mrYes,mrAll,mrYesToAll,mrContinue]
+end;
+
+
+function IsNegativeResult(const AModalResult: TModalResult): Boolean;
+
+begin
+  Result:=aModalResult in [mrNo,mrNoToAll,mrTryAgain]
+end;
+
+
+function IsAbortResult(const AModalResult: TModalResult): Boolean;
+
+begin
+   Result:=aModalResult in [mrCancel,mrAbort]
+end;
+
+
+function IsAnAllResult(const AModalResult: TModalResult): Boolean;
+
+begin
+  Result:=aModalResult in [mrAll,mrNoToAll,mrYesToAll]
+end;
+
+
+function StripAllFromResult(const AModalResult: TModalResult): TModalResult;
+
+begin
+  case aModalResult of
+  mrAll:
+    Result:=mrOk;
+  mrNoToAll:
+    Result:=mrNo;
+  mrYesToAll: 
+    Result:=mrYes;
+  else
+    Result:=aModalResult;
+  end;
+end;
+
 
 class operator TColorRec.:= (AColor : TColor): TColorRec;
 begin
@@ -553,4 +767,227 @@ begin
 end;
 
 
+class function TAlphaColorF.Create(const R, G, B: Single; const A: Single = 1): TAlphaColorF; overload; static; 
+
+begin
+  Result.A:=A;
+  Result.R:=R;
+  Result.G:=G;
+  Result.B:=B;
+end;
+
+
+class function TAlphaColorF.Create(const aColor: TAlphaColor): TAlphaColorF; overload; static; 
+
+  function ToSingle(aCom : Byte) : single; inline;
+  begin
+    Result:=aCom/255;
+  end;
+  
+var
+  CR : TAlphaColorRec absolute aColor;  
+
+begin
+  Result.A:=ToSingle(CR.A);
+  Result.R:=ToSingle(CR.R);
+  Result.G:=ToSingle(CR.G);
+  Result.B:=ToSingle(CR.B);
+end;
+
+
+class operator TAlphaColorF.+(const aColor1, aColor2: TAlphaColorF): TAlphaColorF;
+
+begin
+  With Result do
+    begin
+    A:=aColor1.A+aColor2.A;
+    R:=aColor1.R+aColor2.R;
+    G:=aColor1.G+aColor2.G;
+    B:=aColor1.B+aColor2.B;
+    end;
+end;
+
+
+class operator TAlphaColorF.-(const aColor1, aColor2: TAlphaColorF): TAlphaColorF;
+
+begin
+  With Result do
+    begin
+    A:=aColor1.A-aColor2.A;
+    R:=aColor1.R-aColor2.R;
+    G:=aColor1.G-aColor2.G;
+    B:=aColor1.B-aColor2.B;
+    end;
+end;
+
+
+class function Eq(const V1,V2: Single): Boolean;inline;
+begin
+  Result:=Abs(V1-V2)<=TAlphaColorF.Epsilon;
+end;
+
+
+class operator TAlphaColorF.=(const aColor1, aColor2: TAlphaColorF): Boolean;
+
+begin
+  Result:=Eq(aColor1.A,aColor2.A)
+          and Eq(aColor1.R,aColor2.R)
+          and Eq(aColor1.G,aColor2.G)
+          and Eq(aColor1.B,aColor2.B);
+end;
+
+
+class operator TAlphaColorF.<>(const aColor1, aColor2: TAlphaColorF): Boolean;
+
+begin
+  Result:=Not (aColor1=aColor2);
+end;
+
+
+class operator TAlphaColorF.-(const aColor: TAlphaColorF): TAlphaColorF;
+
+begin
+  With Result do
+    begin
+    A:=-aColor.A;
+    R:=-aColor.R;
+    G:=-aColor.G;
+    B:=-aColor.B;
+    end;
+end;
+
+
+class operator TAlphaColorF.*(const aColor1, aColor2: TAlphaColorF): TAlphaColorF;
+
+begin
+  With Result do
+    begin
+    A:=aColor1.A*aColor2.A;
+    R:=aColor1.R*aColor2.R;
+    G:=aColor1.G*aColor2.G;
+    B:=aColor1.B*aColor2.B;
+    end;
+end;
+
+class operator TAlphaColorF.*(const aColor: TAlphaColorF; const aFactor: Single): TAlphaColorF;
+
+begin
+  With Result do
+    begin
+    A:=aColor.A*aFactor;
+    R:=aColor.R*aFactor;
+    G:=aColor.G*aFactor;
+    B:=aColor.B*aFactor;
+    end;
+end;
+
+
+class operator TAlphaColorF.*(const aFactor: Single; const aColor: TAlphaColorF): TAlphaColorF; 
+
+begin
+  With Result do
+    begin
+    A:=aFactor*aColor.A;
+    R:=aFactor*aColor.R;
+    G:=aFactor*aColor.G;
+    B:=aFactor*aColor.B;
+    end;
+
+end;
+
+class operator TAlphaColorF./(const aColor: TAlphaColorF; const aFactor: Single): TAlphaColorF; 
+
+var
+  F : Single;
+
+begin
+  F:=aFactor;
+  if F<Epsilon then 
+    F:=1;
+  With Result do
+    begin
+    A:=aColor.A/F;
+    R:=aColor.R/F;
+    G:=aColor.G/F;
+    B:=aColor.B/F;
+    end;
+end;
+
+
+function TAlphaColorF.PremultipliedAlpha: TAlphaColorF;
+
+begin
+  Result.A:=A;
+  Result.R:=A*R;
+  Result.G:=A*G;
+  Result.B:=A*B;
+end;
+
+
+function TAlphaColorF.UnpremultipliedAlpha: TAlphaColorF;
+
+var
+  F : Single;
+  
+begin
+  Result.A:=A;
+  if A<Epsilon then
+    F:=0
+  else if Abs(A-1)<Epsilon then
+    F:=1
+  else
+    F:=1/A;
+  Result.R:=F*R;
+  Result.G:=F*G;
+  Result.B:=F*B;
+end;
+
+
+
+function TAlphaColorF.Clamp: TAlphaColorF;
+
+  function Limit(C :Single) : Single; inline;
+  
+  begin
+    if C>1 then
+      Result:=1
+    else if C<0 then
+      Result:=0
+    else
+      Result:=C;
+  end;    
+
+begin
+  Result.A:=Limit(A);  
+  Result.R:=Limit(R);  
+  Result.G:=Limit(G);  
+  Result.B:=Limit(B);  
+end;
+
+
+function TAlphaColorF.ToAlphaColor: TAlphaColor;
+
+  Function CC(C : Single) : Byte; inline;
+  
+  begin
+    Result:=Round(C*255);
+  end;
+
+var
+  CR : TAlphaColorRec absolute Result;
+
+begin
+  CR.A:=CC(A);
+  CR.R:=CC(R);
+  CR.G:=CC(G);
+  CR.B:=CC(B);
+end;
+
+function DefaultColorToRGB(Color: TColor): Longint;
+begin
+  Result:=Color;
+end;
+
+initialization
+  TColorRec.ColorToRGB:=@DefaultColorToRGB;
 end.

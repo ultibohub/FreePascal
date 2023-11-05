@@ -8098,7 +8098,7 @@ begin
 
   // Replace strings
   for I:=0 to Args.Count-1 do
-    Args[i]:=maybequoted(APackage.Dictionary.ReplaceStrings(Args[i]));
+    Args[i]:=APackage.Dictionary.ReplaceStrings(Args[i]);
   // Add Filename to compile
   Args.Add(AddPathPrefix(APackage,ATarget.TargetSourceFileName));
 end;

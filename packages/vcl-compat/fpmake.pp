@@ -42,6 +42,8 @@ begin
     T.ResourceStrings := True;
     T:=P.Targets.AddUnit('system.ioutils.pp');
     T.ResourceStrings := True;
+    T:=P.Targets.AddUnit('system.devices.pp');
+    T:=P.Targets.AddUnit('system.analytics.pp');
 
 
 {$ifndef ALLPACKAGES}
