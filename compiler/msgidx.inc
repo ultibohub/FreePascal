@@ -27,6 +27,7 @@ const
   general_f_oserror=01025;
   general_e_exception_raised=01026;
   general_t_unitscope=01027;
+  general_i_reduced_filesearch=01028;
   scan_f_end_of_file=02000;
   scan_f_string_exceeds_line=02001;
   scan_f_illegal_char=02002;
@@ -984,6 +985,7 @@ const
   link_e_comdat_selection_differs=09220;
   link_e_undefined_symbol_in_obj=09221;
   link_e_undefined_symbol=09222;
+  link_w_unsupported_cross_endian_internal_linker=09223;
   unit_t_unitsearch=10000;
   unit_t_ppu_loading=10001;
   unit_u_ppu_name=10002;
@@ -1074,6 +1076,7 @@ const
   option_obsolete_switch=11018;
   option_obsolete_switch_use_new=11019;
   option_switch_bin_to_src_assembler=11020;
+  option_switch_bin_to_src_assembler_cross_endian=11068;
   option_incompatible_asm=11021;
   option_asm_forced=11022;
   option_using_file=11026;
@@ -1169,9 +1172,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 92109;
+  MsgTxtSize = 92442;
 
   MsgIdxMax : array[1..20] of longint=(
-    28,109,371,134,102,63,148,38,223,71,
-    68,20,30,1,1,1,1,1,1,1
+    29,109,371,134,102,63,148,38,224,71,
+    69,20,30,1,1,1,1,1,1,1
   );

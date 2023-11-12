@@ -105,6 +105,13 @@ begin
     Result:=-1;
 end;
 
+function TComponent.GetObservers: TObservers;
+begin
+  if FDObservers=Nil then
+    FDObservers:=TObservers.Create;
+  Result:=FDObservers;
+end;
+
 
 Procedure TComponent.Insert(AComponent: TComponent);
 
@@ -472,6 +479,7 @@ Var
 
 begin
   Destroying;
+  FreeAndNil(FObservers);
   If Assigned(FFreeNotifies) then
     begin
     I:=FFreeNotifies.Count-1;
@@ -722,3 +730,33 @@ begin
   else
     Result := E_NOTIMPL;
 end;
+
+{ Delta stream support }
+
+
+procedure TComponent.GetDeltaStreams(aProc: TGetStreamProc); 
+
+begin
+  // To be implemented by descendants
+end;
+
+procedure TComponent.ReadDeltaStream(const S: TStream);
+begin
+  S.ReadComponent(Self);
+end;
+
+procedure TComponent.ReadDeltaState;
+
+var
+  Done : boolean;
+  
+begin
+  if (csDesigning in ComponentState) then
+    exit;
+  Done:=False;
+  if Assigned(FOnGetDeltaStreams) then
+    FOnGetDeltaStreams(Self,@ReadDeltaStream,Done);  
+  if not Done then
+    GetDeltaStreams(@ReadDeltaStream);
+end;
+

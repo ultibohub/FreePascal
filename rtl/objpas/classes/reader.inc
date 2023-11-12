@@ -1070,6 +1070,12 @@ begin
   end;
 end;
 
+procedure TReader.SkipValue;
+
+begin
+  FDriver.SkipValue;
+end;
+
 procedure TReader.ReadData(Instance: TComponent);
 var
   SavedOwner, SavedParent: TComponent;
@@ -1111,6 +1117,25 @@ begin
     Result := FDriver.ReadFloat
   end else
     Result := ReadInt64;
+end;
+
+function TReader.ReadDouble: Double;
+begin
+  // We have no vaDouble 
+  Case FDriver.NextValue of
+  vaExtended:
+    begin
+    ReadValue;
+    Result := FDriver.ReadFloat
+    end;
+  vaSingle:
+    begin
+    ReadValue;
+    Result := FDriver.ReadSingle
+    end;
+  else
+    Result := ReadInt64;
+  end
 end;
 
 procedure TReader.ReadSignature;
@@ -1522,6 +1547,15 @@ begin
   end;
 end;
 
+procedure TReader.ReadPrefix(var aFlags: TFilerFlags; var aChildPos: Integer); 
+
+var
+  CompUnitName, CompClassName, CompName : String;
+  
+begin
+  Driver.BeginComponent(aFlags,aChildPos, CompUnitName, CompClassName, CompName);
+end;
+
 function TReader.ReadRootComponent(ARoot: TComponent): TComponent;
 var
   Dummy, i: Integer;
@@ -1889,7 +1923,41 @@ begin
       raise EClassNotFound.CreateFmt(SNoFieldOfClassIn, [AClassName, Root.ClassName]);
 end;
 
+function TReader.ReadComponentDeltaRes(Instance: TComponent; const DeltaCandidates: array of Ansistring; const Proc: TGetStreamProc): TComponent;
 
+var
+  ResHandle: THandle;
+  RootName, Delta, DeltaName: AnsiString;
+  S: TStream;
+  
+begin
+  if (Instance=nil) or not Assigned(Proc) then
+    Raise EArgumentNilException.Create(SArgumentNil);
+  Result:=Instance;
+  RootName:=Instance.ClassName;
+  for Delta in DeltaCandidates do
+     begin
+     DeltaName:=RootName+'_'+Delta;
+     // No module support yet
+     ResHandle:=System.FindResource(Nilhandle,DeltaName, PAnsiChar(RT_RCDATA));
+     if ResHandle<>NilHandle then
+       Break;
+     end;
+  if ResHandle=NilHandle then 
+    exit;     
+{$ifdef FPC_OS_UNICODE}    
+// Wince
+  S:=TResourceStream.Create(NilHandle,DeltaName, PWideChar(RT_RCDATA));
+{$ELSE}  
+  S:=TResourceStream.Create(NilHandle,DeltaName, PAnsiChar(RT_RCDATA));
+{$ENDIF}
+  try
+    Proc(S);
+  finally
+    S.Free;
+  end;
+end;
+    
 { TAbstractObjectReader }
 
 procedure TAbstractObjectReader.FlushBuffer;

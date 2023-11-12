@@ -1778,7 +1778,7 @@ implementation
                   else
                     inc(l.svalue);
                   first:=false;
-                  { don't generate enum members is this is a specialization because aktenumdef is copied from the generic type }
+                  { don't generate enum members if this is a specialization because aktenumdef is copied from the generic type }
                   if not is_specialize then
                     begin
                       storepos:=current_tokenpos;
@@ -1789,7 +1789,9 @@ implementation
                         else
                           Message(parser_e_enumeration_out_of_range);
                       tenumsymtable(aktenumdef.symtable).insertsym(cenumsym.create(s,aktenumdef,longint(l.svalue)));
-                      if not (cs_scopedenums in current_settings.localswitches) then
+                      if not (cs_scopedenums in current_settings.localswitches) or
+                          { also provide the global symbol for anonymous enums }
+                          not assigned(newsym) then
                         tstoredsymtable(aktenumdef.owner).insertsym(cenumsym.create(s,aktenumdef,longint(l.svalue)));
                       current_tokenpos:=storepos;
                     end;

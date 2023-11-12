@@ -13,6 +13,16 @@
  **********************************************************************}
 {$mode objfpc}
 {$h+}
+
+{$IF DEFINED(WINCE) or DEFINED(AIX) or DEFINED(NETBSD) or DEFINED (OPENBSD)}
+{$DEFINE NO_SEMAPHORE_SUPPORT}
+{$ENDIF}
+
+{$IF DEFINED(WINCE)} 
+{$DEFINE NO_MUTEX_SUPPORT}
+{$ENDIF}
+
+
 {$IFNDEF FPC_DOTTEDUNITS}
 unit syncobjs;
 {$ENDIF FPC_DOTTEDUNITS}
@@ -24,10 +34,17 @@ uses
   {$IFNDEF VER3_2}
   system.timespan,
   {$ENDIF}
+  {$IFDEF UNIX}
+  UnixApi.Types,
+  {$ENDIF}
   System.SysUtils;
+  
 {$ELSE FPC_DOTTEDUNITS}
   {$IFNDEF VER3_2}
   system.timespan,
+  {$ENDIF}
+  {$IFDEF UNIX}
+  unixtype,
   {$ENDIF}
   sysutils;
 {$ENDIF FPC_DOTTEDUNITS}
@@ -35,6 +52,13 @@ uses
 type
   PSecurityAttributes = Pointer;
   TEventHandle = Pointer;
+
+{$IFNDEF NO_SEMAPHORE_SUPPORT}
+{$IFDEF UNIX}
+  TPosixSemaphore = sem_t;
+  PPosixSemaphore = ^TPosixSemaphore;
+{$ENDIF}
+{$ENDIF}
 
 const
   INFINITE = Cardinal(-1);
@@ -79,7 +103,7 @@ type
    public
       constructor Create(UseComWait : Boolean=false);
       destructor Destroy; override;
-      function WaitFor(Timeout : Cardinal=INFINITE) : TWaitResult;overload;
+      function WaitFor(Timeout : Cardinal=INFINITE) : TWaitResult;overload; virtual;
       {$IFNDEF VER3_2}
       function WaitFor(const Timeout : TTimespan) : TWaitResult;overload;
       {$IFDEF MSWINDOWS}
@@ -155,6 +179,42 @@ type
 {$ENDIF NOPOINTER}
   end;
 
+{$IFNDEF NO_SEMAPHORE_SUPPORT}
+  TSemaphore = class(THandleObject)
+  {$IFDEF UNIX}
+     Fsem: TPosixSemaphore;
+  {$ENDIF}
+   public
+     constructor Create(aUseCOMWait: boolean = false); overload;
+     constructor Create(aAttributes: PSecurityAttributes; aInitial, aMaximum: Integer;const aName: string;aUseCOMWait: boolean = false); overload;
+     constructor Create(aAccess: Cardinal; aInherit: boolean; const aName: string; aUseCOMWait: boolean = False); overload;
+     destructor Destroy; override;
+     procedure Acquire; override;
+     procedure Release; overload; override;
+     function Release(aCount: Integer): Integer; reintroduce; overload;
+     function WaitFor(aTimeout: Cardinal = INFINITE): TWaitResult; override;
+   end;
+{$ENDIF}
+
+{$IFNDEF NO_MUTEX_SUPPORT}
+  TMutex = class(THandleObject)
+  private
+{$IFDEF UNIX}
+    FMutex: pthread_mutex_t;
+{$ENDIF POSIX}
+  public
+    constructor Create(aUseCOMWait: Boolean = False); overload;
+    constructor Create(aAttributes: PSecurityAttributes; aInitialOwner: Boolean; const aName: string; aUseCOMWait: Boolean = False); overload;
+    constructor Create(aAccess: Cardinal; aInherit: Boolean; const aName: string; aUseCOMWait: Boolean = False); overload;
+    destructor Destroy; override;
+    function WaitFor(aTimeout: Cardinal): TWaitResult; override;
+    procedure Acquire; override;
+    procedure Release; override;
+  end;
+{$ENDIF}
+
+
+
 implementation
 
 {$ifdef MSWindows}
@@ -165,13 +225,24 @@ uses Windows;
 {$ENDIF}
 {$endif}
 
+{$ifdef UNIX}
+{$IFDEF FPC_DOTTEDUNITS}
+uses UnixApi.Unix, UnixApi.Base, UnixApi.Pthreads;
+{$ELSE}
+uses unix, baseunix, pthreads;
+{$ENDIF}
+{$endif}
 
 Resourcestring
   SErrEventCreateFailed   = 'Failed to create OS basic event with name "%s"';
   SErrEventZeroNotAllowed = 'Handle count of zero is not allowed.';
   SErrEventMaxObjects     = 'The maximal amount of objects is %d.';
   SErrEventTooManyHandles = 'Length of object handles smaller than Len.';
-
+  SErrNamesNotSupported   = 'Named semaphores are not supported on this platform';
+  SErrNoSemaphoreSupport  = 'Semaphores are not supported on this platform';
+  SErrInvalidReleaseCount = '%d is not a valid release count, count must be >0';
+  SErrMutexNotSupported   = 'Mutexes are not supported on this platform';
+  
 { ---------------------------------------------------------------------
     Real syncobjs implementation
   ---------------------------------------------------------------------}
@@ -555,5 +626,380 @@ end;
 {$endif VER3_0}
 
 {$ENDIF NOPOINTER}
+
+{$IFDEF UNIX}
+{$IF NOT DECLARED(sem_timedwait)}
+{$DEFINE USE_SEM_TRYWAIT}
+{$DEFINE WAITLOOP}
+{$ENDIF}
+
+{$IF NOT DECLARED(pthread_mutex_timedlock)}
+{$DEFINE USE_pthread_mutex_trylock}
+{$DEFINE WAITLOOP}
+{$ENDIF}
+
+{$IFDEF WAITLOOP}
+Const
+  WaitloopMsecsInterval = 10;
+  
+function MsecsBetween(tnow,tthen : Timeval) : Int64;
+
+
+begin
+  Result:=(tnow.tv_sec-tthen.tv_sec)*1000;
+  Result:=Result+((tnow.tv_usec-tthen.tv_usec) div 1000);
+end; 
+{$ENDIF WAITLOOP}
+
+procedure MSecsFromNow (tNow : Timeval; aTimeout : Integer; out tfuture: TTimespec);
+
+var
+  td,tm : integer;
+
+begin
+  td:=aTimeout div 1000;
+  tm:=aTimeout mod 1000;
+  tfuture.tv_sec:=tnow.tv_sec+td;
+  tfuture.tv_nsec:=tnow.tv_usec*1000+(tm*1000*1000);
+end;
+{$ENDIF UNIX}
+
+{ ---------------------------------------------------------------------
+  TSemaphore
+  ---------------------------------------------------------------------}
+{$IFNDEF NO_SEMAPHORE_SUPPORT}
+constructor TSemaphore.Create(aUseCOMWait: boolean = false); 
+ 
+begin
+  Create(Nil,1,1,'',aUseComWait); 
+end;
+ 
+constructor TSemaphore.Create(aAttributes: PSecurityAttributes; aInitial, aMaximum: Integer; const aName: string; aUseCOMWait: boolean = false); 
+
+{$IFDEF WINDOWS}
+var
+  PN : PChar;
+{$ENDIF}  
+begin
+{$IFDEF WINDOWS}
+  inherited Create(aUseCOMWait);
+  PN:=Pchar(Pointer(aName));
+{$IF SIZEOF(CHAR)=1}
+  FHandle:=TEventHandle(CreateSemaphoreA(aAttributes,aInitial,aMaximum,PN));
+{$ELSE}
+  FHandle:=TEventHandle(CreateSemaphoreW(aAttributes,aInitial,aMaximum,PN));  
+{$ENDIF}
+  if (FHandle=TEventHandle(0)) then
+    RaiseLastOSError;
+{$ELSE WINDOWS}
+{$IFDEF UNIX}
+  if (aName<>'') then
+    raise ESyncObjectException.Create(SErrNamesNotSupported);
+  if sem_init(@FSem,0,aInitial)<>0 then
+    RaiseLastOSError;
+{$ELSE}
+  Raise ESyncObjectException.Create(SErrNoSemaphoreSupport);
+{$ENDIF}    
+{$ENDIF WINDOWS}
+end;
+
+constructor TSemaphore.Create(aAccess: Cardinal; aInherit: Boolean; const aName: string; aUseCOMWait: Boolean = False);
+
+{$IFDEF WINDOWS}
+var
+  PN : PChar;
+{$ENDIF}
+
+begin
+{$IFNDEF WINDOWS}
+  Create(Nil,1,1,aName,aUseCOMWait);
+{$ELSE WINDOWS}  
+  inherited Create(aUseCOMWait);
+  PN:=PChar(Pointer(aName));
+{$IF SIZEOF(CHAR)=1}    
+  FHandle:=TEventHandle(OpenSemaphoreA(aAccess,aInherit,PN));
+{$ELSE}  
+  FHandle:=TEventHandle(OpenSemaphoreW(aAccess,aInherit,PN));
+{$ENDIF}  
+  if (FHandle=TEventHandle(0)) then
+    RaiseLastOSError;
+{$ENDIF WINDOWS}
+end;
+
+
+destructor TSemaphore.Destroy; 
+
+begin
+{$IFDEF UNIX}
+  sem_destroy(@FSem);
+{$ENDIF}  
+  inherited Destroy;
+end;
+
+
+
+function TSemaphore.WaitFor(aTimeout: Cardinal = INFINITE): TWaitResult; 
+
+
+{$IFDEF UNIX}
+var
+  errno : integer;
+  {$IFDEF USE_SEM_TRYWAIT}
+  tnew : timeval;
+  {$ENDIF}
+  tnow : timeval;
+  Tmp: ttimespec;
+{$ENDIF}  
+begin
+{$IFDEF UNIX}
+  Result:=wrError;
+  if (aTimeout=0) then
+    begin
+    if sem_trywait(@FSem) = 0 then
+      Result:=wrSignaled
+    else if (fpGetErrno=ESysEAGAIN) then
+      Result:=wrTimeout
+    end
+  else if (aTimeout<>INFINITE) then
+    begin
+    fpgettimeofday(@tnow,Nil);
+    {$IFNDEF USE_SEM_TRYWAIT} // not in Darwin
+    MsecsFromNow(tnow,aTimeOut,tmp);
+    errno:=sem_timedwait(@FSem,@tmp);
+    {$ELSE USE_SEM_TRYWAIT}
+    Repeat  
+      ErrNo:=sem_trywait(@FSem); 
+      if ErrNo=ESysEAGAIN then
+        begin
+        Sleep(10);
+        fpgettimeofday(@tnew,Nil);  
+        if MSecsBetween(tnew,tnow)>aTimeOut then
+          errNo:=ESysETIMEDOUT;
+        end
+      else if ErrNo=ESysEINTR then
+        ErrNo:=ESysEAGAIN;
+    until (ErrNo<>ESysEAGAIN);
+    {$ENDIF USE_SEM_TRYWAIT}
+    if (errno=0) then
+      Result:=wrSignaled
+    else if errno=ESysETIMEDOUT then
+      Result:=wrTimeout;
+    end 
+  else 
+    begin
+    if (sem_wait(@FSem)=0) then
+      Result:=wrSignaled
+    end;
+{$ELSE UNIX}
+  Result:=Inherited WaitFor(aTimeOut);
+{$ENDIF UNIX}
+end;
+
+
+procedure TSemaphore.Acquire; 
+
+begin
+  if WaitFor(INFINITE)=wrError then
+    RaiseLastOSError;
+end;
+
+procedure TSemaphore.Release; 
+
+begin
+  Release(1);
+end;
+
+
+function TSemaphore.Release(aCount: Integer): Integer; 
+
+begin
+  if (aCount<1) then
+    raise ESyncObjectException.CreateFmt(SErrInvalidReleaseCount, [aCount]);
+{$IFDEF WINDOWS}
+  if not ReleaseSemaphore(PtrUint(FHandle),aCount,@Result) then
+    RaiseLastOSError;  
+{$ENDIF}
+{$IFDEF UNIX} 
+  Result:=0;
+  While aCount>0 do
+    begin
+    if (sem_post(@FSem)<>0) then
+      RaiseLastOSError;
+    Inc(Result);
+    Dec(aCount);
+    end;
+{$ENDIF}
+end;
+
+{$ENDIF NO_SEMAPHORE_SUPPORT}
+
+{ ---------------------------------------------------------------------
+  TMutex
+  ---------------------------------------------------------------------}
+
+{$IFNDEF NO_MUTEX_SUPPORT}
+
+constructor TMutex.Create(aUseCOMWait: Boolean = False);
+
+begin
+  Create(Nil,False,'',aUseComWait);
+end;
+
+constructor TMutex.Create(aAttributes: PSecurityAttributes; aInitialOwner: Boolean; const aName: string; aUseCOMWait: Boolean = False);
+
+{$IFDEF UNIX}
+var
+  Mattr: pthread_mutexattr_t;
+{$ENDIF}
+{$IFDEF WINDOWS}
+var
+  PN : PChar;
+{$ENDIF}  
+
+begin
+{$IFDEF UNIX}
+  inherited Create;
+  if (aName<>'') then
+    raise ESyncObjectException.Create(SErrNamesNotSupported);
+  CheckOSError(pthread_mutexattr_init(@Mattr));
+  try
+    CheckOSError(pthread_mutexattr_settype(@Mattr,Ord(PTHREAD_MUTEX_RECURSIVE)));
+    CheckOSError(pthread_mutex_init(@FMutex,@Mattr));
+  finally  
+    pthread_mutexattr_destroy(@Mattr); // don't raise second error, it would hide the first
+  end;  
+  if aInitialOwner then
+    Acquire;
+{$ELSE}    
+{$IFDEF WINDOWS}
+  inherited Create(aUseCOMWait);
+  PN:=PChar(Pointer(aName));
+  {$IF SIZEOF(CHAR)=1}
+  FHandle:=TEventHandle(CreateMutexA(aAttributes,aInitialOwner,PN));
+  {$ELSE}
+  FHandle:=TEventHandle(CreateMutexW(aAttributes,aInitialOwner,PN));
+  {$ENDIF}
+  if (FHandle=TEventHandle(0)) then
+    RaiseLastOSError;
+{$ELSE}
+  raise ESyncObjectException.Create(SErrMutexNotSupported);
+{$ENDIF WINDOWS}  
+{$ENDIF UNIX}
+end;
+
+constructor TMutex.Create(aAccess: Cardinal; aInherit: Boolean; const aName: string; aUseCOMWait: Boolean = False); 
+
+{$IFDEF WINDOWS}
+var
+  PN : PChar;
+{$ENDIF}
+
+begin
+{$IFDEF UNIX}
+  Create(nil,false,aName,aUseCOMWait);
+{$ELSE}  
+{$IFDEF WINDOWS}
+  inherited Create(aUseCOMWait);
+  PN:=PChar(Pointer(aName));
+{$IF SIZEOF(CHAR)=1}
+  FHandle:=TEventHandle(OpenMutexA(aAccess,aInherit,PN));
+{$ELSE}
+  FHandle:=TEventHandle(OpenMutexW(aAccess,aInherit,PN));
+{$ENDIF}
+  if FHandle=TEventHandle(0) then
+    RaiseLastOSError;
+{$ELSE}
+  raise ESyncObjectException.Create(SErrMutexNotSupported);
+{$ENDIF WINDOWS}
+{$ENDIF UNIX}
+end;
+
+destructor TMutex.Destroy; 
+
+begin
+{$IFDEF UNIX}
+   pthread_mutex_destroy(@FMutex);
+{$ENDIF}   
+   Inherited;
+end;
+
+
+function TMutex.WaitFor(aTimeout: Cardinal): TWaitResult;
+
+{$IFDEF UNIX}
+var
+  td,tm,Errno: Integer;
+  {$IFDEF USE_pthread_mutex_trylock}
+  tnew : timeval;
+  {$ENDIF}  
+  tnow: ttimeval;
+  Tmp: timespec;
+{$ENDIF}  
+begin
+{$IFNDEF UNIX}
+  Result:=Inherited WaitFor(aTimeOut);
+{$ELSE}  
+  Result:=wrError;
+  if (aTimeout=0) then
+    begin
+    ErrNo:=pthread_mutex_trylock(@FMutex);
+    if ErrNo=0 then
+      Result:=wrSignaled
+    else if (Errno=ESysEAGAIN) then
+      Result:=wrTimeout
+    end
+  else if (aTimeout<>INFINITE) then
+    begin
+    // Todo: maybe write small helper function, reuse it here and in semaphore
+    fpgettimeofday(@tnow,Nil);
+    {$IFNDEF USE_pthread_mutex_trylock }
+    MsecsFromNow(tnow,aTimeOut,tmp);
+    ErrNo:=pthread_mutex_timedlock(@FMutex,@tmp);
+    {$ELSE}
+    Repeat  
+      ErrNo:=pthread_mutex_trylock(@FMutex); 
+      if ErrNo=ESysEAGAIN then
+        begin
+        Sleep(10);
+        fpgettimeofday(@tnew,Nil);  
+        if MSecsBetween(tnew,tnow)>aTimeOut then
+          errNo:=ESysETIMEDOUT;
+        end
+      else if ErrNo=ESysEINTR then
+        ErrNo:=ESysEAGAIN;
+    until (ErrNo<>ESysEAGAIN);
+    {$ENDIF}
+    if ErrNo=0 then
+      Result:=wrSignaled
+    else if (Errno=ESysEBUSY) or (errNo=ESysETIMEDOUT) then
+      Result:=wrTimeout
+    end 
+  else 
+    begin
+    if (pthread_mutex_lock(@FMutex)=0) then
+      Result:=wrSignaled
+    end;
+{$ENDIF}    
+end;
+
+procedure TMutex.Acquire; 
+
+begin
+  if WaitFor(INFINITE)=wrError then
+    RaiseLastOSError;
+end;
+
+procedure TMutex.Release; 
+
+begin
+{$IFDEF WINDOWS}
+  if not ReleaseMutex(PtrUInt(FHandle)) then
+    RaiseLastOSError;
+{$ENDIF WINDOWS}
+{$IFDEF UNIX}
+  CheckOSError(pthread_mutex_unlock(@FMutex));
+{$ENDIF UNIX}
+end;
+{$ENDIF NO_MUTEX_SUPPORT}
 
 end.

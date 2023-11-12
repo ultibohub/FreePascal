@@ -38,6 +38,7 @@ Type
     LogoWritten,
     ABISetExplicitly,
     FPUSetExplicitly,
+    LinkInternSetExplicitly,
     CPUSetExplicitly,
     OptCPUSetExplicitly: boolean;
     FileLevel : longint;
@@ -3101,6 +3102,11 @@ begin
       Msgfilename:=More;
     'R' :
       ResCompiler:=More;
+    't' :
+      begin
+        AllowedFilenameTransFormations:=[ftNone,ftLowerCase];
+        Message(general_i_reduced_filesearch);
+      end;
     'u' :
       begin
         if ispara then
@@ -4174,7 +4180,10 @@ begin
        'e' :
          begin
            If UnsetBool(More, j, opt, false) then
-             exclude(init_settings.globalswitches,cs_link_extern)
+             begin
+               exclude(init_settings.globalswitches,cs_link_extern);
+               LinkInternSetExplicitly:=true;
+             end
            else
              include(init_settings.globalswitches,cs_link_extern);
          end;
@@ -4192,7 +4201,10 @@ begin
            If UnsetBool(More, j, opt, false) then
              include(init_settings.globalswitches,cs_link_extern)
            else
-             exclude(init_settings.globalswitches,cs_link_extern);
+             begin
+               exclude(init_settings.globalswitches,cs_link_extern);
+               LinkInternSetExplicitly:=true;
+             end;
          end;
        'n' :
          begin
@@ -5133,7 +5145,10 @@ begin
     begin
       if (option.paratargetasm=as_default) then
         begin
-          option.paratargetasm:=target_info.assem;
+          if (target_info.endian<>source_info.endian) then
+            option.paratargetasm:=target_info.assemextern
+          else
+            option.paratargetasm:=target_info.assem;
         end;
       if not set_target_asm(option.paratargetasm) then
         begin
@@ -5173,9 +5188,13 @@ begin
   if (af_outputbinary in target_asm.flags) and
      ((cs_asm_leave in init_settings.globalswitches) or
       { if -s is passed, we shouldn't call the internal assembler }
-      (cs_asm_extern in init_settings.globalswitches)) then
+      (cs_asm_extern in init_settings.globalswitches)) or
+      ((option.paratargetasm=as_none) and (target_info.endian<>source_info.endian)) then
    begin
-     Message(option_switch_bin_to_src_assembler);
+     if ((option.paratargetasm=as_none) and (target_info.endian<>source_info.endian)) then
+       Message(option_switch_bin_to_src_assembler_cross_endian)
+     else
+       Message(option_switch_bin_to_src_assembler);
 {$ifdef llvm}
      if not(target_info.system in systems_darwin) then
        set_target_asm(as_clang_llvm)
@@ -5690,6 +5709,13 @@ begin
 
   if not option.LinkTypeSetExplicitly then
     set_default_link_type;
+  if source_info.endian<>target_info.endian then
+    begin
+      if option.LinkInternSetExplicitly then
+        Message(link_w_unsupported_cross_endian_internal_linker)
+      else
+        include(init_settings.globalswitches,cs_link_extern);
+    end;
 
   { Default alignment settings,
     1. load the defaults for the target
