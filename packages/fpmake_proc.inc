@@ -835,6 +835,13 @@ begin
 {$include vcl-compat/fpmake.pp}
 end;
 
+procedure add_libpcre(const ADirectory: string);
+begin
+  with Installer do
+{$include libpcre/fpmake.pp}
+end;
+
+
 procedure add_qlunits(const ADirectory: string);
 begin
   with Installer do

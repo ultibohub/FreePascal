@@ -538,11 +538,19 @@ begin
   AnsiSameStr:=AnsiCompareStr(S1,S2)=0;
 end;
 
-function AnsiLastChar(const S: string): PAnsiChar;
+function AnsiLastChar(const S: AnsiString): PAnsiChar;
 
 begin
   //!! No multibyte yet, so we return the last one.
   result:=StrEnd(PAnsiChar(pointer(S)));  // strend checks for nil
+  Dec(Result);
+end ;
+
+function AnsiLastChar(const S: UnicodeString): PWideChar;
+
+begin
+  //!! No multibyte yet, so we return the last one.
+  result:=StrEnd(PWideChar(Pointer(S)));  // strend checks for nil
   Dec(Result);
 end ;
 

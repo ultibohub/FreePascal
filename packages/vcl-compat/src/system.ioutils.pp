@@ -199,8 +199,10 @@ type
     class function GetTempPath: string;
     class function GetHomePath: string;
     class function GetDocumentsPath: string;
+    class function GetDesktopPath: string;
     class function GetSharedDocumentsPath: string;
     class function GetLibraryPath: string;
+    class function GetAppPath: string;
     class function GetCachePath: string;
     class function GetPublicPath: string;
     class function GetPicturesPath: string;
@@ -1058,7 +1060,7 @@ begin
   Result:=''; // DO NOT LOCALIZE
   SetLength(Result,FNLen);
   for i:=1 to FNLen do
-    if i = DotAt then
+    if i <> DotAt then
       begin
       C:=Random(3);
       Result[I]:=SelectChars[C][1+Random(SelectLengths[C])];
@@ -1139,6 +1141,20 @@ begin
   {$ENDIF}
 end;
 
+class function TPath.GetDesktopPath: string;
+begin
+  Result:='';
+  {$IfDef MSWINDOWS}
+    Result:=GetWindowsSpecialDir(CSIDL_DESKTOPDIRECTORY, False);
+  {$ELSE}
+    {$IFDEF UNIX}
+      Result:=GetSpecialDir(sdDesktop);
+    {$ELSE}
+      Result:=GetUserDir;
+    {$ENDIF}
+  {$EndIf}
+end;
+
 class function TPath.GetSharedDocumentsPath: string;
 begin
   Result:='';
@@ -1160,6 +1176,11 @@ begin
 {$ELSE}
   Result:=ExtractFilePath(ParamStr(0));
 {$ENDIF}
+end;
+
+class function TPath.GetAppPath: string;
+begin
+  Result:=ExtractFilePath(ParamStr(0));
 end;
 
 class function TPath.GetCachePath: string;

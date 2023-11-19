@@ -1,3 +1,19 @@
+{
+    This file is part of the Free Pascal Run Time Library (rtl)
+    Copyright (c) 2023 by the Free Pascal development team
+
+    This file provides an ansistring unit as delphi has it.
+    Most routines are present in the SysUtils and StrUtils unit.
+    Do not use this for new FPC code.
+
+    See the file COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ **********************************************************************}
 unit System.AnsiStrings;
 
 {$mode objfpc}
@@ -468,7 +484,7 @@ end;
 function AnsiStartsStr(const ASubText, AText: AnsiString): Boolean;
 begin
   if (Length(AText) >= Length(ASubText)) and (ASubText <> '') then
-    Result := StrLComp(PChar(ASubText), PAnsiChar(AText), Length(ASubText)) = 0
+    Result := StrLComp(PAnsiChar(ASubText), PAnsiChar(AText), Length(ASubText)) = 0
   else
     Result := (AsubText='');
 end;
@@ -859,7 +875,7 @@ function FloatToTextFmt(Buf: PAnsiChar; const Value; ValueType: TFloatValue;
   Format: PAnsiChar; const AFormatSettings: TFormatSettings): Integer;
 Var
   E : Extended;
-
+  SBuf,Fmt : String;
 begin
   Case ValueType of
     fvComp : E:=PComp(@Value)^;
@@ -869,7 +885,9 @@ begin
     fvSingle : E:=PSingle(@Value)^;
     fvCurrency : E:=PCurrency(@Value)^;
   end;
-  Result:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.FloatToTextFmt(Buf,E,Format,aFormatSettings);
+  SBuf:=StrPas(Buf);
+  Fmt:=StrPas(Format);
+  Result:={$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.FloatToTextFmt(PChar(SBuf),E,PChar(Fmt),aFormatSettings);
 end;
 
 function FloatToTextFmt(Buf: PAnsiChar; const Value; ValueType: TFloatValue;
