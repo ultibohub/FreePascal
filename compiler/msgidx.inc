@@ -937,6 +937,7 @@ const
   link_e_comdat_size_differs=09218;
   link_e_comdat_content_differs=09219;
   link_e_comdat_selection_differs=09220;
+  link_e_unsupported_cross_endian_internal_linker=09223;
   unit_t_unitsearch=10000;
   unit_t_ppu_loading=10001;
   unit_u_ppu_name=10002;
@@ -1023,6 +1024,7 @@ const
   option_obsolete_switch=11018;
   option_obsolete_switch_use_new=11019;
   option_switch_bin_to_src_assembler=11020;
+  option_switch_bin_to_src_assembler_cross_endian=11068;
   option_incompatible_asm=11021;
   option_asm_forced=11022;
   option_using_file=11026;
@@ -1113,9 +1115,9 @@ const
   option_info=11024;
   option_help_pages=11025;
 
-  MsgTxtSize = 83891;
+  MsgTxtSize = 84062;
 
   MsgIdxMax : array[1..20] of longint=(
-    28,106,350,127,99,63,142,34,221,67,
-    63,20,30,1,1,1,1,1,1,1
+    28,106,350,127,99,63,142,34,224,67,
+    69,20,30,1,1,1,1,1,1,1
   );

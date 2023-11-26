@@ -38,6 +38,7 @@ Type
     LogoWritten,
     ABISetExplicitly,
     FPUSetExplicitly,
+    LinkInternSetExplicitly,
     CPUSetExplicitly,
     OptCPUSetExplicitly: boolean;
     FileLevel : longint;
@@ -2613,7 +2614,10 @@ begin
                     'e' :
                       begin
                         If UnsetBool(More, j, opt, false) then
-                          exclude(init_settings.globalswitches,cs_link_extern)
+                          begin
+                            exclude(init_settings.globalswitches,cs_link_extern);
+                            linkinternsetexplicitly:=true;
+                          end
                         else
                           include(init_settings.globalswitches,cs_link_extern);
                       end;
@@ -2632,6 +2636,10 @@ begin
                           include(init_settings.globalswitches,cs_link_extern)
                         else
                           exclude(init_settings.globalswitches,cs_link_extern);
+                          begin
+                            exclude(init_settings.globalswitches,cs_link_extern);
+                            LinkInternSetExplicitly:=true;
+                          end;
                       end;
                     'n' :
                       begin
@@ -4044,6 +4052,13 @@ begin
       option.paratargetasm:=as_clang_llvm;
     end;
 {$endif llvm}
+  if (option.paratargetasm=as_none) then
+    begin
+      if (target_info.endian<>source_info.endian) then
+        option.paratargetasm:=target_info.assemextern
+      else
+        option.paratargetasm:=target_info.assem;
+    end;
   { maybe override assembler }
   if (option.paratargetasm<>as_none) then
     begin
@@ -4071,7 +4086,6 @@ begin
         begin
           option.paratargetdbg:=dbg_dwarf2;
         end;
-
     end;
   {TOptionheck a second time as we might have changed assembler just above }
   option.checkoptionscompatibility;
@@ -4082,10 +4096,16 @@ begin
       Message(option_w_unsupported_debug_format);
 
   { switch assembler if it's binary and we got -a on the cmdline }
-  if (cs_asm_leave in init_settings.globalswitches) and
-     (af_outputbinary in target_asm.flags) then
+  if (af_outputbinary in target_asm.flags) and
+     ((cs_asm_leave in init_settings.globalswitches) or
+      { if -s is passed, we shouldn't call the internal assembler }
+      (cs_asm_extern in init_settings.globalswitches)) or
+      ((option.paratargetasm=as_none) and (target_info.endian<>source_info.endian)) then
    begin
-     Message(option_switch_bin_to_src_assembler);
+     if ((option.paratargetasm=as_none) and (target_info.endian<>source_info.endian)) then
+       Message(option_switch_bin_to_src_assembler_cross_endian)
+     else
+       Message(option_switch_bin_to_src_assembler);
 {$ifdef llvm}
      set_target_asm(as_clang_llvm);
 {$else}
@@ -4439,6 +4459,13 @@ begin
 
   if not option.LinkTypeSetExplicitly then
     set_default_link_type;
+  if source_info.endian<>target_info.endian then
+    begin
+      if option.LinkInternSetExplicitly then
+        Message(link_e_unsupported_cross_endian_internal_linker)
+      else
+        include(init_settings.globalswitches,cs_link_extern);
+    end;
 
   { Default alignment settings,
     1. load the defaults for the target

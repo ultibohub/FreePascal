@@ -120,10 +120,10 @@ type
           function Subtract(const apt : TPoint): TPointF;
           procedure SetLocation(const apt :TPointF);
           procedure SetLocation(const apt :TPoint);
-          procedure SetLocation(ax,ay : Longint);
+          procedure SetLocation(ax,ay : Single);
           procedure Offset(const apt :TPointF);
           procedure Offset(const apt :TPoint);
-          procedure Offset(dx,dy : Longint);
+          procedure Offset(dx,dy : Single);
 
           function  Scale (afactor:Single)  : TPointF;
           function  Ceiling : TPoint;
@@ -416,16 +416,11 @@ begin
   // The var parameter is only assigned in the end to avoid problems
   // when passing the same rectangle in the var and const parameters.
   // See http://bugs.freepascal.org/view.php?id=17722
-  if IsRectEmpty(lRect) then
-  begin
-    FillChar(Rect,SizeOf(Rect),0);
-    IntersectRect:=false;
-  end
+  Result:=not IsRectEmpty(lRect);
+  if Result then
+    Rect := lRect
   else
-  begin
-    IntersectRect:=true;
-    Rect := lRect;
-  end;	
+    FillChar(Rect,SizeOf(Rect),0);
 end;
 
 function UnionRect(var Rect : TRect;const R1,R2 : TRect) : Boolean;
@@ -442,16 +437,11 @@ begin
   if R2.Bottom>R1.Bottom then
     lRect.Bottom:=R2.Bottom;
 
-  if IsRectEmpty(lRect) then
-  begin
-    FillChar(Rect,SizeOf(Rect),0);
-    UnionRect:=false;
-  end
+  Result:=not IsRectEmpty(lRect);
+  if Result then
+    Rect := lRect
   else
-  begin
-    Rect:=lRect;
-    UnionRect:=true;
-  end;
+    FillChar(Rect,SizeOf(Rect),0);
 end;
 
 function IsRectEmpty(const Rect : TRect) : Boolean;
@@ -461,19 +451,15 @@ end;
 
 function OffsetRect(var Rect : TRect;DX : Integer;DY : Integer) : Boolean;
 begin
-  if assigned(@Rect) then
-    begin
+  Result:=assigned(@Rect);
+  if Result then
     with Rect do
       begin
-      inc(Left,dx);
-      inc(Top,dy);
-      inc(Right,dx);
-      inc(Bottom,dy);
+        inc(Left,dx);
+        inc(Top,dy);
+        inc(Right,dx);
+        inc(Bottom,dy);
       end;
-    OffsetRect:=true;
-    end
-  else
-    OffsetRect:=false;
 end;
 
 function Avg(a, b: Longint): Longint;
@@ -495,19 +481,15 @@ end;
 
 function InflateRect(var Rect: TRect; dx: Integer; dy: Integer): Boolean;
 begin
-  if Assigned(@Rect) then
-  begin
+  Result:=assigned(@Rect);
+  if Result then
     with Rect do
-    begin
-      dec(Left, dx);
-      dec(Top, dy);
-      inc(Right, dx);
-      inc(Bottom, dy);
-    end;
-    Result := True;
-  end
-  else
-    Result := False;
+      begin
+        dec(Left, dx);
+        dec(Top, dy);
+        inc(Right, dx);
+        inc(Bottom, dy);
+      end;
 end;
 
 function Size(AWidth, AHeight: Integer): TSize; inline;
@@ -576,7 +558,7 @@ begin
   y:=y+apt.y;
 end;
 
-procedure TPointF.Offset(dx,dy : Longint);
+procedure TPointF.Offset(dx,dy : Single);
 begin
   x:=x+dx;
   y:=y+dy;
@@ -670,7 +652,7 @@ begin
   x:=apt.x; y:=apt.y;
 end;
 
-procedure TPointF.SetLocation(ax,ay : Longint);
+procedure TPointF.SetLocation(ax,ay : Single);
 begin
   x:=ax; y:=ay;
 end;

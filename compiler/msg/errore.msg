@@ -3072,7 +3072,7 @@ execinfo_x_stackcommit=09134_X_Stack space committed: $1 bytes
 #
 # Internal linker messages
 #
-# 09220 is the last used one
+# 09223 is the last used one
 #
 # BeginOfTeX
 % \section{Linker messages}
@@ -3132,7 +3132,9 @@ link_e_comdat_content_differs=09219_E_Content of duplicate COMDAT symbol "$1" di
 % The COMDAT section specifies that all sections with the same name need to have the same content,
 % but this section had a different size.
 link_e_comdat_selection_differs=09220_E_COMDAT selection mode for symbol "$1" differs
-%\end{description}
+link_e_unsupported_cross_endian_internal_linker=09223_E_Using internal linker in cross-endian configuration is not supported
+% The internal linker does not correctly handle endianess conversion.
+% \end{description}
 # EndOfTeX
 
 #
@@ -3366,7 +3368,7 @@ cg_f_internal_type_does_not_match=10066_F_Internal type "$1" does not look as ex
 #
 #  Options
 #
-# 11062 is the last used one
+# 11068 is the last used one
 #
 option_usage=11000_O_$1 [options] <inputfile> [options]
 # BeginOfTeX
@@ -3432,6 +3434,9 @@ option_obsolete_switch_use_new=11019_W_You are using the obsolete switch $1, ple
 option_switch_bin_to_src_assembler=11020_N_Switching assembler to default source writing assembler
 % This notifies you that the assembler has been changed because you used the
 % -a switch, which cannot be used with a binary assembler writer.
+option_switch_bin_to_src_assembler_cross_endian=11068_N_Switching assembler to default source writing assembler in cross-endian configuration
+% This notifies you that the assembler has been changed because
+% the binary assembler writer is not yet ready for cross-endian configuration.
 option_incompatible_asm=11021_W_Assembler output selected "$1" is not compatible with "$2"
 option_asm_forced=11022_W_"$1" assembler use forced
 % The assembler output selected cannot generate
