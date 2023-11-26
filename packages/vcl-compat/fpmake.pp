@@ -33,6 +33,7 @@ begin
     P.Dependencies.Add('rtl-extra'); 
     P.Dependencies.Add('rtl-objpas'); 
     P.Dependencies.Add('rtl-generics');
+    P.Dependencies.Add('fcl-json');
     P.SourcePath.Add('src');
     P.IncludePath.Add('src');
 
@@ -48,6 +49,10 @@ begin
     T:=P.Targets.AddUnit('system.ansistrings.pp');
     T:=P.Targets.AddUnit('system.imagelist.pp');
     T:=P.Targets.AddUnit('system.diagnostics.pp');
+    T:=P.Targets.AddUnit('system.notification.pp');
+    T.Dependencies.Add('system.messaging');
+    T:=P.Targets.AddUnit('system.json.pp');
+    T.ResourceStrings := True;
 
 
 {$ifndef ALLPACKAGES}

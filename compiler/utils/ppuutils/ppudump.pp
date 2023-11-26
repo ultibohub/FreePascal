@@ -2713,7 +2713,7 @@ begin
                     stbi:=tbi;
                     tokenreadsettings(new_settings, copy_size);
                     tbi:=stbi+copy_size;
-                    if CompareByte(new_settings,prev_settings,sizeof(new_settings))<>0 then
+                    if CompareByte(new_settings,prev_settings,copy_size)<>0 then
                       begin
                         dump_new_settings;
                         writeln;
@@ -2726,8 +2726,13 @@ begin
                   end;
                 ST_LOADMESSAGES:
                   begin
+                    inc(tbi);
                     mesgnb:=gettokenbufsizeint;;
                     writeln([space,mesgnb,' messages: ']);
+                    if (tbi+2*sizeof(longint)*mesgnb>tokenbufsize) then
+                      begin
+                        WriteError('!! Error: number of messages incompatible with token buffer size');
+                      end;
                     for nb:=1 to mesgnb do
                       begin
                         msgvalue:=gettokenbuflongint;
@@ -2777,7 +2782,12 @@ begin
       if tbi<tokenbufsize then
         write(',');
     end;
-  writeln;
+  if (tbi>tokenbufsize) then
+    begin
+      WriteError('!! Error: read past of token buffer size');
+    end
+  else
+    writeln;
   StrAppend(genstr,linestr);
   writeln(['##',genstr,'##']);
 end;

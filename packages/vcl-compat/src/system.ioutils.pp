@@ -173,8 +173,10 @@ type
     class constructor Create;
     class function IsValidPathChar(const AChar: Char): Boolean;
     class function IsValidFileNameChar(const AChar: Char): Boolean;
-    class function HasValidPathChars(const aPath: string; const UseWildcards: Boolean = false): Boolean;
-    class function HasValidFileNameChars(const FileName: string; const UseWildcards: Boolean = False): Boolean;
+    class function HasValidPathChars(const aPath: string; const UseWildcards: Boolean = false): Boolean; inline;
+    class function HasValidPathChars(const aPath: string; out Index: Integer; const UseWildcards: Boolean = false): Boolean;
+    class function HasValidFileNameChars(const FileName: string; const UseWildcards: Boolean = False): Boolean; inline;
+    class function HasValidFileNameChars(const FileName: string; out Index: Integer; const UseWildcards: Boolean = False): Boolean;
     class function GetExtendedPrefix(const aPath: string): TPathPrefixType;
     class function IsDriveRooted(const aPath: string): Boolean;
     class function IsExtendedPrefixed(const aPath: string): Boolean;
@@ -185,7 +187,10 @@ type
     class function DriveExists(const aPath: string): Boolean;
     class function MatchesPattern(const FileName, Pattern: string; const CaseSensitive: Boolean): Boolean;
     class function ChangeExtension(const aPath, Extension: string): string;
-    class function Combine(const Path1, Path2: string): string;
+    class function Combine(const Path1, Path2: string; const ValidateParams: Boolean = True): string;
+    class function Combine(const Path1, Path2, Path3: string; const ValidateParams: Boolean = True): string;
+    class function Combine(const Path1, Path2, Path3, Path4: string; const ValidateParams: Boolean = True): string;
+    class function Combine(const Paths: array of string; const ValidateParams: Boolean = True): string;
     class function GetDirectoryName(FileName: string): string;
     class function GetExtension(const FileName: string): string;
     class function GetFileName(const FileName: string): string;
@@ -503,6 +508,14 @@ end;
 class function TPath.HasValidPathChars(const aPath: string;
   const UseWildcards: Boolean): Boolean;
 var
+  dummy: Integer;
+begin
+  Result:=TPath.HasValidPathChars(aPath, dummy, UseWildcards);
+end;
+
+class function TPath.HasValidPathChars(const aPath: string;
+  out Index: integer; const UseWildcards: Boolean): Boolean;
+var
   P: PChar;
   S,I,Len: Integer;
   C : Char;
@@ -518,6 +531,7 @@ begin
   Inc(P,S-1);
   for I:=S to Len do
     begin
+    Index:=i;
     C:=P^;
     if CheckWC and (CharInSet(C,['?','*'])) then
       exit;
@@ -530,6 +544,14 @@ end;
 
 class function TPath.HasValidFileNameChars(const FileName: string;
   const UseWildcards: Boolean): Boolean;
+var
+  dummy: Integer;
+begin
+  Result:=HasValidFileNameChars(FileName, dummy, UseWildCards);
+end;
+
+class function TPath.HasValidFileNameChars(const FileName: string;
+  out Index: Integer; const UseWildcards: Boolean): Boolean;
 var
   P: PChar;
   S,I,Len: Integer;
@@ -546,6 +568,7 @@ begin
   Inc(P,S-1);
   for I:=S to Len do
     begin
+    Index:=I;
     C:=P^;
     if CheckWC and (CharInSet(C,['?','*'])) then
       exit;
@@ -866,7 +889,7 @@ begin
   Result:=ChangeFileExt(aPath, Extension);
 end;
 
-class function TPath.Combine(const Path1, Path2: string): string;
+class function TPath.Combine(const Path1, Path2: string; const ValidateParams : Boolean = True): string;
 begin
   if (Path1='') or (Path2='') then
     begin
@@ -878,11 +901,59 @@ begin
   else
     begin
     if not TPath.HasValidPathChars(Path1,False) then
-      Raise EArgumentException.CreateFmt('Path %s has invalid characters',[Path1]);
+      Raise EArgumentException.CreateFmt(SErrInvalidCharsInPath,[Path1]);
     if not TPath.HasValidPathChars(Path2,False) then
-      Raise EArgumentException.CreateFmt('Path %s has invalid characters',[Path2]);
+      Raise EArgumentException.CreateFmt(SErrInvalidCharsInPath,[Path2]);
     Result:=ConcatPaths([Path1, Path2]);
     end;
+end;
+
+class function TPath.Combine(const Path1, Path2, Path3 : string; const ValidateParams : Boolean = True): string;
+
+begin
+  Result:=Combine([Path1,Path2,Path3],ValidateParams);
+end;
+
+class function TPath.Combine(const Path1, Path2, Path3,Path4 : string; const ValidateParams : Boolean = True): string;
+
+begin
+  Result:=Combine([Path1,Path2,Path3,Path4],ValidateParams);
+end;
+
+class function TPath.Combine(const Paths: array of string; const ValidateParams: Boolean = True): string;
+  function AppendPathDelim(const Path: string): string;
+  begin
+    if (Path = '') or (Path[Length(Path)] in AllowDirectorySeparators)
+    {$ifdef mswindows}
+      //don't add a PathDelim to e.g. 'C:'
+      or ((Length(Path) = 2) and (Path[2] = ':') and (UpCase(Path[1]) in ['A'..'Z']))
+    {$endif}
+    then
+      Result:=Path
+    else
+      Result:=Path + DirectorySeparator;
+  end;
+var
+  i: Integer;
+  Path: String;
+begin
+  if ValidateParams then
+    for i := Low(Paths) to High(Paths) do
+      if not TPath.HasValidPathChars(Paths[i], False) then
+        Raise EInOutArgumentException.CreateFmt(SErrInvalidCharsInPath,[Paths[i]],Path[i]);
+  Result := '';
+  for i := High(Paths) downto Low(Paths) do
+  begin
+    Path := Paths[i];
+    if (Path <> '') then
+    begin
+      if (Result <> '') then
+        Path := AppendPathDelim(Path);
+      Result := Path + Result;
+      if not TPath.IsRelativePath(Result) then
+        Exit;
+    end;
+  end;
 end;
 
 class function TPath.GetDirectoryName(FileName: string): string;

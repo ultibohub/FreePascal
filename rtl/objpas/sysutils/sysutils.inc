@@ -320,6 +320,13 @@ begin
   Inherited CreateRes(ResStringRec);
 end;
 
+constructor EInOutArgumentException.CreateFmt(const fmt: string;  const args : array of const; const aPath : String);
+
+begin
+  Path:=aPath;
+  inherited CreateFmt(fmt,args);
+end;
+
 {$if defined(win32) or defined(win64) or defined (wince)}
 function EExternal.GetExceptionRecord: PExceptionRecord;
 begin
@@ -870,6 +877,12 @@ begin
     Result := ifTrue
   else
     Result:=ifFalse;
+end;
+
+generic function Exchange<T>(var target:T; const newvalue:T) :T;
+begin
+  Result := target;
+  target := newvalue;
 end;
 {$ENDIF}
 
