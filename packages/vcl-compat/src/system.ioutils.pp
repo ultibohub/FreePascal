@@ -24,6 +24,7 @@ unit System.IOUtils;
 {$modeswitch anonymousfunctions}
 { $ENDIF}
 {$modeswitch arrayoperators}
+{$SCOPEDENUMS ON}
 
 interface
 
@@ -891,21 +892,7 @@ end;
 
 class function TPath.Combine(const Path1, Path2: string; const ValidateParams : Boolean = True): string;
 begin
-  if (Path1='') or (Path2='') then
-    begin
-    if Path1='' then
-      Result:=Path2
-    else
-      Result:=Path1
-    end
-  else
-    begin
-    if not TPath.HasValidPathChars(Path1,False) then
-      Raise EArgumentException.CreateFmt(SErrInvalidCharsInPath,[Path1]);
-    if not TPath.HasValidPathChars(Path2,False) then
-      Raise EArgumentException.CreateFmt(SErrInvalidCharsInPath,[Path2]);
-    Result:=ConcatPaths([Path1, Path2]);
-    end;
+  Result:=TPath.Combine([Path1,Path2],ValidateParams)
 end;
 
 class function TPath.Combine(const Path1, Path2, Path3 : string; const ValidateParams : Boolean = True): string;
@@ -1205,7 +1192,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_PERSONAL, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdDocuments);
+      Result:=GetSpecialDir(TSpecialDir.sdDocuments);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1219,7 +1206,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_DESKTOPDIRECTORY, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdDesktop);
+      Result:=GetSpecialDir(TSpecialDir.sdDesktop);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1233,7 +1220,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_DOCUMENTS, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1274,7 +1261,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_APPDATA, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1288,7 +1275,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_MYPICTURES, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPictures);
+      Result:=GetSpecialDir(TSpecialDir.sdPictures);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1302,7 +1289,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_PICTURES, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1324,7 +1311,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_PICTURES, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1338,7 +1325,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_MYMUSIC, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdMusic);
+      Result:=GetSpecialDir(TSpecialDir.sdMusic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1352,7 +1339,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_MUSIC, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1366,7 +1353,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_MYVIDEO, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdVideos);
+      Result:=GetSpecialDir(TSpecialDir.sdVideos);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1380,7 +1367,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_VIDEO, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1394,7 +1381,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_MYMUSIC, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdMusic);
+      Result:=GetSpecialDir(TSpecialDir.sdMusic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1408,7 +1395,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_MUSIC, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1422,7 +1409,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_LOCAL_APPDATA, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdDownloads);
+      Result:=GetSpecialDir(TSpecialDir.sdDownloads);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1436,7 +1423,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_APPDATA, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1450,7 +1437,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_MYMUSIC, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdMusic);
+      Result:=GetSpecialDir(TSpecialDir.sdMusic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1464,7 +1451,7 @@ begin
     Result:=GetWindowsSpecialDir(CSIDL_COMMON_MUSIC, False);
   {$ELSE}
     {$IFDEF UNIX}
-      Result:=GetSpecialDir(sdPublic);
+      Result:=GetSpecialDir(TSpecialDir.sdPublic);
     {$ELSE}
       Result:=GetUserDir;
     {$ENDIF}
@@ -1479,7 +1466,7 @@ begin
   Result:=GetWindowsSpecialDir(CSIDL_PERSONAL, False);
 {$ELSE}
   {$IFDEF UNIX}
-    Result:=GetSpecialDir(sdTemplates);
+    Result:=GetSpecialDir(TSpecialDir.sdTemplates);
   {$ELSE}
     Result:=GetUserDir;
   {$ENDIF}
@@ -1623,7 +1610,7 @@ end;
 class function TFile.OpenOrCreate(const aPath: string): TFileStream;
 begin
   If Exists(aPath) then
-    Result:=Open(aPath,fmOpen)
+    Result:=Open(aPath,TfileMode.fmOpen)
   else
     Result:=Create(aPath);
 end;
@@ -1707,10 +1694,10 @@ var
 begin
   Result:=False;
   // check overwrite
-  if (not (cffOverwriteFile in Flags)) and FileExists(DestFileName) then
+  if (not (TCopyFileFlag.cffOverwriteFile in Flags)) and FileExists(DestFileName) then
     exit;
   // check directory
-  if (cffCreateDestDirectory in Flags)
+  if (TCopyFileFlag.cffCreateDestDirectory in Flags)
      and (not DirectoryExists(ExtractFilePath(DestFileName)))
      and (not ForceDirectories(ExtractFilePath(DestFileName))) then
     exit;
@@ -1758,7 +1745,7 @@ begin
     finally
       FileClose(DestHandle);
     end;
-    if (cffPreserveTime in Flags) then
+    if (TCopyFileFlag.cffPreserveTime in Flags) then
       FileSetDate(DestFilename, FileGetDate(SrcHandle));
     Result:=True;
   finally
@@ -1769,16 +1756,16 @@ end;
 
 class procedure TFile.Copy(const SourceFileName, DestFileName: string);
 begin
-   CopyFile(SourceFileName, DestFileName, [cffPreserveTime],True);
+   CopyFile(SourceFileName, DestFileName, [TCopyFileFlag.cffPreserveTime],True);
 end;
 
 class procedure TFile.Copy(const SourceFileName, DestFileName: string;
   const Overwrite: Boolean);
 begin
   if Overwrite then
-    CopyFile(SourceFileName, DestFileName, [cffOverwriteFile, cffPreserveTime],True)
+    CopyFile(SourceFileName, DestFileName, [TCopyFileFlag.cffOverwriteFile, TCopyFileFlag.cffPreserveTime],True)
   else
-    CopyFile(SourceFileName, DestFileName, [cffPreserveTime],True);
+    CopyFile(SourceFileName, DestFileName, [TCopyFileFlag.cffPreserveTime],True);
 end;
 
 class function TFile.CreateSymLink(const Link, Target: string): Boolean;
@@ -1904,7 +1891,7 @@ end;
 class function TFile.Open(const aPath: string; const aMode: TFileMode
   ): TFileStream;
 begin
-  Result:=Open(aPath,aMode,faReadWrite)
+  Result:=Open(aPath,aMode,TFileAccess.faReadWrite)
 end;
 
 class function TFile.Open(const aPath: string; const aMode: TFileMode;
@@ -2077,7 +2064,7 @@ begin
   lSrc:=ExpandFileName(aSource);
   lBackup:=ExpandFileName(aBackup);
   if CopyFile(lDest,lBackup,[],False) then
-    if CopyFile(lSrc,lDest,[cffOverwriteFile],False) then
+    if CopyFile(lSrc,lDest,[TCopyFileFlag.cffOverwriteFile],False) then
       Delete(lSrc);
 end;
 
@@ -2158,7 +2145,7 @@ begin
   Result      :=[];
   if (FindFirst(IntPath + aSearchPattern, TFile.FileAttributesToInteger(SearchAttributes), SearchRec) = 0) then
     repeat
-      if (aSearchOption = soAllDirectories) and ((SearchRec.Attr and {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.faDirectory) <> 0) then
+      if (aSearchOption = TSearchOption.soAllDirectories) and ((SearchRec.Attr and {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}SysUtils.faDirectory) <> 0) then
         Result:=Result + GetFilesAndDirectories(IntPath + SearchRec.Name, aSearchPattern, aSearchOption, SearchAttributes, aPredicate)
       else if FilterPredicate(aPath, SearchRec) then
         Result:=Result + [IntPath + SearchRec.Name];
@@ -2329,19 +2316,19 @@ end;
 class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
   const aPredicate: TFilterPredicateLocal): TStringDynArray;
 begin
-  Result:=GetDirectories(aPath, aSearchPattern, soTopDirectoryOnly, aPredicate);
+  Result:=GetDirectories(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
   const aPredicate: TFilterPredicateObject): TStringDynArray;
 begin
-  Result:=GetDirectories(aPath, aSearchPattern, soTopDirectoryOnly, aPredicate);
+  Result:=GetDirectories(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
   const aPredicate: TFilterPredicate): TStringDynArray;
 begin
-  Result:=GetDirectories(aPath, aSearchPattern, soTopDirectoryOnly, aPredicate);
+  Result:=GetDirectories(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
@@ -2354,21 +2341,21 @@ class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
   const aSearchOption: TSearchOption; const aPredicate: TFilterPredicateLocal
   ): TStringDynArray;
 begin
-  Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption, [faDirectory], aPredicate);
+  Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption, [TFileAttribute.faDirectory], aPredicate);
 end;
 
 class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
   const aSearchOption: TSearchOption; const aPredicate: TFilterPredicateObject
   ): TStringDynArray;
 begin
-  Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption, [faDirectory], aPredicate);
+  Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption, [TFileAttribute.faDirectory], aPredicate);
 end;
 
 class function TDirectory.GetDirectories(const aPath, aSearchPattern: string;
   const aSearchOption: TSearchOption; const aPredicate: TFilterPredicate
   ): TStringDynArray;
 begin
-  Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption, [faDirectory], aPredicate);
+  Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption, [TFileAttribute.faDirectory], aPredicate);
 end;
 
 class function TDirectory.GetDirectories(const aPath: string;
@@ -2400,43 +2387,43 @@ end;
 class function TDirectory.GetFiles(const aPath: string;
   const aPredicate: TFilterPredicateLocal): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, '*', soTopDirectoryOnly, aPredicate);
+  Result:=GetFiles(aPath, '*', TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetFiles(const aPath: string;
   const aPredicate: TFilterPredicateObject): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, '*', soTopDirectoryOnly, aPredicate);
+  Result:=GetFiles(aPath, '*', TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetFiles(const aPath: string;
   const aPredicate: TFilterPredicate): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, '*', soTopDirectoryOnly, aPredicate);
+  Result:=GetFiles(aPath, '*', TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetFiles(const aPath, aSearchPattern: string
   ): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, aSearchPattern, soTopDirectoryOnly, TFilterPredicateLocal(nil));
+  Result:=GetFiles(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, TFilterPredicateLocal(nil));
 end;
 
 class function TDirectory.GetFiles(const aPath, aSearchPattern: string;
   const aPredicate: TFilterPredicateLocal): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, aSearchPattern, soTopDirectoryOnly, aPredicate);
+  Result:=GetFiles(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetFiles(const aPath, aSearchPattern: string;
   const aPredicate: TFilterPredicateObject): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, aSearchPattern, soTopDirectoryOnly, aPredicate);
+  Result:=GetFiles(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetFiles(const aPath, aSearchPattern: string;
   const aPredicate: TFilterPredicate): TStringDynArray;
 begin
-  Result:=GetFiles(aPath, aSearchPattern, soTopDirectoryOnly, aPredicate);
+  Result:=GetFiles(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, aPredicate);
 end;
 
 class function TDirectory.GetFiles(const aPath, aSearchPattern: string;
@@ -2450,7 +2437,7 @@ class function TDirectory.GetFiles(const aPath, aSearchPattern: string;
   ): TStringDynArray;
 begin
   Result:=GetFilesAndDirectories(aPath, aSearchPattern, aSearchOption,
-                                   TFile.IntegerToFileAttributes(faAnyFile) - [faDirectory],
+                                   TFile.IntegerToFileAttributes(faAnyFile) - [TFileAttribute.faDirectory],
                                    aPredicate);
 end;
 
@@ -2523,7 +2510,7 @@ class function TDirectory.GetFileSystemEntries(const aPath,
   aSearchPattern: string; const aPredicate: TFilterPredicateLocal
   ): TStringDynArray;
 begin
-  Result:=GetFilesAndDirectories(aPath, aSearchPattern, soTopDirectoryOnly, TFile.IntegerToFileAttributes(faAnyFile), aPredicate);
+  Result:=GetFilesAndDirectories(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, TFile.IntegerToFileAttributes(faAnyFile), aPredicate);
 
 end;
 
@@ -2531,13 +2518,13 @@ class function TDirectory.GetFileSystemEntries(const aPath,
   aSearchPattern: string; const aPredicate: TFilterPredicateObject
   ): TStringDynArray;
 begin
-  Result:=GetFilesAndDirectories(aPath, aSearchPattern, soTopDirectoryOnly, TFile.IntegerToFileAttributes(faAnyFile), aPredicate);
+  Result:=GetFilesAndDirectories(aPath, aSearchPattern, TSearchOption.soTopDirectoryOnly, TFile.IntegerToFileAttributes(faAnyFile), aPredicate);
 end;
 
 class function TDirectory.GetFileSystemEntries(const aPath,
   aSearchPattern: string; const aPredicate: TFilterPredicate): TStringDynArray;
 begin
-  Result:=GetFilesAndDirectories(aPath, aSearchPattern,  soTopDirectoryOnly, TFile.IntegerToFileAttributes(faAnyFile), aPredicate);
+  Result:=GetFilesAndDirectories(aPath, aSearchPattern,  TSearchOption.soTopDirectoryOnly, TFile.IntegerToFileAttributes(faAnyFile), aPredicate);
 end;
 
 class function TDirectory.GetFileSystemEntries(const aPath: string;
