@@ -140,17 +140,17 @@ Implementation
 uses
   RtlConsts;
 
-const 
+const
   macheps=1E-9;
   zeroRes=1E-17;
 
-Type ResourceData = record
-                      Description   : String;
-                      Value         : TConvUtilFloat;
-                      ToCommonFunc  : TConversionProc;
-                      FromCommonFunc: TConversionProc;
-                      Fam           : TConvFamily;
-                      Deleted       : Boolean;
+Type TResourceData = record
+                       Description   : String;
+                       Value         : TConvUtilFloat;
+                       ToCommonFunc  : TConversionProc;
+                       FromCommonFunc: TConversionProc;
+                       Fam           : TConvFamily;
+                       Deleted       : Boolean;
                      end;
      TFamilyData = record
                      Description: String;
@@ -158,8 +158,15 @@ Type ResourceData = record
                    end;
 
 
-var TheUnits    : array of ResourceData =nil;
+var TheUnits    : array of TResourceData =nil;
     TheFamilies : array of TFamilyData =nil;
+
+
+Function CheckFamily(i:TConvFamily):Boolean; inline;
+
+begin
+  Result:=(i<Length(TheFamilies)) and (not TheFamilies[i].Deleted);
+end;
 
 function FindFamily(const ADescription: String; out AFam: TConvFamily): Boolean;
 
@@ -179,7 +186,12 @@ begin
   end;
 end;
 
-function FindConvType(AFam: TConvFamily; const ADescription: string; out AResourceData: ResourceData): Boolean;
+function CheckType(AType: TConvType): Boolean; inline;
+begin
+  result:=(AType<Length(TheUnits)) and (not TheUnits[AType].Deleted);
+end;
+
+function FindConvType(AFam: TConvFamily; const ADescription: string; out AResourceData: TResourceData): Boolean;
 
 var
   i: Integer;
@@ -199,7 +211,7 @@ end;
 function FindConvType(AFam: TConvFamily; const ADescription: string): Boolean;
 
 var
-  Data: ResourceData;
+  Data: TResourceData;
 
 begin
   result:=FindConvType(AFam, ADescription, Data);
@@ -267,7 +279,7 @@ end;
 function ConvFamilyToDescription(const AFamily: TConvFamily): string;
 
 begin
-  if (AFamily<length(TheFamilies)) and not (TheFamilies[AFamily].Deleted) then
+  if CheckFamily(AFamily) then
     result:=TheFamilies[AFamily].Description
   else
     result:=format(SConvUnknownDescriptionWithPrefix,['$',AFamily]);
@@ -333,12 +345,10 @@ begin
      end;
 end;
 
-//since a conversion type actually can have any (incuding an empty) description we need a function that
-//properly checks and indicates wether or not AType actually exists
 function TryConvTypeToDescription(const AType: TConvType; out S: string): Boolean;
 
 begin
-  result:=(AType<length(TheUnits)) and (not TheUnits[AType].Deleted);
+  result:=CheckType(AType);
   if result then
     S:=TheUnits[AType].Description;
 end;
@@ -389,7 +399,6 @@ function TryStrToConvUnit(AText: string; out AValue: Double; out AType: TConvTyp
 var
   P: SizeInt;
   ValueStr, TypeStr: String;
-  Data: ResourceData;
 
 begin
   Result:=False;
@@ -399,13 +408,9 @@ begin
   ValueStr:=Copy(AText,1,P);
   if not TryStrToFloat(ValueStr, AValue) then
     Exit;
-  //since there is no restriction on the description of a TConvType
-  //(it can be empty or have leading or trailing spaces)
-  //everything after the space at position P _must_ be the description
-  if P=Length(AText) then
-    TypeStr:=''
-  else
-    TypeStr:=Copy(AText,P+1,MaxInt);
+  if P=Length(AText) then //no desription found
+    Exit;
+  TypeStr:=Trim(Copy(AText,P+1,MaxInt));
   Result:=DescriptionToConvType(TypeStr, AType);
 end;
 
@@ -416,13 +421,11 @@ begin
     raise EConversionError.CreateFmt(SConvStrParseError,[AText]);
 end;
 
-//since a conversion family actually can have any (including an empty) description we need a function that
-//properly checks and indicates wether or not AType actually exists
 function TryConvTypeToFamily(const AType: TConvType; out AFam: TConvFamily): Boolean;
 
 begin
   result:=false;
-  if (AType<length(TheUnits)) and (not TheUnits[AType].Deleted) then begin
+  if CheckType(AType) then begin
     AFam:=TheUnits[AType].Fam;
     result:=true;
   end;
@@ -463,15 +466,10 @@ end;
 function CompatibleConversionTypes(const AFrom, ATo: TConvType): Boolean;
 
 begin
- //ConvTypeToFamily potentially raises an exception, make sure it doesn't here
-  result:= (AFrom<length(TheUnits)) and (ATo<length(TheUnits)) and
-           (not TheUnits[AFrom].Deleted) and (not TheUnits[ATo].Deleted) and
+  //ConvTypeToFamily potentially raises an exception, make sure it doesn't here
+  result:= CheckType(AFrom) and CheckType(ATo) and
            (ConvTypeToFamily(AFrom)=ConvTypeToFamily(ATo));
 end;
-
-Const
-   SConvTooManyConvFamilies = '  SConvTooManyConvFamilies %d';
-                               SConvTooManyConvTypes = 'SConvTooManyConvTypes %d';
 
 Function RegisterConversionFamily(Const S:String):TConvFamily;
 
@@ -479,6 +477,9 @@ var len : Longint;
     fam: TConvFamily;
 
 begin
+  if Trim(S)='' then
+    //Delphi does not, but since this is non-sensical, we disallow it
+    raise EConversionError.Create(SConvEmptyDescription);
   len:=Length(TheFamilies);
   if len>0 then
     if FindFamily(S, fam) then
@@ -486,7 +487,7 @@ begin
   if len=Integer(High(TConvFamily))+1 then
     raise EConversionError.CreateFmt(SConvTooManyConvFamilies,[High(TConvFamily)]);
   SetLength(TheFamilies,len+1);
-  TheFamilies[len].Description:=S;
+  TheFamilies[len].Description:=Trim(S);
   TheFamilies[len].Deleted:=False;
   result:=len;
 end;
@@ -498,7 +499,7 @@ var
 
 begin
   //Apparently this procedure is not supposed to raise exceptions
-  if AFamily<Length(TheFamilies) then
+  if CheckFamily(AFamily) then
   begin
     TheFamilies[AFamily].Deleted:=True;
     for i:=0 to Length(TheUnits)-1 do
@@ -509,44 +510,43 @@ begin
   end;
 end;
 
-Function CheckFamily(i:TConvFamily):Boolean;
-
-begin
-  Result:=(i<Length(TheFamilies)) and (not TheFamilies[i].Deleted);
-end;
 
 procedure UnregisterConversionType(const AType: TConvType);
 
 begin
   //Apparently this procedure is not supposed to raise exceptions
-  if AType<Length(TheUnits) then
+  if CheckType(AType) then
     TheUnits[AType].Deleted:=True;
 end;
 
-Function InternalRegisterConversionType(Fam:TConvFamily;Const S:String;Value:TConvUtilFloat;
+Function InternalRegisterConversionType(Fam:TConvFamily; S:String;Value:TConvUtilFloat;
   const AToCommonFunc, AFromCommonFunc: TConversionProc):TConvType;
 
-var l1 : Longint;
+var len : Longint;
 
 begin
   If NOT CheckFamily(Fam) Then
     raise EConversionError.CreateFmt(SConvUnknownFamily, [IntToStr(Fam)]);
+  S:= Trim(S);
+  //Delphi does not, but since this is non-sensical, we disallow it
+  if S='' then
+    raise EConversionError.Create(SConvEmptyDescription);
   if IsZero(Value,zeroRes) then
     raise EZeroDivide.CreateFmt(SConvFactorZero,[S]);
-  l1:=length(theunits);
-  if l1>0 then
+  len:=length(theunits);
+  if len>0 then
     if FindConvType(Fam, S) then
       raise EConversionError.CreateFmt(SConvDuplicateType,[S,ConvFamilyToDescription(Fam)]);
-  if l1=Integer(High(TConvType))+1 then
+  if len=Integer(High(TConvType))+1 then
     raise EConversionError.CreateFmt(SConvTooManyConvTypes,[High(TConvType)]);
-  Setlength(theunits,l1+1);
-  theunits[l1].description:=s;
-  theunits[l1].value:=value;
-  theunits[l1].ToCommonFunc:=AToCommonFunc;
-  theunits[l1].FromCommonFunc:=AFromCommonFunc;
-  theunits[l1].fam:=fam;
-  theunits[l1].deleted:=false;
-  Result:=l1;
+  Setlength(theunits,len+1);
+  theunits[len].description:=s;
+  theunits[len].value:=value;
+  theunits[len].ToCommonFunc:=AToCommonFunc;
+  theunits[len].FromCommonFunc:=AFromCommonFunc;
+  theunits[len].fam:=fam;
+  theunits[len].deleted:=false;
+  Result:=len;
 end;
 
 Function RegisterConversionType(Fam:TConvFamily;Const S:String;Value:TConvUtilFloat):TConvType;
@@ -560,13 +560,10 @@ begin
   result:=InternalRegisterConversionType(Fam,S,(AToCommonFunc(1)-AToCommonFunc(0)),AToCommonFunc,AFromCommonFunc);
 end;
 
-function SearchConvert(TheType:TConvType; out r:ResourceData):Boolean;
-
-var l1 : longint;
+function SearchConvert(TheType:TConvType; out r:TResourceData):Boolean;
 
 begin
-  l1:=length(TheUnits);
-  if (thetype>=l1) or (theunits[thetype].Deleted) then
+  if not CheckType(TheType) then
     exit(false);
   r:=theunits[thetype];
   result:=true;
@@ -575,7 +572,7 @@ end;
 function Convert ( const Measurement  : Double; const FromType, ToType  : TConvType ) :TConvUtilFloat;
 
 var
-  fromrec,torec :   resourcedata;
+  fromrec,torec :   TResourceData;
   common: double;
 
 begin
@@ -611,7 +608,7 @@ end;
 function Convert ( const Measurement  : Double; const FromType1, FromType2, ToType1, ToType2  : TConvType ) :TConvUtilFloat;
 var
   fromrec1,fromrec2,torec1 ,
-  torec2 :   resourcedata;
+  torec2 :   TResourceData;
 
 begin
   if not SearchConvert(fromtype1,fromrec1) then
@@ -640,7 +637,7 @@ end;
 function ConvertFrom(const AFrom: TConvType; AValue: Double): TConvUtilFloat;
 
 var
-  fromrec :   resourcedata;
+  fromrec :   TResourceData;
 
 begin
   if not SearchConvert(AFrom, fromrec) then
@@ -654,7 +651,7 @@ end;
 function ConvertTo(const AValue: Double; const ATo: TConvType): TConvUtilFloat;
 
 var
-  torec :   resourcedata;
+  torec :   TResourceData;
 
 begin
   if not SearchConvert(ATo, torec) then

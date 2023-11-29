@@ -74,6 +74,7 @@ Function AnsiReverseString(const AText: AnsiString): AnsiString;inline;
 Function StuffString(const AText: string; AStart, ALength: Cardinal;  const ASubText: string): string;
 Function RandomFrom(const AValues: array of string): string; overload;
 Function IfThen(AValue: Boolean; const ATrue: string; const AFalse: string = ''): string; overload;
+Function IfThen(AValue: Boolean; const ATrue: TStringDynArray; const AFalse: TStringDynArray = nil): TStringDynArray; overload;
 function NaturalCompareText (const S1 , S2 : string ): Integer ;
 function NaturalCompareText(const Str1, Str2: string; const ADecSeparator, AThousandSeparator: Char): Integer;
 
@@ -223,7 +224,7 @@ function Dec2Numb(N: Longint; Len, Base: Byte): string;
 function Numb2Dec(S: string; Base: Byte): Longint;
 function IntToBin(Value: Longint; Digits, Spaces: Integer): string;
 function IntToBin(Value: Longint; Digits: Integer): string;
-function intToBin(Value: int64; Digits:integer): string;
+function IntToBin(Value: int64; Digits:integer): string;
 function IntToRoman(Value: Longint): string;
 function TryRomanToInt(S: String; out N: LongInt; Strictness: TRomanConversionStrictness = rcsRelaxed): Boolean;
 function RomanToInt(const S: string; Strictness: TRomanConversionStrictness = rcsRelaxed): Longint;
@@ -248,7 +249,7 @@ function PosSet (const c:string;const s : ansistring ):SizeInt;
 function PosSetEx (const c:TSysCharSet;const s : ansistring;count:Integer ):SizeInt;
 function PosSetEx (const c:string;const s : ansistring;count:Integer ):SizeInt;
 
-Procedure Removeleadingchars(VAR S : AnsiString; Const CSet:TSysCharset);
+Procedure RemoveLeadingchars(VAR S : AnsiString; Const CSet:TSysCharset);
 Procedure RemoveTrailingChars(VAR S : AnsiString;Const CSet:TSysCharset);
 Procedure RemovePadChars(VAR S : AnsiString;Const CSet:TSysCharset);
 
@@ -1228,6 +1229,15 @@ begin
     result:=afalse;
 end;
 
+Function IfThen(AValue: Boolean; const ATrue: TStringDynArray; const AFalse: TStringDynArray = nil): TStringDynArray; overload;
+
+begin
+  if avalue then
+    result:=atrue
+  else
+    result:=afalse;
+end;
+
 function NaturalCompareText(const Str1, Str2: string; const ADecSeparator, AThousandSeparator: Char): Integer;
 {
  NaturalCompareBase compares strings in a collated order and
@@ -1376,8 +1386,16 @@ begin
 end;
 
 function SplitString(const S, Delimiters: string): TStringDynArray;
+
+Var
+  a : Array of char;
+  I : Integer;
+  
 begin
-  Result := S.Split(Delimiters);
+  SetLength(A,Length(Delimiters));
+  For I:=1 to Length(Delimiters) do
+    A[I-1]:=Delimiters[i];
+  Result := S.Split(A);
 end;
 
 function NaturalCompareText (const S1 , S2 : string ): Integer ;
@@ -2019,13 +2037,27 @@ end;
 function DelSpace1(const S: string): string;
 
 var
-  I : SizeInt;
+  I,J: SizeInt;
 
 begin
   Result:=S;
-  for i:=Length(Result) downto 2 do
-    if (Result[i]=' ') and (Result[I-1]=' ') then
-      Delete(Result,I,1);
+  I:=Length(Result);
+  While I>0 do
+    begin
+    if Result[I]=#32 then
+      begin
+      J:=I-1;
+      While (J>0) and (Result[J]=#32) do
+        Dec(j);
+      Inc(J);
+      if I<>J then
+        begin
+        Delete(Result,J+1,I-J);
+        I:=J+1;
+        end;
+      end;
+    dec(I);
+    end;
 end;
 
 function Tab2Space(const S: string; Numb: Byte): string;
@@ -3035,7 +3067,7 @@ begin
     end;
 end;
 
-function RPosEX(C: char; const S: AnsiString; offs: cardinal): SizeInt;
+function RPosEx(C: char; const S: AnsiString; offs: cardinal): SizeInt;
 
 var I   : SizeUInt;
     p,p2: pChar;
@@ -3098,7 +3130,7 @@ begin
    end;
 end;
 
-function RPosex(const Substr: AnsiString; const Source: AnsiString; offs: cardinal): SizeInt;
+function RPosEx(const Substr: AnsiString; const Source: AnsiString; offs: cardinal): SizeInt;
 var
   MaxLen,llen : SizeInt;
   c : char;
@@ -3127,7 +3159,7 @@ begin
    end;
 end;
 
-function RPosEX(C: unicodechar; const S: UnicodeString; offs: cardinal): SizeInt;
+function RPosEx(C: unicodechar; const S: UnicodeString; offs: cardinal): SizeInt;
 
 var I   : SizeUInt;
     p,p2: PUnicodeChar;
@@ -3189,7 +3221,7 @@ begin
    end;
 end;
 
-function RPosex(const Substr: UnicodeString; const Source: UnicodeString; offs: cardinal): SizeInt;
+function RPosEx(const Substr: UnicodeString; const Source: UnicodeString; offs: cardinal): SizeInt;
 var
   MaxLen,llen : SizeInt;
   c : unicodechar;
