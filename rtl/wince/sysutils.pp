@@ -250,7 +250,7 @@ begin
 end;
 
 
-Function FileAge (Const FileName : UnicodeString): Longint;
+Function FileAge (Const FileName : UnicodeString): Int64;
 var
   Handle: THandle;
   FindData: TWin32FindData;
@@ -365,7 +365,7 @@ begin
 end;
 
 
-Function FileSetDate (Handle : THandle;Age : Longint) : Longint;
+Function FileSetDate (Handle : THandle;Age : Int64) : Longint;
 Var
   FT: TFileTime;
 begin
@@ -447,6 +447,12 @@ begin
      else
        Result := 0;
    end;
+end;
+
+function GetLocalTimeOffset(const DateTime: TDateTime; const InputIsUTC: Boolean; out Offset: Integer): Boolean;
+
+begin
+  Result := False; // not supported
 end;
 
 {****************************************************************************

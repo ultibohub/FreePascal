@@ -1250,7 +1250,7 @@ begin
 end ;
 
 
-Function DateTimeToFileDate(DateTime : TDateTime) : Longint;
+Function DateTimeToFileDate(DateTime : TDateTime) : Int64;
 
 Var YY,MM,DD,H,m,s,msec : Word;
 
@@ -1278,7 +1278,7 @@ begin
   Result := SysTime.Year;
 end;
 
-Function FileDateToDateTime (Filedate : Longint) : TDateTime;
+Function FileDateToDateTime (Filedate : Int64) : TDateTime;
 
 {$ifndef unix}
 Var Date,Time : Word;
@@ -1294,6 +1294,21 @@ var
   y, mon, d, h, min, s: word;
 begin
   EpochToLocal(FileDate,y,mon,d,h,min,s);
+  Result:=ComposeDateTime(EncodeDate(y,mon,d),EncodeTime(h,min,s,0));
+end;
+{$endif unix}
+
+Function FileDateToUTC (Filedate : Int64) : TDateTime;
+
+{$ifndef unix}
+begin
+  Result := LocalTimeToUniversal(FileDateToDateTime(Filedate));
+end;
+{$else unix}
+var
+  y, mon, d, h, min, s: word;
+begin
+  EpochToUniversal(FileDate,y,mon,d,h,min,s);
   Result:=ComposeDateTime(EncodeDate(y,mon,d),EncodeTime(h,min,s,0));
 end;
 {$endif unix}
@@ -1521,4 +1536,52 @@ Function GetLocalTimeOffset : Integer;
 begin
   Result:=0;
 end;
+
+function GetLocalTimeOffset(const DateTime: TDateTime; const InputIsUTC: Boolean; out Offset: Integer): Boolean;
+begin
+  Result:=False;
+end;
 {$ENDIF}
+
+function GetLocalTimeOffset(const DateTime: TDateTime; const InputIsUTC: Boolean): Integer;
+begin
+  if not GetLocalTimeOffset(DateTime, InputIsUTC, Result) then
+    Result:=GetLocalTimeOffset();
+end;
+
+{ Conversion of UTC to local time and vice versa }
+
+function UniversalTimeToLocal(UT: TDateTime): TDateTime;
+
+begin
+  Result:=UniversalTimeToLocal(UT,-GetLocalTimeOffset(UT, True));
+end;
+
+function UniversalTimeToLocal(UT: TDateTime; TZOffset : Integer): TDateTime;
+
+begin
+  if (TZOffset > 0) then
+    Result := UT + EncodeTime(TZOffset div 60, TZOffset mod 60, 0, 0)
+  else if (TZOffset < 0) then
+    Result := UT - EncodeTime(Abs(TZOffset) div 60, Abs(TZOffset) mod 60, 0, 0)
+  else
+    Result := UT;
+end;
+
+Function LocalTimeToUniversal(LT: TDateTime): TDateTime;
+
+begin
+  Result:=LocalTimeToUniversal(LT,-GetLocalTimeOffset(LT, False));
+end;
+
+Function LocalTimeToUniversal(LT: TDateTime;TZOffset: Integer): TDateTime;
+
+begin
+  if (TZOffset > 0) then
+    Result := LT - EncodeTime(TZOffset div 60, TZOffset mod 60, 0, 0)
+  else if (TZOffset < 0) then
+    Result := LT + EncodeTime(Abs(TZOffset) div 60, Abs(TZOffset) mod 60, 0, 0)
+  else
+    Result := LT;
+end;
+

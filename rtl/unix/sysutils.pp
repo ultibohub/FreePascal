@@ -293,55 +293,6 @@ procedure UnhookSignal(RtlSigNum: Integer; OnlyIfHooked: Boolean = True);
 { Include SysCreateGUID function }
 {$i suuid.inc}
 
-Const
-{Date Translation}
-  C1970=2440588;
-  D0   =   1461;
-  D1   = 146097;
-  D2   =1721119;
-
-
-Procedure JulianToGregorian(JulianDN:LongInt;Var Year,Month,Day:Word);
-Var
-  YYear,XYear,Temp,TempMonth : LongInt;
-Begin
-  Temp:=((JulianDN-D2) shl 2)-1;
-  JulianDN:=Temp Div D1;
-  XYear:=(Temp Mod D1) or 3;
-  YYear:=(XYear Div D0);
-  Temp:=((((XYear mod D0)+4) shr 2)*5)-3;
-  Day:=((Temp Mod 153)+5) Div 5;
-  TempMonth:=Temp Div 153;
-  If TempMonth>=10 Then
-   Begin
-     inc(YYear);
-     dec(TempMonth,12);
-   End;
-  inc(TempMonth,3);
-  Month := TempMonth;
-  Year:=YYear+(JulianDN*100);
-end;
-
-
-
-Procedure EpochToLocal(epoch:longint;var year,month,day,hour,minute,second:Word);
-{
-  Transforms Epoch time into local time (hour, minute,seconds)
-}
-Var
-  DateNum: LongInt;
-Begin
-  inc(Epoch,TZSeconds);
-  Datenum:=(Epoch Div 86400) + c1970;
-  JulianToGregorian(DateNum,Year,Month,day);
-  Epoch:=Abs(Epoch Mod 86400);
-  Hour:=Epoch Div 3600;
-  Epoch:=Epoch Mod 3600;
-  Minute:=Epoch Div 60;
-  Second:=Epoch Mod 60;
-End;
-
-
 function GetTickCount64: QWord;
 var
   tp: TTimeVal;
@@ -596,7 +547,7 @@ begin
     end;
 end;
 
-Function FileAge (Const FileName : RawByteString): Longint;
+Function FileAge (Const FileName : RawByteString): Int64;
 Var
   Info : Stat;
   SystemFileName: RawByteString;
@@ -1044,7 +995,7 @@ Begin
 End;
 
 
-Function FileGetDate (Handle : Longint) : Longint;
+Function FileGetDate (Handle : Longint) : Int64;
 
 Var Info : Stat;
 
@@ -1056,7 +1007,7 @@ begin
 end;
 
 
-Function FileSetDate (Handle,Age : Longint) : Longint;
+Function FileSetDate (Handle : Longint;Age : Int64) : Longint;
 
 begin
   // Impossible under Linux from FileHandle !!
@@ -1114,7 +1065,7 @@ begin
   Result:=fpAccess(PChar(SystemFileName),W_OK)<>0;
 end;
 
-Function FileSetDate (Const FileName : RawByteString; Age : Longint) : Longint;
+Function FileSetDate (Const FileName : RawByteString; Age : Int64) : Longint;
 var
   SystemFileName: RawByteString;
   t: TUTimBuf;
@@ -1667,6 +1618,32 @@ function GetLocalTimeOffset: Integer;
 
 begin
  Result := -Tzseconds div 60; 
+end;
+
+function GetLocalTimeOffset(const DateTime: TDateTime; const InputIsUTC: Boolean; out Offset: Integer): Boolean;
+
+var
+  Year, Month, Day, Hour, Minute, Second, MilliSecond: word;
+  UnixTime: Int64;
+  lTZInfo: TTZInfo;
+begin
+  DecodeDate(DateTime, Year, Month, Day);
+  DecodeTime(DateTime, Hour, Minute, Second, MilliSecond);
+  if InputIsUTC then
+    UnixTime:=UniversalToEpoch(Year, Month, Day, Hour, Minute, Second)
+  else
+    UnixTime:=LocalToEpoch(Year, Month, Day, Hour, Minute, Second);
+  { check if time is in current global Tzinfo }
+  if (Tzinfo.validsince<UnixTime) and (UnixTime<Tzinfo.validuntil) then
+  begin
+    Result:=True;
+    Offset:=-TZInfo.seconds div 60;
+  end else
+  begin
+    Result:=GetLocalTimezone(UnixTime,True,lTZInfo,False);
+    if Result then
+      Offset:=-lTZInfo.seconds div 60;
+  end;
 end;
 
 {$ifdef android}
