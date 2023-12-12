@@ -4022,7 +4022,7 @@ Z*2Az80asm_Assemble using z80asm
 **2bl_Generate local symbol info
 **1B_Build all modules
 **1C<x>_Code generation options:
-**2C3_Turn on ieee error checking for constants
+**2C3_Turn on IEEE error checking for constants
 **2Ca<x>_Select ABI; see fpc -i or fpc -ia for possible values
 **2Cb_Generate code for a big-endian variant of the target architecture
 **2Cc<x>_Set default calling convention to <x>
@@ -4278,6 +4278,7 @@ F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,
 6*2Tamiga_Commodore Amiga
 6*2Tatari_Atari ST/STe/TT
 6*2Tembedded_Embedded
+6*2Thuman68k_Human 68k
 6*2Tlinux_Linux
 6*2Tnetbsd_NetBSD
 6*2Tmacosclassic_Classic Mac OS

@@ -23,7 +23,7 @@ begin
     P.Email := '';
     P.Description := 'Several hash and cryptography algorithms (MD5,CRC,Linux crypt and NTLM1).';
     P.NeedLibC:= false;
-    P.OSes:=P.OSes-[embedded,win16,macosclassic,palmos,zxspectrum,msxdos,amstradcpc,sinclairql];
+    P.OSes:=P.OSes-[embedded,win16,macosclassic,palmos,zxspectrum,msxdos,amstradcpc,sinclairql,human68k];
     if Defaults.CPU=jvm then
       P.OSes := P.OSes - [java,android];
 
@@ -39,6 +39,7 @@ begin
     T:=P.Targets.AddUnit('src/ntlm.pas');
     T:=P.Targets.AddUnit('src/uuid.pas');
     T:=P.Targets.AddUnit('src/hmac.pp');
+    T:=P.Targets.AddUnit('src/fnvhash.pp');
     T:=P.Targets.AddUnit('src/unixcrypt.pas');
     
     T.OSes:=[Linux];

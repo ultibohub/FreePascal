@@ -166,7 +166,7 @@ Type
     win64,wince,gba,nds,embedded,symbian,haiku,iphonesim,
     aix,java,android,nativent,msdos,wii,aros,dragonfly,
     win16,freertos,zxspectrum,msxdos,ios,amstradcpc,sinclairql,
-    wasi,ultibo
+    wasi,human68k,ultibo
   );
   TOSes = Set of TOS;
 
@@ -239,7 +239,7 @@ Const
   AllBSDOSes      = [FreeBSD,NetBSD,OpenBSD,Darwin,iphonesim,ios,dragonfly];
   AllWindowsOSes  = [Win32,Win64,WinCE];
   AllAmigaLikeOSes = [Amiga,MorphOS,AROS];
-  AllLimit83fsOses = [go32v2,os2,emx,watcom,msdos,win16,atari];
+  AllLimit83fsOses = [go32v2,os2,emx,watcom,msdos,win16,atari,human68k];
 
   AllSmartLinkLibraryOSes = [Linux,msdos,win16,palmos]; // OSes that use .a library files for smart-linking
   AllImportLibraryOSes = AllWindowsOSes + [os2,emx,netwlibc,netware,watcom,go32v2,macosclassic,nativent,msdos,win16];
@@ -293,6 +293,7 @@ Const
     {amstradcpc}( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, true,  false),
     {sinclairql}( false, false, true,  false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, false, false),
     { wasi }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, true,  false,  false,  false,   false, false, false),
+    { human68k }( false, false, true,  false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, false, false),
     { ultibo }  ( false, true,  false, false, false, true,  true,  false, false, false, false, false, false, false,   false, false, true,  false, false,  false,  false,   false, false, false)
   );
 

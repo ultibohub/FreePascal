@@ -214,10 +214,11 @@
              system_riscv32_freertos,   { 119 }
              system_loongarch64_linux,  { 120 }
              system_aarch64_iphonesim,  { 121 }
-             system_arm_ultibo,         { 122 }
-             system_i386_ultibo,        { 123 }
-             system_x86_64_ultibo,      { 124 }
-             system_aarch64_ultibo      { 125 }
+             system_m68k_human68k,      { 122 }
+             system_arm_ultibo,         { 123 }
+             system_i386_ultibo,        { 124 }
+             system_x86_64_ultibo,      { 125 }
+             system_aarch64_ultibo      { 126 }
        );
 
      type
@@ -288,7 +289,7 @@
              ,as_wasm32_wasm
              ,as_clang_llvm_darwin
              ,as_m68k_elf32
-	     ,as_win64_gas
+             ,as_win64_gas
        );
 
        tlink = (ld_none,
@@ -336,7 +337,8 @@
              ld_amstradcpc,
              ld_sinclairql,
              ld_ultibo,
-             ld_wasi
+             ld_wasi,
+             ld_human68k
        );
 
        tar = (ar_none
