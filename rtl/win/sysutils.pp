@@ -396,6 +396,7 @@ end;
 
 Function FileAge (Const FileName : UnicodeString): Int64;
 var
+  DTime:longint;
   Handle: THandle;
   FindData: TWin32FindDataW;
 begin
@@ -404,8 +405,11 @@ begin
     begin
       Windows.FindClose(Handle);
       if (FindData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
-        If WinToDosTime(FindData.ftLastWriteTime,Result) then
-          exit;
+        If WinToDosTime(FindData.ftLastWriteTime,DTime) then
+          begin
+            Result := DTime;
+            exit;
+          end;  
     end;
   Result := -1;
 end;
@@ -643,13 +647,17 @@ end;
 
 
 
-Function FileGetDate (Handle : THandle) : Longint;
+Function FileGetDate (Handle : THandle) : Int64;
 Var
+  DTime:longint;
   FT : TFileTime;
 begin
   If GetFileTime(Handle,nil,nil,@ft) and
-     WinToDosTime(FT,Result) then
-    exit;
+     WinToDosTime(FT,DTime) then
+    begin 
+      Result:=DTime;
+      exit;
+    end;  
   Result:=-1;
 end;
 
