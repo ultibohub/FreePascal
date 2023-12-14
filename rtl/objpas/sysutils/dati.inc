@@ -75,18 +75,20 @@ end;
 {   MSecsToTimeStamp   }
 
 function MSecsToTimeStamp(MSecs: comp): TTimeStamp;
+var
+  D1:Int64;
 begin
-  result.Date := Trunc(msecs / msecsperday);
-  msecs:= msecs-comp(result.date)*msecsperday;
-  result.Time := Round(MSecs);
-end ;
+  D1:=Trunc(msecs);
+  result.Date := D1 div msecsperday;
+  result.Time := D1 - result.date * msecsperday;
+end;
 
 {   TimeStampToMSecs   }
 
 function TimeStampToMSecs(const TimeStamp: TTimeStamp): comp;
 begin
   result := TimeStamp.Time + comp(timestamp.date)*msecsperday;
-end ;
+end;
 
 Function TryEncodeDate(Year,Month,Day : Word; Out Date : TDateTime) : Boolean;
 
@@ -270,6 +272,17 @@ var
   SystemTime: TSystemTime;
 begin
   GetLocalTime(SystemTime);
+  result := systemTimeToDateTime(SystemTime);
+end;
+
+{   NowUTC returns the current UTC Date and Time if available on the OS. If not, local date is returned   }
+
+function NowUTC: TDateTime;
+var
+  SystemTime: TSystemTime;
+begin
+  if not GetUniversalTime(SystemTime) then
+    GetLocalTime(SystemTime);
   result := systemTimeToDateTime(SystemTime);
 end;
 
@@ -1270,6 +1283,20 @@ begin
 {$endif unix}
 end;
 
+Function UniversalToFileDate(DateTime : TDateTime) : int64;
+{$ifndef unix}
+begin
+  Result := DateTimeToFileDate(UniversalTimeToLocal(DateTime));
+end;
+{$else unix}
+Var YY,MM,DD,H,m,s,msec : Word;
+begin
+  Decodedate (DateTime,YY,MM,DD);
+  DecodeTime (DateTime,h,m,s,msec);
+  Result:=UniversalToEpoch(yy,mm,dd,h,m,s);
+end;
+{$endif unix}
+
 function CurrentYear: Word;
 var
   SysTime: TSystemTime;
@@ -1298,7 +1325,7 @@ begin
 end;
 {$endif unix}
 
-Function FileDateToUTC (Filedate : Int64) : TDateTime;
+Function FileDateToUniversal (Filedate : Int64) : TDateTime;
 
 {$ifndef unix}
 begin
@@ -1538,6 +1565,11 @@ begin
 end;
 
 function GetLocalTimeOffset(const DateTime: TDateTime; const InputIsUTC: Boolean; out Offset: Integer): Boolean;
+begin
+  Result:=False;
+end;
+
+function GetUniversalTime(var SystemTime: TSystemTime): Boolean;
 begin
   Result:=False;
 end;

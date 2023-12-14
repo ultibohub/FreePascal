@@ -35,6 +35,7 @@ uses
 {$DEFINE HAS_LOCALTIMEZONEOFFSET}
 {$DEFINE HAS_GETTICKCOUNT}
 {$DEFINE HAS_GETTICKCOUNT64}
+{$DEFINE HAS_FILEDATETIME}
 {$DEFINE OS_FILESETDATEBYNAME}
 
 // this target has an fileflush implementation, don't include dummy
@@ -396,20 +397,20 @@ end;
 
 Function FileAge (Const FileName : UnicodeString): Int64;
 var
-  DTime:longint;
   Handle: THandle;
   FindData: TWin32FindDataW;
+  tmpdtime    : longint;
 begin
   Handle := FindFirstFileW(Pwidechar(FileName), FindData);
   if Handle <> INVALID_HANDLE_VALUE then
     begin
       Windows.FindClose(Handle);
       if (FindData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY) = 0 then
-        If WinToDosTime(FindData.ftLastWriteTime,DTime) then
+        If WinToDosTime(FindData.ftLastWriteTime,tmpdtime) then
           begin
-            Result := DTime;
+            result:=tmpdtime;
             exit;
-          end;  
+          end;
     end;
   Result := -1;
 end;
@@ -454,10 +455,13 @@ type
 const
   CShareAny = FILE_SHARE_READ or FILE_SHARE_WRITE or FILE_SHARE_DELETE;
   COpenReparse = FILE_FLAG_OPEN_REPARSE_POINT or FILE_FLAG_BACKUP_SEMANTICS;
+  CVolumePrefix = 'Volume';
+  CGlobalPrefix = '\\?\';
 var
   HFile, Handle: THandle;
   PBuffer: ^TReparseDataBuffer;
   BytesReturned: DWORD;
+  guid: TGUID;
 begin
   Result := slrError;
   SymLinkRec := Default(TUnicodeSymLinkRec);
@@ -475,6 +479,10 @@ begin
                 @PBuffer^.PathBufferMount[4 { skip start '\??\' } +
                   PBuffer^.SubstituteNameOffset div SizeOf(WCHAR)],
                 PBuffer^.SubstituteNameLength div SizeOf(WCHAR) - 4);
+              if (Length(SymLinkRec.TargetName) = Length(CVolumePrefix) + 2 { brackets } + 32 { guid } + 4 { - } + 1 { \ }) and
+                  (Copy(SymLinkRec.TargetName, 1, Length(CVolumePrefix)) = CVolumePrefix) and
+                  TryStringToGUID(String(Copy(SymLinkRec.TargetName, Length(CVolumePrefix) + 1, Length(SymLinkRec.TargetName) - Length(CVolumePrefix) - 1)), guid) then
+                SymLinkRec.TargetName := CGlobalPrefix + SymLinkRec.TargetName;
             end;
             IO_REPARSE_TAG_SYMLINK: begin
               SymLinkRec.TargetName := WideCharLenToString(
@@ -486,10 +494,8 @@ begin
           end;
 
           if SymLinkRec.TargetName <> '' then begin
-            Handle := FindFirstFileExW(PUnicodeChar(SymLinkRec.TargetName), FindExInfoDefaults , @SymLinkRec.FindData,
-                        FindExSearchNameMatch, Nil, 0);
-            if Handle <> INVALID_HANDLE_VALUE then begin
-              Windows.FindClose(Handle);
+            { the fields of WIN32_FILE_ATTRIBUTE_DATA match with the first fields of WIN32_FIND_DATA }
+            if GetFileAttributesExW(PUnicodeChar(SymLinkRec.TargetName), GetFileExInfoStandard, @SymLinkRec.FindData) then begin
               SymLinkRec.Attr := SymLinkRec.FindData.dwFileAttributes;
               SymLinkRec.Size := QWord(SymLinkRec.FindData.nFileSizeHigh) shl 32 + QWord(SymLinkRec.FindData.nFileSizeLow);
             end else if RaiseErrorOnMissing then
@@ -588,6 +594,8 @@ begin
 end;
 
 Function FindMatch(var f: TAbstractSearchRec; var Name: UnicodeString) : Longint;
+var
+  tmpdtime : longint;
 begin
   { Find file with correct attribute }
   While (F.FindData.dwFileAttributes and cardinal(F.ExcludeAttr))<>0 do
@@ -599,7 +607,8 @@ begin
       end;
    end;
   { Convert some attributes back }
-  WinToDosTime(F.FindData.ftLastWriteTime,F.Time);
+  WinToDosTime(F.FindData.ftLastWriteTime,tmpdtime);
+  F.Time:=tmpdtime;
   f.size:=F.FindData.NFileSizeLow+(qword(maxdword)+1)*F.FindData.NFileSizeHigh;
   f.attr:=F.FindData.dwFileAttributes;
   Name:=F.FindData.cFileName;
@@ -649,16 +658,34 @@ end;
 
 Function FileGetDate (Handle : THandle) : Int64;
 Var
-  DTime:longint;
   FT : TFileTime;
+  tmpdtime : longint;
 begin
   If GetFileTime(Handle,nil,nil,@ft) and
-     WinToDosTime(FT,DTime) then
-    begin 
-      Result:=DTime;
+     WinToDosTime(FT,tmpdtime) then
+    begin
+      result:=tmpdtime;
       exit;
-    end;  
+    end;
   Result:=-1;
+end;
+
+Function FileGetDate (Handle : THandle; out FileDateTime: TDateTime) : Boolean;
+Var
+  FT : TFileTime;
+begin
+  Result :=
+     GetFileTime(Handle,nil,nil,@ft) and
+     FindDataTimeToDateTime(FT, FileDateTime);
+end;
+
+Function FileGetDateUTC (Handle : THandle; out FileDateTimeUTC: TDateTime) : Boolean;
+Var
+  FT : TFileTime;
+begin
+  Result :=
+     GetFileTime(Handle,nil,nil,@ft) and
+     FindDataTimeToUTC(FT, FileDateTimeUTC);
 end;
 
 Function FileSetDate (Handle : THandle;Age : Int64) : Longint;
@@ -672,6 +699,32 @@ begin
   Result := GetLastError;
 end;
 
+Function FileSetDate (Handle : THandle; const FileDateTime: TDateTime) : Longint;
+var
+  FT: TFiletime;
+  LT: TFiletime;
+  ST: TSystemTime;
+begin
+  DateTimeToSystemTime(FileDateTime,ST);
+  if SystemTimeToFileTime(ST,LT) and LocalFileTimeToFileTime(LT,FT)
+    and SetFileTime(Handle,nil,nil,@FT) then
+    Result:=0
+  else
+    Result:=GetLastError;
+end;
+
+Function FileSetDateUTC (Handle : THandle; const FileDateTimeUTC: TDateTime) : Longint;
+var
+  FT: TFiletime;
+  ST: TSystemTime;
+begin
+  DateTimeToSystemTime(FileDateTimeUTC,ST);
+  if SystemTimeToFileTime(ST,FT) and SetFileTime(Handle,nil,nil,@FT) then
+    Result:=0
+  else
+    Result:=GetLastError;
+end;
+
 {$IFDEF OS_FILESETDATEBYNAME}
 Function FileSetDate (Const FileName : UnicodeString;Age : Int64) : Longint;
 Var
@@ -683,6 +736,40 @@ begin
   If (Fd<>feInvalidHandle) then
     try
       Result:=FileSetDate(fd,Age);
+    finally
+      FileClose(fd);
+    end
+  else
+    Result:=GetLastOSError;
+end;
+
+Function FileSetDate (Const FileName : UnicodeString;const FileDateTime : TDateTime) : Longint;
+Var
+  fd : THandle;
+begin
+  FD := CreateFileW (PWideChar (FileName), GENERIC_READ or GENERIC_WRITE,
+                     FILE_SHARE_WRITE, nil, OPEN_EXISTING,
+                     FILE_FLAG_BACKUP_SEMANTICS, 0);
+  If (Fd<>feInvalidHandle) then
+    try
+      Result:=FileSetDate(fd,FileDateTime);
+    finally
+      FileClose(fd);
+    end
+  else
+    Result:=GetLastOSError;
+end;
+
+Function FileSetDateUTC (Const FileName : UnicodeString;const FileDateTimeUTC : TDateTime) : Longint;
+Var
+  fd : THandle;
+begin
+  FD := CreateFileW (PWideChar (FileName), GENERIC_READ or GENERIC_WRITE,
+                     FILE_SHARE_WRITE, nil, OPEN_EXISTING,
+                     FILE_FLAG_BACKUP_SEMANTICS, 0);
+  If (Fd<>feInvalidHandle) then
+    try
+      Result:=FileSetDateUTC(fd,FileDateTimeUTC);
     finally
       FileClose(fd);
     end
@@ -810,6 +897,12 @@ begin
   windows.Getlocaltime(SystemTime);
 end;
 
+function GetUniversalTime(var SystemTime: TSystemTime): Boolean;
+begin
+  windows.GetSystemTime(SystemTime);
+  Result:=True;
+end;
+
 function GetLocalTimeOffset: Integer;
 
 var
@@ -828,6 +921,12 @@ begin
    end;
 end;
 
+
+type
+  TGetTimeZoneInformationForYear = function(wYear: USHORT; lpDynamicTimeZoneInformation: PDynamicTimeZoneInformation;
+    var lpTimeZoneInformation: TTimeZoneInformation): BOOL;stdcall;
+var
+  GetTimeZoneInformationForYear:TGetTimeZoneInformationForYear=nil;
 
 function GetLocalTimeOffset(const DateTime: TDateTime; const InputIsUTC: Boolean; out Offset: Integer): Boolean;
 var
@@ -873,10 +972,11 @@ var
   DSTStart, DSTEnd: TDateTime;
 
 begin
+  if not Assigned(GetTimeZoneInformationForYear) then
+    Exit(False);
   Year := YearOf(DateTime);
   TZInfo := Default(TTimeZoneInformation);
-  // GetTimeZoneInformationForYear is supported only on Vista and newer
-  if not ((Win32MajorVersion>=6) and GetTimeZoneInformationForYear(Year, nil, TZInfo)) then
+  if not GetTimeZoneInformationForYear(Year, nil, TZInfo) then
     Exit(False);
 
   if (TZInfo.StandardDate.Month>0) and (TZInfo.DaylightDate.Month>0) then
@@ -889,7 +989,7 @@ begin
       DSTStart := DSTStart + (TZInfo.Bias+TZInfo.StandardBias)/MinsPerDay;
       DSTEnd := DSTEnd + (TZInfo.Bias+TZInfo.DaylightBias)/MinsPerDay;
     end;
-    if (DateTime>DSTStart) and (DateTime<DSTEnd) then
+    if (DSTStart<=DateTime) and (DateTime<DSTEnd) then
       Offset := TZInfo.Bias+TZInfo.DaylightBias
     else
       Offset := TZInfo.Bias+TZInfo.StandardBias;
@@ -1506,6 +1606,9 @@ begin
      FindExInfoDefaults := FindExInfoStandard; // also searches SFNs. XP only.
   if (Win32MajorVersion>=6) and (Win32MinorVersion>=1) then 
     FindFirstAdditionalFlags := FIND_FIRST_EX_LARGE_FETCH; // win7 and 2008R2+
+  // GetTimeZoneInformationForYear is supported only on Vista and newer
+  if (kernel32dll<>0) and (Win32MajorVersion>=6) then
+    GetTimeZoneInformationForYear:=TGetTimeZoneInformationForYear(GetProcAddress(kernel32dll,'GetTimeZoneInformationForYear'));
 end;
 
 Function GetAppConfigDir(Global : Boolean) : String;

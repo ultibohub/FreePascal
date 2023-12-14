@@ -54,7 +54,7 @@ Type
   { TUnicodeSearchRec }
 
   TUnicodeSearchRec = Record
-    Time : Int64;
+    Time : Int64 deprecated 'use TimeStamp instead';
     Size : Int64;
     Attr : Longint;
     Name : UnicodeString;
@@ -79,7 +79,7 @@ Type
   { TRawbyteSearchRec }
 
   TRawbyteSearchRec = Record
-    Time : Int64;
+    Time : Int64 deprecated 'use TimeStamp instead';
     Size : Int64;
     Attr : Longint;
     Name : RawByteString;
@@ -196,6 +196,8 @@ Function FileAge (Const FileName : UnicodeString): Int64;
 Function FileExists (Const FileName : UnicodeString; FollowLink : Boolean = True) : Boolean;
 Function DirectoryExists (Const Directory : UnicodeString; FollowLink : Boolean = True) : Boolean;
 Function FileSetDate (Const FileName : UnicodeString;Age : Int64) : Longint;
+Function FileSetDate (Const FileName : UnicodeString;const FileDateTime : TDateTime) : Longint;
+Function FileSetDateUTC (Const FileName : UnicodeString;const FileDateTimeUTC : TDateTime) : Longint;
 Function FileGetAttr (Const FileName : UnicodeString) : Longint;
 Function FileSetAttr (Const Filename : UnicodeString; Attr: longint) : Longint;
 Function DeleteFile (Const FileName : UnicodeString) : Boolean;
@@ -219,6 +221,8 @@ Function FileCreate (Const FileName : RawByteString; ShareMode : Integer; Rights
 Function FileExists (Const FileName : RawByteString; FollowLink : Boolean = True) : Boolean;
 Function DirectoryExists (Const Directory : RawByteString; FollowLink: Boolean = True) : Boolean;
 Function FileSetDate (Const FileName : RawByteString;Age : Int64) : Longint;
+Function FileSetDate (Const FileName : RawByteString;const FileDateTime : TDateTime) : Longint;
+Function FileSetDateUTC (Const FileName : RawByteString;const FileDateTimeUTC : TDateTime) : Longint;
 Function FileGetAttr (Const FileName : RawByteString) : Longint;
 Function FileSetAttr (Const Filename : RawByteString; Attr: longint) : Longint;
 Function DeleteFile (Const FileName : RawByteString) : Boolean;
@@ -246,7 +250,11 @@ Function FileTruncate (Handle : THandle;Size: Int64) : boolean;
 Function FindNext (Var Rslt : TRawByteSearchRec) : Longint;
 Procedure FindClose (Var F : TRawByteSearchrec);
 Function FileGetDate (Handle : THandle) : Int64;
+Function FileGetDate (Handle : THandle; out FileDateTime: TDateTime) : Boolean;
+Function FileGetDateUTC (Handle : THandle; out FileDateTimeUTC: TDateTime) : Boolean;
 Function FileSetDate (Handle : THandle;Age : Int64) : Longint;
+Function FileSetDate (Handle : THandle; const FileDateTime: TDateTime) : Longint;
+Function FileSetDateUTC (Handle : THandle; const FileDateTimeUTC: TDateTime) : Longint;
 Function GetFileHandle(var f : File):THandle;
 Function GetFileHandle(var f : Text):THandle;
 

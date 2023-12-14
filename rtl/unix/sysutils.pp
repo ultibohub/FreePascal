@@ -587,6 +587,36 @@ begin
 end;
 
 
+{$ifdef USE_STATX}
+Function LinuxToWinAttr (const FN : RawByteString; Const Info : Statx) : Longint;
+Var
+  LinkInfo : Stat;
+  nm : RawByteString;
+begin
+  Result:=faArchive;
+  If fpS_ISDIR(Info.stx_mode) then
+    Result:=Result or faDirectory;
+  nm:=ExtractFileName(FN);
+  If (Length(nm)>=2) and
+     (nm[1]='.') and
+     (nm[2]<>'.')  then
+    Result:=Result or faHidden;
+  If (Info.stx_Mode and S_IWUSR)=0 Then
+     Result:=Result or faReadOnly;
+  If fpS_ISSOCK(Info.stx_mode) or fpS_ISBLK(Info.stx_mode) or fpS_ISCHR(Info.stx_mode) or fpS_ISFIFO(Info.stx_mode) Then
+     Result:=Result or faSysFile;
+  If fpS_ISLNK(Info.stx_mode) Then
+    begin
+      Result:=Result or faSymLink;
+      // Windows reports if the link points to a directory.
+      { as we are only interested in the st_mode field here, we do not need to use statx }
+      if (fpstat(pchar(FN),LinkInfo)>=0) and fpS_ISDIR(LinkInfo.st_mode) then
+        Result := Result or faDirectory;
+    end;
+end;
+{$endif USE_STATX}
+
+
 function FileGetSymLinkTarget(const FileName: RawByteString; out SymLinkRec: TRawbyteSymLinkRec): Boolean;
 var
   Info : Stat;
@@ -874,26 +904,54 @@ end;
 
 Function FindGetFileInfo(const s: RawByteString; var f: TAbstractSearchRec; var Name: RawByteString):boolean;
 Var
+{$ifdef USE_STATX}
+  stx : linux.statx;
+{$endif USE_STATX}
   st : baseunix.stat;
   WinAttr : longint;
 begin
+{$ifdef USE_STATX}
   if Assigned(f.FindHandle) and ( (PUnixFindData(F.FindHandle)^.searchattr and faSymlink) > 0) then
-    FindGetFileInfo:=(fplstat(pointer(s),st)=0)
+    FindGetFileInfo:=Fpstatx(AT_FDCWD,pointer(s),AT_SYMLINK_NOFOLLOW,STATX_ALL,stx)=0
   else
-    FindGetFileInfo:=(fpstat(pointer(s),st)=0);
-  if not FindGetFileInfo then
-    exit;
-  WinAttr:=LinuxToWinAttr(s,st);
-  FindGetFileInfo:=(WinAttr and Not(PUnixFindData(f.FindHandle)^.searchattr))=0;
-
+    FindGetFileInfo:=Fpstatx(AT_FDCWD,pointer(s),0,STATX_ALL,stx)=0;
   if FindGetFileInfo then
     begin
-      Name:=ExtractFileName(s);
-      f.Attr:=WinAttr;
-      f.Size:=st.st_Size;
-      f.Mode:=st.st_mode;
-      f.Time:=st.st_mtime;
-      FindGetFileInfo:=true;
+      WinAttr:=LinuxToWinAttr(s,stx);
+      FindGetFileInfo:=(WinAttr and Not(PUnixFindData(f.FindHandle)^.searchattr))=0;
+
+      if FindGetFileInfo then
+        begin
+          Name:=ExtractFileName(s);
+          f.Attr:=WinAttr;
+          f.Size:=stx.stx_Size;
+          f.Mode:=stx.stx_mode;
+          f.Time:=stx.stx_mtime.tv_sec;
+          FindGetFileInfo:=true;
+        end;
+    end
+  { no statx? try stat }
+  else if fpgeterrno=ESysENOSYS then
+{$endif USE_STATX}
+    begin
+      if Assigned(f.FindHandle) and ( (PUnixFindData(F.FindHandle)^.searchattr and faSymlink) > 0) then
+        FindGetFileInfo:=(fplstat(pointer(s),st)=0)
+      else
+        FindGetFileInfo:=(fpstat(pointer(s),st)=0);
+      if not FindGetFileInfo then
+        exit;
+      WinAttr:=LinuxToWinAttr(s,st);
+      FindGetFileInfo:=(WinAttr and Not(PUnixFindData(f.FindHandle)^.searchattr))=0;
+
+      if FindGetFileInfo then
+        begin
+          Name:=ExtractFileName(s);
+          f.Attr:=WinAttr;
+          f.Size:=st.st_Size;
+          f.Mode:=st.st_mode;
+          f.Time:=st.st_mtime;
+          FindGetFileInfo:=true;
+        end;
     end;
 end;
 
@@ -1174,6 +1232,17 @@ Function GetEpochTime: cint;
 }
 begin
   GetEpochTime:=fptime;
+end;
+
+Procedure DoGetUniversalDateTime(var year, month, day, hour, min,  sec, msec, usec : word);
+
+var
+  tz:timeval;
+begin
+  fpgettimeofday(@tz,nil);
+  EpochToUniversal(tz.tv_sec,year,month,day,hour,min,sec);
+  msec:=tz.tv_usec div 1000;
+  usec:=tz.tv_usec mod 1000;
 end;
 
 // Now, adjusted to local time.
@@ -1614,6 +1683,14 @@ begin
   Flush(Output);
 end;
 
+function GetUniversalTime(var SystemTime: TSystemTime): Boolean;
+var
+  usecs : Word;
+begin
+  DoGetUniversalDateTime(SystemTime.Year, SystemTime.Month, SystemTime.Day,SystemTime.Hour, SystemTime.Minute, SystemTime.Second, SystemTime.MilliSecond, usecs);
+  Result:=True;
+end;
+
 function GetLocalTimeOffset: Integer;
 
 begin
@@ -1629,21 +1706,15 @@ var
 begin
   DecodeDate(DateTime, Year, Month, Day);
   DecodeTime(DateTime, Hour, Minute, Second, MilliSecond);
-  if InputIsUTC then
-    UnixTime:=UniversalToEpoch(Year, Month, Day, Hour, Minute, Second)
-  else
-    UnixTime:=LocalToEpoch(Year, Month, Day, Hour, Minute, Second);
-  { check if time is in current global Tzinfo }
-  if (Tzinfo.validsince<UnixTime) and (UnixTime<Tzinfo.validuntil) then
-  begin
-    Result:=True;
-    Offset:=-TZInfo.seconds div 60;
-  end else
-  begin
-    Result:=GetLocalTimezone(UnixTime,True,lTZInfo,False);
-    if Result then
-      Offset:=-lTZInfo.seconds div 60;
-  end;
+  UnixTime:=UniversalToEpoch(Year, Month, Day, Hour, Minute, Second);
+
+  {$if declared(GetLocalTimezone)}
+  GetLocalTimeOffset:=GetLocalTimezone(UnixTime,InputIsUTC,lTZInfo);
+  if GetLocalTimeOffset then
+    Offset:=-lTZInfo.seconds div 60;
+  {$else}
+  GetLocalTimeOffset:=False;
+  {$endif}
 end;
 
 {$ifdef android}

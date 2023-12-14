@@ -292,6 +292,8 @@ Function SplitCommandLine(S : UnicodeString) : TUnicodeStringArray;
 
 implementation
 
+uses sysconst; // HexDigits
+
 (*
   FindMatchesBoyerMooreCaseSensitive
 
@@ -438,7 +440,7 @@ begin
       AddMatch(i+1);
       //Only first match ?
       if not aMatchAll then break;
-      inc(i,DeltaJumpTable2[0]);
+      inc(i,DeltaJumpTable2[0]+1);
     end else begin
       i:=i + Max(DeltaJumpTable1[ord(s[i])],DeltaJumpTable2[j]);
     end;
@@ -590,7 +592,7 @@ begin
       AddMatch(i+1);
       //Only first match ?
       if not aMatchAll then break;
-      inc(i,DeltaJumpTable2[0]);
+      inc(i,DeltaJumpTable2[0]+1);
     end else begin
       i:=i + Max(DeltaJumpTable1[Ord(lCaseArray[Ord(s[i])])],DeltaJumpTable2[j]);
     end;
@@ -3249,63 +3251,41 @@ begin
    end;
 end;
 
-// def from delphi.about.com:
-(*
-procedure BinToHex(BinValue, HexValue: PChar; BinBufSize: Integer);
-
-Const
-  HexDigits='0123456789ABCDEF';
-var
-  i : longint;
-begin
-  for i:=0 to binbufsize-1 do
-    begin
-    HexValue[0]:=hexdigits[1+((ord(binvalue^) shr 4))];
-    HexValue[1]:=hexdigits[1+((ord(binvalue^) and 15))];
-    inc(hexvalue,2);
-    inc(binvalue);
-    end;
-end;
-*)
-
 procedure BinToHex(BinValue: PAnsiChar; HexValue: PAnsiChar; BinBufSize: Integer);
-const
-  HexDigits : AnsiString='0123456789ABCDEF';
+
  var
    i : longint;
  begin
   for i:=0 to BinBufSize-1 do
   begin
-    HexValue[0]:=HexDigits[1+((Ord(BinValue[i]) shr 4))];
-    HexValue[1]:=HexDigits[1+((Ord(BinValue[i]) and 15))];
+    HexValue[0]:=HexDigits[((Ord(BinValue[i]) shr 4))];
+    HexValue[1]:=HexDigits[((Ord(BinValue[i]) and 15))];
     Inc(HexValue,2);
   end;
 end;
 
 procedure BinToHex(BinValue: PAnsiChar; HexValue: PWideChar; BinBufSize: Integer);
-const
-  HexDigits : WideString='0123456789ABCDEF';
+
 var
   i : longint;
 begin
   for i:=0 to BinBufSize-1 do
   begin
-    HexValue[0]:=HexDigits[1+((Ord(BinValue[i]) shr 4))];
-    HexValue[1]:=HexDigits[1+((Ord(BinValue[i]) and 15))];
+    HexValue[0]:=HexDigitsW[((Ord(BinValue[i]) shr 4))];
+    HexValue[1]:=HexDigitsW[((Ord(BinValue[i]) and 15))];
     Inc(HexValue,2);
   end;
 end;
 
 procedure BinToHex(const BinBuffer: TBytes; BinBufOffset: Integer; var HexBuffer: TBytes; HexBufOffset: Integer; Count: Integer);
-const
-  HexDigits : String='0123456789ABCDEF';
+
 var
   i : longint;
 begin
   for i:=0 to Count-1 do
   begin
-    HexBuffer[HexBufOffset+2*i+0]:=Byte(HexDigits[1+(BinBuffer[BinBufOffset + i] shr 4)]);
-    HexBuffer[HexBufOffset+2*i+1]:=Byte(HexDigits[1+(BinBuffer[BinBufOffset + i] and 15)]);
+    HexBuffer[HexBufOffset+2*i+0]:=Byte(HexDigits[(BinBuffer[BinBufOffset + i] shr 4)]);
+    HexBuffer[HexBufOffset+2*i+1]:=Byte(HexDigits[(BinBuffer[BinBufOffset + i] and 15)]);
   end;
 end;
 
