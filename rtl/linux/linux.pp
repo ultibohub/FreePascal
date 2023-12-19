@@ -29,8 +29,17 @@ interface
 uses
   BaseUnix, unixtype;
 
-Const
+const
   O_CLOEXEC = $80000;
+
+type
+  { used by newer Linux headers }
+  __u16 = Word;
+  __s16 = Smallint;
+  __u32 = DWord;
+  __s32 = Longint;
+  __u64 = QWord;
+  __s64 = Int64;
   
 type
   TSysInfo = record
@@ -473,6 +482,78 @@ function clock_settime(clk_id : clockid_t; tp : ptimespec) : cint; {$ifdef FPC_U
 function setregid(rgid,egid : uid_t): cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'setregid'; {$ENDIF} 
 function setreuid(ruid,euid : uid_t): cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'setreuid'; {$ENDIF} 
 
+Const
+  STATX_TYPE = $00000001;
+  STATX_MODE = $00000002;
+  STATX_NLINK = $00000004;
+  STATX_UID = $00000008;
+  STATX_GID = $00000010;
+  STATX_ATIME = $00000020;
+  STATX_MTIME = $00000040;
+  STATX_CTIME = $00000080;
+  STATX_INO = $00000100;
+  STATX_SIZE = $00000200;
+  STATX_BLOCKS = $00000400;
+  STATX_BASIC_STATS = $000007ff;
+  STATX_BTIME = $00000800;
+  STATX_ALL = $00000fff;
+  STATX__RESERVED = $80000000;
+  STATX_ATTR_COMPRESSED = $00000004;
+  STATX_ATTR_IMMUTABLE = $00000010;
+  STATX_ATTR_APPEND = $00000020;
+  STATX_ATTR_NODUMP = $00000040;
+  STATX_ATTR_ENCRYPTED = $00000800;
+  STATX_ATTR_AUTOMOUNT = $00001000;
+
+Type
+  statx_timestamp = record
+    tv_sec : __s64;
+    tv_nsec : __u32;
+    __reserved : __s32;
+  end;
+  pstatx_timestamp = ^statx_timestamp;
+
+  tstatx = record
+    stx_mask : __u32;
+    stx_blksize : __u32;
+    stx_attributes : __u64;
+    stx_nlink : __u32;
+    stx_uid : __u32;
+    stx_gid : __u32;
+    stx_mode : __u16;
+    __spare0 : array[0..0] of __u16;
+    stx_ino : __u64;
+    stx_size : __u64;
+    stx_blocks : __u64;
+    stx_attributes_mask : __u64;
+    stx_atime : statx_timestamp;
+    stx_btime : statx_timestamp;
+    stx_ctime : statx_timestamp;
+    stx_mtime : statx_timestamp;
+    stx_rdev_major : __u32;
+    stx_rdev_minor : __u32;
+    stx_dev_major : __u32;
+    stx_dev_minor : __u32;
+    __spare2 : array[0..13] of __u64;
+  end;
+  pstatx = ^tstatx;
+
+  function statx(dfd: cint; filename: pchar; flags,mask: cuint; var buf: tstatx):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'statx'; {$ENDIF}
+
+Type
+   kernel_time64_t = clonglong;
+
+   kernel_timespec = record
+     tv_sec  : kernel_time64_t;
+     tv_nsec : clonglong;
+   end;
+   pkernel_timespec = ^kernel_timespec;
+
+   tkernel_timespecs = array[0..1] of kernel_timespec;
+
+Function utimensat(dfd: cint; path:pchar;const times:tkernel_timespecs;flags:cint):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'statx'; {$ENDIF}
+Function futimens(fd: cint; const times:tkernel_timespecs):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'futimens'; {$ENDIF}
+
 implementation
 
 
@@ -771,5 +852,52 @@ begin
   setreuid:=do_syscall(syscall_nr_setreuid,ruid,euid);
 end;
 
+
+function statx(dfd: cint; filename: pchar; flags,mask: cuint; var buf: tstatx):cint;
+begin
+  statx:=do_syscall(syscall_nr_statx,TSysParam(dfd),TSysParam(filename),TSysParam(flags),TSysParam(mask),TSysParam(@buf));
+end;
+
 {$endif}
+
+Function utimensat(dfd: cint; path:pchar;const times:tkernel_timespecs;flags:cint):cint;
+var
+  tsa: Array[0..1] of timespec;
+begin
+{$if sizeof(clong)<=4}
+  utimensat:=do_syscall(syscall_nr_utimensat_time64,dfd,TSysParam(path),TSysParam(@times),0);
+  if (utimensat>=0) or (fpgeterrno<>ESysENOSYS) then
+    exit;
+  { try 32 bit fall back }
+  tsa[0].tv_sec := times[0].tv_sec;
+  tsa[0].tv_nsec := times[0].tv_nsec;
+  tsa[1].tv_sec := times[1].tv_sec;
+  tsa[1].tv_nsec := times[1].tv_nsec;
+  utimensat:=do_syscall(syscall_nr_utimensat,dfd,TSysParam(path),TSysParam(@tsa),0);
+{$else sizeof(clong)<=4}
+  utimensat:=do_syscall(syscall_nr_utimensat,dfd,TSysParam(path),TSysParam(@times),0);
+{$endif sizeof(clong)<=4}
+end;
+
+
+Function futimens(fd: cint; const times:tkernel_timespecs):cint;
+var
+  tsa: Array[0..1] of timespec;
+begin
+{$if sizeof(clong)<=4}
+  futimens:=do_syscall(syscall_nr_utimensat_time64,fd,TSysParam(nil),TSysParam(@times),0);
+  if (futimens>=0) or (fpgeterrno<>ESysENOSYS) then
+    exit;
+  { try 32 bit fall back }
+  tsa[0].tv_sec := times[0].tv_sec;
+  tsa[0].tv_nsec := times[0].tv_nsec;
+  tsa[1].tv_sec := times[1].tv_sec;
+  tsa[1].tv_nsec := times[1].tv_nsec;
+  futimens:=do_syscall(syscall_nr_utimensat,fd,TSysParam(nil),TSysParam(@tsa),0);
+{$else sizeof(clong)<=4}
+  futimens:=do_syscall(syscall_nr_utimensat,fd,TSysParam(nil),TSysParam(@times),0);
+{$endif sizeof(clong)<=4}
+end;
+
 end.
+

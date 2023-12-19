@@ -1,3 +1,19 @@
+{
+    This file is part of the Free Pascal run time library.
+    Copyright (c) 1999-2022 by Michael van Canney and other members of the
+    Free Pascal development team
+
+    Mysql database connection component, shared parts
+
+    See the file COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ **********************************************************************}
+
 {$IFDEF MYSQL80_UP}
   {$DEFINE MYSQL57_UP}
 {$ENDIF}
@@ -372,7 +388,7 @@ Resourcestring
   SErrVersionMismatch = '%s can not work with the installed MySQL client version: Expected (%s), got (%s).';
   SErrSettingParameter = 'Error setting parameter "%s"';
 
-Procedure MySQLError(R : PMySQL; Msg: String; Comp : TComponent);
+Procedure MySQLError(R : PMySQL; const Msg: String; Comp : TComponent);
 
 Var
   MySQLError, MySQLState : String;

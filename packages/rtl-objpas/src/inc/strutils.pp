@@ -1154,24 +1154,34 @@ end;
 function DupeString(const AText: string; ACount: Integer): string;
 
 var
-  Len: SizeInt;
-  Source, Target: PByte;
-  
+  Len, BitIndex, Rp: SizeInt;
+
 begin
   Len := Length(AText);
+  if (Len = 0) or (ACount <= 0) then
+    Exit('');
+  if ACount = 1 then
+    Exit(AText);
+
   SetLength(Result, ACount * Len);
-  // Use PByte to skip implicit UniqueString, because SetLength always unique
-  Target := PByte(Result);
-  if Target = nil then // ACount = 0 or AText = ''
-    Exit;
-  // Now ACount > 0 and Len > 0
-  Source := PByte(AText);
-  repeat
-    Move(Source[0], Target[0], Len * SizeOf(Char));
-    Inc(Target, Len * SizeOf(Char));
-    Dec(ACount);
-  until ACount = 0;
-end;   
+  Rp := 0;
+
+  // Build up ACount repeats by duplicating the string built so far and adding another AText if corresponding ACount binary digit is 1.
+  // For example, ACount = 5 = %101 will, starting from the empty string:
+  // (1) duplicate (count = 0), add AText (count = 1)
+  // (0) duplicate (count = 2)
+  // (1) duplicate (count = 4), add AText (count = 5)
+  for BitIndex := BsrDWord(ACount) downto 0 do
+  begin
+    Move(Pointer(Result)^, PChar(Pointer(Result))[Rp], Rp * SizeOf(Char));
+    Inc(Rp, Rp);
+    if ACount shr BitIndex and 1 <> 0 then
+    begin
+      Move(Pointer(AText)^, PChar(Pointer(Result))[Rp], Len * SizeOf(Char));
+      Inc(Rp, Len);
+    end;
+  end;
+end;
 
 function ReverseString(const AText: string): string;
 
@@ -1210,9 +1220,9 @@ begin
   if ALength> k then
     ALength:=k;
   SetLength(Result,i+j-ALength);
-  move (AText[1],result[1],AStart-1);
-  move (ASubText[1],result[AStart],j);
-  move (AText[AStart+ALength], Result[AStart+j],i+1-AStart-ALength);
+  move (AText[1],result[1],AStart-1*SizeOf(Char));
+  move (ASubText[1],result[AStart],j*SizeOf(Char));
+  move (AText[AStart+ALength], Result[AStart+j],(i+1-AStart-ALength)*SizeOf(Char));
 end;
 
 function RandomFrom(const AValues: array of string): string;

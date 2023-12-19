@@ -90,9 +90,9 @@ begin
 end;
 
 function TbufdatasetDBConnector.InternalGetNDataset(n: integer): TDataset;
-var BufDataset  : TPersistentBufDataSet;
-    i      : integer;
-
+var
+  BufDataset : TPersistentBufDataSet;
+  i : integer;
 begin
   BufDataset := TPersistentBufDataSet.Create(nil);
   with BufDataset do
@@ -158,6 +158,8 @@ begin
     FieldDefs.Add('FLONGWORD',ftLongWord);
     FieldDefs.Add('FSHORTINT',ftShortInt);
     FieldDefs.Add('FBYTE',ftByte);
+    FieldDefs.Add('FEXTENDED',ftExtended);
+    FieldDefs.Add('FSINGLE',ftSingle);
     CreateDataset;
     Open;
     for i := 0 to testValuesCount-1 do
@@ -189,6 +191,8 @@ begin
       FieldByName('FLONGWORD').AsLongWord := testLongWordValues[i];
       FieldByName('FSHORTINT').AsInteger := testShortIntValues[i];
       FieldByName('FBYTE').AsInteger := testByteValues[i];
+      FieldByName('FEXTENDED').AsExtended := testFloatValues[i];
+      FieldByName('FSINGLE').AsSingle := testSingleValues[i];
       Post;
     end;
     MergeChangeLog;

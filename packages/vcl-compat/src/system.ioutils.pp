@@ -168,8 +168,10 @@ type
     class constructor Create;
     class function IsValidPathChar(const AChar: Char): Boolean;
     class function IsValidFileNameChar(const AChar: Char): Boolean;
-    class function HasValidPathChars(const aPath: string; const UseWildcards: Boolean = false): Boolean;
-    class function HasValidFileNameChars(const FileName: string; const UseWildcards: Boolean = False): Boolean;
+    class function HasValidPathChars(const aPath: string; const UseWildcards: Boolean = false): Boolean; inline;
+    class function HasValidPathChars(const aPath: string; out Index: Integer; const UseWildcards: Boolean = false): Boolean;
+    class function HasValidFileNameChars(const FileName: string; const UseWildcards: Boolean = False): Boolean; inline;
+    class function HasValidFileNameChars(const FileName: string; out Index: Integer; const UseWildcards: Boolean = False): Boolean;
     class function GetExtendedPrefix(const aPath: string): TPathPrefixType;
     class function IsDriveRooted(const aPath: string): Boolean;
     class function IsExtendedPrefixed(const aPath: string): Boolean;
@@ -180,7 +182,10 @@ type
     class function DriveExists(const aPath: string): Boolean;
     class function MatchesPattern(const FileName, Pattern: string; const CaseSensitive: Boolean): Boolean;
     class function ChangeExtension(const aPath, Extension: string): string;
-    class function Combine(const Path1, Path2: string): string;
+    class function Combine(const Path1, Path2: string; const ValidateParams: Boolean = True): string;
+    class function Combine(const Path1, Path2, Path3: string; const ValidateParams: Boolean = True): string;
+    class function Combine(const Path1, Path2, Path3, Path4: string; const ValidateParams: Boolean = True): string;
+    class function Combine(const Paths: array of string; const ValidateParams: Boolean = True): string;
     class function GetDirectoryName(FileName: string): string;
     class function GetExtension(const FileName: string): string;
     class function GetFileName(const FileName: string): string;
@@ -194,8 +199,10 @@ type
     class function GetTempPath: string;
     class function GetHomePath: string;
     class function GetDocumentsPath: string;
+    class function GetDesktopPath: string;
     class function GetSharedDocumentsPath: string;
     class function GetLibraryPath: string;
+    class function GetAppPath: string;
     class function GetCachePath: string;
     class function GetPublicPath: string;
     class function GetPicturesPath: string;
@@ -230,7 +237,7 @@ type
   private
     class function DetectFileEncoding(const aPath: String; out BOMLength: Integer
       ): TEncoding;
-    class procedure GetFileTimestamps(const aFilename: TFileName; var CreateUTC, WriteUTC, AccessUTC: TDateTime);
+    class procedure GetFileTimestamps(const aFilename: TFileName; var aCreate, aWrite, aAccess: TDateTime; IsUTC : Boolean);
   public
     class function IntegerToFileAttributes(const Attributes: Integer): TFileAttributes;
     class function FileAttributesToInteger(const Attributes: TFileAttributes): Integer;
@@ -296,6 +303,9 @@ uses
   {$IfDef MSWINDOWS}
     windows, WinDirs,
   {$EndIf}
+  {$IfDef WINCE}
+    windows,
+  {$EndIf}
   {$IfDef UNIX}
     BaseUnix,
   {$EndIf}
@@ -312,7 +322,7 @@ ResourceString
   errStatFailed = 'Fstat for %a failed. Err.No.: %d';
   {$EndIf}
 
-{$IFDEF WINDOWS}
+{$IFDEF MSWINDOWS}
 Const
   WinAttrs : Array[TFileAttribute] of Integer =
      (FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
@@ -320,7 +330,19 @@ Const
       FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_TEMPORARY,FILE_ATTRIBUTE_SPARSE_FILE,
       FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_COMPRESSED, FILE_ATTRIBUTE_OFFLINE,
       FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_ATTRIBUTE_ENCRYPTED,FILE_ATTRIBUTE_REPARSE_POINT);
+{$ENDIF}
+{$IFDEF WINCE}
+  { Missing attributes are put to zero }
+Const
+  WinAttrs : Array[TFileAttribute] of Integer =
+     (FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
+      FILE_ATTRIBUTE_DIRECTORY,FILE_ATTRIBUTE_ARCHIVE, 0{FILE_ATTRIBUTE_DEVICE},
+      FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_TEMPORARY,FILE_ATTRIBUTE_SPARSE_FILE,
+      FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_COMPRESSED, FILE_ATTRIBUTE_OFFLINE,
+      FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_ATTRIBUTE_ENCRYPTED,FILE_ATTRIBUTE_REPARSE_POINT);
+{$ENDIF}
 
+{$IFDEF WINDOWS}
 function FileAttributesToFlags(const Attributes: TFileAttributes): Integer;
 
 var
@@ -466,6 +488,14 @@ end;
 class function TPath.HasValidPathChars(const aPath: string;
   const UseWildcards: Boolean): Boolean;
 var
+  dummy: Integer;
+begin
+  Result:=TPath.HasValidPathChars(aPath, dummy, UseWildcards);
+end;
+
+class function TPath.HasValidPathChars(const aPath: string;
+  out Index: integer; const UseWildcards: Boolean): Boolean;
+var
   P: PChar;
   S,I,Len: Integer;
   C : Char;
@@ -481,6 +511,7 @@ begin
   Inc(P,S-1);
   for I:=S to Len do
     begin
+    Index:=i;
     C:=P^;
     if CheckWC and (CharInSet(C,['?','*'])) then
       exit;
@@ -493,6 +524,14 @@ end;
 
 class function TPath.HasValidFileNameChars(const FileName: string;
   const UseWildcards: Boolean): Boolean;
+var
+  dummy: Integer;
+begin
+  Result:=HasValidFileNameChars(FileName, dummy, UseWildCards);
+end;
+
+class function TPath.HasValidFileNameChars(const FileName: string;
+  out Index: Integer; const UseWildcards: Boolean): Boolean;
 var
   P: PChar;
   S,I,Len: Integer;
@@ -509,6 +548,7 @@ begin
   Inc(P,S-1);
   for I:=S to Len do
     begin
+    Index:=I;
     C:=P^;
     if CheckWC and (CharInSet(C,['?','*'])) then
       exit;
@@ -829,7 +869,7 @@ begin
   Result:=ChangeFileExt(aPath, Extension);
 end;
 
-class function TPath.Combine(const Path1, Path2: string): string;
+class function TPath.Combine(const Path1, Path2: string; const ValidateParams : Boolean = True): string;
 begin
   if (Path1='') or (Path2='') then
     begin
@@ -841,11 +881,59 @@ begin
   else
     begin
     if not TPath.HasValidPathChars(Path1,False) then
-      Raise EArgumentException.CreateFmt('Path %s has invalid characters',[Path1]);
+      Raise EArgumentException.CreateFmt(SErrInvalidCharsInPath,[Path1]);
     if not TPath.HasValidPathChars(Path2,False) then
-      Raise EArgumentException.CreateFmt('Path %s has invalid characters',[Path2]);
+      Raise EArgumentException.CreateFmt(SErrInvalidCharsInPath,[Path2]);
     Result:=ConcatPaths([Path1, Path2]);
     end;
+end;
+
+class function TPath.Combine(const Path1, Path2, Path3 : string; const ValidateParams : Boolean = True): string;
+
+begin
+  Result:=Combine([Path1,Path2,Path3],ValidateParams);
+end;
+
+class function TPath.Combine(const Path1, Path2, Path3,Path4 : string; const ValidateParams : Boolean = True): string;
+
+begin
+  Result:=Combine([Path1,Path2,Path3,Path4],ValidateParams);
+end;
+
+class function TPath.Combine(const Paths: array of string; const ValidateParams: Boolean = True): string;
+  function AppendPathDelim(const Path: string): string;
+  begin
+    if (Path = '') or (Path[Length(Path)] in AllowDirectorySeparators)
+    {$ifdef mswindows}
+      //don't add a PathDelim to e.g. 'C:'
+      or ((Length(Path) = 2) and (Path[2] = ':') and (UpCase(Path[1]) in ['A'..'Z']))
+    {$endif}
+    then
+      Result:=Path
+    else
+      Result:=Path + DirectorySeparator;
+  end;
+var
+  i: Integer;
+  Path: String;
+begin
+  if ValidateParams then
+    for i := Low(Paths) to High(Paths) do
+      if not TPath.HasValidPathChars(Paths[i], False) then
+        Raise EInOutArgumentException.CreateFmt(SErrInvalidCharsInPath,[Paths[i]],Path[i]);
+  Result := '';
+  for i := High(Paths) downto Low(Paths) do
+  begin
+    Path := Paths[i];
+    if (Path <> '') then
+    begin
+      if (Result <> '') then
+        Path := AppendPathDelim(Path);
+      Result := Path + Result;
+      if not TPath.IsRelativePath(Result) then
+        Exit;
+    end;
+  end;
 end;
 
 class function TPath.GetDirectoryName(FileName: string): string;
@@ -1023,7 +1111,7 @@ begin
   Result:=''; // DO NOT LOCALIZE
   SetLength(Result,FNLen);
   for i:=1 to FNLen do
-    if i = DotAt then
+    if i <> DotAt then
       begin
       C:=Random(3);
       Result[I]:=SelectChars[C][1+Random(SelectLengths[C])];
@@ -1104,6 +1192,20 @@ begin
   {$ENDIF}
 end;
 
+class function TPath.GetDesktopPath: string;
+begin
+  Result:='';
+  {$IfDef MSWINDOWS}
+    Result:=GetWindowsSpecialDir(CSIDL_DESKTOPDIRECTORY, False);
+  {$ELSE}
+    {$IFDEF UNIX}
+      Result:=GetSpecialDir(sdDesktop);
+    {$ELSE}
+      Result:=GetUserDir;
+    {$ENDIF}
+  {$EndIf}
+end;
+
 class function TPath.GetSharedDocumentsPath: string;
 begin
   Result:='';
@@ -1125,6 +1227,11 @@ begin
 {$ELSE}
   Result:=ExtractFilePath(ParamStr(0));
 {$ENDIF}
+end;
+
+class function TPath.GetAppPath: string;
+begin
+  Result:=ExtractFilePath(ParamStr(0));
 end;
 
 class function TPath.GetCachePath: string;
@@ -1384,44 +1491,26 @@ end;
 
 { TFile }
 
-class procedure TFile.GetFileTimestamps(const aFilename: TFileName;
-  var CreateUTC, WriteUTC, AccessUTC: TDateTime);
-  {$IfDef MSWINDOWS}
-  var
-    Info:    TWin32FileAttributeData;
-    DosTime: DWORD;
-  {$endif}
-  {$ifdef UNIX}
-  var
-    Info: stat;
-  {$EndIf}
+class procedure TFile.GetFileTimestamps(const aFilename: TFileName; var aCreate, aWrite, aAccess: TDateTime; IsUTC: Boolean);
+
+var
+  DateTime: TDateTimeInfoRec;
+
 begin
-  {$If Defined(MSWINDOWS)}
-    if not GetFileAttributesEx(PChar(aFileName), GetFileExInfoStandard, @info) then
-      RaiseLastOSError;
-    DosTime:=0;
-    FileTimeToDosDateTime(info.ftCreationTime, LongRec(DosTime).Hi, LongRec(DosTime).Lo);
-    CreateUTC:=FileDateToDateTime(DosTime);
-    FileTimeToDosDateTime(info.ftLastWriteTime, LongRec(DosTime).Hi, LongRec(DosTime).Lo);
-    WriteUTC :=FileDateToDateTime(DosTime);
-    FileTimeToDosDateTime(info.ftLastAccessTime, LongRec(DosTime).Hi, LongRec(DosTime).Lo);
-    AccessUTC:=FileDateToDateTime(DosTime);
-  {$ElseIf Defined(UNIX)}
-    Info:=Default(Stat);
-    if fpstat(aFileName, info) <> 0 then
-      raise EInOutError.CreateFmt(errStatFailed, [aFileName, fpgeterrno]);
-    CreateUTC:=UnixToDateTime(info.st_ctime, True);
-    WriteUTC :=UnixToDateTime(info.st_mtime, True);
-    AccessUTC:=UnixToDateTime(info.st_atime, True);
-  {$Else}
-    if FileAge(aFilename, CreateUTC) then
-    begin
-      WriteUTC := CreateUTC;
-      AccessUTC := CreateUTC;
-    end
-    else
-      raise EInOutError.CreateFmt(SErrFileNotFound, [aFileName]);
-  {$EndIf}
+   if FileGetDateTimeInfo(aFileName,DateTime) then
+     begin
+     aCreate:=DateTime.CreationTime;
+     aWrite:=DateTime.TimeStamp;
+     aAccess:=DateTime.LastAccessTime;
+     if isUTC then
+       begin
+       aCreate:=LocalTimeToUniversal(aCreate);
+       aWrite:=LocalTimeToUniversal(aWrite);
+       aAccess:=LocalTimeToUniversal(aAccess);
+       end;
+     end
+   else
+     raise EInOutError.CreateFmt(SErrFileNotFound, [aFileName]);
 end;
 
 class function TFile.IntegerToFileAttributes(const Attributes: Integer
@@ -1703,8 +1792,14 @@ begin
 end;
 
 class function TFile.GetCreationTime(const aPath: string): TDateTime;
+
+var
+  Dummy1, Dummy2: TDateTime;
 begin
-  Result:=UTCtoLocal(TFile.GetCreationTimeUtc(aPath));
+  Result:=MinDateTime;
+  Dummy1:=MinDateTime;
+  Dummy2:=MinDateTime;
+  GetFileTimestamps(aPath, Result, Dummy1, Dummy2, False);
 end;
 
 class function TFile.GetCreationTimeUtc(const aPath: string): TDateTime;
@@ -1714,12 +1809,17 @@ begin
   Result:=MinDateTime;
   Dummy1:=MinDateTime;
   Dummy2:=MinDateTime;
-  GetFileTimestamps(aPath, Result, Dummy1, Dummy2);
+  GetFileTimestamps(aPath, Result, Dummy1, Dummy2, True);
 end;
 
 class function TFile.GetLastAccessTime(const aPath: string): TDateTime;
+var
+  Dummy1, Dummy2: TDateTime;
 begin
-  Result:=UTCtoLocal(TFile.GetLastAccessTimeUtc(aPath));
+  Result:=MinDateTime;
+  Dummy1:=MinDateTime;
+  Dummy2:=MinDateTime;
+  GetFileTimestamps(aPath, Dummy1, Dummy2, Result, False);
 end;
 
 class function TFile.GetLastAccessTimeUtc(const aPath: string): TDateTime;
@@ -1729,12 +1829,17 @@ begin
   Result:=MinDateTime;
   Dummy1:=MinDateTime;
   Dummy2:=MinDateTime;
-  GetFileTimestamps(aPath, Dummy1, Dummy2, Result);
+  GetFileTimestamps(aPath, Dummy1, Dummy2, Result,True);
 end;
 
 class function TFile.GetLastWriteTime(const aPath: string): TDateTime;
+var
+  Dummy1, Dummy2: TDateTime;
 begin
-  Result:=UTCtoLocal(TFile.GetLastWriteTime(aPath));
+  Result:=MinDateTime;
+  Dummy1:=MinDateTime;
+  Dummy2:=MinDateTime;
+  GetFileTimestamps(aPath, Dummy1, Result, Dummy2, False);
 end;
 
 class function TFile.GetLastWriteTimeUtc(const aPath: string): TDateTime;
@@ -1744,7 +1849,7 @@ begin
   Result:=MinDateTime;
   Dummy1:=MinDateTime;
   Dummy2:=MinDateTime;
-  GetFileTimestamps(aPath, Dummy1, Result, Dummy2);
+  GetFileTimestamps(aPath, Dummy1, Result, Dummy2,True);
 end;
 
 class function TFile.GetSymLinkTarget(const aFileName: string;

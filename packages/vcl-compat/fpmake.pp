@@ -31,7 +31,8 @@ begin
     P.Dependencies.Add('fcl-xml');
     P.Dependencies.Add('fcl-web');
     P.Dependencies.Add('rtl-extra'); 
-
+    P.Dependencies.Add('rtl-objpas'); 
+    P.Dependencies.Add('rtl-generics');
     P.SourcePath.Add('src');
     P.IncludePath.Add('src');
 
@@ -40,6 +41,8 @@ begin
     T.ResourceStrings := True;
     T:=P.Targets.AddUnit('system.ioutils.pp');
     T.ResourceStrings := True;
+    T:=P.Targets.AddUnit('system.ansistrings.pp');
+    T:=P.Targets.AddUnit('system.imagelist.pp');
 
 {$ifndef ALLPACKAGES}
     Run;

@@ -35,6 +35,7 @@ begin
     P.Dependencies.Add('paszlib');
     P.Dependencies.add('winunits-base',AllWindowsOSes-[wince]);
     P.Version:='3.2.3';
+    P.Dependencies.add('libfontconfig',[linux] + AllBSDOses);
     T:=P.Targets.AddUnit('src/fpttfencodings.pp');
     T:=P.Targets.AddUnit('src/fpparsettf.pp');
       T.ResourceStrings:=true;
@@ -58,7 +59,28 @@ begin
       Dependencies.AddUnit('fpttfsubsetter');
       Dependencies.AddInclude('src/fontmetrics_stdpdf.inc');
       end;
+    T:=P.Targets.AddUnit('src/fppdfconsts.pp');
+    T:=P.Targets.AddUnit('src/fppdfpredict.pp');
+    T:=P.Targets.AddUnit('src/fppdfsource.pp');
     
+    T:=P.Targets.AddUnit('src/fppdfobjects.pp');
+    T.Dependencies.AddUnit('fppdfconsts');
+
+    T:=P.Targets.AddUnit('src/fppdfcommands.pp');
+    T.Dependencies.AddUnit('fppdfobjects');
+
+    T:=P.Targets.AddUnit('src/fppdfscanner.pp');
+    T.ResourceStrings:=true;
+    T.Dependencies.AddUnit('fppdfobjects');
+    T.Dependencies.AddUnit('fppdfsource');
+    
+    T:=P.Targets.AddUnit('src/fppdfparser.pp');
+    T.ResourceStrings:=true;
+    T.Dependencies.AddUnit('fppdfobjects');
+    T.Dependencies.AddUnit('fppdfsource');
+    T.Dependencies.AddUnit('fppdfconsts');
+    T.Dependencies.AddUnit('fppdfpredict');
+     
     // md5.ref
 {$ifndef ALLPACKAGES}
     Run;

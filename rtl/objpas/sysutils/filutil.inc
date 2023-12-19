@@ -1,3 +1,4 @@
+{%MainUnit sysutils.pp}
 {
     This file is part of the Free Pascal run time library.
     Copyright (c) 2012 by the Free Pascal development team
@@ -655,6 +656,7 @@ begin
   InternalFindClose(f.FindHandle{$ifdef SEARCHREC_USEFINDDATA},f.FindData{$endif});
 end;
 
+
 {$if defined(windows) and not defined(win16)}
 function FindDataTimeToDateTime(constref aFileTime: FILETIME; out aResult: TDateTime): Boolean;
 var
@@ -680,6 +682,60 @@ begin
     aResult := SystemTimeToDateTime(st);
 end;
 {$endif}
+
+{ TDateTimeInfoRec }
+
+function TDateTimeInfoRec.GetCreationTime: TDateTime;
+begin
+  {$if defined(windows) and not defined(win16)}
+    FindDataTimeToDateTime(Data.ftCreationTime,Result)
+  {$else}
+    {$ifdef unix}
+      {$ifdef use_statx}
+        Result:=FileDateToDateTime(data.stx_ctime.tv_sec)
+      {$else}
+        Result:=FileDateToDateTime(data.st_ctime)
+      {$endif}
+    {$else}
+        Result:=FileDateToDateTime(Data.Time);
+    {$ENDIF}
+  {$ENDIF}
+end;
+
+function TDateTimeInfoRec.GetLastAccessTime: TDateTime;
+begin
+  {$if defined(windows) and not defined(win16)}
+    FindDataTimeToDateTime(Data.ftLastAccessTime,Result)
+  {$else}
+    {$ifdef unix}
+      {$ifdef use_statx}
+        Result:=FileDateToDateTime(data.stx_atime.tv_sec)
+      {$else}
+        Result:=FileDateToDateTime(data.st_atime)
+      {$endif}
+    {$else}
+      Result:=FileDateToDateTime(Data.Time);
+    {$ENDIF}
+  {$ENDIF}
+end;
+
+function TDateTimeInfoRec.GetTimeStamp: TDateTime;
+begin
+  {$if defined(windows) and not defined(win16)}
+    FindDataTimeToDateTime(Data.ftLastWriteTime,Result)
+  {$else}
+    {$ifdef unix}
+      {$ifdef use_statx}
+        Result:=FileDateToDateTime(data.stx_mtime.tv_sec)
+      {$else}
+        Result:=FileDateToDateTime(data.st_mtime)
+      {$endif}
+    {$else}
+       Result:=FileDateToDateTime(Data.Time);
+    {$ENDIF}
+  {$ENDIF}
+end;
+
 
 { TUnicodeSearchRec }
 
@@ -895,3 +951,46 @@ Function FileSetDateUTC (Const FileName : RawByteString;const FileDateTimeUTC : 
 begin
   Result:=FileSetDateUTC(UnicodeString(FileName),FileDateTimeUTC);
 end;
+
+{$IFNDEF HAS_ISFILENAMECASESENSITIVE}
+Function IsFileNameCaseSensitive(Const aFileName : RawByteString) : Boolean;
+begin
+  Result:=FileNameCaseSensitive;
+end;
+
+Function IsFileNameCaseSensitive(Const aFileName : UnicodeString) : Boolean;
+begin
+  Result:=FileNameCaseSensitive;
+end;
+{$ENDIF HAS_ISFILENAMECASESENSITIVE}
+
+{$IFNDEF HAS_ISFILENAMECASEPRESERVING}
+Function IsFileNameCasePreserving(Const aFileName : RawByteString) : Boolean;
+begin
+  Result:=FileNameCasePreserving;
+end;
+
+Function IsFileNameCasePreserving(Const aFileName : UnicodeString) : Boolean;
+begin
+  Result:=FileNameCasePreserving;
+end;
+{$ENDIF HAS_ISFILENAMECASEPRESERVING}
+
+{$IFNDEF HAS_FILEGETDATETIMEINFO}
+function FileGetDateTimeInfo(const FileName: string;
+  out DateTime: TDateTimeInfoRec; FollowLink: Boolean = True): Boolean;
+
+var
+  Info : TSearchRec;
+
+begin
+  Result:=FindFirst(FileName,0,Info)=0;
+  if Result then
+     begin
+     DateTime.data:=Info;
+     FindClose(Info);
+     end;
+end;
+{$ENDIF}
+
+

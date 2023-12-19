@@ -75,6 +75,7 @@ type
   TDataSource = Class;
   TDataLink = Class;
   TDBTransaction = Class;
+  TObjectField = class;
 
 { Exception classes }
 
@@ -110,7 +111,8 @@ type
     ftWideString, ftLargeint, ftADT, ftArray, ftReference,
     ftDataSet, ftOraBlob, ftOraClob, ftVariant, ftInterface,
     ftIDispatch, ftGuid, ftTimeStamp, ftFMTBcd, ftFixedWideChar, ftWideMemo,
-    ftOraTimeStamp, ftOraInterval, ftLongWord, ftShortint, ftByte, ftExtended);
+    ftOraTimeStamp, ftOraInterval, ftLongWord, ftShortint, ftByte, ftExtended,
+    ftSingle);
 
 { Part of DBCommon, but temporarily defined here (bug 8206) }
 
@@ -169,14 +171,19 @@ type
     FCodePage : TSystemCodePage;
     FDataType : TFieldType;
     FFieldNo : Longint;
+    FChildDefs : TFieldDefs;
     FInternalCalcField : Boolean;
     FPrecision : Longint;
     FRequired : Boolean;
     FSize : Integer;
     function GetCharSize: Word;
+    function GetChildDefs: TFieldDefs;
     Function GetFieldClass : TFieldClass;
+    function GetParentDef: TFieldDef;
+    function GetSize: Integer;
     procedure SetAttributes(AValue: TFieldAttributes);
     procedure SetDataType(AValue: TFieldType);
+    procedure SetChildDefs(AValue: TFieldDefs);
     procedure SetPrecision(const AValue: Longint);
     procedure SetSize(const AValue: Integer);
     procedure SetRequired(const AValue: Boolean);
@@ -186,19 +193,23 @@ type
       ADataType: TFieldType; ASize: Integer; ARequired: Boolean; AFieldNo: Longint;
       ACodePage: TSystemCodePage = CP_ACP); overload;
     destructor Destroy; override;
+    function AddChild: TFieldDef;
     procedure Assign(APersistent: TPersistent); override;
-    function CreateField(AOwner: TComponent): TField;
+    function CreateField(AOwner: TComponent; ParentField: TObjectField = nil;  const FieldName: string = ''; CreateChildren: Boolean = True): TField;
+    function HasChildDefs: Boolean;
     property FieldClass: TFieldClass read GetFieldClass;
     property FieldNo: Longint read FFieldNo;
     property CharSize: Word read GetCharSize;
     property InternalCalcField: Boolean read FInternalCalcField write FInternalCalcField;
+    property ParentDef: TFieldDef read GetParentDef;
     property Required: Boolean read FRequired write SetRequired;
     Property Codepage : TSystemCodePage Read FCodePage;
   Published
     property Attributes: TFieldAttributes read FAttributes write SetAttributes default [];
     property DataType: TFieldType read FDataType write SetDataType;
+    property ChildDefs: TFieldDefs read GetChildDefs write SetChildDefs stored HasChildDefs;
     property Precision: Longint read FPrecision write SetPrecision default 0;
-    property Size: Integer read FSize write SetSize default 0;
+    property Size: Integer read GetSize write SetSize default 0;
   end;
   TFieldDefClass = Class of TFieldDef;
 
@@ -206,13 +217,14 @@ type
 
   TFieldDefs = class(TDefCollection)
   private
+    FParentDef: TFieldDef;
     FHiddenFields : Boolean;
     function GetItem(Index: Longint): TFieldDef;
     procedure SetItem(Index: Longint; const AValue: TFieldDef);
   Protected
     Class Function FieldDefClass : TFieldDefClass; virtual;
   public
-    constructor Create(ADataSet: TDataSet);
+    constructor Create(AOwner: TPersistent);
 //    destructor Destroy; override;
     Function Add(const AName: string; ADataType: TFieldType; ASize, APrecision: Integer; ARequired, AReadOnly: Boolean; AFieldNo : Integer; ACodePage:TSystemCodePage) : TFieldDef; overload;
     Function Add(const AName: string; ADataType: TFieldType; ASize: Word; ARequired: Boolean; AFieldNo : Integer) : TFieldDef; overload;
@@ -228,6 +240,7 @@ type
     Function MakeNameUnique(const AName : String) : string; virtual;
     Property HiddenFields : Boolean Read FHiddenFields Write FHiddenFields;
     property Items[Index: Longint]: TFieldDef read GetItem write SetItem; default;
+    property ParentDef: TFieldDef read FParentDef;
   end;
   TFieldDefsClass = Class of TFieldDefs;
 
@@ -300,6 +313,8 @@ type
     FOnSetText: TFieldSetTextEvent;
     FOnValidate: TFieldNotifyEvent;
     FOrigin : String;
+    FParentField: TObjectField;
+    FProviderFlags : TProviderFlags;
     FReadOnly : Boolean;
     FRequired : Boolean;
     FSize : integer;
@@ -307,7 +322,6 @@ type
     FValueBuffer : Pointer;
     FValidating : Boolean;
     FVisible : Boolean;
-    FProviderFlags : TProviderFlags;
     function GetIndex : longint;
     function GetLookup: Boolean;
     procedure SetAlignment(const AValue: TAlignMent);
@@ -337,14 +351,16 @@ type
     function GetAsBoolean: Boolean; virtual;
     function GetAsBytes: TBytes; virtual;
     function GetAsCurrency: Currency; virtual;
-    function GetAsLargeInt: Largeint; virtual;
     function GetAsDateTime: TDateTime; virtual;
+    function GetAsExtended: Extended; virtual;
     function GetAsFloat: Double; virtual;
+    function GetAsLargeInt: Largeint; virtual;
     function GetAsLongint: Longint; virtual;
     function GetAsLongWord: LongWord; virtual;
     function GetAsInteger: Longint; virtual;
     function GetAsVariant: variant; virtual;
     function GetOldValue: variant; virtual;
+    function GetAsSingle: Single; virtual;
     function GetAsString: string; virtual;
     function GetAsAnsiString: AnsiString; virtual;
     function GetAsUnicodeString: UnicodeString; virtual;
@@ -369,12 +385,14 @@ type
     procedure SetAsBytes(const AValue: TBytes); virtual;
     procedure SetAsCurrency(AValue: Currency); virtual;
     procedure SetAsDateTime(AValue: TDateTime); virtual;
+    procedure SetAsExtended(AValue: Extended); virtual;
     procedure SetAsFloat(AValue: Double); virtual;
+    procedure SetAsLargeInt(AValue: Largeint); virtual;
     procedure SetAsLongint(AValue: Longint); virtual;
     procedure SetAsLongWord(AValue: LongWord); virtual;
     procedure SetAsInteger(AValue: Longint); virtual;
-    procedure SetAsLargeInt(AValue: Largeint); virtual;
     procedure SetAsVariant(const AValue: variant); virtual;
+    procedure SetAsSingle(AValue: Single); virtual;
     procedure SetAsString(const AValue: string); virtual;
     procedure SetAsAnsiString(const AValue: AnsiString); virtual;
     procedure SetAsUnicodeString(const AValue: UnicodeString); virtual;
@@ -385,6 +403,7 @@ type
     procedure SetNewValue(const AValue: Variant);
     procedure SetSize(AValue: Integer); virtual;
     procedure SetParentComponent(AParent: TComponent); override;
+    procedure SetParentField(AField: TObjectField); virtual;
     procedure SetText(const AValue: string); virtual;
     procedure SetVarValue(const AValue: Variant); virtual;
   public
@@ -408,11 +427,13 @@ type
     property AsBytes: TBytes read GetAsBytes write SetAsBytes;
     property AsCurrency: Currency read GetAsCurrency write SetAsCurrency;
     property AsDateTime: TDateTime read GetAsDateTime write SetAsDateTime;
+    property AsExtended: Extended read GetAsExtended write SetAsExtended;
     property AsFloat: Double read GetAsFloat write SetAsFloat;
     property AsLongint: Longint read GetAsLongint write SetAsLongint;
     property AsLongWord: LongWord read GetAsLongWord write SetAsLongWord;
     property AsLargeInt: LargeInt read GetAsLargeInt write SetAsLargeInt;
     property AsInteger: Longint read GetAsInteger write SetAsInteger;
+    property AsSingle: Single read GetAsSingle write SetAsSingle;
     property AsString: string read GetAsString write SetAsString;
     property AsAnsiString: AnsiString read GetAsAnsiString write SetAsAnsiString;
     property AsUnicodeString: UnicodeString read GetAsUnicodeString write SetAsUnicodeString;
@@ -461,6 +482,7 @@ type
     property LookupResultField: string read FLookupResultField write FLookupResultField;
     property Lookup: Boolean read GetLookup write SetLookup stored false; deprecated;
     property Origin: string read FOrigin write FOrigin;
+    property ParentField: TObjectField read FParentField write SetParentField;
     property ProviderFlags : TProviderFlags read FProviderFlags write FProviderFlags;
     property ReadOnly: Boolean read FReadOnly write SetReadOnly;
     property Required: Boolean read FRequired write FRequired;
@@ -555,7 +577,7 @@ type
     FEditFormat : String;
   protected
     class procedure CheckTypeSize(AValue: Longint); override;
-    procedure RangeError(AValue, Min, Max: Double);
+    procedure RangeError(const AValue, Min, Max: Extended);
     procedure SetDisplayFormat(const AValue: string);
     procedure SetEditFormat(const AValue: string);
     function  GetAsBoolean: Boolean; override;
@@ -733,8 +755,8 @@ type
     function GetAsLargeInt: LargeInt; override;
     function GetAsLongWord: LongWord; override;
     function GetAsInteger: Longint; override;
-    function GetAsVariant: variant; override;
     function GetAsString: string; override;
+    function GetAsVariant: variant; override;
     function GetDataSize: Integer; override;
     procedure GetText(var AText: string; ADisplayText: Boolean); override;
     procedure SetAsBCD(const AValue: TBCD); override;
@@ -746,7 +768,7 @@ type
     procedure SetVarValue(const AValue: Variant); override;
   public
     constructor Create(AOwner: TComponent); override;
-    Function CheckRange(AValue : Double) : Boolean;
+    function CheckRange(AValue: Double) : Boolean;
     property Value: Double read GetAsFloat write SetAsFloat;
 
   published
@@ -763,6 +785,84 @@ type
     constructor Create(AOwner: TComponent); override;
   published
     property Currency default True;
+  end;
+
+{ TExtendedField }
+
+  TExtendedField = class(TNumericField)
+  private
+    FCurrency: Boolean;
+    FMaxValue: Extended;
+    FMinValue: Extended;
+    FPrecision: Longint;
+    procedure SetPrecision(const AValue: Longint);
+  protected
+    function GetAsBCD: TBCD; override;
+    function GetAsExtended: Extended; override;
+    function GetAsFloat: Double; override;
+    function GetAsLargeInt: LargeInt; override;
+    function GetAsLongWord: LongWord; override;
+    function GetAsInteger: Longint; override;
+    function GetAsString: string; override;
+    function GetAsVariant: variant; override;
+    function GetDataSize: Integer; override;
+    procedure GetText(var AText: string; ADisplayText: Boolean); override;
+    procedure SetAsBCD(const AValue: TBCD); override;
+    procedure SetAsExtended(AValue: Extended); override;
+    procedure SetAsFloat(AValue: Double); override;
+    procedure SetAsLargeInt(AValue: LargeInt); override;
+    procedure SetAsLongWord(AValue: LongWord); override;
+    procedure SetAsInteger(AValue: Longint); override;
+    procedure SetAsString(const AValue: string); override;
+    procedure SetVarValue(const AValue: Variant); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+    function CheckRange(AValue: Extended) : Boolean;
+    property Value: Extended read GetAsExtended write SetAsExtended;
+  published
+    property Currency: Boolean read FCurrency write FCurrency default False;
+    property MaxValue: Extended read FMaxValue write FMaxValue;
+    property MinValue: Extended read FMinValue write FMinValue;
+    property Precision: Longint read FPrecision write SetPrecision default 15;
+  end;
+
+{ TSingleField }
+
+  TSingleField = class(TNumericField)
+  private
+    FCurrency: Boolean;
+    FMaxValue: Single;
+    FMinValue: Single;
+    FPrecision: Longint;
+    procedure SetPrecision(const AValue: Longint);
+  protected
+    function GetAsBCD: TBCD; override;
+    function GetAsSingle: Single; override;
+    function GetAsFloat: Double; override;
+    function GetAsLargeInt: LargeInt; override;
+    function GetAsLongWord: LongWord; override;
+    function GetAsInteger: Longint; override;
+    function GetAsString: string; override;
+    function GetAsVariant: variant; override;
+    function GetDataSize: Integer; override;
+    procedure GetText(var AText: string; ADisplayText: Boolean); override;
+    procedure SetAsBCD(const AValue: TBCD); override;
+    procedure SetAsSingle(AValue: Single); override;
+    procedure SetAsFloat(AValue: Double); override;
+    procedure SetAsLargeInt(AValue: LargeInt); override;
+    procedure SetAsLongWord(AValue: LongWord); override;
+    procedure SetAsInteger(AValue: Longint); override;
+    procedure SetAsString(const AValue: string); override;
+    procedure SetVarValue(const AValue: Variant); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+    function CheckRange(AValue: Single) : Boolean;
+    property Value: Single read GetAsSingle write SetAsSingle;
+  published
+    property Currency: Boolean read FCurrency write FCurrency default False;
+    property MaxValue: Single read FMaxValue write FMaxValue;
+    property MinValue: Single read FMinValue write FMinValue;
+    property Precision: Longint read FPrecision write SetPrecision default 7;
   end;
 
 { TBooleanField }
@@ -1092,6 +1192,38 @@ type
     property AsGuid: TGUID read GetAsGuid write SetAsGuid;
   end;
 
+{ TObjectField }
+
+  TObjectField = class(TField)
+  private
+    FFieldFields: TFields;
+    FObjectType: string;
+    FUnNamed: boolean;
+  protected
+    function GetAsVariant: Variant; override;
+    function GetFieldCount: Integer;
+    function GetFields: TFields; virtual;
+    function GetFieldValue(AIndex: Integer): Variant; virtual;
+    procedure SetFieldValue(AIndex: Integer; const AValue: Variant); virtual;
+    procedure SetParentField(AField: TObjectField); override;
+    procedure SetVarValue(const AValue: Variant); override;
+  public
+    property FieldCount: Integer read GetFieldCount;
+    property Fields: TFields read GetFields;
+    property FieldValues[AIndex: Integer]: Variant read GetFieldValue  write SetFieldValue; default;
+    property UnNamed: Boolean read FUnNamed default False;
+  published
+    property ObjectType: string read FObjectType write FObjectType;
+  end;
+
+{ TArrayField }
+
+  TArrayField = class(TObjectField)
+  private
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
 { TIndexDef }
 
   TIndexDefs = class;
@@ -1265,6 +1397,7 @@ type
     Function GetAsLargeInt: LargeInt;
     Function GetAsLongWord: LongWord;
     Function GetAsMemo: string;
+    Function GetAsSingle: Single;
     Function GetAsString: string;
     Function GetAsAnsiString: AnsiString;
     Function GetAsUnicodeString: UnicodeString;
@@ -1288,6 +1421,8 @@ type
     Procedure SetAsLargeInt(AValue: LargeInt);
     Procedure SetAsLongWord(AValue: LongWord);
     Procedure SetAsMemo(const AValue: string);
+    Procedure SetAsShortInt(const AValue: LongInt);
+    Procedure SetAsSingle(AValue: Single);
     Procedure SetAsSmallInt(AValue: LongInt);
     Procedure SetAsString(const AValue: string);
     Procedure SetAsAnsiString(const AValue: AnsiString);
@@ -1328,6 +1463,8 @@ type
     Property AsLargeInt : LargeInt read GetAsLargeInt write SetAsLargeInt;
     Property AsLongWord: LongWord read GetAsLongWord write SetAsLongWord;
     Property AsMemo : string read GetAsMemo write SetAsMemo;
+    Property AsShortInt : LongInt read GetAsInteger write SetAsShortInt;
+    Property AsSingle : Single read GetAsSingle write SetAsSingle;
     Property AsSmallInt : LongInt read GetAsInteger write SetAsSmallInt;
     Property AsString : string read GetAsString write SetAsString;
     Property AsAnsiString : AnsiString read GetAsAnsiString write SetAsAnsiString;
@@ -1380,7 +1517,7 @@ type
     Procedure SetParamValue(const ParamName: string; const Value: Variant);
   protected
     Function CreateParseOpts(DoCreate, EscapeSlash, EscapeRepeat : Boolean) : TSQLParseOptions;
-    function DoParseSQL(SQL: String; Options : TSQLParseOptions; ParameterStyle: TParamStyle; out  ParamBinding: TParambinding; MacroChar: Char; out ReplaceString: string): String; virtual;
+    function DoParseSQL(const SQL: String; Options : TSQLParseOptions; ParameterStyle: TParamStyle; out  ParamBinding: TParambinding; MacroChar: Char; out ReplaceString: string): String; virtual;
     Procedure AssignTo(Dest: TPersistent); override;
     Function  GetDataSet: TDataSet;
     Function  GetOwner: TPersistent; override;
@@ -1397,11 +1534,11 @@ type
     Function  IsEqual(Value: TParams): Boolean;
     Function GetEnumerator: TParamsEnumerator;
     Function  ParamByName(const Value: string): TParam;
-    Function  ParseSQL(SQL: String; DoCreate: Boolean): String; overload;
-    Function  ParseSQL(SQL: String; DoCreate, EscapeSlash, EscapeRepeat : Boolean; ParameterStyle : TParamStyle): String; overload;
-    Function  ParseSQL(SQL: String; DoCreate, EscapeSlash, EscapeRepeat : Boolean; ParameterStyle : TParamStyle; out ParamBinding: TParambinding): String; overload;
-    Function  ParseSQL(SQL: String; DoCreate, EscapeSlash, EscapeRepeat : Boolean; ParameterStyle : TParamStyle; out ParamBinding: TParambinding; out ReplaceString : string): String; overload;
-    function  ParseSQL(SQL: String; Options : TSQLParseOptions; ParameterStyle: TParamStyle; out ParamBinding: TParambinding; MacroChar: Char; out ReplaceString: string): String;
+    Function  ParseSQL(const SQL: String; DoCreate: Boolean): String; overload;
+    Function  ParseSQL(const SQL: String; DoCreate, EscapeSlash, EscapeRepeat : Boolean; ParameterStyle : TParamStyle): String; overload;
+    Function  ParseSQL(const SQL: String; DoCreate, EscapeSlash, EscapeRepeat : Boolean; ParameterStyle : TParamStyle; out ParamBinding: TParambinding): String; overload;
+    Function  ParseSQL(const SQL: String; DoCreate, EscapeSlash, EscapeRepeat : Boolean; ParameterStyle : TParamStyle; out ParamBinding: TParambinding; out ReplaceString : string): String; overload;
+    function  ParseSQL(const SQL: String; Options : TSQLParseOptions; ParameterStyle: TParamStyle; out ParamBinding: TParambinding; MacroChar: Char; out ReplaceString: string): String;
     Procedure RemoveParam(Value: TParam);
     Procedure CopyParamValuesFromDataset(ADataset : TDataset; CopyBound : Boolean);
     Property Dataset : TDataset Read GetDataset;
@@ -1562,6 +1699,7 @@ type
     FOnPostError: TDataSetErrorEvent;
     FRecordCount: Longint;
     FIsUniDirectional: Boolean;
+    FSparseArrays: Boolean;
     FState : TDataSetState;
     FInternalOpenComplete: Boolean;
     Procedure DoInsertAppend(DoAppend : Boolean);
@@ -1582,8 +1720,10 @@ type
     Procedure UpdateFieldDefs;
     procedure SetBlockReadSize(AValue: Integer); virtual;
     Procedure SetFieldDefs(AFieldDefs: TFieldDefs);
+    procedure SetSparseArrays(AValue: Boolean);
     procedure DoInsertAppendRecord(const Values: array of const; DoAppend : boolean);
   protected
+    function GetDefaultBufferCount: Cardinal; virtual;
     procedure RecalcBufListSize;
     procedure ActivateBuffers; virtual;
     procedure BindFields(Binding: Boolean);
@@ -1806,6 +1946,7 @@ type
     property RecordCount: Longint read GetRecordCount;
     property RecNo: Longint read GetRecNo write SetRecNo;
     property RecordSize: Word read GetRecordSize;
+    property SparseArrays: Boolean read FSparseArrays write SetSparseArrays;
     property State: TDataSetState read FState;
     property Fields : TFields read FFieldList;
     property FieldValues[FieldName : string] : Variant read GetFieldValues write SetFieldValues; default;
@@ -2027,21 +2168,23 @@ type
 
   { TDBTransaction }
 
-  TDBTransactionClass = Class of TDBTransaction;
+
   TDBTransaction = Class(TComponent)
   Private
     FActive        : boolean;
     FDatabase      : TDatabase;
     FDataSets      : TThreadList;
+    FClients      : TThreadList;
     FOpenAfterRead : boolean;
-    Function GetDataSetCount : Longint;
-    Function GetDataset(Index : longint) : TDBDataset;
-    procedure RegisterDataset (DS : TDBDataset);
-    procedure UnRegisterDataset (DS : TDBDataset);
+    function GetDataSet(Index: Longint): TDBDataset;
+    function GetDatasetCount: Integer;
     procedure RemoveDataSets;
     procedure SetActive(Value : boolean);
   Protected
+    procedure RegisterDataset (DS : TDBDataset); virtual;
+    procedure UnRegisterDataset (DS : TDBDataset); virtual;
     Function AllowClose(DS: TDBDataset): Boolean; virtual;
+    procedure CloseDataset(DS: TDBDataset; InCommit : Boolean); virtual;
     Procedure SetDatabase (Value : TDatabase); virtual;
     procedure CloseTrans;
     procedure OpenTrans;
@@ -2056,10 +2199,13 @@ type
     procedure StartTransaction; virtual; abstract;
     procedure InternalHandleException; virtual;
     procedure Loaded; override;
+    Property DatasetCount : Integer Read GetDatasetCount;
+    property Datasets[Index: Longint]: TDBDataset read GetDataSet;
   Public
     constructor Create(AOwner: TComponent); override;
     Destructor Destroy; override;
     procedure CloseDataSets;
+    procedure CloseDataSets(InCommit : Boolean);
     Property DataBase : TDatabase Read FDatabase Write SetDatabase;
   published
     property Active : boolean read FActive write setactive;
@@ -2068,6 +2214,7 @@ type
   { TCustomConnection }
 
   TLoginEvent = procedure(Sender: TObject; Username, Password: string) of object;
+  TCloseErrorEvent = procedure(Sender : TObject; aError : Exception) of object;
 
   TCustomConnection = class(TComponent)
   private
@@ -2077,6 +2224,7 @@ type
     FBeforeDisconnect: TNotifyEvent;
     FForcedClose: Boolean;
     FLoginPrompt: Boolean;
+    FOnCloseError: TCloseErrorEvent;
     FOnLogin: TLoginEvent;
     FStreamedConnected: Boolean;
     procedure SetAfterConnect(const AValue: TNotifyEvent);
@@ -2084,6 +2232,9 @@ type
     procedure SetBeforeConnect(const AValue: TNotifyEvent);
     procedure SetBeforeDisconnect(const AValue: TNotifyEvent);
   protected
+    Procedure DoCloseError(aError : Exception); virtual;
+    procedure SetForcedClose(AValue: Boolean); virtual;
+    procedure CloseForDestroy;
     procedure DoLoginPrompt; virtual;
     procedure DoConnect; virtual;
     procedure DoDisconnect; virtual;
@@ -2095,7 +2246,7 @@ type
     procedure Loaded; override;
     procedure SetConnected (Value : boolean); virtual;
     procedure SetLoginParams(const ADatabaseName, AUserName, APassword: string); virtual;
-    property ForcedClose : Boolean read FForcedClose write FForcedClose;
+    property ForcedClose : Boolean read FForcedClose write SetForcedClose;
     property StreamedConnected: Boolean read FStreamedConnected write FStreamedConnected;
   public
     procedure Close(ForceClose: Boolean=False);
@@ -2112,6 +2263,7 @@ type
     property BeforeConnect : TNotifyEvent read FBeforeConnect write SetBeforeConnect;
     property BeforeDisconnect : TNotifyEvent read FBeforeDisconnect write SetBeforeDisconnect;
     property OnLogin: TLoginEvent read FOnLogin write FOnLogin;
+    Property OnCloseError : TCloseErrorEvent Read FOnCloseError Write FOnCloseError;
   end;
 
 
@@ -2217,12 +2369,13 @@ const
       {ftLongWord} varLongWord,
       {ftShortint} varShortint,
       {ftByte} varByte,
-      {ftExtended} varDouble
+      {ftExtended} varDouble,
+      {ftSingle} varSingle
     );
 
 
 Const
-  Fieldtypenames : Array [TFieldType] of String[15] =
+  FieldTypeNames : Array [TFieldType] of String[15] =
     (
       {ftUnknown} 'Unknown',
       {ftString} 'String',
@@ -2269,14 +2422,15 @@ Const
       {ftLongWord} 'LongWord',
       {ftShortint} 'Shortint',
       {ftByte} 'Byte',
-      {ftExtended} 'Extended'
+      {ftExtended} 'Extended',
+      {ftSingle} 'Single'
     );
 
 
 const
   DefaultFieldClasses : Array [TFieldType] of TFieldClass =
     (
-      { ftUnknown} Tfield,
+      { ftUnknown} TField,
       { ftString} TStringField,
       { ftSmallint} TSmallIntField,
       { ftInteger} TLongintField,
@@ -2303,7 +2457,7 @@ const
       { ftWideString} TWideStringField,
       { ftLargeint} TLargeIntField,
       { ftADT} Nil,
-      { ftArray} Nil,
+      { ftArray} TArrayField,
       { ftReference} Nil,
       { ftDataSet} Nil,
       { ftOraBlob} TBlobField,
@@ -2321,7 +2475,8 @@ const
       { ftLongWord} TLongWordField,
       { ftShortint} TShortintField,
       { ftByte} TByteField,
-      { ftExtended} nil
+      { ftExtended} TExtendedField,
+      { ftSingle} TSingleField
     );
 
   dsEditModes = [dsEdit, dsInsert, dsSetKey];
@@ -2332,6 +2487,8 @@ const
   // incorrect results
   ftBlobTypes = [ftBlob, ftMemo, ftGraphic, ftFmtMemo, ftParadoxOle,
     ftDBaseOle, ftTypedBinary, ftOraBlob, ftOraClob, ftWideMemo];
+
+  ObjectFieldTypes = [ftADT, ftArray, ftReference, ftDataSet];
 
 var
   LoginDialogExProc: function(const ADatabaseName: string; var AUserName, APassword: string; UserNameReadOnly: Boolean): Boolean = nil;

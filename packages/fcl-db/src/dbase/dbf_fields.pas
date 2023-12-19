@@ -1,5 +1,19 @@
 unit dbf_fields;
+{
+    This file is part of the Free Pascal run time library.
+    Copyright (c) 1999-2022 by Pascal Ganaye,Micha Nelissen and other members of the
+    Free Pascal development team
 
+    DBF avl tree implementation
+
+    See the file COPYING.FPC, included in this distribution,
+    for details about the copyright.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+ **********************************************************************}
 interface
 
 {$I dbf_common.inc}
@@ -453,7 +467,17 @@ begin
   case FFieldType of
     ftAutoInc  :
       if DbfVersion=xVisualFoxPro then
-        FNativeFieldType  := 'I'
+      begin
+        FNativeFieldType  := 'I';
+        // set some default autoinc start value and step
+        // without it field will be considered a simple integer field
+        // (not sure if this is the right place for that)
+        if (FAutoInc = 0) and (FAllocSize = 0) then
+        begin
+          FAutoInc := 1;
+          FAutoIncStep := 1;
+        end;
+      end
       else
         FNativeFieldType  := '+'; //Apparently xbaseV/7+ only; not (Visual) Foxpro
     ftDateTime :
@@ -477,7 +501,7 @@ begin
       , ftLargeInt
 {$endif}
 {$ifdef SUPPORT_LONGWORD}
-      , ftLongWord, ftShortInt, ftByte
+      , ftLongWord, ftShortInt, ftByte, ftExtended, ftSingle
 {$endif}
                :
       FNativeFieldType := 'N'; //numerical
@@ -576,6 +600,11 @@ begin
         FSize := 3;
         FPrecision := 0;
       end;
+    ftExtended, ftSingle:
+      begin
+        FSize := 19;
+        FPrecision := 8;
+      end;
 {$endif}
     ftString {$ifdef SUPPORT_FIELDTYPES_V4}, ftFixedChar, ftWideString{$endif}:
       begin
@@ -617,7 +646,8 @@ begin
         // Note: this field can be stored as BCD or integer, depending on FPrecision;
         // that's why we allow 0 precision
         if FSize < 1   then FSize := 1;
-        if FSize >= 20 then FSize := 20;
+        // Removed, bug report 39009
+        // if FSize >= 20 then FSize := 20;
         if FPrecision > FSize-2 then FPrecision := FSize-2; //Leave space for . and -
         if FPrecision < 0       then FPrecision := 0;
       end;

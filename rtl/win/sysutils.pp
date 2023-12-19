@@ -37,6 +37,11 @@ uses
 {$DEFINE HAS_GETTICKCOUNT64}
 {$DEFINE HAS_FILEDATETIME}
 {$DEFINE OS_FILESETDATEBYNAME}
+{$DEFINE HAS_FILEGETDATETIMEINFO}
+
+{$DEFINE HAS_INVALIDHANDLE}
+const 
+  INVALID_HANDLE_VALUE = {$IFDEF FPC_DOTTEDUNITS}WinApi.{$ENDIF}Windows.INVALID_HANDLE_VALUE;
 
 // this target has an fileflush implementation, don't include dummy
 {$DEFINE SYSUTILS_HAS_FILEFLUSH_IMPL}
@@ -624,6 +629,46 @@ begin
     end;
 end;
 
+function GetFinalPathNameByHandle(aHandle : THandle; Buf : LPSTR; BufSize : DWord; Flags : DWord) : DWORD; external 'kernel32' name 'GetFinalPathNameByHandleA';
+
+Const
+  VOLUME_NAME_NT = $2;
+
+Function FollowSymlink(const aLink: String): String;
+Var
+  Attrs: Cardinal;
+  aHandle: THandle;
+  oFlags: DWord;
+  Buf : Array[0..Max_Path] of AnsiChar;
+  Len : Integer;
+
+begin
+  Result:='';
+  FillChar(Buf,MAX_PATH+1,0);
+  if Not FileExists(aLink,False) then 
+    exit;
+  if not CheckWin32Version(6, 0) then 
+    exit;
+  Attrs:=GetFileAttributes(PChar(aLink));
+  if (Attrs=INVALID_FILE_ATTRIBUTES) or ((Attrs and faSymLink)=0) then
+    exit;
+  oFLags:=0;
+  // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+  if (Attrs and faDirectory)=faDirectory then
+    oFlags:=FILE_FLAG_BACKUP_SEMANTICS;
+  aHandle:=CreateFile(PChar(aLink),GENERIC_READ,FILE_SHARE_READ,nil,OPEN_EXISTING,oFlags,0);
+  if aHandle=INVALID_HANDLE_VALUE then
+    exit;
+  try
+    Len:=GetFinalPathNameByHandle(aHandle,@Buf,MAX_PATH,VOLUME_NAME_NT);
+    If Len<=0 then 
+      exit; 
+    Result:=StrPas(PChar(@Buf));
+  finally
+    CloseHandle(aHandle);
+  end;
+end;
+
 Function InternalFindFirst (Const Path : UnicodeString; Attr : Longint; out Rslt : TAbstractSearchRec; var Name : UnicodeString) : Longint;
 begin
   Name:=Path;
@@ -653,7 +698,31 @@ begin
     Result := GetLastError;
 end;
 
-
+function FileGetDateTimeInfo(const FileName: string;
+  out DateTime: TDateTimeInfoRec; FollowLink: Boolean = True): Boolean;
+var
+  Data: TWin32FindDataW;
+  FN: unicodestring;
+begin
+  Result := False;
+  SetLastError(ERROR_SUCCESS);
+  FN:=FileName;
+  if Not GetFileAttributesExW(PWideChar(FileName), GetFileExInfoStandard, @Data) then
+    exit;
+  if ((Data.dwFileAttributes and faSymlink)=faSymlink) then
+    begin
+    if FollowLink then
+      begin
+      FN:=FollowSymlink(FileName);
+      if FN='' then 
+        exit; 
+      if not GetFileAttributesExW(PWideChar(FN), GetFileExInfoStandard, @Data) then
+        exit;
+      end;
+    end;     
+  DateTime.Data:=Data;
+  Result:=True;
+end;
 
 
 Function FileGetDate (Handle : THandle) : Int64;
@@ -1197,6 +1266,21 @@ begin
 end;
 
 procedure GetLocaleFormatSettings(LCID: Integer; var FormatSettings: TFormatSettings);
+  function FixSeparator(const Format: string; const FromSeparator, ToSeparator: Char): string;
+  var
+    R: PChar;
+  begin
+    if (Format='') or (FromSeparator=ToSeparator) then
+      Exit(Format);
+    Result := Copy(Format, 1);
+    R := PChar(Result);
+    while R^<>#0 do
+      begin
+      if R^=FromSeparator then
+        R^:=ToSeparator;
+      Inc(R);
+      end;
+  end;
 var
   HF  : Shortstring;
   LID : Windows.LCID;
@@ -1218,8 +1302,8 @@ begin
         LongDayNames[I]:=GetLocaleStr(LID,LOCALE_SDAYNAME1+Day,LongDayNames[i]);
         end;
       DateSeparator := GetLocaleChar(LID, LOCALE_SDATE, '/');
-      ShortDateFormat := GetLocaleStr(LID, LOCALE_SSHORTDATE, 'm/d/yy');
-      LongDateFormat := GetLocaleStr(LID, LOCALE_SLONGDATE, 'mmmm d, yyyy');
+      ShortDateFormat := FixSeparator(GetLocaleStr(LID, LOCALE_SSHORTDATE, 'm/d/yy'), DateSeparator, '/');
+      LongDateFormat := FixSeparator(GetLocaleStr(LID, LOCALE_SLONGDATE, 'mmmm d, yyyy'), DateSeparator, '/');
       { Time stuff }
       TimeSeparator := GetLocaleChar(LID, LOCALE_STIME, ':');
       TimeAMString := GetLocaleStr(LID, LOCALE_S1159, 'AM');
@@ -1284,16 +1368,20 @@ end;
 
 Procedure InitInternational;
 var
+{$if defined(CPU386) or defined(CPUX86_64)}
   { A call to GetSystemMetrics changes the value of the 8087 Control Word on
     Pentium4 with WinXP SP2 }
   old8087CW: word;
+{$endif}
   DefaultCustomLocaleID : LCID;   // typedef DWORD LCID;
   DefaultCustomLanguageID : Word; // typedef WORD LANGID;
 begin
   /// workaround for Windows 7 bug, see bug report #18574
   SetThreadLocale(GetUserDefaultLCID);
   InitInternationalGeneric;
+{$if defined(CPU386) or defined(CPUX86_64)}
   old8087CW:=Get8087CW;
+{$endif}
   SysLocale.MBCS:=GetSystemMetrics(SM_DBCSENABLED)<>0;
   SysLocale.RightToLeft:=GetSystemMetrics(SM_MIDEASTENABLED)<>0;
   SysLocale.DefaultLCID := $0409;
@@ -1323,7 +1411,9 @@ begin
         end;
      end;
 
+{$if defined(CPU386) or defined(CPUX86_64)}
   Set8087CW(old8087CW);
+{$endif}
   GetFormatSettings;
   if SysLocale.FarEast then GetEraNamesAndYearOffsets;
 end;
@@ -1334,25 +1424,26 @@ end;
 ****************************************************************************}
 
 function SysErrorMessage(ErrorCode: Integer): String;
-const
-  MaxMsgSize = Format_Message_Max_Width_Mask;
 var
-  MsgBuffer: unicodestring;
+  MsgBuffer: PWideChar;
+  Msg: UnicodeString;
   len: longint;
 begin
-  SetLength(MsgBuffer, MaxMsgSize);
-  len := FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM,
+  len := FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM or
+                        FORMAT_MESSAGE_IGNORE_INSERTS or
+                        FORMAT_MESSAGE_ALLOCATE_BUFFER,
                         nil,
                         ErrorCode,
                         MakeLangId(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                        PUnicodeChar(MsgBuffer),
-                        MaxMsgSize,
+                        PWideChar(@MsgBuffer),
+                        0,
                         nil);
   // Remove trailing #13#10
-  if (len > 1) and (MsgBuffer[len - 1] = #13) and (MsgBuffer[len] = #10) then
+  if (len > 1) and (MsgBuffer[len - 2] = #13) and (MsgBuffer[len - 1] = #10) then
     Dec(len, 2);
-  SetLength(MsgBuffer, len);
-  Result := MsgBuffer;
+  SetString(Msg, PUnicodeChar(MsgBuffer), len);
+  LocalFree(HLOCAL(MsgBuffer));
+  Result := Msg;
 end;
 
 {****************************************************************************

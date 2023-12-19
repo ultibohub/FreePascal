@@ -1,3 +1,4 @@
+{%MainUnit sysutils.pp}
 {
     This file is part of the Free Pascal run time library.
     Copyright (c) 1999-2000 by the Free Pascal development team
@@ -145,6 +146,32 @@ Type
   TSymLinkRec = TRawbyteSymLinkRec;
 {$ENDIF}
 
+  { TDateTimeInfoRec }
+
+  TDateTimeInfoRec = record
+  private
+{$IF DEFINED(WINDOWS) AND NOT DEFINED(WIN16)}
+    Data: TFindData platform;
+{$ELSE}
+  {$IFDEF UNIX}
+    {$IFDEF USE_STATX}
+    data : tstatx platform;
+    {$ELSE}
+    data : baseunix.stat platform;
+    {$ENDIF USE_STATX}
+  {$ELSE}
+    data : TSearchRec;
+  {$ENDIF}
+{$ENDIF}
+
+    function GetCreationTime: TDateTime;
+    function GetLastAccessTime: TDateTime;
+    function GetTimeStamp: TDateTime;
+  public
+    property CreationTime: TDateTime read GetCreationTime;
+    property LastAccessTime: TDateTime read GetLastAccessTime;
+    property TimeStamp: TDateTime read GetTimeStamp;
+  end;
 
 Const
   { File attributes }
@@ -211,6 +238,7 @@ Function ExeSearch  (Const Name : UnicodeString; Const DirList : UnicodeString =
 Function FileIsReadOnly(const FileName : UnicodeString): Boolean;
 function FileAge(const FileName: UnicodeString; out FileDateTime: TDateTime; FollowLink: Boolean = True): Boolean;
 function FileAgeUTC(const FileName: UnicodeString; out FileDateTimeUTC: TDateTime; FollowLink: Boolean = True): Boolean;
+function FileGetDateTimeInfo(const FileName: string; out DateTime: TDateTimeInfoRec; FollowLink: Boolean = True): Boolean;
 function FileGetSymLinkTarget(const FileName: UnicodeString; out SymLinkRec: TUnicodeSymLinkRec): Boolean;
 function FileGetSymLinkTarget(const FileName: UnicodeString; out TargetName: UnicodeString): Boolean; inline;
 
@@ -265,4 +293,10 @@ Function GetFileAsString(Const aFileName : RawByteString) : RawByteString;
 Function GetFileAsString(Const aFileName : RawByteString; aEncoding : TEncoding) : RawByteString;
 Function GetFileAsString(Const aFileName : UnicodeString) : UnicodeString;
 Function GetFileAsString(Const aFileName : UnicodeString; aEncoding : TEncoding) : UnicodeString;
+
+Function IsFileNameCaseSensitive(Const aFileName : RawByteString) : Boolean;
+Function IsFileNameCaseSensitive(Const aFileName : UnicodeString) : Boolean;
+
+Function IsFileNameCasePreserving(Const aFileName : RawByteString) : Boolean;
+Function IsFileNameCasePreserving(Const aFileName : UnicodeString) : Boolean;
 
