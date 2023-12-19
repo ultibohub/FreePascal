@@ -384,7 +384,7 @@ type
     procedure HandleProcedureTypeModifier(ProcType: TPasProcedureType; ptm : TProcTypeModifier);
     procedure ParseMembersLocalConsts(AType: TPasMembersType; AVisibility: TPasMemberVisibility);
     procedure ParseMembersLocalTypes(AType: TPasMembersType; AVisibility: TPasMemberVisibility);
-    procedure ParseVarList(Parent: TPasElement; VarList: TFPList; AVisibility: TPasMemberVisibility; varParseType : TDeclParseType);
+    procedure ParseVarList(Parent: TPasElement; VarList: TFPList; AVisibility: TPasMemberVisibility; VarParseType : TDeclParseType);
     procedure SetOptions(AValue: TPOptions);
     procedure OnScannerModeChanged(Sender: TObject; NewMode: TModeSwitch;
       Before: boolean; var Handled: boolean);
@@ -3897,7 +3897,6 @@ begin
           if Assigned(TypeEl) then        // !!!
             begin
             Declarations.Declarations.Add(TypeEl);
-            {$IFDEF CheckPasTreeRefCount}if TypeEl.RefIds.IndexOf('CreateElement')>=0 then TypeEl.ChangeRefId('CreateElement','TPasDeclarations.Children');{$ENDIF}
             if (TypeEl.ClassType = TPasClassType)
                 and (not (po_keepclassforward in Options)) then
             begin
@@ -3933,7 +3932,6 @@ begin
             begin
               ExpEl := TPasExportSymbol(List[i]);
               Declarations.Declarations.Add(ExpEl);
-              {$IFDEF CheckPasTreeRefCount}ExpEl.ChangeRefId('CreateElement','TPasDeclarations.Children');{$ENDIF}
               Declarations.ExportSymbols.Add(ExpEl);
             end;
           finally
@@ -3971,7 +3969,6 @@ begin
           begin
           PropEl:=ParseProperty(Declarations,CurtokenString,visDefault,false);
           Declarations.Declarations.Add(PropEl);
-          {$IFDEF CheckPasTreeRefCount}PropEl.ChangeRefId('CreateElement','TPasDeclarations.Children');{$ENDIF}
           Declarations.Properties.Add(PropEl);
           Engine.FinishScope(stDeclaration,PropEl);
           end;
@@ -4228,7 +4225,6 @@ begin
       OldForceCaret:=Scanner.SetForceCaret(True);
       try
         Result.VarType := ParseType(Result,CurSourcePos);
-        {$IFDEF CheckPasTreeRefCount}if Result.VarType.RefIds.IndexOf('CreateElement')>=0 then Result.VarType.ChangeRefId('CreateElement','TPasVariable.VarType'){$ENDIF};
       finally
         Scanner.SetForceCaret(OldForceCaret);
       end;
@@ -4599,12 +4595,10 @@ function TPasParser.ParseGenericTypeDecl(Parent: TPasElement;
       if Parent is TPasDeclarations then
         begin
         TPasDeclarations(Parent).Declarations.Add(NewEl);
-        {$IFDEF CheckPasTreeRefCount}NewEl.ChangeRefId('CreateElement','TPasDeclarations.Children');{$ENDIF}
         end
       else if Parent is TPasMembersType then
         begin
         TPasMembersType(Parent).Members.Add(NewEl);
-        {$IFDEF CheckPasTreeRefCount}NewEl.ChangeRefId('CreateElement','TPasMembersType.Members');{$ENDIF}
         end;
       end;
     if GenericTemplateTypes.Count>0 then
@@ -4856,7 +4850,7 @@ end;
 
 // Full means that a full variable declaration is being parsed.
 procedure TPasParser.ParseVarList(Parent: TPasElement; VarList: TFPList; AVisibility: TPasMemberVisibility;
-  varParseType: TDeclParseType);
+  VarParseType: TDeclParseType);
 // on Exception the VarList is restored, no need to Release the new elements
 
 var
@@ -4882,6 +4876,8 @@ begin
   try
     D:=SaveComments; // This means we support only one comment per 'list'.
     VarEl:=nil;
+
+    // read attributes
     while CurToken=tkSquaredBraceOpen do
       begin
       if msPrefixedAttributes in CurrentModeswitches then
@@ -4892,6 +4888,8 @@ begin
       else
         CheckToken(tkIdentifier);
       end;
+
+    // read names
     Repeat
       VarEl:=TPasVariable(CreateElement(TPasVariable,CurTokenString,Parent,
                                         AVisibility,CurTokenPos));
@@ -4903,7 +4901,7 @@ begin
       tkComma: ExpectIdentifier;
       tkAssign :
         begin
-        if varParseType<>dptInline then
+        if VarParseType<>dptInline then
           ParseExc(nParserExpectedCommaColon,SParserExpectedCommaColon);
         UnGetToken; // Value parsing starts with NextToken
         IsUnTyped:=True;
@@ -4913,12 +4911,14 @@ begin
         ParseExc(nParserExpectedCommaColon,SParserExpectedCommaColon);
       end;
     Until (CurToken=tkColon);
+
+    // read type
+    VarType:=nil;
     if CurToken=tkColon then
       begin
       OldForceCaret:=Scanner.SetForceCaret(True);
       try
         VarType := ParseVarType(VarEl); // Note: this can insert elements into VarList!
-        {$IFDEF CheckPasTreeRefCount}if VarType.RefIds.IndexOf('CreateElement')>=0 then VarType.ChangeRefId('CreateElement','TPasVariable.VarType'){$ENDIF};
       finally
         Scanner.SetForceCaret(OldForceCaret);
       end;
@@ -4931,8 +4931,10 @@ begin
         //VarType.Parent := VarEl; // this is wrong for references
         end;
       end;
+    // read hints
     H:=CheckHint(Nil,False);
-    If varParseType in [dptFull,dptInline]then
+    // read value and location
+    If VarParseType in [dptFull,dptInline]then
       GetVariableValueAndLocation(VarEl,IsUnTyped,Value,AbsoluteExpr,AbsoluteLocString);
     if VarCnt>1 then
       begin
@@ -4949,6 +4951,7 @@ begin
     ExternalStruct:=(msExternalClass in CurrentModeSwitches)
                     and (Parent is TPasMembersType);
 
+    // read modifiers
     H:=H+CheckHint(Nil,False);
     if (VarParseType=dptFull) or ExternalStruct then
       begin
@@ -5178,7 +5181,6 @@ var
   Arg: TPasArgument;
   Access: TArgumentAccess;
   ArgType: TPasType;
-  HasAttr : Boolean;
 
 begin
   LastHadDefaultValue := false;
@@ -5191,7 +5193,7 @@ begin
     NextToken;
     // [ref] (const|var|) a : type;
     HasRef:=False;
-    HasAttr:=CheckAttributes(False);
+    CheckAttributes(False);
 
     if CurToken = tkDotDotDot then
     begin
@@ -6012,7 +6014,6 @@ begin
   if CurToken = tkColon then
     begin
     Result.VarType := ParseType(Result,CurSourcePos);
-    {$IFDEF CheckPasTreeRefCount}if Result.VarType.RefIds.IndexOf('CreateElement')>=0 then Result.VarType.ChangeRefId('CreateElement','TPasVariable.VarType'){$ENDIF};
     NextToken;
     end
   else if not IsClass then
@@ -6423,12 +6424,11 @@ begin
       tkVar:
         begin
         if not (msInlineVars in CurrentModeswitches) then
-           ParseExcSyntaxError;
+          ParseExcSyntaxError;
         CheckStatementCanStart;
         NextToken;
         Params.ParseVarStatement;
         Params.CloseStatement(true);
-
         end;
       tkAt,tkAtAt,
       tkIdentifier,tkspecialize,

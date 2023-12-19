@@ -141,8 +141,7 @@ begin
       TStreamResolver(Fresolver).AddStream(FileName,Stream);
       end
     else
-      {$IFNDEF PAS2JS}FResolver:=TFileResolver.Create{$ENDIF}
-      ;
+      FResolver:=TFileResolver.Create;
     D:=ExtractFilePath(FileName);
     If (D='') then
       D:='.';
