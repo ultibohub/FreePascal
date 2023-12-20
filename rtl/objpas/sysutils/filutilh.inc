@@ -150,7 +150,7 @@ Type
 
   TDateTimeInfoRec = record
   private
-{$IF DEFINED(WINDOWS) AND NOT DEFINED(WIN16)}
+{$IF (DEFINED(WINDOWS) AND NOT DEFINED(WIN16)) or DEFINED(ULTIBO)}
     Data: TFindData platform;
 {$ELSE}
   {$IFDEF UNIX}
