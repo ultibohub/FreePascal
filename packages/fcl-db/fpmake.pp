@@ -855,7 +855,7 @@ begin
     with T.Dependencies do
       AddUnit('fpjsondataset');
 
-    T:=P.Targets.AddUnit('sqldbini.pp');
+    T:=P.Targets.AddUnit('sqldbini.pp',SqldbConnectionOSes);
     with T.Dependencies do
       AddUnit('sqldb');
 

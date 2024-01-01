@@ -20,7 +20,7 @@ unit Linux;
 {$i osdefs.inc}
 
 {$packrecords c}
-{$ifdef FPC_USE_LIBC} 
+{$ifdef FPC_USE_LIBC}
  {$linklib rt} // for clock* functions
 {$endif}
 
@@ -40,7 +40,7 @@ type
   __s32 = Longint;
   __u64 = QWord;
   __s64 = Int64;
-  
+
 type
   TSysInfo = record
     uptime: clong;                     //* Seconds since boot */
@@ -479,8 +479,8 @@ Type
 function clock_getres(clk_id : clockid_t; res : ptimespec) : cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'clock_getres'; {$ENDIF}
 function clock_gettime(clk_id : clockid_t; tp: ptimespec) : cint;  {$ifdef FPC_USE_LIBC} cdecl; external name 'clock_gettime'; {$ENDIF}
 function clock_settime(clk_id : clockid_t; tp : ptimespec) : cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'clock_settime'; {$ENDIF}
-function setregid(rgid,egid : uid_t): cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'setregid'; {$ENDIF} 
-function setreuid(ruid,euid : uid_t): cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'setreuid'; {$ENDIF} 
+function setregid(rgid,egid : uid_t): cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'setregid'; {$ENDIF}
+function setreuid(ruid,euid : uid_t): cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'setreuid'; {$ENDIF}
 
 Const
   STATX_TYPE = $00000001;
@@ -538,7 +538,7 @@ Type
   end;
   pstatx = ^tstatx;
 
-  function statx(dfd: cint; filename: pchar; flags,mask: cuint; var buf: tstatx):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'statx'; {$ENDIF}
+  function statx(dfd: cint; filename: pchar; flags,mask: cuint; var buf: tstatx):cint; {$ifdef FPC_USE_LIBC} cdecl; weakexternal name 'statx'; {$ENDIF}
 
 Type
    kernel_time64_t = clonglong;
@@ -551,8 +551,10 @@ Type
 
    tkernel_timespecs = array[0..1] of kernel_timespec;
 
-Function utimensat(dfd: cint; path:pchar;const times:tkernel_timespecs;flags:cint):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'statx'; {$ENDIF}
+{$ifndef android}
+Function utimensat(dfd: cint; path:pchar;const times:tkernel_timespecs;flags:cint):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'utimensat'; {$ENDIF}
 Function futimens(fd: cint; const times:tkernel_timespecs):cint; {$ifdef FPC_USE_LIBC} cdecl; external name 'futimens'; {$ENDIF}
+{$endif android}
 
 implementation
 
@@ -621,7 +623,7 @@ end;
 function epoll_create(size: cint): cint;
 begin
 {$if defined(generic_linux_syscalls)}
-  epoll_create := do_syscall(syscall_nr_epoll_create1,0)
+  epoll_create := do_syscall(syscall_nr_epoll_create1,0);
 {$else}
   epoll_create := do_syscall(syscall_nr_epoll_create,tsysparam(size));
 {$endif}
@@ -846,7 +848,7 @@ function setregid(rgid,egid : uid_t): cint;
 begin
   setregid:=do_syscall(syscall_nr_setregid,rgid,egid);
 end;
- 
+
 function setreuid(ruid,euid : uid_t): cint;
 begin
   setreuid:=do_syscall(syscall_nr_setreuid,ruid,euid);
@@ -858,8 +860,8 @@ begin
   statx:=do_syscall(syscall_nr_statx,TSysParam(dfd),TSysParam(filename),TSysParam(flags),TSysParam(mask),TSysParam(@buf));
 end;
 
-{$endif}
 
+{$ifndef android}
 Function utimensat(dfd: cint; path:pchar;const times:tkernel_timespecs;flags:cint):cint;
 var
   tsa: Array[0..1] of timespec;
@@ -898,6 +900,8 @@ begin
   futimens:=do_syscall(syscall_nr_utimensat,fd,TSysParam(nil),TSysParam(@times),0);
 {$endif sizeof(clong)<=4}
 end;
+{$endif android}
+{$endif not FPC_USE_LIBC}
 
 end.
 
