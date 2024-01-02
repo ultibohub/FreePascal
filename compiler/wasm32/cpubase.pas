@@ -151,12 +151,17 @@ uses
         procedure add_param(param: TWasmBasicType);
         procedure add_result(res: TWasmBasicType);
         function Equals(Obj: TObject): boolean; override;
+        function ToString: ansistring; override;
       end;
 
       {# This should define the array of instructions as string }
       op2strtable=array[tasmop] of string[31];
 
     Const
+      WasmNumberTypes = [wbt_i32, wbt_i64, wbt_f32, wbt_f64];
+      WasmReferenceTypes = [wbt_funcref, wbt_externref];
+      WasmVectorTypes = [wbt_v128];
+
       {# First value of opcode enumeration }
       firstop = low(tasmop);
       {# Last value of opcode enumeration  }
@@ -391,6 +396,7 @@ uses
 
     function natural_alignment_for_load_store(op: TAsmOp): shortint;
     function encode_wasm_basic_type(wbt: TWasmBasicType): Byte;
+    function decode_wasm_basic_type(b: Byte; out wbt: TWasmBasicType): Boolean;
 
 implementation
 
@@ -595,6 +601,32 @@ uses
         end;
       end;
 
+    function decode_wasm_basic_type(b: Byte; out wbt: TWasmBasicType): Boolean;
+      begin
+        result:=true;
+        case b of
+          $7F:
+            wbt:=wbt_i32;
+          $7E:
+            wbt:=wbt_i64;
+          $7D:
+            wbt:=wbt_f32;
+          $7C:
+            wbt:=wbt_f64;
+          $7B:
+            wbt:=wbt_v128;
+          $70:
+            wbt:=wbt_funcref;
+          $6F:
+            wbt:=wbt_externref;
+          else
+            begin
+              result:=false;
+              wbt:=default(TWasmBasicType);
+            end;
+        end;
+      end;
+
 {*****************************************************************************
                                   TWasmFuncType
 *****************************************************************************}
@@ -644,6 +676,29 @@ uses
           end
         else
           Result:=inherited Equals(Obj);
+      end;
+
+    function TWasmFuncType.ToString: ansistring;
+      const
+        wasm_basic_type_str : array [TWasmBasicType] of string = ('i32','i64','f32','f64','funcref','externref','v128');
+      var
+        i: Integer;
+      begin
+        Result:='(';
+        for i:=0 to high(params) do
+          begin
+            if i<>0 then
+              Result:=Result+', ';
+            Result:=Result+wasm_basic_type_str[params[i]];
+          end;
+        Result:=Result+') -> (';
+        for i:=0 to high(results) do
+          begin
+            if i<>0 then
+              Result:=Result+', ';
+            Result:=Result+wasm_basic_type_str[results[i]];
+          end;
+        Result:=Result+')';
       end;
 
 end.

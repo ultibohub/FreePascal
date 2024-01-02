@@ -878,5 +878,7 @@ begin
 {$include gstreamer/fpmake.pp}
 end;
 
+{$include testinsight/fpmake.pp}
+
 {$include ide/fpmake.pp}
 {$include gitlab/fpmake.pp}

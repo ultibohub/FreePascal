@@ -4057,6 +4057,8 @@ begin
         end;
       't': // subtarget
         begin
+        if not FromCmdLine then
+          ParamFatal('subtarget -t parameter can only be passed as cmd line parameter');
         inc(p);
         SubTarget:=copy(Param,p,length(Param));
         end;
@@ -4277,7 +4279,8 @@ procedure TPas2jsCompiler.SetSubTarget(AValue: String);
 begin
   if FSubTarget=AValue then Exit;
   FSubTarget:=AValue;
-  //
+  AddDefine('FPC_SUBTARGET',UPPERCASE(aValue));
+  AddDefine('FPC_SUBTARGET_'+UPPERCASE(aValue));
 end;
 
 function TPas2jsCompiler.CreateImportList: TJSSourceElements;

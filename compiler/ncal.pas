@@ -1022,6 +1022,7 @@ implementation
            initcopy:=fparainit.getcopy;
          n:=tcallparanode(inherited dogetcopy);
          n.callparaflags:=callparaflags;
+         n.originalindex:=originalindex;
          n.parasym:=parasym;
          n.fparainit:=initcopy;
          if assigned(fparacopyback) then
@@ -1819,7 +1820,8 @@ implementation
         n.procdefinition:=procdefinition;
         n.typedef := typedef;
         n.callnodeflags := callnodeflags;
-        n.pushedparasize:=pushedparasize;
+        n.pushedparasize := pushedparasize;
+        n.intrinsiccode := intrinsiccode;
         if assigned(callinitblock) then
           n.callinitblock:=tblocknode(callinitblock.dogetcopy)
         else
@@ -4341,7 +4343,7 @@ implementation
              (procdefinition.parast.symtablelevel<=current_procinfo.procdef.parast.symtablelevel) and
              (procdefinition.parast.symtablelevel>normal_function_level) and
              (current_procinfo.procdef.parast.symtablelevel>normal_function_level) then
-           current_procinfo.add_captured_sym(tprocdef(procdefinition).procsym,fileinfo);
+           current_procinfo.add_captured_sym(tprocdef(procdefinition).procsym,procdefinition,fileinfo);
 
          finally
            aktcallnode:=oldcallnode;
