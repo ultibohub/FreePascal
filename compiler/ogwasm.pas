@@ -97,6 +97,7 @@ interface
         { used during linking }
         FuncType: TWasmFuncType;
         ExeTypeIndex: Integer;
+        IsFunctionOffsetI32: Boolean;
 
         constructor CreateTypeIndex(ADataOffset:TObjSectionOfs; ATypeIndex: Integer);
         constructor CreateFuncType(ADataOffset:TObjSectionOfs; AFuncType: TWasmFuncType);
@@ -257,12 +258,16 @@ interface
         end;
 
         FWasmSections: array [TWasmSectionID] of tdynamicarray;
+        FWasmCustomSections: array [TWasmCustomSectionType] of tdynamicarray;
         FStackPointerSym: TWasmObjSymbol;
+        FMinMemoryPages: Integer;
         procedure WriteWasmSection(wsid: TWasmSectionID);
+        procedure WriteWasmCustomSection(wcst: TWasmCustomSectionType);
         procedure PrepareImports;
         procedure PrepareFunctions;
         function AddOrGetIndirectFunctionTableIndex(FuncIdx: Integer): integer;
         procedure SetStackPointer;
+        procedure WriteExeSectionToDynArray(exesec: TExeSection; dynarr: tdynamicarray);
       protected
         function writeData:boolean;override;
         procedure DoRelocationFixup(objsec:TObjSection);override;
@@ -2370,6 +2375,7 @@ implementation
 
         CodeSectionIndex: Integer = -1;
         DataSectionIndex: Integer = -1;
+        DebugSectionIndex: array [TWasmCustomDebugSectionType] of Integer = (-1,-1,-1,-1,-1,-1,-1);
 
         FuncTypes: array of record
           IsImport: Boolean;
@@ -2440,17 +2446,18 @@ implementation
           SymIndex: uint32;
           SymOffset: uint32;
           SymSize: uint32;
-          SymKind: Byte;
+          SymKind: TWasmSymbolType;
           SymName: ansistring;
           ObjSym: TWasmObjSymbol;
+          ObjSec: TWasmObjSection;
         end;
 
         { meaning of first index: }
         {   table 0 is code relocs }
         {   table 1 is data relocs }
-        {   tables 2.. are custom section relocs }
+        {   tables 2.. are custom section relocs for debug sections }
         RelocationTable: array of array of record
-          RelocType: Byte;
+          RelocType: TWasmRelocationType;
           RelocOffset: uint32;
           RelocIndex: uint32;
           RelocAddend: int32;
@@ -2574,6 +2581,7 @@ implementation
               TargetSection, RelocCount: uint32;
               i: Integer;
               RelocTableIndex: Integer;
+              ds: TWasmCustomDebugSectionType;
             begin
               Result:=False;
               if not ReadUleb32(TargetSection) then
@@ -2587,8 +2595,18 @@ implementation
                 RelocTableIndex:=1
               else
                 begin
-                  InputError('Relocation for custom sections not supported, yet');
-                  exit;
+                  RelocTableIndex:=-1;
+                  for ds:=Low(DebugSectionIndex) to High(DebugSectionIndex) do
+                    if DebugSectionIndex[ds]=TargetSection then
+                      begin
+                        RelocTableIndex:=2+(Ord(ds)-Ord(Low(TWasmCustomDebugSectionType)));
+                        break;
+                      end;
+                  if RelocTableIndex=-1 then
+                    begin
+                      InputError('Relocation found for a custom section, that is not supported');
+                      exit;
+                    end;
                 end;
               if not ReadUleb32(RelocCount) then
                 begin
@@ -2604,19 +2622,19 @@ implementation
                         InputError('Error reading the relocation type of a relocation entry');
                         exit;
                       end;
-                    if not (TWasmRelocationType(RelocType) in [R_WASM_FUNCTION_INDEX_LEB,
-                                                               R_WASM_MEMORY_ADDR_LEB,
-                                                               R_WASM_TABLE_INDEX_SLEB,
-                                                               R_WASM_MEMORY_ADDR_SLEB,
-                                                               R_WASM_SECTION_OFFSET_I32,
-                                                               R_WASM_TABLE_INDEX_I32,
-                                                               R_WASM_FUNCTION_OFFSET_I32,
-                                                               R_WASM_MEMORY_ADDR_I32,
-                                                               R_WASM_TYPE_INDEX_LEB,
-                                                               R_WASM_GLOBAL_INDEX_LEB,
-                                                               R_WASM_TAG_INDEX_LEB]) then
+                    if not (RelocType in [R_WASM_FUNCTION_INDEX_LEB,
+                                          R_WASM_MEMORY_ADDR_LEB,
+                                          R_WASM_TABLE_INDEX_SLEB,
+                                          R_WASM_MEMORY_ADDR_SLEB,
+                                          R_WASM_SECTION_OFFSET_I32,
+                                          R_WASM_TABLE_INDEX_I32,
+                                          R_WASM_FUNCTION_OFFSET_I32,
+                                          R_WASM_MEMORY_ADDR_I32,
+                                          R_WASM_TYPE_INDEX_LEB,
+                                          R_WASM_GLOBAL_INDEX_LEB,
+                                          R_WASM_TAG_INDEX_LEB]) then
                       begin
-                        InputError('Unsupported relocation type: ' + tostr(RelocType));
+                        InputError('Unsupported relocation type: ' + tostr(Ord(RelocType)));
                         exit;
                       end;
                     if not ReadUleb32(RelocOffset) then
@@ -2629,13 +2647,59 @@ implementation
                         InputError('Error reading the relocation index of a relocation entry');
                         exit;
                       end;
-                    if TWasmRelocationType(RelocType) in [R_WASM_FUNCTION_OFFSET_I32,R_WASM_SECTION_OFFSET_I32,R_WASM_MEMORY_ADDR_LEB,R_WASM_MEMORY_ADDR_SLEB,R_WASM_MEMORY_ADDR_I32] then
+                    if RelocType in [R_WASM_FUNCTION_OFFSET_I32,R_WASM_SECTION_OFFSET_I32,R_WASM_MEMORY_ADDR_LEB,R_WASM_MEMORY_ADDR_SLEB,R_WASM_MEMORY_ADDR_I32] then
                       begin
                         if not ReadSleb32(RelocAddend) then
                           begin
                             InputError('Error reading the relocation addend of a relocation entry');
                             exit;
                           end;
+                      end;
+                    if (RelocType in [
+                          R_WASM_SECTION_OFFSET_I32,
+                          R_WASM_FUNCTION_INDEX_LEB,
+                          R_WASM_TABLE_INDEX_SLEB,
+                          R_WASM_TABLE_INDEX_I32,
+                          R_WASM_MEMORY_ADDR_LEB,
+                          R_WASM_MEMORY_ADDR_SLEB,
+                          R_WASM_MEMORY_ADDR_I32,
+                          R_WASM_FUNCTION_OFFSET_I32,
+                          R_WASM_GLOBAL_INDEX_LEB]) and (RelocIndex>High(SymbolTable)) then
+                      begin
+                        InputError('Relocation index outside the bounds of the symbol table');
+                        exit;
+                      end;
+                    if (RelocType=R_WASM_TYPE_INDEX_LEB) and (RelocIndex>High(FFuncTypes)) then
+                      begin
+                        InputError('Relocation index of R_WASM_TYPE_INDEX_LEB outside the bounds of the func types, defined in the func section of the module');
+                        exit;
+                      end;
+                    if (RelocType=R_WASM_SECTION_OFFSET_I32) and (SymbolTable[RelocIndex].SymKind<>SYMTAB_SECTION) then
+                      begin
+                        InputError('R_WASM_SECTION_OFFSET_I32 must point to a SYMTAB_SECTION symbol');
+                        exit;
+                      end;
+                    if (RelocType=R_WASM_GLOBAL_INDEX_LEB) and (SymbolTable[RelocIndex].SymKind<>SYMTAB_GLOBAL) then
+                      begin
+                        InputError('Relocation must point to a SYMTAB_GLOBAL symbol');
+                        exit;
+                      end;
+                    if (RelocType in [
+                          R_WASM_FUNCTION_INDEX_LEB,
+                          R_WASM_TABLE_INDEX_SLEB,
+                          R_WASM_TABLE_INDEX_I32,
+                          R_WASM_FUNCTION_OFFSET_I32]) and (SymbolTable[RelocIndex].SymKind<>SYMTAB_FUNCTION) then
+                      begin
+                        InputError('Relocation must point to a SYMTAB_FUNCTION symbol');
+                        exit;
+                      end;
+                    if (RelocType in [
+                          R_WASM_MEMORY_ADDR_LEB,
+                          R_WASM_MEMORY_ADDR_SLEB,
+                          R_WASM_MEMORY_ADDR_I32]) and (SymbolTable[RelocIndex].SymKind<>SYMTAB_DATA) then
+                      begin
+                        InputError('Relocation must point to a SYMTAB_DATA symbol');
+                        exit;
                       end;
                   end;
               if AReader.Pos<>(SectionStart+SectionSize) then
@@ -2702,6 +2766,7 @@ implementation
                 SymCount: uint32;
                 i: Integer;
                 SymKindName: string;
+                SymKindB: Byte;
               begin
                 Result:=False;
                 if SymbolTableSectionRead then
@@ -2719,29 +2784,35 @@ implementation
                 for i:=0 to SymCount-1 do
                   with SymbolTable[i] do
                     begin
-                      if not Read(SymKind,1) then
+                      if not Read(SymKindB,1) then
                         begin
                           InputError('Error reading symbol type from the WASM_SYMBOL_TABLE subsection of the ''linking'' section');
                           exit;
                         end;
+                      if SymKindB>Ord(High(TWasmSymbolType)) then
+                        begin
+                          InputError('Unsupported symbol type from the WASM_SYMBOL_TABLE subsection of the ''linking'' section');
+                          exit;
+                        end;
+                      SymKind:=TWasmSymbolType(SymKindB);
                       if not ReadUleb32(SymFlags) then
                         begin
                           InputError('Error reading symbol flags from the WASM_SYMBOL_TABLE subsection of the ''linking'' section');
                           exit;
                         end;
                       case SymKind of
-                        byte(SYMTAB_FUNCTION),
-                        byte(SYMTAB_GLOBAL),
-                        byte(SYMTAB_EVENT),
-                        byte(SYMTAB_TABLE):
+                        SYMTAB_FUNCTION,
+                        SYMTAB_GLOBAL,
+                        SYMTAB_EVENT,
+                        SYMTAB_TABLE:
                           begin
-                            WriteStr(SymKindName, TWasmSymbolType(SymKind));
+                            WriteStr(SymKindName, SymKind);
                             if not ReadUleb32(SymIndex) then
                               begin
                                 InputError('Error reading the index of a ' + SymKindName + ' symbol');
                                 exit;
                               end;
-                            if ((SymKind=byte(SYMTAB_FUNCTION)) and (SymIndex>high(FuncTypes))) then
+                            if ((SymKind=SYMTAB_FUNCTION) and (SymIndex>high(FuncTypes))) then
                               begin
                                 InputError('Symbol index too high');
                                 exit;
@@ -2756,7 +2827,7 @@ implementation
                                   end;
                               end;
                           end;
-                        byte(SYMTAB_DATA):
+                        SYMTAB_DATA:
                           begin
                             if not ReadName(SymName) then
                               begin
@@ -2787,18 +2858,13 @@ implementation
                                   end;
                               end;
                           end;
-                        byte(SYMTAB_SECTION):
+                        SYMTAB_SECTION:
                           begin
                             if not ReadUleb32(TargetSection) then
                               begin
                                 InputError('Error reading the target section of a SYMTAB_SECTION symbol');
                                 exit;
                               end;
-                          end;
-                        else
-                          begin
-                            InputError('Unsupported symbol kind: ' + tostr(SymKind));
-                            exit;
                           end;
                       end;
                     end;
@@ -2885,6 +2951,23 @@ implementation
               Result:=False;
             end;
 
+          function ReadDebugSection(const SectionName: string; SectionType: TWasmCustomDebugSectionType): Boolean;
+            var
+              ObjSec: TObjSection;
+            begin
+              Result:=False;
+              if DebugSectionIndex[SectionType]<>-1 then
+                begin
+                  InputError('Duplicated debug section: ' + SectionName);
+                  exit;
+                end;
+              DebugSectionIndex[SectionType]:=SectionIndex;
+              ObjSec:=ObjData.createsection(SectionName,1,[oso_Data,oso_debug],false);
+              ObjSec.DataPos:=AReader.Pos;
+              ObjSec.Size:=SectionStart+SectionSize-AReader.Pos;
+              Result:=True;
+            end;
+
           const
             RelocationSectionPrefix = 'reloc.';
           var
@@ -2912,6 +2995,48 @@ implementation
                   Result:=ReadProducersSection;
                 'target_features':
                   Result:=ReadTargetFeaturesSection;
+                '.debug_frame':
+                  if not ReadDebugSection(SectionName, wcstDebugFrame) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
+                '.debug_info':
+                  if not ReadDebugSection(SectionName, wcstDebugInfo) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
+                '.debug_line':
+                  if not ReadDebugSection(SectionName, wcstDebugLine) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
+                '.debug_abbrev':
+                  if not ReadDebugSection(SectionName, wcstDebugAbbrev) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
+                '.debug_aranges':
+                  if not ReadDebugSection(SectionName, wcstDebugAranges) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
+                '.debug_ranges':
+                  if not ReadDebugSection(SectionName, wcstDebugRanges) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
+                '.debug_str':
+                  if not ReadDebugSection(SectionName, wcstDebugStr) then
+                    begin
+                      InputError('Error reading section ' + SectionName);
+                      exit;
+                    end;
                 else
                   InputError('Unsupported custom section: ''' + SectionName + '''');
               end;
@@ -3863,10 +3988,11 @@ implementation
       var
         ModuleMagic: array [0..3] of Byte;
         ModuleVersion: array [0..3] of Byte;
-        i, j, FirstDataSegmentIdx, SegI: Integer;
+        i, j, FirstCodeSegmentIdx, FirstDataSegmentIdx, SegI: Integer;
         CurrSec, ObjSec: TObjSection;
         BaseSectionOffset: UInt32;
         ObjReloc: TWasmObjRelocation;
+        ds: TWasmCustomDebugSectionType;
       begin
         FReader:=AReader;
         InputFileName:=AReader.FileName;
@@ -3876,7 +4002,7 @@ implementation
         DataSegments:=nil;
         SymbolTable:=nil;
         RelocationTable:=nil;
-        SetLength(RelocationTable,2);
+        SetLength(RelocationTable,2+(Ord(High(TWasmCustomDebugSectionType))-Ord(Low(TWasmCustomDebugSectionType))+1));
         FuncTypes:=nil;
         FuncTypeImportsCount:=0;
         TableTypes:=nil;
@@ -3903,7 +4029,7 @@ implementation
         { fill the code segment names }
         for i:=low(SymbolTable) to high(SymbolTable) do
           with SymbolTable[i] do
-            if (SymKind=byte(SYMTAB_FUNCTION)) and ((SymFlags and WASM_SYM_UNDEFINED)=0) then
+            if (SymKind=SYMTAB_FUNCTION) and ((SymFlags and WASM_SYM_UNDEFINED)=0) then
               begin
                 if FuncTypes[SymIndex].IsImport then
                   begin
@@ -3921,6 +4047,7 @@ implementation
               end;
 
         { create segments }
+        FirstCodeSegmentIdx:=ObjData.ObjSectionList.Count;
         for i:=low(CodeSegments) to high(CodeSegments) do
           with CodeSegments[i] do
             begin
@@ -3951,7 +4078,7 @@ implementation
         for i:=low(SymbolTable) to high(SymbolTable) do
           with SymbolTable[i] do
             case SymKind of
-              byte(SYMTAB_DATA):
+              SYMTAB_DATA:
                 if (SymFlags and WASM_SYM_UNDEFINED)<>0 then
                   begin
                     objsym:=TWasmObjSymbol(ObjData.CreateSymbol(SymName));
@@ -3973,7 +4100,7 @@ implementation
                     objsym.offset:=SymOffset;
                     objsym.size:=SymSize;
                   end;
-              byte(SYMTAB_FUNCTION):
+              SYMTAB_FUNCTION:
                 begin
                   if (SymFlags and WASM_SYM_UNDEFINED)<>0 then
                     begin
@@ -4011,9 +4138,9 @@ implementation
                       objsym:=TWasmObjSymbol(ObjData.CreateSymbol(SymName));
                       objsym.bind:=AB_GLOBAL;
                       objsym.typ:=AT_FUNCTION;
-                      objsym.objsection:=TObjSection(ObjData.ObjSectionList[SymIndex-FuncTypeImportsCount]);
+                      objsym.objsection:=TObjSection(ObjData.ObjSectionList[FirstCodeSegmentIdx+SymIndex-FuncTypeImportsCount]);
                       if (SymFlags and WASM_SYM_EXPLICIT_NAME)=0 then
-                        TWasmObjSection(ObjData.ObjSectionList[SymIndex-FuncTypeImportsCount]).MainFuncSymbol:=objsym;
+                        TWasmObjSection(ObjData.ObjSectionList[FirstCodeSegmentIdx+SymIndex-FuncTypeImportsCount]).MainFuncSymbol:=objsym;
                       objsym.offset:=0;
                       objsym.size:=objsym.objsection.Size;
                     end;
@@ -4021,7 +4148,7 @@ implementation
                   objsym.LinkingData.IsExported:=FuncTypes[SymIndex].IsExported;
                   objsym.LinkingData.ExportName:=FuncTypes[SymIndex].ExportName;
                 end;
-              byte(SYMTAB_GLOBAL):
+              SYMTAB_GLOBAL:
                 begin
                   if (SymFlags and WASM_SYM_UNDEFINED)<>0 then
                     begin
@@ -4078,12 +4205,23 @@ implementation
                   objsym.LinkingData.IsExported:=GlobalTypes[SymIndex].IsExported;
                   objsym.LinkingData.ExportName:=GlobalTypes[SymIndex].ExportName;
                 end;
-              byte(SYMTAB_SECTION),
-              byte(SYMTAB_EVENT),
-              byte(SYMTAB_TABLE):
+              SYMTAB_SECTION:
+                begin
+                  for ds:=Low(DebugSectionIndex) to High(DebugSectionIndex) do
+                    if DebugSectionIndex[ds]=TargetSection then
+                      begin
+                        ObjSec:=TWasmObjSection(ObjData.findsection(WasmCustomSectionName[ds]));
+                        break;
+                      end;
+                  if ObjSec=nil then
+                    begin
+                      InputError('SYMTAB_SECTION entry points to an unsupported section');
+                      exit;
+                    end;
+                end;
+              SYMTAB_EVENT,
+              SYMTAB_TABLE:
                 {TODO};
-              else
-                internalerror(2023122701);
             end;
 
         for j:=0 to high(RelocationTable) do
@@ -4100,7 +4238,7 @@ implementation
                           Exit;
                         end;
                       BaseSectionOffset:=CodeSegments[SegI].CodeSectionOffset;
-                      ObjSec:=TObjSection(ObjData.ObjSectionList[SegI]);
+                      ObjSec:=TObjSection(ObjData.ObjSectionList[FirstCodeSegmentIdx+SegI]);
                     end;
                   1:
                     begin
@@ -4112,144 +4250,57 @@ implementation
                         end;
                       BaseSectionOffset:=DataSegments[SegI].DataSectionOffset;
                       ObjSec:=TObjSection(ObjData.ObjSectionList[FirstDataSegmentIdx+SegI]);
-                    end
+                    end;
+                  2..2+(Ord(High(TWasmCustomDebugSectionType))-Ord(Low(TWasmCustomDebugSectionType))):
+                    begin
+                      BaseSectionOffset:=0;
+                      ObjSec:=ObjData.findsection(WasmCustomSectionName[TWasmCustomSectionType((j-2)+Ord(Low(TWasmCustomDebugSectionType)))]);
+                    end;
                   else
                     internalerror(2023122801);
                 end;
-                case TWasmRelocationType(RelocType) of
+                case RelocType of
                   R_WASM_FUNCTION_INDEX_LEB:
-                    begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_FUNCTION_INDEX_LEB))
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
-                    end;
+                    ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_FUNCTION_INDEX_LEB));
                   R_WASM_TABLE_INDEX_SLEB:
-                    begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB))
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
-                    end;
+                    ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB));
                   R_WASM_TABLE_INDEX_I32:
-                    begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        begin
-                          if SymbolTable[RelocIndex].ObjSym.typ<>AT_FUNCTION then
-                            begin
-                              InputError('R_WASM_TABLE_INDEX_I32 relocation must point to a function symbol');
-                              exit;
-                            end;
-                          ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE))
-                        end
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
-                    end;
+                    ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE));
                   R_WASM_MEMORY_ADDR_LEB:
                     begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        begin
-                          ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_MEMORY_ADDR_LEB);
-                          ObjReloc.Addend:=RelocAddend;
-                          ObjSec.ObjRelocations.Add(ObjReloc);
-                        end
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
+                      ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_MEMORY_ADDR_LEB);
+                      ObjReloc.Addend:=RelocAddend;
+                      ObjSec.ObjRelocations.Add(ObjReloc);
                     end;
                   R_WASM_MEMORY_ADDR_SLEB:
                     begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        begin
-                          ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB);
-                          ObjReloc.Addend:=RelocAddend;
-                          ObjSec.ObjRelocations.Add(ObjReloc);
-                        end
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
+                      ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB);
+                      ObjReloc.Addend:=RelocAddend;
+                      ObjSec.ObjRelocations.Add(ObjReloc);
                     end;
                   R_WASM_MEMORY_ADDR_I32:
                     begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        begin
-                          ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE);
-                          ObjReloc.Addend:=RelocAddend;
-                          ObjSec.ObjRelocations.Add(ObjReloc);
-                        end
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
+                      ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE);
+                      ObjReloc.Addend:=RelocAddend;
+                      ObjSec.ObjRelocations.Add(ObjReloc);
                     end;
                   R_WASM_TYPE_INDEX_LEB:
-                    begin
-                      if RelocIndex>high(FFuncTypes) then
-                        begin
-                          InputError('Type index in relocation too high');
-                          exit;
-                        end;
-                      ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateFuncType(RelocOffset-BaseSectionOffset,FFuncTypes[RelocIndex]));
-                    end;
+                    ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateFuncType(RelocOffset-BaseSectionOffset,FFuncTypes[RelocIndex]));
                   R_WASM_FUNCTION_OFFSET_I32:
                     begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        begin
-                          ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE);
-                          ObjReloc.Addend:=RelocAddend;
-                          ObjSec.ObjRelocations.Add(ObjReloc);
-                        end
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
+                      ObjReloc:=TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE);
+                      ObjReloc.Addend:=RelocAddend;
+                      ObjReloc.IsFunctionOffsetI32:=True;
+                      ObjSec.ObjRelocations.Add(ObjReloc);
                     end;
                   R_WASM_SECTION_OFFSET_I32:
                     begin
-                      InputError('R_WASM_SECTION_OFFSET_I32 relocations not yet implemented');
-                      exit;
+                      ObjReloc:=TWasmObjRelocation.CreateSection(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSec,RELOC_ABSOLUTE);
+                      ObjReloc.Addend:=RelocAddend;
+                      ObjSec.ObjRelocations.Add(ObjReloc);
                     end;
                   R_WASM_GLOBAL_INDEX_LEB:
-                    begin
-                      if RelocIndex>high(SymbolTable) then
-                        begin
-                          InputError('Symbol index in relocation too high');
-                          exit;
-                        end;
-                      if Assigned(SymbolTable[RelocIndex].ObjSym) then
-                        ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_GLOBAL_INDEX_LEB))
-                      else
-                        Writeln('Warning! No object symbol created for ', SymbolTable[RelocIndex].SymName);
-                    end;
+                    ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_GLOBAL_INDEX_LEB));
                   R_WASM_TAG_INDEX_LEB:
                     begin
                       InputError('R_WASM_TAG_INDEX_LEB relocations not yet implemented');
@@ -4275,6 +4326,16 @@ implementation
         Writer.write(b,1);
         WriteUleb(Writer,FWasmSections[wsid].size);
         Writer.writearray(FWasmSections[wsid]);
+      end;
+
+    procedure TWasmExeOutput.WriteWasmCustomSection(wcst: TWasmCustomSectionType);
+      var
+        b: byte;
+      begin
+        b:=0;
+        Writer.write(b,1);
+        WriteUleb(Writer,FWasmCustomSections[wcst].size);
+        Writer.writearray(FWasmCustomSections[wcst]);
       end;
 
     function TWasmExeOutput.writeData: boolean;
@@ -4505,8 +4566,26 @@ implementation
             end;
         end;
 
+      procedure MaybeWriteDebugSection(st: TWasmCustomDebugSectionType);
+        var
+          exesec: TExeSection;
+        begin
+          exesec:=FindExeSection(WasmCustomSectionName[st]);
+          if assigned(exesec) then
+            begin
+              WriteExeSectionToDynArray(exesec,FWasmCustomSections[st]);
+              WriteWasmCustomSection(st);
+            end;
+        end;
+
+      var
+        cust_sec: TWasmCustomSectionType;
       begin
         result:=false;
+
+        { each custom sections starts with its name }
+        for cust_sec in TWasmCustomSectionType do
+          WriteName(FWasmCustomSections[cust_sec],WasmCustomSectionName[cust_sec]);
 
         SetStackPointer;
 
@@ -4520,7 +4599,7 @@ implementation
 
         WriteUleb(FWasmSections[wsiMemory],1);
         WriteByte(FWasmSections[wsiMemory],0);
-        WriteUleb(FWasmSections[wsiMemory],2);  { todo: fill min memory (pages) }
+        WriteUleb(FWasmSections[wsiMemory],FMinMemoryPages);
 
         {...}
 
@@ -4537,6 +4616,14 @@ implementation
         WriteWasmSection(wsiDataCount);
         WriteWasmSection(wsiCode);
         WriteWasmSection(wsiData);
+
+        MaybeWriteDebugSection(wcstDebugAbbrev);
+        MaybeWriteDebugSection(wcstDebugInfo);
+        MaybeWriteDebugSection(wcstDebugStr);
+        MaybeWriteDebugSection(wcstDebugLine);
+        MaybeWriteDebugSection(wcstDebugFrame);
+        MaybeWriteDebugSection(wcstDebugAranges);
+        MaybeWriteDebugSection(wcstDebugRanges);
 
         result := true;
       end;
@@ -4575,15 +4662,27 @@ implementation
                       case objsym.typ of
                         AT_FUNCTION:
                           begin
-                            if objsym.LinkingData.ExeFunctionIndex=-1 then
-                              internalerror(2024010103);
-                            if objsym.LinkingData.ExeIndirectFunctionTableIndex=-1 then
-                              objsym.LinkingData.ExeIndirectFunctionTableIndex:=AddOrGetIndirectFunctionTableIndex(objsym.LinkingData.ExeFunctionIndex);
-                            objsec.Data.seek(objreloc.DataOffset);
-                            writeUInt32LE(UInt32(objsym.LinkingData.ExeIndirectFunctionTableIndex));
+                            if objreloc.IsFunctionOffsetI32 then
+                              begin
+                                { R_WASM_FUNCTION_OFFSET_I32 }
+                                objsec.Data.seek(objreloc.DataOffset);
+                                writeUInt32LE(UInt32(objsym.objsection.MemPos+objreloc.Addend));
+                              end
+                            else
+                              begin
+                                { R_WASM_TABLE_INDEX_I32 }
+                                if objsym.LinkingData.ExeFunctionIndex=-1 then
+                                  internalerror(2024010103);
+                                if objsym.LinkingData.ExeIndirectFunctionTableIndex=-1 then
+                                  objsym.LinkingData.ExeIndirectFunctionTableIndex:=AddOrGetIndirectFunctionTableIndex(objsym.LinkingData.ExeFunctionIndex);
+                                objsec.Data.seek(objreloc.DataOffset);
+                                writeUInt32LE(UInt32(objsym.LinkingData.ExeIndirectFunctionTableIndex));
+                              end;
                           end;
                         AT_DATA:
                           begin
+                            if objreloc.IsFunctionOffsetI32 then
+                              internalerror(2024010602);
                             objsec.Data.seek(objreloc.DataOffset);
                             writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
                           end;
@@ -4630,6 +4729,13 @@ implementation
                     Writeln('Symbol relocation not yet implemented! ', objreloc.typ);
                 end;
               end
+            else if assigned(objreloc.objsection) then
+              begin
+                if objreloc.typ<>RELOC_ABSOLUTE then
+                  internalerror(2024010601);
+                objsec.Data.seek(objreloc.DataOffset);
+                writeUInt32LE(UInt32((objreloc.objsection.MemPos)+objreloc.Addend));
+              end
             else if objreloc.typ=RELOC_TYPE_INDEX_LEB then
               begin
                 objreloc.ExeTypeIndex:=FFuncTypes.AddOrGetFuncType(objreloc.FuncType);
@@ -4644,6 +4750,7 @@ implementation
     constructor TWasmExeOutput.create;
       var
         i: TWasmSectionID;
+        j: TWasmCustomSectionType;
       begin
         inherited create;
         CObjData:=TWasmObjData;
@@ -4651,6 +4758,8 @@ implementation
         FFuncTypes:=TWasmFuncTypeTable.Create;
         for i in TWasmSectionID do
           FWasmSections[i] := tdynamicarray.create(SectionDataMaxGrow);
+        for j in TWasmCustomSectionType do
+          FWasmCustomSections[j] := tdynamicarray.create(SectionDataMaxGrow);
         SetLength(FIndirectFunctionTable,1);
         FIndirectFunctionTable[0].FuncIdx:=-1;
       end;
@@ -4658,9 +4767,12 @@ implementation
     destructor TWasmExeOutput.destroy;
       var
         i: TWasmSectionID;
+        j: TWasmCustomSectionType;
       begin
         for i in TWasmSectionID do
           FWasmSections[i].Free;
+        for j in TWasmCustomSectionType do
+          FWasmCustomSections[j].Free;
         FFuncTypes.Free;
         inherited destroy;
       end;
@@ -4700,6 +4812,8 @@ implementation
       end;
 
     procedure TWasmExeOutput.MemPos_ExeSection(const aname: string);
+      const
+        DebugPrefix = '.debug_';
       var
         ExeSec: TExeSection;
         i: Integer;
@@ -4734,6 +4848,11 @@ implementation
 
             { calculate size of the section }
             exesec.Size:=CurrMemPos-exesec.MemPos;
+          end
+        else if Copy(aname,1,Length(DebugPrefix))=DebugPrefix then
+          begin
+            CurrMemPos:=0;
+            inherited;
           end
         else
           inherited;
@@ -4779,6 +4898,8 @@ implementation
         ImportSymbol: TImportSymbol;
         exesym: TExeSymbol;
         newdll: Boolean;
+        fsym: TWasmObjSymbol;
+        objdata: TObjData;
       begin
         for i:=0 to FImports.Count-1 do
           begin
@@ -4800,6 +4921,18 @@ implementation
                     TWasmObjSymbol(exesym.ObjSymbol).LinkingData.ExeFunctionIndex:=
                       AddFunctionImport(ImportLibrary.Name,ImportSymbol.Name,TWasmObjSymbol(exesym.ObjSymbol).LinkingData.FuncType);
                   end;
+              end;
+          end;
+
+        { set ExeFunctionIndex to the alias symbols as well }
+        for i:=0 to ObjDataList.Count-1 do
+          begin
+            objdata:=TObjData(ObjDataList[i]);
+            for j:=0 to objdata.ObjSymbolList.Count-1 do
+              begin
+                fsym:=TWasmObjSymbol(objdata.ObjSymbolList[j]);
+                if (fsym.LinkingData.ExeFunctionIndex=-1) and assigned(fsym.exesymbol) and (TWasmObjSymbol(fsym.exesymbol.ObjSymbol).LinkingData.ExeFunctionIndex<>-1) then
+                  fsym.LinkingData.ExeFunctionIndex:=TWasmObjSymbol(fsym.exesymbol.ObjSymbol).LinkingData.ExeFunctionIndex;
               end;
           end;
       end;
@@ -4874,10 +5007,43 @@ implementation
     procedure TWasmExeOutput.SetStackPointer;
       var
         BssSec: TExeSection;
-        StackStart: QWord;
+        StackStart, InitialStackPtrAddr: QWord;
       begin
         BssSec:=FindExeSection('.bss');
-        FStackPointerSym.LinkingData.GlobalInitializer.init_i32:=Int32((BssSec.MemPos+BssSec.Size+stacksize+15) and (not 15));
+        InitialStackPtrAddr := (BssSec.MemPos+BssSec.Size+stacksize+15) and (not 15);
+        FMinMemoryPages := (InitialStackPtrAddr+65535) shr 16;
+        FStackPointerSym.LinkingData.GlobalInitializer.init_i32:=Int32(InitialStackPtrAddr);
+      end;
+
+    procedure TWasmExeOutput.WriteExeSectionToDynArray(exesec: TExeSection; dynarr: tdynamicarray);
+      var
+        exesecdatapos: LongWord;
+        i: Integer;
+        objsec: TObjSection;
+        dpos, pad: QWord;
+      begin
+        exesecdatapos:=dynarr.size;
+        for i:=0 to exesec.ObjSectionList.Count-1 do
+          begin
+            objsec:=TObjSection(exesec.ObjSectionList[i]);
+            if not (oso_data in objsec.secoptions) then
+              internalerror(2024010104);
+            if not assigned(objsec.data) then
+              internalerror(2024010105);
+
+            dpos:=objsec.MemPos-exesec.MemPos+exesecdatapos;
+            pad:=dpos-dynarr.size;
+            { objsection must be within SecAlign bytes from the previous one }
+            if (dpos<dynarr.Size) or
+              (pad>=max(objsec.SecAlign,1)) then
+              internalerror(2024010106);
+            writeZeros(dynarr,pad);
+
+            objsec.data.seek(0);
+            CopyDynamicArray(objsec.data,dynarr,objsec.data.size);
+          end;
+        if (dynarr.size-exesecdatapos)<>exesec.Size then
+          internalerror(2024010107);
       end;
 
 
