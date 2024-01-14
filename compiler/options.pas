@@ -5194,7 +5194,10 @@ begin
       ((option.paratargetasm=as_none) and (target_info.endian<>source_info.endian)) then
    begin
      if ((option.paratargetasm=as_none) and (target_info.endian<>source_info.endian)) then
-       Message(option_switch_bin_to_src_assembler_cross_endian)
+       begin
+         if not ((target_info.assem = target_info.assemextern) or (target_info.assem = as_none)) then
+           Message(option_switch_bin_to_src_assembler_cross_endian);
+       end
      else
        Message(option_switch_bin_to_src_assembler);
 {$ifdef llvm}
@@ -5370,7 +5373,7 @@ begin
         else
           begin
             if (not(FPUARM_HAS_VFP_EXTENSION in fpu_capabilities[init_settings.fputype]))
-	       or (target_info.system = system_arm_ios) then
+              or (target_info.system = system_arm_ios) then
               begin
                 Message(option_illegal_fpu_eabihf);
                 StopOptions(1);

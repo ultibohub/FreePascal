@@ -61,6 +61,8 @@ interface
         ExeIndirectFunctionTableIndex: Integer;
         ExeTypeIndex: Integer;
 
+        ExeTagIndex: Integer;
+
         GlobalType: TWasmBasicType;
         GlobalIsMutable: Boolean;
         GlobalInitializer: TGlobalInitializer;
@@ -253,6 +255,9 @@ interface
           TypeIdx: uint32;
         end;
 
+        FTagImports: array of record
+        end;
+
         FIndirectFunctionTable: array of record
           FuncIdx: Integer;
         end;
@@ -262,9 +267,11 @@ interface
         FStackPointerSym: TWasmObjSymbol;
         FMinMemoryPages: Integer;
         procedure WriteWasmSection(wsid: TWasmSectionID);
+        procedure WriteWasmSectionIfNotEmpty(wsid: TWasmSectionID);
         procedure WriteWasmCustomSection(wcst: TWasmCustomSectionType);
         procedure PrepareImports;
         procedure PrepareFunctions;
+        procedure PrepareTags;
         function AddOrGetIndirectFunctionTableIndex(FuncIdx: Integer): integer;
         procedure SetStackPointer;
         procedure WriteExeSectionToDynArray(exesec: TExeSection; dynarr: tdynamicarray);
@@ -600,6 +607,7 @@ implementation
         ExeFunctionIndex:=-1;
         ExeIndirectFunctionTableIndex:=-1;
         ExeTypeIndex:=-1;
+        ExeTagIndex:=-1;
       end;
 
     destructor TWasmObjSymbolLinkingData.Destroy;
@@ -2366,6 +2374,8 @@ implementation
         FunctionSectionRead: Boolean = false;
         GlobalSectionRead: Boolean = false;
         ExportSectionRead: Boolean = false;
+        ElementSectionRead: Boolean = false;
+        TagSectionRead: Boolean = false;
         CodeSectionRead: Boolean = false;
         DataSectionRead: Boolean = false;
         DataCountSectionRead: Boolean = false;
@@ -2419,6 +2429,17 @@ implementation
           GlobalInit: TGlobalInitializer;
         end;
         GlobalTypeImportsCount: uint32;
+
+        TagTypes: array of record
+          IsImport: Boolean;
+          ImportName: ansistring;
+          ImportModName: ansistring;
+          TagAttr: Byte;
+          TagTypeIdx: uint32;
+          IsExported: Boolean;
+          ExportName: ansistring;
+        end;
+        TagTypeImportsCount: uint32;
 
         CodeSegments: array of record
           CodeSectionOffset: uint32;
@@ -2684,6 +2705,11 @@ implementation
                         InputError('Relocation must point to a SYMTAB_GLOBAL symbol');
                         exit;
                       end;
+                    if (RelocType=R_WASM_TAG_INDEX_LEB) and (SymbolTable[RelocIndex].SymKind<>SYMTAB_EVENT) then
+                      begin
+                        InputError('Relocation must point to a SYMTAB_EVENT symbol');
+                        exit;
+                      end;
                     if (RelocType in [
                           R_WASM_FUNCTION_INDEX_LEB,
                           R_WASM_TABLE_INDEX_SLEB,
@@ -2812,7 +2838,8 @@ implementation
                                 InputError('Error reading the index of a ' + SymKindName + ' symbol');
                                 exit;
                               end;
-                            if ((SymKind=SYMTAB_FUNCTION) and (SymIndex>high(FuncTypes))) then
+                            if ((SymKind=SYMTAB_FUNCTION) and (SymIndex>high(FuncTypes))) or
+                               ((SymKind=SYMTAB_EVENT) and (SymIndex>high(TagTypes))) then
                               begin
                                 InputError('Symbol index too high');
                                 exit;
@@ -3338,6 +3365,32 @@ implementation
                           end;
                         end;
                     end;
+                  $04: { tag }
+                    begin
+                      Inc(TagTypeImportsCount);
+                      SetLength(TagTypes,TagTypeImportsCount);
+                      with TagTypes[TagTypeImportsCount-1] do
+                        begin
+                          IsImport:=True;
+                          ImportName:=Name;
+                          ImportModName:=ModName;
+                          if not Read(TagAttr,1) then
+                            begin
+                              InputError('Error reading import tag attribute');
+                              exit;
+                            end;
+                          if not ReadUleb32(TagTypeIdx) then
+                            begin
+                              InputError('Error reading import tag type index');
+                              exit;
+                            end;
+                          if TagTypeIdx>high(FFuncTypes) then
+                            begin
+                              InputError('Type index in tag import exceeds bounds of the types table');
+                              exit;
+                            end;
+                        end;
+                    end;
                   else
                     begin
                       InputError('Unknown import type: $' + HexStr(ImportType,2));
@@ -3529,7 +3582,7 @@ implementation
 
         function ReadExportSection: Boolean;
           var
-            ExportsCount, FuncIdx, TableIdx, MemIdx, GlobalIdx: uint32;
+            ExportsCount, FuncIdx, TableIdx, MemIdx, GlobalIdx, TagIdx: uint32;
             i: Integer;
             Name: ansistring;
             ExportType: Byte;
@@ -3631,6 +3684,24 @@ implementation
                           ExportName:=Name;
                         end;
                     end;
+                  $04:  { tag }
+                    begin
+                      if not ReadUleb32(TagIdx) then
+                        begin
+                          InputError('Error reading a tag index from the export section');
+                          exit;
+                        end;
+                      if TagIdx>high(TagTypes) then
+                        begin
+                          InputError('Tag index too high in the export section');
+                          exit;
+                        end;
+                      with TagTypes[TagIdx] do
+                        begin
+                          IsExported:=True;
+                          ExportName:=Name;
+                        end;
+                    end;
                   else
                     begin
                       InputError('Unsupported export type in the export section: ' + tostr(ExportType));
@@ -3641,6 +3712,65 @@ implementation
             if AReader.Pos<>(SectionStart+SectionSize) then
               begin
                 InputError('Unexpected export section size');
+                exit;
+              end;
+            Result:=True;
+          end;
+
+        function ReadElementSection: Boolean;
+          begin
+            Result:=False;
+            if ElementSectionRead then
+              begin
+                InputError('Element section is duplicated');
+                exit;
+              end;
+            ElementSectionRead:=True;
+            { We skip the element section for now }
+            { TODO: implement reading it (and linking of tables) }
+            Result:=True;
+          end;
+
+        function ReadTagSection: Boolean;
+          var
+            TagCount: uint32;
+            i: Integer;
+          begin
+            Result:=False;
+            if TagSectionRead then
+              begin
+                InputError('Tag section is duplicated');
+                exit;
+              end;
+            TagSectionRead:=True;
+            if not ReadUleb32(TagCount) then
+              begin
+                InputError('Error reading the tag count from the tag section');
+                exit;
+              end;
+            SetLength(TagTypes,Length(TagTypes)+TagCount);
+            for i:=0 to TagCount-1 do
+              with TagTypes[i + TagTypeImportsCount] do
+                begin
+                  if not Read(TagAttr,1) then
+                    begin
+                      InputError('Error reading tag attribute');
+                      exit;
+                    end;
+                  if not ReadUleb32(TagTypeIdx) then
+                    begin
+                      InputError('Error reading tag type index');
+                      exit;
+                    end;
+                  if TagTypeIdx>high(FFuncTypes) then
+                    begin
+                      InputError('Type index in tag import exceeds bounds of the types table');
+                      exit;
+                    end;
+                end;
+            if AReader.Pos<>(SectionStart+SectionSize) then
+              begin
+                InputError('Unexpected tag section size');
                 exit;
               end;
             Result:=True;
@@ -3910,6 +4040,18 @@ implementation
                   InputError('Error reading the export section');
                   exit;
                 end;
+            Byte(wsiElement):
+              if not ReadElementSection then
+                begin
+                  InputError('Error reading the element section');
+                  exit;
+                end;
+            Byte(wsiTag):
+              if not ReadTagSection then
+                begin
+                  InputError('Error reading the tag section');
+                  exit;
+                end;
             Byte(wsiCode):
               if not ReadCodeSection then
                 begin
@@ -4011,6 +4153,8 @@ implementation
         MemTypeImportsCount:=0;
         GlobalTypes:=nil;
         GlobalTypeImportsCount:=0;
+        TagTypes:=nil;
+        TagTypeImportsCount:=0;
 
         if not AReader.read(ModuleMagic,4) then
           exit;
@@ -4219,7 +4363,66 @@ implementation
                       exit;
                     end;
                 end;
-              SYMTAB_EVENT,
+              SYMTAB_EVENT:
+                begin
+                  if (SymFlags and WASM_SYM_UNDEFINED)<>0 then
+                    begin
+                      if not TagTypes[SymIndex].IsImport then
+                        begin
+                          InputError('WASM_SYM_UNDEFINED set on a SYMTAB_EVENT symbol, that is not an import');
+                          exit;
+                        end;
+                      if (SymFlags and WASM_SYM_EXPLICIT_NAME)<>0 then
+                        begin
+                          objsym:=TWasmObjSymbol(ObjData.CreateSymbol(SymName));
+                          objsym.bind:=AB_EXTERNAL;
+                          objsym.typ:=AT_WASM_EXCEPTION_TAG;
+                          objsym.objsection:=nil;
+                          objsym.offset:=0;
+                          objsym.size:=1;
+                          objsym.LinkingData.ImportModule:=TagTypes[SymIndex].ImportModName;
+                          objsym.LinkingData.ImportName:=TagTypes[SymIndex].ImportName;
+                        end
+                      else
+                        begin
+                          if GlobalTypes[SymIndex].ImportModName = 'env' then
+                            objsym:=TWasmObjSymbol(ObjData.CreateSymbol(GlobalTypes[SymIndex].ImportName))
+                          else
+                            objsym:=TWasmObjSymbol(ObjData.CreateSymbol(GlobalTypes[SymIndex].ImportModName + '.' + GlobalTypes[SymIndex].ImportName));
+                          objsym.bind:=AB_EXTERNAL;
+                          objsym.typ:=AT_WASM_EXCEPTION_TAG;
+                          objsym.objsection:=nil;
+                          objsym.offset:=0;
+                          objsym.size:=1;
+                        end;
+                    end
+                  else
+                    begin
+                      if TagTypes[SymIndex].IsImport then
+                        begin
+                          InputError('WASM_SYM_UNDEFINED not set on a SYMTAB_EVENT symbol, that is an import');
+                          exit;
+                        end;
+                      objsym:=TWasmObjSymbol(ObjData.CreateSymbol(SymName));
+                      if (symflags and WASM_SYM_BINDING_WEAK) <> 0 then
+                        objsym.bind:=AB_WEAK_EXTERNAL
+                      else if (symflags and WASM_SYM_BINDING_LOCAL) <> 0 then
+                        objsym.bind:=AB_LOCAL
+                      else
+                        objsym.bind:=AB_GLOBAL;
+                      objsym.typ:=AT_WASM_EXCEPTION_TAG;
+                      objsym.objsection:=ObjData.createsection('.wasm_tags.n_'+SymName,1,[oso_Data,oso_load],true);
+                      if objsym.objsection.Size=0 then
+                        objsym.objsection.WriteZeros(1);
+                      if (SymFlags and WASM_SYM_EXPLICIT_NAME)=0 then
+                        TWasmObjSection(objsym.objsection).MainFuncSymbol:=objsym;
+                      objsym.offset:=0;
+                      objsym.size:=1;
+                    end;
+                  objsym.LinkingData.FuncType:=TWasmFuncType.Create(FFuncTypes[TagTypes[SymIndex].TagTypeIdx]);
+                  objsym.LinkingData.IsExported:=TagTypes[SymIndex].IsExported;
+                  objsym.LinkingData.ExportName:=TagTypes[SymIndex].ExportName;
+                end;
               SYMTAB_TABLE:
                 {TODO};
             end;
@@ -4302,10 +4505,7 @@ implementation
                   R_WASM_GLOBAL_INDEX_LEB:
                     ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_GLOBAL_INDEX_LEB));
                   R_WASM_TAG_INDEX_LEB:
-                    begin
-                      InputError('R_WASM_TAG_INDEX_LEB relocations not yet implemented');
-                      exit;
-                    end;
+                    ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_TAG_INDEX_LEB));
                   else
                     internalerror(2023122802);
                 end;
@@ -4326,6 +4526,12 @@ implementation
         Writer.write(b,1);
         WriteUleb(Writer,FWasmSections[wsid].size);
         Writer.writearray(FWasmSections[wsid]);
+      end;
+
+    procedure TWasmExeOutput.WriteWasmSectionIfNotEmpty(wsid: TWasmSectionID);
+      begin
+        if FWasmSections[wsid].size>0 then
+          WriteWasmSection(wsid);
       end;
 
     procedure TWasmExeOutput.WriteWasmCustomSection(wcst: TWasmCustomSectionType);
@@ -4525,6 +4731,29 @@ implementation
             end;
         end;
 
+      procedure WriteTagSection;
+        var
+          exesec: TExeSection;
+          tags_count, i: Integer;
+          objsec: TWasmObjSection;
+        begin
+          exesec:=FindExeSection('.wasm_tags');
+          if not assigned(exesec) then
+            exit;
+          tags_count:=exesec.ObjSectionList.Count;
+          if tags_count<>exesec.Size then
+            internalerror(2024010702);
+          if tags_count=0 then
+            exit;
+          WriteUleb(FWasmSections[wsiTag],tags_count);
+          for i:=0 to exesec.ObjSectionList.Count-1 do
+            begin
+              objsec:=TWasmObjSection(exesec.ObjSectionList[i]);
+              WriteByte(FWasmSections[wsiTag],0);
+              WriteUleb(FWasmSections[wsiTag],objsec.MainFuncSymbol.LinkingData.ExeTypeIndex);
+            end;
+        end;
+
       procedure WriteExportSection;
         const
           MemoryExportsCount=1;
@@ -4595,6 +4824,7 @@ implementation
         WriteDataSegments;
         WriteTableAndElemSections;
         WriteGlobalSection;
+        WriteTagSection;
         WriteExportSection;
 
         WriteUleb(FWasmSections[wsiMemory],1);
@@ -4610,6 +4840,7 @@ implementation
         WriteWasmSection(wsiFunction);
         WriteWasmSection(wsiTable);
         WriteWasmSection(wsiMemory);
+        WriteWasmSectionIfNotEmpty(wsiTag);
         WriteWasmSection(wsiGlobal);
         WriteWasmSection(wsiExport);
         WriteWasmSection(wsiElement);
@@ -4725,8 +4956,15 @@ implementation
                       objsec.Data.seek(objreloc.DataOffset);
                       WriteUleb5(objsec.Data,UInt32(objsym.offset+objsym.objsection.MemPos));
                     end;
+                  RELOC_TAG_INDEX_LEB:
+                    begin
+                      if objsym.typ<>AT_WASM_EXCEPTION_TAG then
+                        internalerror(2024010708);
+                      objsec.Data.seek(objreloc.DataOffset);
+                      WriteUleb5(objsec.Data,UInt32(objsym.offset+objsym.objsection.MemPos));
+                    end;
                   else
-                    Writeln('Symbol relocation not yet implemented! ', objreloc.typ);
+                    internalerror(2024010109);
                 end;
               end
             else if assigned(objreloc.objsection) then
@@ -4743,7 +4981,7 @@ implementation
                 WriteUleb5(objsec.Data,objreloc.ExeTypeIndex);
               end
             else
-              Writeln('Non-symbol relocation not yet implemented! ', objreloc.typ);
+              internalerror(2024010110);
           end;
       end;
 
@@ -4809,6 +5047,7 @@ implementation
       begin
         PrepareImports;
         PrepareFunctions;
+        PrepareTags;
       end;
 
     procedure TWasmExeOutput.MemPos_ExeSection(const aname: string);
@@ -4849,7 +5088,8 @@ implementation
             { calculate size of the section }
             exesec.Size:=CurrMemPos-exesec.MemPos;
           end
-        else if Copy(aname,1,Length(DebugPrefix))=DebugPrefix then
+        else if (aname='.wasm_globals') or (aname='.wasm_tags') or
+                (Copy(aname,1,Length(DebugPrefix))=DebugPrefix) then
           begin
             CurrMemPos:=0;
             inherited;
@@ -4989,6 +5229,58 @@ implementation
           end;
       end;
 
+    procedure TWasmExeOutput.PrepareTags;
+      var
+        exesec: TExeSection;
+        i, j: Integer;
+        objsec: TWasmObjSection;
+        fsym: TWasmObjSymbol;
+        objdata: TObjData;
+      begin
+        exesec:=FindExeSection('.wasm_tags');
+        if not assigned(exesec) then
+          exit;
+        if assigned(exemap) then
+          begin
+            exemap.Add('');
+            exemap.Add('Tags, defined in this module:');
+          end;
+        for i:=0 to exesec.ObjSectionList.Count-1 do
+          begin
+            objsec:=TWasmObjSection(exesec.ObjSectionList[i]);
+            fsym:=objsec.MainFuncSymbol;
+            if not assigned(fsym) then
+              internalerror(2024010703);
+            if not assigned(fsym.LinkingData.FuncType) then
+              internalerror(2024010704);
+            if fsym.LinkingData.ExeTagIndex<>-1 then
+              internalerror(2024010705);
+            if fsym.LinkingData.ExeTypeIndex<>-1 then
+              internalerror(2024010706);
+            fsym.LinkingData.ExeTypeIndex:=FFuncTypes.AddOrGetFuncType(fsym.LinkingData.FuncType);
+            fsym.LinkingData.ExeTagIndex:=i+Length(FTagImports);
+            if assigned(exemap) then
+              begin
+                exemap.Add('  Tag[' + tostr(fsym.LinkingData.ExeTagIndex) + '] ' + fsym.Name + fsym.LinkingData.FuncType.ToString);
+              end;
+          end;
+        { set ExeTagIndex to the alias symbols as well }
+        for i:=0 to ObjDataList.Count-1 do
+          begin
+            objdata:=TObjData(ObjDataList[i]);
+            for j:=0 to objdata.ObjSymbolList.Count-1 do
+              begin
+                fsym:=TWasmObjSymbol(objdata.ObjSymbolList[j]);
+                if assigned(fsym.objsection) and fsym.objsection.USed and (fsym.typ=AT_WASM_EXCEPTION_TAG) and (fsym.LinkingData.ExeTagIndex=-1) then
+                  begin
+                    fsym.LinkingData.ExeTagIndex:=TWasmObjSection(fsym.objsection).MainFuncSymbol.LinkingData.ExeTagIndex;
+                    if fsym.LinkingData.ExeTagIndex=-1 then
+                      internalerror(2024010707);
+                  end;
+              end;
+          end;
+      end;
+
     function TWasmExeOutput.AddOrGetIndirectFunctionTableIndex(FuncIdx: Integer): integer;
       var
         i: Integer;
@@ -5082,4 +5374,3 @@ initialization
   RegisterAssembler(as_wasm32_wasm_info,TWasmAssembler);
 {$endif wasm32}
 end.
-

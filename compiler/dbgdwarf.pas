@@ -1630,12 +1630,14 @@ implementation
           slen : asizeuint;
           arr : tasmlabel;
         begin
+{$push}
+{$R-}{$Q-}
           { fix length of openshortstring }
           slen:=aword(def.len);
           if (slen=0) or
              (slen>maxlen) then
             slen:=maxlen;
-
+{$pop}
           { create a structure with two elements }
           if not(tf_dwarf_only_local_labels in target_info.flags) then
             current_asmdata.getglobaldatalabel(arr)
@@ -2422,6 +2424,15 @@ implementation
                             templist.concat(tai_const.create_sleb128bit(sym.localloc.reference.offset+offset));
                             blocksize:=1+Lengthsleb128(sym.localloc.reference.offset+offset);
                           end
+{$ifdef wasm}
+                        else if sym.localloc.reference.base=NR_LOCAL_STACK_POINTER_REG then
+                          begin
+                            templist.concat(tai_const.create_8bit(ord(DW_OP_WASM_location)));
+                            templist.concat(tai_const.create_8bit(0));  { 0 = WebAssembly Local }
+                            templist.concat(tai_const.create_uleb128bit(sym.localloc.reference.offset+offset));
+                            blocksize:=2+Lengthuleb128(sym.localloc.reference.offset+offset);
+                          end
+{$endif wasm}
                         else
                           begin
                             dreg:=dwarf_reg(sym.localloc.reference.base);

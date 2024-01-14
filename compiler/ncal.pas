@@ -2733,7 +2733,18 @@ implementation
         para: TCallParaNode;
         maxlennode, outnode, valnode: TNode;
         MaxStrLen: Int64;
-        StringLiteral: string;
+        StringLiteral, name: string;
+        ValOutput: TConstExprInt;
+        ValCode: Longint;
+        NewStatements: TStatementNode;
+        si : ShortInt;
+        b: Byte;
+        i: SmallInt;
+        w: Word;
+        li: LongInt;
+        dw: DWord;
+        i64: Int64;
+        qw: QWord;
       begin
         result := nil;
         case intrinsiccode of
@@ -2798,6 +2809,122 @@ implementation
                                     end;
                                 end;
                             end;
+                        end;
+                    end;
+                end;
+            end;
+          in_val_x:
+            begin
+              { rare optimization opportunity which takes some extra time,
+                so check only at level 3+ }
+              if not(cs_opt_level3 in current_settings.optimizerswitches) then
+                exit;
+              { If the input is a constant, attempt to convert, for example:
+                  "Val('5', Output, Code);" to "Output := 5; Code := 0;" }
+
+              { Format of the internal function fpc_val_sint_*str) is:
+                fpc_val_sint_*str(SizeInt; *String; out ValSInt): ValSInt; }
+
+              { Remember the parameters are in reverse order - the leftmost one
+                is the integer data size can usually be ignored.
+
+                For fpc_val_uint_*str variants, the data size is not present as
+                of FPC 3.2.0
+
+                Para indices:
+                * 0 = Code output (present even if omitted in original code)
+                * 1 = String input
+                * 2 = Data size
+              }
+              para := GetParaFromIndex(0);
+              if Assigned(para) then
+                begin
+                  outnode := para.left;
+                  para := GetParaFromIndex(1);
+                  if Assigned(para) then
+                    begin
+                      valnode:=para.left;
+                      name:=tprocdef(procdefinition).fullprocname(true);
+                      if is_conststringnode(valnode) and
+                        { we can handle only the fpc_val_sint helpers so far }
+                        ((copy(name,1,13)='$fpc_val_sint') or (copy(name,1,13)='$fpc_val_uint')) then
+                        begin
+                          ValOutput.signed := is_signed(ResultDef);
+
+                          case Longint(tordconstnode(GetParaFromIndex(2).paravalue).value.svalue) of
+                            1:
+                              if ValOutput.signed then
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, si, ValCode);
+                                  ValOutput.svalue:=si;
+                                end
+                              else
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, b, ValCode);
+                                  ValOutput.uvalue:=b;
+                                end;
+                            2:
+                              if ValOutput.signed then
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, i, ValCode);
+                                  ValOutput.svalue:=i;
+                                end
+                              else
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, w, ValCode);
+                                  ValOutput.uvalue:=w;
+                                end;
+                            4:
+                              if ValOutput.signed then
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, li, ValCode);
+                                  ValOutput.svalue:=li;
+                                end
+                              else
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, dw, ValCode);
+                                  ValOutput.uvalue:=dw;
+                                end;
+                            8:
+                              if ValOutput.signed then
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, i64, ValCode);
+                                  ValOutput.svalue:=i64;
+                                end
+                              else
+                                begin
+                                  Val(TStringConstNode(valnode).value_str, qw, ValCode);
+                                  ValOutput.uvalue:=qw;
+                                end;
+                            else
+                              Internalerror(2024011402);
+                          end;
+
+                          { Due to the way the node tree works, we have to insert
+                            the assignment to the Code output within the
+                            assignment to the value output (function result),
+                            so use a block node for that}
+
+                          Result := internalstatements(NewStatements);
+
+                          { Create a node for writing the Code output }
+                          addstatement(
+                            NewStatements,
+                            CAssignmentNode.Create_Internal(
+                              outnode.getcopy(), { The original will get destroyed }
+                              COrdConstNode.Create(ValCode, outnode.ResultDef, False)
+                            )
+                          );
+
+                          { Now actually create the function result }
+                          case resultdef.typ of
+                            orddef:
+                              valnode := COrdConstNode.Create(ValOutput, resultdef, False);
+                            else
+                              Internalerror(2024011401);
+                          end;
+                          addstatement(NewStatements, valnode);
+                          { Result will now undergo firstpass }
                         end;
                     end;
                 end;
