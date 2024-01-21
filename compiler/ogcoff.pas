@@ -944,7 +944,7 @@ implementation
           '.stab','.stabstr',
           '.idata$2','.idata$4','.idata$5','.idata$6','.idata$7','.edata',
           '.eh_frame',
-          '.debug_frame','.debug_info','.debug_line','.debug_abbrev','.debug_aranges','.debug_ranges',
+          '.debug_frame','.debug_info','.debug_line','.debug_abbrev','.debug_aranges','.debug_ranges','.debug_loc','.debug_loclists',
           '.fpc',
           '',
           '.init',
@@ -1841,6 +1841,7 @@ const pemagic : array[0..3] of byte = (
             else
               secrec.nrelocs:=65535;
             inc(symidx);
+	    MaybeSwap(secrec);
             FCoffSyms.write(secrec,sizeof(secrec));
             { aux recs have the same size as symbols, so we need to add two
               Byte of padding in case of a Big Obj Coff }
@@ -2192,6 +2193,8 @@ const pemagic : array[0..3] of byte = (
            FWriter.writearray(FCoffSyms);
            { Strings }
            i:=FCoffStrs.size+4;
+           if source_info.endian<>target_info.endian then
+             i:=SwapEndian(i);
            FWriter.write(i,4);
            FWriter.writearray(FCoffStrs);
          end;
@@ -2396,7 +2399,8 @@ const pemagic : array[0..3] of byte = (
         strname   : string;
         auxrec    : array[0..sizeof(coffsymbol)-1] of byte;
         boauxrec  : array[0..sizeof(coffbigobjsymbol)-1] of byte;
-        secrec    : pcoffsectionrec;
+        psecrec   : pcoffsectionrec;
+        secrec    : coffsectionrec;
         objsec    : TObjSection;
         secidx    : longint;
         symvalue  : longword;
@@ -2546,15 +2550,19 @@ const pemagic : array[0..3] of byte = (
                   if bigobj then
                     begin
                       FCoffSyms.Read(boauxrec,sizeof(boauxrec));
-                      secrec:=pcoffsectionrec(@boauxrec[0]);
+                      psecrec:=pcoffsectionrec(@boauxrec[0]);
+		      secrec:=psecrec^;
+		      MaybeSwap(secrec);
                     end
                   else
                     begin
                       FCoffSyms.Read(auxrec,sizeof(auxrec));
-                      secrec:=pcoffsectionrec(@auxrec);
+                      psecrec:=pcoffsectionrec(@auxrec);
+		      secrec:=psecrec^;
+		      MaybeSwap(secrec);
                     end;
 
-                  case secrec^.select of
+                  case secrec.select of
                     IMAGE_COMDAT_SELECT_NODUPLICATES:
                       comdatsel:=oscs_none;
                     IMAGE_COMDAT_SELECT_ANY:
@@ -2569,14 +2577,14 @@ const pemagic : array[0..3] of byte = (
                       comdatsel:=oscs_largest;
                     else begin
                       comdatsel:=oscs_none;
-                      Message2(link_e_comdat_select_unsupported,inttostr(secrec^.select),objsym.objsection.name);
+                      Message2(link_e_comdat_select_unsupported,inttostr(secrec.select),objsym.objsection.name);
                     end;
                   end;
 
                   if comdatsel in [oscs_associative,oscs_exact_match] then
                     { only temporary }
                     Comment(V_Error,'Associative or exact match COMDAT sections are not yet supported (symbol: '+objsym.objsection.Name+')')
-                  else if (comdatsel=oscs_associative) and (secrec^.assoc=0) then
+                  else if (comdatsel=oscs_associative) and (secrec.assoc=0) then
                     Message1(link_e_comdat_associative_section_expected,objsym.objsection.name)
                   else if (objsym.objsection.ComdatSelection<>oscs_none) and (comdatsel<>oscs_none) and (objsym.objsection.ComdatSelection<>comdatsel) then
                     Message2(link_e_comdat_not_matching,objsym.objsection.Name,objsym.Name)
@@ -2584,9 +2592,9 @@ const pemagic : array[0..3] of byte = (
                     begin
                       objsym.objsection.ComdatSelection:=comdatsel;
 
-                      if (secrec^.assoc<>0) and not assigned(objsym.objsection.AssociativeSection) then
+                      if (secrec.assoc<>0) and not assigned(objsym.objsection.AssociativeSection) then
                         begin
-                          objsym.objsection.AssociativeSection:=GetSection(secrec^.assoc);
+                          objsym.objsection.AssociativeSection:=GetSection(secrec.assoc);
                           if not assigned(objsym.objsection.AssociativeSection) then
                             Message1(link_e_comdat_associative_section_not_found,objsym.objsection.Name);
                         end;
@@ -3356,6 +3364,8 @@ const pemagic : array[0..3] of byte = (
           begin
             { Strings }
             i:=FCoffStrs.size+4;
+            if source_info.endian<>target_info.endian then
+              i:=SwapEndian(i);
             FWriter.write(i,4);
             FWriter.writearray(FCoffStrs);
           end;
@@ -3508,6 +3518,7 @@ const pemagic : array[0..3] of byte = (
           );
         var
           ordint: dword;
+          word_ordint: word;
 
           procedure WriteTableEntry(objsec:TObjSection);
           begin
@@ -3523,14 +3534,20 @@ const pemagic : array[0..3] of byte = (
                 ordint:=AOrdNr;
                 if target_info.system in systems_peoptplus then
                   begin
-                    objsec.write(ordint,sizeof(ordint));
+                    if source_info.endian<>target_info.endian then
+                      ordint:=SwapEndian(ordint);
+                    objsec.write(ordint,4);
                     ordint:=$80000000;
-                    objsec.write(ordint,sizeof(ordint));
+                    if source_info.endian<>target_info.endian then
+                      ordint:=SwapEndian(ordint);
+                    objsec.write(ordint,4);
                   end
                 else
                   begin
                     ordint:=ordint or $80000000;
-                    objsec.write(ordint,sizeof(ordint));
+                    if source_info.endian<>target_info.endian then
+                      ordint:=SwapEndian(ordint);
+                    objsec.write(ordint,4);
                   end;
               end;
           end;
@@ -3572,8 +3589,10 @@ const pemagic : array[0..3] of byte = (
           if (AOrdNr<=0) then
             begin
               { index hint, function name, null terminator and align }
-              ordint:=abs(AOrdNr);
-              idata6objsection.write(ordint,2);
+              word_ordint:=abs(AOrdNr);
+              if source_info.endian<>target_info.endian then
+                      word_ordint:=SwapEndian(word_ordint);
+              idata6objsection.write(word_ordint,2);
               idata6objsection.writestr(afuncname);
               idata6objsection.writezeros(align(idata6objsection.size,2)-idata6objsection.size);
             end;
@@ -3667,6 +3686,8 @@ const pemagic : array[0..3] of byte = (
         p:=internalObjData.CurrObjSec.Data.Pos;
         internalObjData.CurrObjSec.Data.seek(hdrpos+4);
         len:=p-hdrpos;
+        if source_info.endian<>target_info.endian then
+          len:=SwapEndian(len);
         internalObjData.CurrObjSec.Data.write(len,4);
         internalObjData.CurrObjSec.Data.seek(p);
         hdrpos:=longword(-1);
@@ -3711,9 +3732,11 @@ const pemagic : array[0..3] of byte = (
                         FinishBlock;
                         pgaddr:=(offset div 4096)*4096;
                         hdrpos:=internalObjData.CurrObjSec.Data.Pos;
+                        if source_info.endian<>target_info.endian then
+                          pgaddr:=SwapEndian(pgaddr);
                         internalObjData.writebytes(pgaddr,4);
                         { Reserving space for block size. The size will be written later in FinishBlock }
-                        internalObjData.writebytes(k,4);
+                        internalObjData.writebytes(pgaddr,4);
                       end;
 {$ifdef cpu64bitaddr}
                     if objreloc.typ = RELOC_ABSOLUTE then
@@ -3722,6 +3745,8 @@ const pemagic : array[0..3] of byte = (
 {$endif cpu64bitaddr}
                       w:=IMAGE_REL_BASED_HIGHLOW;
                     w:=(w shl 12) or (offset-pgaddr);
+                    if source_info.endian<>target_info.endian then
+                      w:=SwapEndian(w);
                     internalObjData.writebytes(w,2);
                   end;
               end;
