@@ -122,6 +122,11 @@ begin
       WinFreeLibrary(Ole32Dll); { Careful, FreeLibrary should not be called from DllMain. }
       Ole32Dll := 0;
     end;
+  if OleAut32Dll <> 0 then
+    begin
+      WinFreeLibrary(OleAut32Dll);
+      OleAut32Dll := 0;
+    end;
 {$ifndef FPC_USE_WIN32_SEH}
   if not IsLibrary then
     remove_exception_handlers;
@@ -619,6 +624,9 @@ initialization
   { pass dummy value }
   StackLength := CheckInitialStkLen($1000000);
   StackBottom := StackTop - StackLength;
+  CodePointer(SetThreadStackGuarantee) := WinGetProcAddress(WinGetModuleHandleW(KernelDLL), 'SetThreadStackGuarantee');
+  if Assigned(SetThreadStackGuarantee) then
+    SetThreadStackGuarantee(@StackMargin);
 
   cmdshow:=startupinfo.wshowwindow;
   { Setup heap and threading, these may be already initialized from TLS callback }

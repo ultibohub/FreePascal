@@ -122,6 +122,11 @@ begin
       WinFreeLibrary(Ole32Dll); { Careful, FreeLibrary should not be called from DllMain. }
       Ole32Dll := 0;
     end;
+  if OleAut32Dll <> 0 then
+    begin
+      WinFreeLibrary(OleAut32Dll);
+      OleAut32Dll := 0;
+    end;
 
   { call exitprocess, with cleanup as required }
   ExitProcess(exitcode);
@@ -478,6 +483,8 @@ initialization
   { pass dummy value }
   StackLength := CheckInitialStkLen($1000000);
   StackBottom := StackTop - StackLength;
+  SetThreadStackGuarantee(@StackMargin);
+  
   { get some helpful informations }
   GetStartupInfo(@startupinfo);
   { some misc Win32 stuff }

@@ -227,7 +227,15 @@ var
           - static threadvars, no callback: ThreadID remains 0 and
             initialization happens here. }
         if ThreadID=TThreadID(0) then
-          InitThread(ti.stklen);
+          begin
+            InitThread(ti.stklen);
+{$ifndef wince}
+{$ifdef win32}
+            if Assigned(SetThreadStackGuarantee) then
+{$endif win32}
+              SetThreadStackGuarantee(@StackMargin);
+{$endif wince}            
+          end;
 
         dispose(pthreadinfo(param));
 
