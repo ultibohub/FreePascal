@@ -32,16 +32,25 @@ Interface
 {$ifdef OS2}
 {$define implemented}
 {$endif}
+
 {$ifdef windows}
 {$define implemented}
+{$if (FPC_FULLVERSION > 30300)}
+{$define EXECUTEREDIR_USES_PROCESS}
+{$ENDIF}
 {$define USES_UNIT_PROCESS}
 {$endif}
+
 {$IFDEF UNIX}
 {$define implemented}
 {$ifndef MACOS}
+{$if (FPC_FULLVERSION > 30300)}
+{$define EXECUTEREDIR_USES_PROCESS}
+{$ENDIF}
 {$define USES_UNIT_PROCESS}
 {$endif}
-{$endif}
+{$ENDIF}
+
 Var
   IOStatus                   : Integer;
   RedirErrorOut,RedirErrorIn,
@@ -786,11 +795,11 @@ function ChangeRedirError(Const Redir : String; AppendToFile : Boolean) : Boolea
 
 {............................................................................}
 
-{$ifdef USES_UNIT_PROCESS}
+{$ifdef EXECUTEREDIR_USES_PROCESS}
 function ExecuteRedir (Const ProgName, ComLine : String; RedirStdIn, RedirStdOut, RedirStdErr: String): boolean;
 
 const
-  max_count = 6000;
+  max_count = 60000;
 
 var
   P : TProcess;
@@ -804,8 +813,21 @@ begin
     P.ErrorDescriptor.FileName:=RedirStdErr;
     P.Execute;
     Result:=P.WaitOnExit(max_count);
-    if Result then
-      result:=P.ExitStatus=0;
+    if Result then  
+      ExecuteResult:=P.ExitCode
+    else
+      begin
+      Writeln(stderr,'Terminate requested for ',Progname,' ',ComLine);
+      { Issue it also to output, so it gets added to log file
+                  if ExecuteRedir is in use }
+      Writeln('Terminate requested for ',Progname,' ',ComLine);      
+      Repeat 
+        P.Terminate(255);
+        Sleep(10);
+      Until not P.Running;  
+      ExecuteResult:=1000+P.ExitCode;
+      end;  
+    Result:=ExecuteResult=0;
   finally
     P.Free;
   end;
@@ -910,11 +932,11 @@ begin
   Fsplit(Filename,d,n,e);
 
   if (e='') and FileExist(FileName+exeext) then
-    begin
+     begin
       FileName:=FileName+exeext;
       LocateExeFile:=true;
       Exit;
-    end;
+     end;
 {$ifdef macos}
   S:=GetEnv('Commands');
 {$else}
@@ -930,7 +952,8 @@ begin
         Delete(S,1,i)
       else
         S:='';
-      if FileExist(Dir+FileName) then
+  
+       if FileExist(Dir+FileName) then
         Begin
            FileName:=Dir+FileName;
            LocateExeFile:=true;

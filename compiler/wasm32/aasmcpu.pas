@@ -41,26 +41,31 @@ uses
       O_MOV_DEST = 0;
 
     type
+      TWasmBasicTypeList = array of TWasmBasicType;
 
       { TWasmValueStack }
 
       TWasmValueStack = class
       private
         FValStack: array of TWasmBasicType;
+        function GetCount: Integer;
         function GetItems(AIndex: Integer): TWasmBasicType;
+        procedure SetCount(AValue: Integer);
         procedure SetItems(AIndex: Integer; AValue: TWasmBasicType);
       public
         procedure Push(wbt: TWasmBasicType);
         function Pop: TWasmBasicType;
         property Items[AIndex: Integer]: TWasmBasicType read GetItems write SetItems; default;
+        property Count: Integer read GetCount write SetCount;
       end;
 
       { TWasmControlFrame }
 
-      TWasmControlFrame = class
+      PWasmControlFrame = ^TWasmControlFrame;
+      TWasmControlFrame = record
         opcode: tasmop;
-        start_types: array of TWasmBasicType;
-        end_types: array of TWasmBasicType;
+        start_types: TWasmBasicTypeList;
+        end_types: TWasmBasicTypeList;
         height: Integer;
         unreachable: Boolean;
       end;
@@ -68,6 +73,18 @@ uses
       { TWasmControlStack }
 
       TWasmControlStack = class
+      private
+        FControlStack: array of TWasmControlFrame;
+        function GetCount: Integer;
+        function GetItems(AIndex: Integer): TWasmControlFrame;
+        function GetPItems(AIndex: Integer): PWasmControlFrame;
+        procedure SetItems(AIndex: Integer; const AValue: TWasmControlFrame);
+      public
+        procedure Push(const wcf: TWasmControlFrame);
+        function Pop: TWasmControlFrame;
+        property Items[AIndex: Integer]: TWasmControlFrame read GetItems write SetItems; default;
+        property PItems[AIndex: Integer]: PWasmControlFrame read GetPItems;
+        property Count: Integer read GetCount;
       end;
 
       { TWasmValidationStacks }
@@ -81,6 +98,16 @@ uses
         destructor Destroy; override;
 
         procedure PushVal(vt: TWasmBasicType);
+        function PopVal: TWasmBasicType;
+        function PopVal(expect: TWasmBasicType): TWasmBasicType;
+        procedure PushVals(vals: TWasmBasicTypeList);
+        function PopVals(vals: TWasmBasicTypeList): TWasmBasicTypeList;
+
+        procedure PushCtrl(_opcode: tasmop; _in, _out: TWasmBasicTypeList);
+        function PopCtrl: TWasmControlFrame;
+
+        function label_types(const frame: TWasmControlFrame): TWasmBasicTypeList;
+        procedure Unreachable;
       end;
 
       twasmstruc_stack = class;
@@ -356,6 +383,16 @@ uses
         Result:=FValStack[I];
       end;
 
+    procedure TWasmValueStack.SetCount(AValue: Integer);
+      begin
+        SetLength(FValStack,AValue);
+      end;
+
+    function TWasmValueStack.GetCount: Integer;
+      begin
+        Result:=Length(FValStack);
+      end;
+
     procedure TWasmValueStack.SetItems(AIndex: Integer; AValue: TWasmBasicType);
       var
         I: Integer;
@@ -380,6 +417,57 @@ uses
         SetLength(FValStack,Length(FValStack)-1);
       end;
 
+    { TWasmControlStack }
+
+    function TWasmControlStack.GetItems(AIndex: Integer): TWasmControlFrame;
+      var
+        I: Integer;
+      begin
+        I:=High(FControlStack)-AIndex;
+        if (I<Low(FControlStack)) or (I>High(FControlStack)) then
+          internalerror(2024013101);
+        Result:=FControlStack[I];
+      end;
+
+    function TWasmControlStack.GetPItems(AIndex: Integer): PWasmControlFrame;
+      var
+        I: Integer;
+      begin
+        I:=High(FControlStack)-AIndex;
+        if (I<Low(FControlStack)) or (I>High(FControlStack)) then
+          internalerror(2024013101);
+        Result:=@(FControlStack[I]);
+      end;
+
+    function TWasmControlStack.GetCount: Integer;
+      begin
+        Result:=Length(FControlStack);
+      end;
+
+    procedure TWasmControlStack.SetItems(AIndex: Integer; const AValue: TWasmControlFrame);
+      var
+        I: Integer;
+      begin
+        I:=High(FControlStack)-AIndex;
+        if (I<Low(FControlStack)) or (I>High(FControlStack)) then
+          internalerror(2024013102);
+        FControlStack[I]:=AValue;
+      end;
+
+    procedure TWasmControlStack.Push(const wcf: TWasmControlFrame);
+      begin
+        SetLength(FControlStack,Length(FControlStack)+1);
+        FControlStack[High(FControlStack)]:=wcf;
+      end;
+
+    function TWasmControlStack.Pop: TWasmControlFrame;
+      begin
+        if Length(FControlStack)=0 then
+          internalerror(2024013103);
+        Result:=FControlStack[High(FControlStack)];
+        SetLength(FControlStack,Length(FControlStack)-1);
+      end;
+
     { TWasmValidationStacks }
 
     constructor TWasmValidationStacks.Create;
@@ -398,6 +486,89 @@ uses
     procedure TWasmValidationStacks.PushVal(vt: TWasmBasicType);
       begin
         FValueStack.Push(vt);
+      end;
+
+    function TWasmValidationStacks.PopVal: TWasmBasicType;
+      begin
+        if FValueStack.Count = FCtrlStack[0].height then
+          begin
+            Result:=wbt_Unknown;
+            if not FCtrlStack[0].unreachable then
+              internalerror(2024013104);
+          end
+        else
+          Result:=FValueStack.Pop;
+      end;
+
+    function TWasmValidationStacks.PopVal(expect: TWasmBasicType): TWasmBasicType;
+      begin
+        Result:=wbt_Unknown;
+        Result:=PopVal;
+        if (Result<>expect) and (Result<>wbt_Unknown) and (expect<>wbt_Unknown) then
+          internalerror(2024013105);
+      end;
+
+    procedure TWasmValidationStacks.PushVals(vals: TWasmBasicTypeList);
+      var
+        v: TWasmBasicType;
+      begin
+        for v in vals do
+          PushVal(v);
+      end;
+
+    function TWasmValidationStacks.PopVals(vals: TWasmBasicTypeList): TWasmBasicTypeList;
+      var
+        I: Integer;
+      begin
+        Result:=nil;
+        SetLength(Result,Length(vals));
+        for I:=High(vals) downto Low(Vals) do
+          Result[I]:=PopVal(vals[I]);
+      end;
+
+    procedure TWasmValidationStacks.PushCtrl(_opcode: tasmop; _in, _out: TWasmBasicTypeList);
+      var
+        frame: TWasmControlFrame;
+      begin
+        FillChar(frame,SizeOf(frame),0);
+        with frame do
+          begin
+            opcode:=_opcode;
+            start_types:=Copy(_in);
+            end_types:=Copy(_out);
+            height:=FValueStack.Count;
+            unreachable:=False;
+          end;
+        FCtrlStack.Push(frame);
+      end;
+
+    function TWasmValidationStacks.PopCtrl: TWasmControlFrame;
+      begin
+        Result:=Default(TWasmControlFrame);
+        if FCtrlStack.Count=0 then
+          internalerror(2024013106);
+        Result:=FCtrlStack[0];
+        PopVals(Result.end_types);
+        if FValueStack.Count<>Result.height then
+          internalerror(2024013107);
+        FCtrlStack.Pop;
+      end;
+
+    function TWasmValidationStacks.label_types(const frame: TWasmControlFrame): TWasmBasicTypeList;
+      begin
+        if frame.opcode=a_loop then
+          Result:=frame.start_types
+        else
+          Result:=frame.end_types;
+      end;
+
+    procedure TWasmValidationStacks.Unreachable;
+      var
+        c: PWasmControlFrame;
+      begin
+        c:=FCtrlStack.PItems[0];
+        FValueStack.Count:=c^.height;
+        c^.unreachable:=true;
       end;
 
     { twasmstruc_stack }
