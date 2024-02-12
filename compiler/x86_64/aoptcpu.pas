@@ -178,6 +178,9 @@ uses
                 A_VCVTSS2SD,
                 A_CVTSS2SD:
                   Result:=OptPass1_V_Cvtss2sd(p);
+                A_CLC,
+                A_STC:
+                  Result:=OptPass1STCCLC(p);
                 else
                   ;
               end;
@@ -232,6 +235,9 @@ uses
                   Result:=OptPass2CMP(p);
                 A_TEST:
                   Result:=OptPass2TEST(p);
+                A_CLC,
+                A_STC:
+                  Result:=OptPass2STCCLC(p);
                 else
                   ;
               end;

@@ -255,6 +255,9 @@ unit aoptcpu;
                 A_VCVTSS2SD,
                 A_CVTSS2SD:
                   Result:=OptPass1_V_Cvtss2sd(p);
+                A_CLC,
+                A_STC:
+                  Result:=OptPass1STCCLC(p);
                 else
                   ;
               end;
@@ -313,6 +316,9 @@ unit aoptcpu;
                   Result:=OptPass2SUB(p);
                 A_SETcc:
                   Result:=OptPass2SETcc(p);
+                A_CLC,
+                A_STC:
+                  Result:=OptPass2STCCLC(p);
                 else
                   ;
               end;

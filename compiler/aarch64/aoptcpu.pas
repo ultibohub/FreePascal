@@ -54,8 +54,6 @@ Interface
       private
         function RemoveSuperfluousFMov(const p: tai; movp: tai; const optimizer: string): boolean;
         function OptPass1Shift(var p: tai): boolean;
-        function OptPostCMP(var p: tai): boolean;
-        function OptPostAnd(var p: tai): Boolean;
         function OptPass1Data(var p: tai): boolean;
         function OptPass1FData(var p: tai): Boolean;
         function OptPass1STP(var p: tai): boolean;
@@ -66,6 +64,10 @@ Interface
         function OptPass1SXTW(var p: tai): Boolean;
 
         function OptPass2LDRSTR(var p: tai): boolean;
+
+        function PostPeepholeOptAND(var p: tai): Boolean;
+        function PostPeepholeOptCMP(var p: tai): boolean;
+        function PostPeepholeOptTST(var p: tai): Boolean;
       End;
 
 Implementation
@@ -1076,7 +1078,7 @@ Implementation
     end;
 
 
-  function TCpuAsmOptimizer.OptPostAnd(var p: tai): Boolean;
+  function TCpuAsmOptimizer.PostPeepholeOptAND(var p: tai): Boolean;
     var
       hp1, hp2: tai;
       hp3: taicpu;
@@ -1126,7 +1128,7 @@ Implementation
     end;
 
 
-  function TCpuAsmOptimizer.OptPostCMP(var p : tai): boolean;
+  function TCpuAsmOptimizer.PostPeepholeOptCMP(var p : tai): boolean;
     var
      hp1,hp2: tai;
     begin
@@ -1163,6 +1165,46 @@ Implementation
           hp1.free;
           p:=hp2;
           DebugMsg(SPeepholeOptimization + 'CMPB.E/NE2CBNZ/CBZ done', p);
+          Result:=true;
+        end;
+    end;
+
+
+  function TCpuAsmOptimizer.PostPeepholeOptTST(var p : tai): boolean;
+    var
+      hp1: tai;
+      hp3: taicpu;
+      bitval : cardinal;
+    begin
+      Result:=false;
+      {
+        tst reg1,<const=power of 2>
+        b.e/b.ne label
+
+        into
+
+        tb(n)z reg0,<power of 2>,label
+      }
+      if MatchOpType(taicpu(p),top_reg,top_const) and
+        (PopCnt(QWord(taicpu(p).oper[1]^.val))=1) and
+        GetNextInstruction(p,hp1) and
+        MatchInstruction(hp1,A_B,[C_EQ,C_NE],[PF_None]) then
+        begin
+           bitval:=BsfQWord(qword(taicpu(p).oper[1]^.val));
+           case taicpu(hp1).condition of
+            C_NE:
+              hp3:=taicpu.op_reg_const_ref(A_TBNZ,taicpu(p).oper[0]^.reg,bitval,taicpu(hp1).oper[0]^.ref^);
+            C_EQ:
+              hp3:=taicpu.op_reg_const_ref(A_TBZ,taicpu(p).oper[0]^.reg,bitval,taicpu(hp1).oper[0]^.ref^);
+            else
+              Internalerror(2021100210);
+          end;
+          taicpu(hp3).fileinfo:=taicpu(p).fileinfo;
+          asml.insertafter(hp3, p);
+
+          RemoveInstruction(hp1);
+          RemoveCurrentP(p, hp3);
+          DebugMsg(SPeepholeOptimization + 'TST; B(E/NE) -> TB(Z/NZ) done', p);
           Result:=true;
         end;
     end;
@@ -1260,9 +1302,13 @@ Implementation
       if p.typ=ait_instruction then
         begin
           case taicpu(p).opcode of
+            A_AND:
+              Result := OptPass2AND(p);
             A_LDR,
             A_STR:
               Result:=OptPass2LDRSTR(p);
+            A_TST:
+              Result := OptPass2TST(p);
             else
               ;
           end;
@@ -1277,9 +1323,11 @@ Implementation
         begin
           case taicpu(p).opcode of
             A_CMP:
-              Result:=OptPostCMP(p);
+              Result:=PostPeepholeOptCMP(p);
             A_AND:
-              Result:=OptPostAnd(p);
+              Result:=PostPeepholeOptAND(p);
+            A_TST:
+              Result:=PostPeepholeOptTST(p);
             else
               ;
           end;

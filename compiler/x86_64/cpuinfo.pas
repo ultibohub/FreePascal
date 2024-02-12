@@ -45,6 +45,7 @@ Type
 
    tcputype =
       (cpu_none,
+       cpu_x86_64,
        cpu_x86_64_v1,
        cpu_athlon64,
        cpu_x86_64_v2,
@@ -62,7 +63,8 @@ Type
        cpu_icelake,
        cpu_icelake_client,
        cpu_icelake_server,
-       cpu_zen3
+       cpu_zen3,
+       cpu_zen4
       );
 
    tfputype =
@@ -132,6 +134,7 @@ Const
 
    cputypestr : array[tcputype] of string[16] = ('',
      'ATHLON64',
+     'X86-64',
      'X86-64-V1',
      'COREI',
      'X86-64-V2',
@@ -148,7 +151,8 @@ Const
      'ICELAKE',
      'ICELAKE-CLIENT',
      'ICELAKE-SERVER',
-     'ZEN3'
+     'ZEN3',
+     'ZEN4'
    );
 
    fputypestr : array[tfputype] of string[9] = (
@@ -265,13 +269,14 @@ type
    cpu_capabilities : array[tcputype] of set of tcpuflags = (
      { cpu_none      } [],
      { Athlon64      } cpu_x86_64_v1_flags,
+     { cpu_x86_64    } cpu_x86_64_v1_flags,
      { cpu_x86_64_v1 } cpu_x86_64_v1_flags,
      { cpu_core_i    } cpu_x86_64_v1_flags+[CPUX86_HAS_POPCNT],
      { cpu_x86_64_v2 } cpu_x86_64_v2_flags,
-     { cpu_bobcat    } [CPUX86_HAS_BSWAP,CPUX86_HAS_BTX,CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2,CPUX86_HAS_POPCNT,CPUX86_HAS_LZCNT],
-     { cpu_core_avx  } [CPUX86_HAS_BSWAP,CPUX86_HAS_BTX,CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2,CPUX86_HAS_POPCNT],
-     { cpu_jaguar    } cpu_x86_64_v2_flags,
-     { cpu_piledriver} [CPUX86_HAS_BSWAP,CPUX86_HAS_BTX,CPUX86_HAS_CMOV,CPUX86_HAS_SSEUNIT,CPUX86_HAS_SSE2,CPUX86_HAS_POPCNT,CPUX86_HAS_BMI1,CPUX86_HAS_LZCNT,CPUX86_HAS_MOVBE],
+     { cpu_bobcat    } cpu_x86_64_v1_flags+[CPUX86_HAS_POPCNT,CPUX86_HAS_LZCNT],
+     { cpu_core_avx  } cpu_x86_64_v1_flags+[CPUX86_HAS_POPCNT],
+     { cpu_jaguar    } cpu_x86_64_v2_flags+[CPUX86_HAS_BMI1,CPUX86_HAS_LZCNT,CPUX86_HAS_MOVBE],
+     { cpu_piledriver} cpu_x86_64_v2_flags+[CPUX86_HAS_BMI1,CPUX86_HAS_LZCNT,CPUX86_HAS_MOVBE],
      { cpu_excavator } cpu_x86_64_v3_flags,
      { cpu_core_avx2 } cpu_x86_64_v3_flags,
      { cpu_x86_64_v3 } cpu_x86_64_v3_flags,
@@ -281,7 +286,8 @@ type
      { cpu_icelake   } cpu_x86_64_v3_flags,
      { cpu_icelake_client } cpu_x86_64_v3_flags,
      { cpu_icelake_server } cpu_x86_64_v3_flags,
-     { cpu_zen3      } cpu_x86_64_v3_flags
+     { cpu_zen3      } cpu_x86_64_v3_flags,
+     { cpu_zen4      } cpu_x86_64_v4_flags
    );
 
    fpu_x86_64_v1_flags = [];
@@ -310,6 +316,7 @@ type
    cpu_optimization_hints : array[TCPUType] of set of TCPUOptimizeFlags = (
       { cpu_none      } [],
       { cpu_Athlon64  } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
+      { cpu_x86_64    } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_x86_64_v1 } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_core_i    } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_x86_64_v2 } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
@@ -326,7 +333,8 @@ type
       { cpu_icelake   } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_icelake_client } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_icelake_server } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
-      { cpu_zen3      } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR]
+      { cpu_zen3      } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
+      { cpu_zen4      } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR]
    );
 
 Implementation

@@ -87,19 +87,25 @@ uses
         property Count: Integer read GetCount;
       end;
 
+      taicpu = class;
+
+      TGetLocalTypeProc = function(localidx: Integer): TWasmBasicType of object;
+
       { TWasmValidationStacks }
 
       TWasmValidationStacks = class
       private
         FValueStack: TWasmValueStack;
         FCtrlStack: TWasmControlStack;
+        FGetLocalType: TGetLocalTypeProc;
       public
-        constructor Create;
+        constructor Create(AGetLocalType: TGetLocalTypeProc);
         destructor Destroy; override;
 
         procedure PushVal(vt: TWasmBasicType);
         function PopVal: TWasmBasicType;
         function PopVal(expect: TWasmBasicType): TWasmBasicType;
+        function PopVal_RefType: TWasmBasicType;
         procedure PushVals(vals: TWasmBasicTypeList);
         function PopVals(vals: TWasmBasicTypeList): TWasmBasicTypeList;
 
@@ -108,6 +114,8 @@ uses
 
         function label_types(const frame: TWasmControlFrame): TWasmBasicTypeList;
         procedure Unreachable;
+
+        procedure Validate(a: taicpu);
       end;
 
       twasmstruc_stack = class;
@@ -470,8 +478,9 @@ uses
 
     { TWasmValidationStacks }
 
-    constructor TWasmValidationStacks.Create;
+    constructor TWasmValidationStacks.Create(AGetLocalType: TGetLocalTypeProc);
       begin
+        FGetLocalType:=AGetLocalType;
         FValueStack:=TWasmValueStack.Create;
         FCtrlStack:=TWasmControlStack.Create;
       end;
@@ -506,6 +515,14 @@ uses
         Result:=PopVal;
         if (Result<>expect) and (Result<>wbt_Unknown) and (expect<>wbt_Unknown) then
           internalerror(2024013105);
+      end;
+
+    function TWasmValidationStacks.PopVal_RefType: TWasmBasicType;
+      begin
+        Result:=wbt_Unknown;
+        Result:=PopVal;
+        if not (Result in (WasmReferenceTypes + [wbt_Unknown])) then
+          internalerror(2024020501);
       end;
 
     procedure TWasmValidationStacks.PushVals(vals: TWasmBasicTypeList);
@@ -569,6 +586,396 @@ uses
         c:=FCtrlStack.PItems[0];
         FValueStack.Count:=c^.height;
         c^.unreachable:=true;
+      end;
+
+    procedure TWasmValidationStacks.Validate(a: taicpu);
+
+      function GetLocalIndex: Integer;
+        begin
+          Result:=-1;
+          with a do
+            begin
+              if ops<>1 then
+                internalerror(2024020801);
+              with oper[0]^ do
+                case typ of
+                  top_ref:
+                    begin
+                      if assigned(ref^.symbol) then
+                        internalerror(2024020802);
+                      if ref^.base<>NR_STACK_POINTER_REG then
+                        internalerror(2024020803);
+                      if ref^.index<>NR_NO then
+                        internalerror(2024020804);
+                      Result:=ref^.offset;
+                    end;
+                  top_const:
+                    Result:=val;
+                  else
+                    internalerror(2024020805);
+                end;
+            end;
+        end;
+
+      begin
+        case a.opcode of
+          a_nop:
+            ;
+          a_i32_const:
+            PushVal(wbt_i32);
+          a_i64_const:
+            PushVal(wbt_i64);
+          a_f32_const:
+            PushVal(wbt_f32);
+          a_f64_const:
+            PushVal(wbt_f64);
+          a_i32_add,
+          a_i32_sub,
+          a_i32_mul,
+          a_i32_div_s, a_i32_div_u,
+          a_i32_rem_s, a_i32_rem_u,
+          a_i32_and,
+          a_i32_or,
+          a_i32_xor,
+          a_i32_shl,
+          a_i32_shr_s, a_i32_shr_u,
+          a_i32_rotl,
+          a_i32_rotr:
+            begin
+              PopVal(wbt_i32);
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_add,
+          a_i64_sub,
+          a_i64_mul,
+          a_i64_div_s, a_i64_div_u,
+          a_i64_rem_s, a_i64_rem_u,
+          a_i64_and,
+          a_i64_or,
+          a_i64_xor,
+          a_i64_shl,
+          a_i64_shr_s, a_i64_shr_u,
+          a_i64_rotl,
+          a_i64_rotr:
+            begin
+              PopVal(wbt_i64);
+              PopVal(wbt_i64);
+              PushVal(wbt_i64);
+            end;
+          a_f32_add,
+          a_f32_sub,
+          a_f32_mul,
+          a_f32_div,
+          a_f32_min,
+          a_f32_max,
+          a_f32_copysign:
+            begin
+              PopVal(wbt_f32);
+              PopVal(wbt_f32);
+              PushVal(wbt_f32);
+            end;
+          a_f64_add,
+          a_f64_sub,
+          a_f64_mul,
+          a_f64_div,
+          a_f64_min,
+          a_f64_max,
+          a_f64_copysign:
+            begin
+              PopVal(wbt_f64);
+              PopVal(wbt_f64);
+              PushVal(wbt_f64);
+            end;
+          a_i32_clz,
+          a_i32_ctz,
+          a_i32_popcnt:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_clz,
+          a_i64_ctz,
+          a_i64_popcnt:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_i64);
+            end;
+          a_f32_abs,
+          a_f32_neg,
+          a_f32_sqrt,
+          a_f32_ceil,
+          a_f32_floor,
+          a_f32_trunc,
+          a_f32_nearest:
+            begin
+              PopVal(wbt_f32);
+              PushVal(wbt_f32);
+            end;
+          a_f64_abs,
+          a_f64_neg,
+          a_f64_sqrt,
+          a_f64_ceil,
+          a_f64_floor,
+          a_f64_trunc,
+          a_f64_nearest:
+            begin
+              PopVal(wbt_f64);
+              PushVal(wbt_f64);
+            end;
+          a_i32_eqz:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_eqz:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_i32);
+            end;
+          a_i32_eq,
+          a_i32_ne,
+          a_i32_lt_s, a_i32_lt_u,
+          a_i32_gt_s, a_i32_gt_u,
+          a_i32_le_s, a_i32_le_u,
+          a_i32_ge_s, a_i32_ge_u:
+            begin
+              PopVal(wbt_i32);
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_eq,
+          a_i64_ne,
+          a_i64_lt_s, a_i64_lt_u,
+          a_i64_gt_s, a_i64_gt_u,
+          a_i64_le_s, a_i64_le_u,
+          a_i64_ge_s, a_i64_ge_u:
+            begin
+              PopVal(wbt_i64);
+              PopVal(wbt_i64);
+              PushVal(wbt_i32);
+            end;
+          a_f32_eq,
+          a_f32_ne,
+          a_f32_lt,
+          a_f32_gt,
+          a_f32_le,
+          a_f32_ge:
+            begin
+              PopVal(wbt_f32);
+              PopVal(wbt_f32);
+              PushVal(wbt_i32);
+            end;
+          a_f64_eq,
+          a_f64_ne,
+          a_f64_lt,
+          a_f64_gt,
+          a_f64_le,
+          a_f64_ge:
+            begin
+              PopVal(wbt_f64);
+              PopVal(wbt_f64);
+              PushVal(wbt_i32);
+            end;
+          a_i32_extend8_s,
+          a_i32_extend16_s:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_extend8_s,
+          a_i64_extend16_s,
+          a_i64_extend32_s:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_i64);
+            end;
+          a_i32_wrap_i64:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_i32);
+            end;
+          a_i64_extend_i32_s,
+          a_i64_extend_i32_u:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i64);
+            end;
+          a_i32_trunc_f32_s,
+          a_i32_trunc_f32_u,
+          a_i32_trunc_sat_f32_s,
+          a_i32_trunc_sat_f32_u:
+            begin
+              PopVal(wbt_f32);
+              PushVal(wbt_i32);
+            end;
+          a_i32_trunc_f64_s,
+          a_i32_trunc_f64_u,
+          a_i32_trunc_sat_f64_s,
+          a_i32_trunc_sat_f64_u:
+            begin
+              PopVal(wbt_f64);
+              PushVal(wbt_i32);
+            end;
+          a_i64_trunc_f32_s,
+          a_i64_trunc_f32_u,
+          a_i64_trunc_sat_f32_s,
+          a_i64_trunc_sat_f32_u:
+            begin
+              PopVal(wbt_f32);
+              PushVal(wbt_i64);
+            end;
+          a_i64_trunc_f64_s,
+          a_i64_trunc_f64_u,
+          a_i64_trunc_sat_f64_s,
+          a_i64_trunc_sat_f64_u:
+            begin
+              PopVal(wbt_f64);
+              PushVal(wbt_i64);
+            end;
+          a_f32_demote_f64:
+            begin
+              PopVal(wbt_f64);
+              PushVal(wbt_f32);
+            end;
+          a_f64_promote_f32:
+            begin
+              PopVal(wbt_f32);
+              PushVal(wbt_f64);
+            end;
+          a_f32_convert_i32_s,
+          a_f32_convert_i32_u:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_f32);
+            end;
+          a_f32_convert_i64_s,
+          a_f32_convert_i64_u:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_f32);
+            end;
+          a_f64_convert_i32_s,
+          a_f64_convert_i32_u:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_f64);
+            end;
+          a_f64_convert_i64_s,
+          a_f64_convert_i64_u:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_f64);
+            end;
+          a_i32_reinterpret_f32:
+            begin
+              PopVal(wbt_f32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_reinterpret_f64:
+            begin
+              PopVal(wbt_f64);
+              PushVal(wbt_i64);
+            end;
+          a_f32_reinterpret_i32:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_f32);
+            end;
+          a_f64_reinterpret_i64:
+            begin
+              PopVal(wbt_i64);
+              PushVal(wbt_f64);
+            end;
+          a_ref_null_externref:
+            PushVal(wbt_externref);
+          a_ref_null_funcref:
+            PushVal(wbt_funcref);
+          a_ref_is_null:
+            begin
+              PopVal_RefType;
+              PushVal(wbt_i32);
+            end;
+          a_drop:
+            PopVal;
+          a_unreachable:
+            Unreachable;
+          a_i32_load,
+          a_i32_load16_s, a_i32_load16_u,
+          a_i32_load8_s, a_i32_load8_u:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_i64_load,
+          a_i64_load32_s, a_i64_load32_u,
+          a_i64_load16_s, a_i64_load16_u,
+          a_i64_load8_s, a_i64_load8_u:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i64);
+            end;
+          a_f32_load:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_f32);
+            end;
+          a_f64_load:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_f64);
+            end;
+          a_i32_store,
+          a_i32_store16,
+          a_i32_store8:
+            begin
+              PopVal(wbt_i32);
+              PopVal(wbt_i32);
+            end;
+          a_i64_store,
+          a_i64_store32,
+          a_i64_store16,
+          a_i64_store8:
+            begin
+              PopVal(wbt_i64);
+              PopVal(wbt_i32);
+            end;
+          a_f32_store:
+            begin
+              PopVal(wbt_f32);
+              PopVal(wbt_i32);
+            end;
+          a_f64_store:
+            begin
+              PopVal(wbt_f64);
+              PopVal(wbt_i32);
+            end;
+          a_memory_size:
+            PushVal(wbt_i32);
+          a_memory_grow:
+            begin
+              PopVal(wbt_i32);
+              PushVal(wbt_i32);
+            end;
+          a_memory_fill,
+          a_memory_copy:
+            begin
+              PopVal(wbt_i32);
+              PopVal(wbt_i32);
+              PopVal(wbt_i32);
+            end;
+          a_local_get:
+            PushVal(FGetLocalType(GetLocalIndex));
+          a_local_set:
+            PopVal(FGetLocalType(GetLocalIndex));
+          a_local_tee:
+            begin
+              PopVal(FGetLocalType(GetLocalIndex));
+              PushVal(FGetLocalType(GetLocalIndex));
+            end;
+          else
+            internalerror(2024030502);
+        end;
       end;
 
     { twasmstruc_stack }

@@ -1,3 +1,4 @@
+{%MainUnit process.pp}
 {
     This file is part of the Free Component Library (FCL)
     Copyright (c) 1999-2000 by the Free Pascal development team
@@ -269,7 +270,57 @@ implementation
 
 {$i process.inc}
 
+{$IFNDEF SKIPHELPERS}
+function TIOTypeHelper.ToString : string;
 
+begin
+  WriteStr(Result,Self);
+end;
+
+{ TProcessHandleTypeHelper }
+
+function TProcessHandleTypeHelper.ToString: string;
+begin
+  WriteStr(Result,Self);
+end;
+
+
+{ TProcessOption }
+
+function TProcessOptionHelper.ToString: String;
+begin
+  WriteStr(Result,Self);
+end;
+
+{ TShowWindowOptionsHelper }
+
+function TShowWindowOptionsHelper.ToString: String;
+begin
+  WriteStr(Result,Self);
+end;
+
+{ TStartupOptionHelper }
+
+function TStartupOptionHelper.ToString: String;
+begin
+  WriteStr(Result,Self);
+end;
+
+{ TProcessPriorityhelper }
+
+function TProcessPriorityhelper.ToString: String;
+begin
+  WriteStr(Result,Self);
+end;
+
+{ TRunCommandEventCodeHelper }
+
+function TRunCommandEventCodeHelper.ToString: string;
+begin
+  WriteStr(Result,Self);
+end;
+
+{$ENDIF SKIPHELPERS}
 
 Procedure CommandToList(S : TProcessString; List : TProcessStrings);
 
@@ -577,9 +628,9 @@ begin
     for HT in TProcessHandleType do
       FDescriptors[HT].IOType:=iotPipe;
   if poStderrToOutPut in FProcessOptions then
-    FDescriptors[phtError].IOType:=iotNone;
+    FDescriptors[phtError].IOType:=iotDefault;
   if poPassInput in FProcessOptions then
-    FDescriptors[phtInput].IOType:=iotNone;
+    FDescriptors[phtInput].IOType:=iotDefault;
 end;
 
 procedure TProcess.SetActive(const Value: Boolean);
@@ -1080,10 +1131,10 @@ var
 begin
   if Not FHandleValid then
      exit;
-  If (FTheirHandleIOType=iotNone) or not (CloseHandleOnExecute or aForceClose) then
+  If (FTheirHandleIOType=iotDefault) or not (CloseHandleOnExecute or aForceClose) then
     begin
     FTheirHandle:=THandle(INVALID_HANDLE_VALUE);
-     exit;
+    exit;
     end;
   H:=ResolveProcessHandle;
   // Writeln(StdErr,GetProcessID,' : ',ProcessHandleType,' closing their handle ',IOType,': ',H);
@@ -1129,15 +1180,15 @@ begin
     begin
     FTheirHandleIOType := IOType;
     FOurHandle:=THAndle(INVALID_HANDLE_VALUE);
+    FCloseHandleOnExecute:=(IOType<>iotDefault);
     Case IOType of
-      iotNone : H:=CreateStandardHandle;
+      iotDefault : H:=CreateStandardHandle;
       iotPipe : H:=CreatePipeHandle;
       iotFile : H:=CreateFileNameHandle;
       iotProcess : H:=CreateProcessHandle;
       iotHandle : H:=CreateCustomHandle;
       iotNull : H:=CreateNullFileHandle;
     end;
-    FCloseHandleOnExecute:=(IOType<>iotNone);
     FTheirHandle:=PrepareCreatedHandleForProcess(H);
     if Assigned(FAfterAllocateHandle) then
       FAfterAllocateHandle(Self,FTheirHandle,FCloseHandleOnExecute);
