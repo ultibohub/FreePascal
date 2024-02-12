@@ -391,6 +391,8 @@ function FT_Set_Char_Size(face: PFT_Face; char_width, char_height: FT_F26dot6; h
 function FT_Set_Pixel_Sizes(face: PFT_Face; pixel_width, pixel_height: FT_UInt): integer; cdecl; external FreeTypeDLL Name 'FT_Set_Pixel_Sizes';
 procedure FT_Set_Transform(face: PFT_Face; matrix: PFT_Matrix; delta: PFT_Vector); cdecl; external FreeTypeDLL Name 'FT_Set_Transform';
 
+function FT_New_Memory_Face(alibrary: PFT_Library; file_base: pointer; file_size: longint; face_index: integer; var face: PFT_Face) : integer; cdecl; external freetypedll Name 'FT_New_Memory_Face';
+
 //Outline Processing
 function FT_Outline_Decompose(outline: PFT_Outline; const func_interface: PFT_Outline_Funcs; user: Pointer): integer; cdecl; external FreeTypeDLL Name 'FT_Outline_Decompose';
 
@@ -419,6 +421,9 @@ Type
   TFT_Set_Char_Size = function(face: PFT_Face; char_width, char_height: FT_F26dot6; horz_res, vert_res: FT_UInt): integer; cdecl;
   TFT_Set_Pixel_Sizes = function(face: PFT_Face; pixel_width, pixel_height: FT_UInt): integer; cdecl;
   TFT_Set_Transform = procedure(face: PFT_Face; matrix: PFT_Matrix; delta: PFT_Vector); cdecl;
+
+  TFT_New_Memory_Face = function(alibrary: PFT_Library; file_base: pointer; file_size: longint; face_index: integer; var face: PFT_Face) : integer; cdecl;
+
     //Outline Processing
   TFT_Outline_Decompose = function(outline: PFT_Outline; const func_interface: PFT_Outline_Funcs; user: Pointer): integer; cdecl;
 
@@ -444,6 +449,8 @@ Var
   FT_Set_Char_Size : TFT_Set_Char_Size;
   FT_Set_Pixel_Sizes : TFT_Set_Pixel_Sizes;
   FT_Set_Transform : TFT_Set_Transform;
+
+  FT_New_Memory_Face : TFT_New_Memory_Face;
 
   //Outline Processing
   FT_Outline_Decompose : TFT_Outline_Decompose;
@@ -551,6 +558,7 @@ begin
   pointer(FT_Set_Char_Size) := GetProcedureAddress(LibHandle,'FT_Set_Char_Size');
   pointer(FT_Set_Pixel_Sizes) := GetProcedureAddress(LibHandle,'FT_Set_Pixel_Sizes');
   pointer(FT_Set_Transform) := GetProcedureAddress(LibHandle,'FT_Set_Transform');
+  pointer(FT_New_Memory_Face) := GetProcedureAddress(LibHandle,'FT_New_Memory_Face');
   pointer(FT_Outline_Decompose) := GetProcedureAddress(LibHandle,'FT_Outline_Decompose');
   pointer(FT_Library_Version) := GetProcedureAddress(LibHandle,'FT_Library_Version');
   pointer(FT_Get_Glyph) := GetProcedureAddress(LibHandle,'FT_Get_Glyph');
@@ -574,6 +582,7 @@ begin
   pointer(FT_Set_Char_Size) := Nil;
   pointer(FT_Set_Pixel_Sizes) := Nil;
   pointer(FT_Set_Transform) := Nil;
+  pointer(FT_New_Memory_Face) := Nil;
   pointer(FT_Outline_Decompose) := Nil;
   pointer(FT_Library_Version) := Nil;
   pointer(FT_Get_Glyph) := Nil;
