@@ -3245,19 +3245,17 @@ implementation
         objfield.fieldname:=1 -> contextobjdef = def of objfield
     }
     function is_visible_for_object(symst:tsymtable;symvisibility:tvisibility;contextobjdef:tabstractrecorddef):boolean;
-      var
-        curstruct : tabstractrecorddef;
 
       function is_current_unit(st:tsymtable):boolean;
         begin
           result :=
             (
               (
-                assigned(curstruct) and
-                (st.moduleid=curstruct.symtable.moduleid)
+                assigned(current_structdef) and
+                (st.moduleid=current_structdef.symtable.moduleid)
               ) or
               (
-                not assigned(curstruct) and
+                not assigned(current_structdef) and
                 st.iscurrentunit
               )
             );
@@ -3275,32 +3273,9 @@ implementation
            not (symst.symtabletype in [objectsymtable,recordsymtable]) then
           internalerror(200810285);
         symownerdef:=tabstractrecorddef(symst.defowner);
-        { for specializations we need to check the visibility of the generic,
-          not the specialization (at least when comparing outside of the
-          specialization }
-        if df_specialization in symownerdef.defoptions then
-          begin
-            if not (symownerdef.genericdef.typ in [objectdef,recorddef]) then
-              internalerror(2024020901);
-            symownerdef:=tabstractrecorddef(symownerdef.genericdef);
-          end;
-        if assigned(contextobjdef) and (df_specialization in contextobjdef.defoptions) then
-          begin
-            if not (contextobjdef.genericdef.typ in [objectdef,recorddef]) then
-              internalerror(2024020902);
-            contextobjdef:=tabstractrecorddef(contextobjdef.genericdef);
-          end;
-        if assigned(current_structdef) and (df_specialization in current_structdef.defoptions) then
-          begin
-            if not (current_structdef.genericdef.typ in [objectdef,recorddef]) then
-              internalerror(2024030903);
-            curstruct:=tabstractrecorddef(current_structdef.genericdef)
-          end
-        else
-          curstruct:=current_structdef;
         { specializations might belong to a localsymtable or parasymtable }
         nonlocalst:=symownerdef.owner;
-        if tstoreddef(symownerdef).is_specialization then
+        if tstoreddef(symst.defowner).is_specialization then
           while nonlocalst.symtabletype in [localsymtable,parasymtable] do
             nonlocalst:=nonlocalst.defowner.owner;
         isspezproc:=false;
@@ -3322,49 +3297,49 @@ implementation
                       ( // the case of specialize inside the generic declaration and nested types
                        (nonlocalst.symtabletype in [objectsymtable,recordsymtable]) and
                        (
-                         assigned(curstruct) and
+                         assigned(current_structdef) and
                          (
-                           (curstruct=symownerdef) or
-                           (curstruct.owner.moduleid=symownerdef.symtable.moduleid)
+                           (current_structdef=symownerdef) or
+                           (current_structdef.owner.moduleid=symownerdef.symtable.moduleid)
                          )
                        ) or
                        (
-                         not assigned(curstruct) and
+                         not assigned(current_structdef) and
                          (symownerdef.owner.iscurrentunit)
                        ) or
                        { access from a generic method that belongs to the class
                          but that is specialized elsewere }
                        (
                          isspezproc and
-                         (current_procinfo.procdef.struct=curstruct)
+                         (current_procinfo.procdef.struct=current_structdef)
                        ) or
                        { specializations may access private symbols that their
                          generics are allowed to access }
                        (
-                         assigned(curstruct) and
-                         (df_specialization in curstruct.defoptions) and
-                         (symst.moduleid=curstruct.genericdef.owner.moduleid)
+                         assigned(current_structdef) and
+                         (df_specialization in current_structdef.defoptions) and
+                         (symst.moduleid=current_structdef.genericdef.owner.moduleid)
                        )
                       );
             end;
           vis_strictprivate :
             begin
-              result:=assigned(curstruct) and
-                      is_owned_by(curstruct,symownerdef);
+              result:=assigned(current_structdef) and
+                      is_owned_by(current_structdef,symownerdef);
             end;
           vis_strictprotected :
             begin
                result:=(
                          { access from nested class }
-                         assigned(curstruct) and
-                         is_owned_by(curstruct,symownerdef)
+                         assigned(current_structdef) and
+                         is_owned_by(current_structdef,symownerdef)
                        ) or
                        (
                          { access from child class }
                          assigned(contextobjdef) and
-                         assigned(curstruct) and
+                         assigned(current_structdef) and
                          def_is_related(contextobjdef,symownerdef) and
-                         def_is_related(curstruct,contextobjdef)
+                         def_is_related(current_structdef,contextobjdef)
                        ) or
                        (
                          { helpers can access strict protected symbols }
@@ -3374,8 +3349,8 @@ implementation
                        (
                          { same as above, but from context of call node inside
                            helper method }
-                         is_objectpascal_helper(curstruct) and
-                         def_is_related(tobjectdef(curstruct).extendeddef,symownerdef)
+                         is_objectpascal_helper(current_structdef) and
+                         def_is_related(tobjectdef(current_structdef).extendeddef,symownerdef)
                        );
             end;
           vis_protected :
@@ -3397,14 +3372,14 @@ implementation
                        ( // the case of specialize inside the generic declaration and nested types
                         (nonlocalst.symtabletype in [objectsymtable,recordsymtable]) and
                         (
-                          assigned(curstruct) and
+                          assigned(current_structdef) and
                           (
-                            (curstruct=symownerdef) or
-                            (curstruct.owner.moduleid=symownerdef.symtable.moduleid)
+                            (current_structdef=symownerdef) or
+                            (current_structdef.owner.moduleid=symownerdef.symtable.moduleid)
                           )
                         ) or
                         (
-                          not assigned(curstruct) and
+                          not assigned(current_structdef) and
                           (symownerdef.owner.iscurrentunit)
                         ) or
                         (
@@ -3417,14 +3392,14 @@ implementation
                          but that is specialized elsewere }
                        (
                          isspezproc and
-                         (current_procinfo.procdef.struct=curstruct)
+                         (current_procinfo.procdef.struct=current_structdef)
                        ) or
                        { specializations may access private symbols that their
                          generics are allowed to access }
                        (
-                         assigned(curstruct) and
-                         (df_specialization in curstruct.defoptions) and
-                         (symst.moduleid=curstruct.genericdef.owner.moduleid)
+                         assigned(current_structdef) and
+                         (df_specialization in current_structdef.defoptions) and
+                         (symst.moduleid=current_structdef.genericdef.owner.moduleid)
                        )
                       );
             end;
@@ -3439,9 +3414,9 @@ implementation
           begin
             { capturers have access to anything as we assume checks were done
               before the procdef was inserted into the capturer }
-            result:=assigned(curstruct) and
-                    (curstruct.typ=objectdef) and
-                    (oo_is_capturer in tobjectdef(curstruct).objectoptions);
+            result:=assigned(current_structdef) and
+                    (current_structdef.typ=objectdef) and
+                    (oo_is_capturer in tobjectdef(current_structdef).objectoptions);
           end;
       end;
 
