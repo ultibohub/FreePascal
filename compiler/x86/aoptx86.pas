@@ -6326,11 +6326,20 @@ unit aoptx86;
                                 inc(taicpu(hp1).oper[0]^.ref^.offset,taicpu(p).oper[0]^.ref^.offset);
                                 taicpu(hp1).oper[0]^.ref^.base:=taicpu(p).oper[0]^.ref^.base;
                               end;
+
                             if taicpu(p).oper[0]^.ref^.index<>NR_NO then
                               begin
                                 taicpu(hp1).oper[0]^.ref^.base:=taicpu(hp1).oper[0]^.ref^.index;
                                 taicpu(hp1).oper[0]^.ref^.index:=taicpu(p).oper[0]^.ref^.index;
-                                taicpu(hp1).oper[0]^.ref^.scalefactor:=taicpu(p).oper[0]^.ref^.scalefactor;
+
+                                if (taicpu(p).oper[0]^.ref^.index = taicpu(p).oper[0]^.ref^.base) then
+                                  { Catch the situation where the base = index
+                                    and treat this as *2.  The scalefactor of
+                                    p will be 0 or 1 due to the conditional
+                                    checks above.  Fixes i40647 }
+                                  taicpu(hp1).oper[0]^.ref^.scalefactor := 2
+                                else
+                                  taicpu(hp1).oper[0]^.ref^.scalefactor := taicpu(p).oper[0]^.ref^.scalefactor;
                               end;
 
                             { Only remove the first LEA if we don't need the intermediate register's value as is }
@@ -7864,7 +7873,7 @@ unit aoptx86;
      function TX86AsmOptimizer.OptPass1Cmp(var p: tai): boolean;
        var
          v: TCGInt;
-         hp1, hp2, p_dist, p_jump, hp1_dist, p_label, hp1_label: tai;
+         true_hp1, hp1, hp2, p_dist, p_jump, hp1_dist, p_label, hp1_label: tai;
          FirstMatch, TempBool: Boolean;
          NewReg: TRegister;
          JumpLabel, JumpLabel_dist, JumpLabel_far: TAsmLabel;
@@ -7874,6 +7883,8 @@ unit aoptx86;
          { All these optimisations need a next instruction }
          if not GetNextInstruction(p, hp1) then
            Exit;
+
+         true_hp1 := hp1;
 
          { Search for:
              cmp   ###,###
@@ -7893,6 +7904,7 @@ unit aoptx86;
          p_jump := hp1;
          while Assigned(p_jump) and MatchInstruction(p_jump, A_JCC, []) do
            begin
+             Prefetch(p_jump.Next);
              if IsJumpToLabel(taicpu(p_jump)) then
                begin
                  { Do jump optimisations first in case the condition becomes
@@ -7976,7 +7988,7 @@ unit aoptx86;
 
                          DebugMsg(SPeepholeOptimization + 'CMP/Jcc/@Lbl/CMP/Jcc -> CMP/Jcc, redirecting first jump', p_jump);
                          taicpu(p_jump).loadref(0, taicpu(hp1_dist).oper[0]^.ref^); { This also increases the reference count }
-                         Result := True;
+                         Include(OptsToCheck, aoc_ForceNewIteration);
                          { Don't exit yet.  Since p and p_jump haven't actually been
                            removed, we can check for more on this iteration }
                        end
@@ -8048,9 +8060,18 @@ unit aoptx86;
                ) then
                begin
                  DebugMsg(SPeepholeOptimization + 'CMP/Jcc/CMP; removed superfluous CMP', hp2);
+                 TransferUsedRegs(TmpUsedRegs);
+                 AllocRegBetween(NR_DEFAULTFLAGS, p, hp2, TmpUsedRegs);
                  RemoveInstruction(hp2);
                  Result := True;
                  { Continue the while loop in case "Jcc/CMP" follows the second CMP that was just removed }
+               end
+             else
+               begin
+                 { hp2 is the next instruction, so save time and just set p_jump
+                   to it instead of calling GetNextInstruction below }
+                 p_jump := hp2;
+                 Continue;
                end;
 
              GetNextInstruction(p_jump, p_jump);
@@ -8058,7 +8079,7 @@ unit aoptx86;
 
          if (
              { Don't call GetNextInstruction again if we already have it }
-             (hp1 = p_jump) or
+             (true_hp1 = p_jump) or
              GetNextInstruction(p, hp1)
            ) and
            MatchInstruction(hp1, A_Jcc, []) and
@@ -8193,12 +8214,12 @@ unit aoptx86;
                end;
            end;
 
-         if taicpu(p).oper[0]^.typ = top_const then
+         if (taicpu(p).oper[0]^.typ = top_const) and
+           MatchInstruction(hp1,A_Jcc,A_SETcc,[]) then
            begin
 
              if (taicpu(p).oper[0]^.val = 0) and
-               (taicpu(p).oper[1]^.typ = top_reg) and
-               MatchInstruction(hp1,A_Jcc,A_SETcc,[]) then
+               (taicpu(p).oper[1]^.typ = top_reg) then
                begin
                  hp2 := p;
                  FirstMatch := True;
@@ -8215,6 +8236,7 @@ unit aoptx86;
                      MatchInstruction(hp1,A_Jcc,A_SETcc,[])
                    ) do
                    begin
+                     Prefetch(hp1.Next);
                      FirstMatch := False;
                      case taicpu(hp1).condition of
                        C_B, C_C, C_NAE, C_O:
@@ -8299,72 +8321,79 @@ unit aoptx86;
                  Result := True;
                  Exit;
                end
-             else if (taicpu(p).oper[0]^.val = 1) and
-               MatchInstruction(hp1,A_Jcc,A_SETcc,[]) and
-               (taicpu(hp1).condition in [C_L, C_NL, C_NGE, C_GE]) then
+             else
                begin
-                 { Convert;       To:
-                     cmp $1,r/m     cmp $0,r/m
-                     jl  @lbl       jle @lbl
-                     (Also do inverted conditions)
-                 }
-                 DebugMsg(SPeepholeOptimization + 'Cmp1Jl2Cmp0Jle', p);
-                 taicpu(p).oper[0]^.val := 0;
-                 if taicpu(hp1).condition in [C_L, C_NGE] then
-                   taicpu(hp1).condition := C_LE
-                 else
-                   taicpu(hp1).condition := C_NLE;
+                 TransferUsedRegs(TmpUsedRegs);
+                 UpdateUsedRegs(TmpUsedRegs, tai(p.Next));
 
-                 { If the instruction is now "cmp $0,%reg", convert it to a
-                   TEST (and effectively do the work of the "cmp $0,%reg" in
-                   the block above)
-                 }
-                 if (taicpu(p).oper[1]^.typ = top_reg) then
+                 if not RegUsedAfterInstruction(NR_DEFAULTFLAGS, hp1, TmpUsedRegs) then
                    begin
-                     taicpu(p).opcode := A_TEST;
-                     taicpu(p).loadreg(0,taicpu(p).oper[1]^.reg);
-                   end;
-
-                 Result := True;
-                 Exit;
-               end
-             else if (taicpu(p).oper[1]^.typ = top_reg)
-{$ifdef x86_64}
-               and (taicpu(p).opsize <> S_Q) { S_Q will never happen: cmp with 64 bit constants is not possible }
-{$endif x86_64}
-               then
-               begin
-                 { cmp register,$8000                neg register
-                   je target                 -->     jo target
-
-                   .... only if register is deallocated before jump.}
-                 case Taicpu(p).opsize of
-                   S_B: v:=$80;
-                   S_W: v:=$8000;
-                   S_L: v:=qword($80000000);
-                   else
-                     internalerror(2013112905);
-                 end;
-
-                 if (taicpu(p).oper[0]^.val=v) and
-                    MatchInstruction(hp1,A_Jcc,A_SETcc,[]) and
-                    (Taicpu(hp1).condition in [C_E,C_NE]) then
-                   begin
-                     TransferUsedRegs(TmpUsedRegs);
-                     UpdateUsedRegs(TmpUsedRegs,tai(p.next));
-                     if not(RegInUsedRegs(Taicpu(p).oper[1]^.reg, TmpUsedRegs)) then
+                     if (taicpu(p).oper[0]^.val = 1) and
+                       (taicpu(hp1).condition in [C_L, C_NL, C_NGE, C_GE]) then
                        begin
-                         DebugMsg(SPeepholeOptimization + 'CmpJe2NegJo done',p);
-                         Taicpu(p).opcode:=A_NEG;
-                         Taicpu(p).loadoper(0,Taicpu(p).oper[1]^);
-                         Taicpu(p).clearop(1);
-                         Taicpu(p).ops:=1;
-                         if Taicpu(hp1).condition=C_E then
-                           Taicpu(hp1).condition:=C_O
+                         { Convert;       To:
+                             cmp $1,r/m     cmp $0,r/m
+                             jl  @lbl       jle @lbl
+                             (Also do inverted conditions)
+                         }
+                         DebugMsg(SPeepholeOptimization + 'Cmp1Jl2Cmp0Jle', p);
+                         taicpu(p).oper[0]^.val := 0;
+                         if taicpu(hp1).condition in [C_L, C_NGE] then
+                           taicpu(hp1).condition := C_LE
                          else
-                           Taicpu(hp1).condition:=C_NO;
-                         Result:=true;
-                         exit;
+                           taicpu(hp1).condition := C_NLE;
+
+                         { If the instruction is now "cmp $0,%reg", convert it to a
+                           TEST (and effectively do the work of the "cmp $0,%reg" in
+                           the block above)
+                         }
+                         if (taicpu(p).oper[1]^.typ = top_reg) then
+                           begin
+                             taicpu(p).opcode := A_TEST;
+                             taicpu(p).loadreg(0,taicpu(p).oper[1]^.reg);
+                           end;
+
+                         Result := True;
+                         Exit;
+                       end
+                     else if (taicpu(p).oper[1]^.typ = top_reg)
+{$ifdef x86_64}
+                       and (taicpu(p).opsize <> S_Q) { S_Q will never happen: cmp with 64 bit constants is not possible }
+{$endif x86_64}
+                       then
+                       begin
+                         { cmp register,$8000                neg register
+                           je target                 -->     jo target
+
+                           .... only if register is deallocated before jump.}
+                         case Taicpu(p).opsize of
+                           S_B: v:=$80;
+                           S_W: v:=$8000;
+                           S_L: v:=qword($80000000);
+                           else
+                             internalerror(2013112905);
+                         end;
+
+                         if (taicpu(p).oper[0]^.val=v) and
+                            (Taicpu(hp1).condition in [C_E,C_NE]) then
+                           begin
+                             TransferUsedRegs(TmpUsedRegs);
+                             UpdateUsedRegs(TmpUsedRegs,tai(p.next));
+                             if not(RegInUsedRegs(Taicpu(p).oper[1]^.reg, TmpUsedRegs)) then
+                               begin
+                                 DebugMsg(SPeepholeOptimization + 'CmpJe2NegJo done',p);
+                                 Taicpu(p).opcode:=A_NEG;
+                                 Taicpu(p).loadoper(0,Taicpu(p).oper[1]^);
+                                 Taicpu(p).clearop(1);
+                                 Taicpu(p).ops:=1;
+                                 if Taicpu(hp1).condition=C_E then
+                                   Taicpu(hp1).condition:=C_O
+                                 else
+                                   Taicpu(hp1).condition:=C_NO;
+                                 Result:=true;
+                                 exit;
+                               end;
+                           end;
                        end;
                    end;
                end;
@@ -15182,44 +15211,107 @@ unit aoptx86;
     function TX86AsmOptimizer.OptPass2Lea(var p : tai) : Boolean;
       var
         SubReg: TSubRegister;
+        hp1, hp2: tai;
+        CallJmp: Boolean;
       begin
-        Result:=false;
+        Result := False;
+        CallJmp := False;
         SubReg := getsubreg(taicpu(p).oper[1]^.reg);
         if not (RegInUsedRegs(NR_DEFAULTFLAGS,UsedRegs)) then
           with taicpu(p).oper[0]^.ref^ do
-            if (offset = 0) and not Assigned(symbol) and not Assigned(relsymbol) and (index <> NR_NO) then
-              begin
-                if (scalefactor <= 1) and SuperRegistersEqual(base, taicpu(p).oper[1]^.reg) then
-                  begin
-                    taicpu(p).loadreg(0, newreg(R_INTREGISTER, getsupreg(index), SubReg));
-                    taicpu(p).opcode := A_ADD;
-                    DebugMsg(SPeepholeOptimization + 'Lea2AddBase done',p);
-                    Result := True;
-                  end
-                else if SuperRegistersEqual(index, taicpu(p).oper[1]^.reg) then
-                  begin
-                    if (base <> NR_NO) then
-                      begin
-                        if (scalefactor <= 1) then
+            if not Assigned(symbol) and not Assigned(relsymbol) and (index <> NR_NO) then
+              if (offset = 0) then
+                begin
+                  if (scalefactor <= 1) and SuperRegistersEqual(base, taicpu(p).oper[1]^.reg) then
+                    begin
+                      taicpu(p).loadreg(0, newreg(R_INTREGISTER, getsupreg(index), SubReg));
+                      taicpu(p).opcode := A_ADD;
+                      DebugMsg(SPeepholeOptimization + 'Lea2AddBase done',p);
+                      Result := True;
+                    end
+                  else if SuperRegistersEqual(index, taicpu(p).oper[1]^.reg) then
+                    begin
+                      if (base <> NR_NO) then
+                        begin
+                          if (scalefactor <= 1) then
+                            begin
+                              taicpu(p).loadreg(0, newreg(R_INTREGISTER, getsupreg(base), SubReg));
+                              taicpu(p).opcode := A_ADD;
+                              DebugMsg(SPeepholeOptimization + 'Lea2AddIndex done',p);
+                              Result := True;
+                            end;
+                        end
+                      else
+                        { Convert lea (%reg,2^x),%reg to shl x,%reg }
+                        if (scalefactor in [2, 4, 8]) then
                           begin
-                            taicpu(p).loadreg(0, newreg(R_INTREGISTER, getsupreg(base), SubReg));
-                            taicpu(p).opcode := A_ADD;
-                            DebugMsg(SPeepholeOptimization + 'Lea2AddIndex done',p);
+                            { BsrByte is, in essence, the base-2 logarithm of the scale factor }
+                            taicpu(p).loadconst(0, BsrByte(scalefactor));
+                            taicpu(p).opcode := A_SHL;
+                            DebugMsg(SPeepholeOptimization + 'Lea2Shl done',p);
                             Result := True;
                           end;
-                      end
-                    else
-                      { Convert lea (%reg,2^x),%reg to shl x,%reg }
-                      if (scalefactor in [2, 4, 8]) then
-                        begin
-                          { BsrByte is, in essence, the base-2 logarithm of the scale factor }
-                          taicpu(p).loadconst(0, BsrByte(scalefactor));
-                          taicpu(p).opcode := A_SHL;
-                          DebugMsg(SPeepholeOptimization + 'Lea2Shl done',p);
-                          Result := True;
-                        end;
-                  end;
-              end;
+                    end;
+                end
+              { lea x(%reg1,%reg2),%reg3 and lea x(symbol,%reg2),%reg3 have a
+                lot of latency, so break off the offset if %reg3 is used soon
+                afterwards }
+              else if not (cs_opt_size in current_settings.optimizerswitches) and
+                { If 3-component addresses don't have additional latency, don't
+                  perform this optimisation }
+                not (CPUX86_HINT_FAST_3COMP_ADDR in cpu_optimization_hints[current_settings.optimizecputype]) and
+                GetNextInstruction(p, hp1) and
+                (
+                  (
+                    { Permit jumps and calls since they have a larger degree of overhead }
+                    (
+                      not SetAndTest(is_calljmp(taicpu(hp1).opcode), CallJmp) or
+                      (
+                        { ... unless the register specifies the location }
+                        (taicpu(hp1).ops > 0) and
+                        RegInOp(taicpu(p).oper[1]^.reg, taicpu(hp1).oper[0]^)
+                      )
+                    ) and
+                    (
+                      not CallJmp and { Use the Boolean result to avoid calling "is_calljmp" twice }
+                      RegInInstruction(taicpu(p).oper[1]^.reg, hp1)
+                    )
+                  )
+                  or
+                  (
+                    { Check up to two instructions ahead }
+                    GetNextInstruction(hp1, hp2) and
+                    (
+                      not SetAndTest(is_calljmp(taicpu(hp2).opcode), CallJmp) or
+                      (
+                        { Same as above }
+                        (taicpu(hp2).ops > 0) and
+                        RegInOp(taicpu(p).oper[1]^.reg, taicpu(hp2).oper[0]^)
+                      )
+                    ) and
+                    (
+                      not CallJmp and { Use the Boolean result to avoid calling "is_calljmp" twice }
+                      RegInInstruction(taicpu(p).oper[1]^.reg, hp2)
+                    )
+                  )
+                ) then
+                begin
+                  { Offset will be a 32-bit signed integer, so it's safe to use in the 64-bit version of ADD }
+                  hp2 := taicpu.op_const_reg(A_ADD, taicpu(p).opsize, offset, taicpu(p).oper[1]^.reg);
+                  taicpu(hp2).fileinfo := taicpu(p).fileinfo;
+                  offset := 0;
+                  if Assigned(symbol) or Assigned(relsymbol) then
+                    DebugMsg(SPeepholeOptimization + 'lea x(sym,%reg1),%reg2 -> lea(sym,%reg1),%reg2; add $x,%reg2 to minimise instruction latency (Lea2LeaAdd)', p)
+                  else
+                    DebugMsg(SPeepholeOptimization + 'lea x(%reg1,%reg2),%reg3 -> lea(%reg1,%reg2),%reg3; add $x,%reg3 to minimise instruction latency (Lea2LeaAdd)', p);
+
+                  { Inserting before the next instruction rather than after the
+                    current instruction gives more accurate register tracking }
+                  asml.InsertBefore(hp2, hp1);
+                  AllocRegBetween(taicpu(p).oper[1]^.reg, p, hp2, UsedRegs);
+
+                  Result := True;
+                end;
       end;
 
 

@@ -53,6 +53,7 @@ const
 
 { values for TShortCut }
 
+  scCommand = $1000;
   scShift = $2000;
   scCtrl = $4000;
   scAlt = $8000;
@@ -1599,6 +1600,8 @@ type
   public
     constructor Create(Instance: TFPResourceHMODULE; const ResName: string; ResType: PAnsiChar);
     constructor CreateFromID(Instance: TFPResourceHMODULE; ResID: Integer; ResType: PAnsiChar);
+    constructor Create(Instance: TFPResourceHMODULE; const ResName: string; ResType: PWideChar);
+    constructor CreateFromID(Instance: TFPResourceHMODULE; ResID: Integer; ResType: PWideChar);
     destructor Destroy; override;
   end;
 {$endif FPC_OS_UNICODE}
@@ -1636,7 +1639,7 @@ type
   TValueType = (vaNull, vaList, vaInt8, vaInt16, vaInt32, vaExtended,
     vaString, vaIdent, vaFalse, vaTrue, vaBinary, vaSet, vaLString,
     vaNil, vaCollection, vaSingle, vaCurrency, vaDate, vaWString, vaInt64,
-    vaUTF8String, vaUString, vaQWord);
+    vaUTF8String, vaUString, vaQWord, vaDouble);
 
   TFilerFlag = (ffInherited, ffChildPos, ffInline);
   TFilerFlags = set of TFilerFlag;
@@ -1682,6 +1685,7 @@ type
     Procedure FlushBuffer; virtual;
     function NextValue: TValueType; virtual; abstract;
     function ReadValue: TValueType; virtual; abstract;
+    function CurrentValue : TValueType; virtual; abstract;
     procedure BeginRootComponent; virtual; abstract;
     procedure BeginComponent(var Flags: TFilerFlags; var AChildPos: Integer;
       var CompClassName, CompName: String); virtual; abstract; overload;
@@ -1696,6 +1700,7 @@ type
 {$ifndef FPUNONE}
     function ReadFloat: Extended; virtual; abstract;
     function ReadSingle: Single; virtual; abstract;
+    function ReadDouble: Double; virtual; abstract;
     function ReadDate: TDateTime; virtual; abstract;
 {$endif}
     function ReadCurrency: Currency; virtual; abstract;
@@ -1734,7 +1739,8 @@ type
     FBufPos: Integer;
     FBufEnd: Integer;
     FVersion: TBOVersion;
-
+    FCurrentValue : TValueType;
+    Function CurrentValue : TValueType; override;
     function ReadWord : word; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     function ReadDWord : longword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
     function ReadQWord : qword; {$ifdef CLASSESINLINE}inline;{$endif CLASSESINLINE}
@@ -1761,6 +1767,7 @@ type
 {$ifndef FPUNONE}
     function ReadFloat: Extended; override;
     function ReadSingle: Single; override;
+    function ReadDouble: Double; override;
     function ReadDate: TDateTime; override;
 {$endif}
     function ReadCurrency: Currency; override;
@@ -1845,6 +1852,8 @@ type
     procedure ReadPropValue(Instance: TPersistent; PropInfo: Pointer);
     procedure PropertyError;
     procedure ReadData(Instance: TComponent);
+    function DoReadString(aType : TValueType): rawbytestring;
+    procedure SetName(aComponent: TComponent; var aName : string); virtual;
     property PropName: rawbytestring read FPropName;
     property CanHandleExceptions: Boolean read FCanHandleExcepts;
     function CreateDriver(Stream: TStream; BufSize: Integer): TAbstractObjectReader; virtual;
@@ -1894,6 +1903,8 @@ type
     function ReadComponentDeltaRes(Instance: TComponent; const DeltaCandidates: array of Ansistring; const Proc: TGetStreamProc): TComponent;
     function ReadVariant: Variant;
     procedure ReadSignature;
+    // Readstr assumes that valuetype has aleady been read and will raise an error if it was not a string type
+    function ReadStr : RawByteString;
     function ReadString: RawBytestring;
     function ReadWideString: WideString;
     function ReadUnicodeString: UnicodeString;
@@ -2411,7 +2422,6 @@ type
     function GetComponent(AIndex: Integer): TComponent;
     function GetComponentCount: Integer;
     function GetComponentIndex: Integer;
-    function GetObservers: TObservers;
     procedure Insert(AComponent: TComponent);
     procedure ReadLeft(Reader: TReader);
     procedure ReadTop(Reader: TReader);
@@ -2423,6 +2433,7 @@ type
     procedure WriteTop(Writer: TWriter);
   protected
     FComponentStyle: TComponentStyle;
+    function GetObservers: TObservers;virtual;
     procedure GetDeltaStreams(aProc: TGetStreamProc); virtual;
     procedure ReadDeltaStream(const S: TStream);
     procedure ReadDeltaState; virtual;
@@ -2438,6 +2449,7 @@ type
       Operation: TOperation); virtual;
     procedure PaletteCreated; dynamic;
     procedure ReadState(Reader: TReader); virtual;
+    procedure RemoveFreeNotifications;
     procedure SetAncestor(Value: Boolean);
     procedure SetDesigning(Value: Boolean; SetChildren : Boolean = True);
     procedure SetDesignInstance(Value: Boolean);
@@ -2563,6 +2575,7 @@ type
     property ActionComponent: TComponent read FActionComponent write SetActionComponent;
     property OnExecute: TNotifyEvent read FOnExecute write SetOnExecute;
     property OnUpdate: TNotifyEvent read FOnUpdate write FOnUpdate;
+    Property Clients[Idx : Integer] : TObject Read GetClient;
   end;
   TActionEvent = procedure(Action: TBasicAction; var Handled: Boolean) of object;
 
@@ -2698,6 +2711,8 @@ type
     constructor Create(const aPlatforms: TPlatformIds);
     property Platforms: TPlatformIds read FPlatforms write FPlatforms;
   end;  
+
+
   
 const
   { Platform identifiers }
@@ -2881,6 +2896,7 @@ procedure ObjectTextToBinary(Input, Output: TStream);
 
 procedure ObjectResourceToText(Input, Output: TStream);
 procedure ObjectTextToResource(Input, Output: TStream);
+function TestStreamFormat(const Stream: TStream): TStreamOriginalFormat;
 
 { Utility routines }
 

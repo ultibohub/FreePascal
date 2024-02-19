@@ -55,6 +55,7 @@ type
 
   TOnComparison<T> = function(const Left, Right: T): Integer of object;
   TComparisonFunc<T> = function(const Left, Right: T): Integer;
+  TComparison<T> = reference to function(const Left, Right: T): Integer;
 
   TComparer<T> = class(TInterfacedObject, IComparer<T>)
   public
@@ -79,6 +80,14 @@ type
   public
     function Compare(const ALeft, ARight: T): Integer; override;
     constructor Create(AComparison: TComparisonFunc<T>);
+  end;
+  
+  TDelegatedComparer<T> = class(TComparer<T>)
+  private
+    FCompareFunc: TComparison<T>;
+  public
+    constructor Create(const aCompare: TComparison<T>);
+    function Compare(const aLeft, aRight: T): Integer; override;
   end;
 
   IEqualityComparer<T> = interface
@@ -644,8 +653,10 @@ type
 
 
     FEqualityComparerInstances: array[TTypeKind] of TInstance;
+    TablesInitialized : Boolean;
   private
     class constructor Create;
+    class procedure InitTables;
   public
     class function LookupEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; override;
   end;
@@ -763,8 +774,10 @@ type
 
     // all instances
     FExtendedEqualityComparerInstances: array[TTypeKind] of TInstance;
+    TablesInitialized : Boolean;
   private
     class constructor Create;
+    class procedure InitTables;
   public
     class function LookupExtendedEqualityComparer(ATypeInfo: PTypeInfo; ASize: SizeInt): Pointer; override;
   end;
@@ -1116,6 +1129,18 @@ constructor TDelegatedComparerFunc<T>.Create(AComparison: TComparisonFunc<T>);
 begin
   FComparison := AComparison;
 end;
+
+constructor TDelegatedComparer<T>.Create(const aCompare: TComparison<T>);
+begin
+  FCompareFunc:=aCompare;
+end;
+
+function TDelegatedComparer<T>.Compare(const aLeft, aRight: T): Integer;
+begin
+  Result:=FCompareFunc(aLeft, aRight);
+end;
+
+
 
 { TInterface }
 
@@ -2306,6 +2331,8 @@ begin
     Exit(SelectBinaryEqualityComparer(Nil, ASize))
   else
   begin
+    If not TablesInitialized  then
+      InitTables;
     LInstance := @FEqualityComparerInstances[ATypeInfo.Kind];
     Result := LInstance.Instance;
     if LInstance.Selector then
@@ -2319,6 +2346,16 @@ end;
 
 class constructor THashService<T>.Create;
 begin
+  if not TablesInitialized then
+    InitTables
+end;
+
+class Procedure THashService<T>.InitTables;
+
+begin
+  if TablesInitialized then
+    exit;
+  TablesInitialized:=true;
   FEqualityComparer_Int8_VMT          := EqualityComparer_Int8_VMT         ;
   FEqualityComparer_Int16_VMT         := EqualityComparer_Int16_VMT        ;
   FEqualityComparer_Int32_VMT         := EqualityComparer_Int32_VMT        ;
@@ -2510,6 +2547,8 @@ begin
     Exit(SelectBinaryEqualityComparer(Nil, ASize))
   else
   begin
+    if not TablesInitialized then
+      InitTables;
     LInstance := @FExtendedEqualityComparerInstances[ATypeInfo.Kind];
     Result := LInstance.Instance;
     if LInstance.Selector then
@@ -2523,6 +2562,16 @@ end;
 
 class constructor TExtendedHashService<T>.Create;
 begin
+  // The InitTables can have been called before from the class constructors of other classes.
+  if not TablesInitialized then
+    InitTables
+end;
+
+class procedure TExtendedHashService<T>.InitTables;
+
+begin
+  if TablesInitialized then exit;
+  TablesInitialized:=True;
   FExtendedEqualityComparer_Int8_VMT          := ExtendedEqualityComparer_Int8_VMT         ;
   FExtendedEqualityComparer_Int16_VMT         := ExtendedEqualityComparer_Int16_VMT        ;
   FExtendedEqualityComparer_Int32_VMT         := ExtendedEqualityComparer_Int32_VMT        ;
@@ -3409,7 +3458,6 @@ begin
       begin
         if AFactory = nil then
           AFactory := TDefaultHashFactory;
-
         Exit(
           AFactory.GetHashService.LookupEqualityComparer(ATypeInfo, ASize));
       end;
