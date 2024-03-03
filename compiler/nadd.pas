@@ -32,12 +32,21 @@ interface
       node,symtype;
 
     type
+       TAddNodeFlag = (
+         anf_has_pointerdiv,
+         { the node shall be short boolean evaluated, this flag has priority over localswitches }
+         anf_short_bool
+       );
+
+       TAddNodeFlags = set of TAddNodeFlag;
+
        taddnode = class(tbinopnode)
        private
           resultrealdefderef: tderef;
           function pass_typecheck_internal:tnode;
        public
           resultrealdef : tdef;
+          addnodeflags : TAddNodeFlags;
           constructor create(tt : tnodetype;l,r : tnode);override;
           constructor create_internal(tt:tnodetype;l,r:tnode);
           constructor ppuload(t:tnodetype;ppufile:tcompilerppufile);override;
@@ -52,6 +61,9 @@ interface
     {$ifdef state_tracking}
           function track_state_pass(exec_known:boolean):boolean;override;
     {$endif}
+    {$ifdef DEBUG_NODE_XML}
+          procedure XMLPrintNodeInfo(var T: Text); override;
+    {$endif DEBUG_NODE_XML}
          protected
           { override the following if you want to implement }
           { parts explicitely in the code generator (JM)    }
@@ -140,7 +152,8 @@ implementation
       {$ifdef state_tracking}
       nstate,
       {$endif}
-      cpuinfo;
+      cpuinfo,
+      ppu;
 
 
 {*****************************************************************************
@@ -179,8 +192,8 @@ implementation
     constructor taddnode.create(tt : tnodetype;l,r : tnode);
       begin
          inherited create(tt,l,r);
+         addnodeflags:=[];
       end;
-
 
     constructor taddnode.create_internal(tt:tnodetype;l,r:tnode);
       begin
@@ -192,6 +205,7 @@ implementation
     constructor taddnode.ppuload(t: tnodetype; ppufile: tcompilerppufile);
       begin
         inherited ppuload(t, ppufile);
+        ppufile.getset(tppuset1(addnodeflags));
         ppufile.getderef(resultrealdefderef);
       end;
 
@@ -199,7 +213,8 @@ implementation
     procedure taddnode.ppuwrite(ppufile: tcompilerppufile);
       begin
         inherited ppuwrite(ppufile);
-         ppufile.putderef(resultrealdefderef);
+        ppufile.putset(tppuset1(addnodeflags));
+        ppufile.putderef(resultrealdefderef);
       end;
 
 
@@ -736,15 +751,15 @@ implementation
                      { pointer-pointer results in an integer }
                      if (rt=pointerconstn) then
                        begin
-                         if not(nf_has_pointerdiv in flags) then
+                         if not(anf_has_pointerdiv in addnodeflags) then
                            internalerror(2008030101);
-                         t := cpointerconstnode.create(qword(v),resultdef)
+                         t:=cpointerconstnode.create(qword(v),resultdef)
                        end
                      else
-                       t := cpointerconstnode.create(qword(v),resultdef)
+                       t:=cpointerconstnode.create(qword(v),resultdef)
                    else
                      if is_integer(ld) then
-                       t := create_simplified_ord_const(v,resultdef,forinline,cs_check_overflow in localswitches)
+                       t:=create_simplified_ord_const(v,resultdef,forinline,cs_check_overflow in localswitches)
                      else
                        t:=cordconstnode.create(v,resultdef,(ld.typ<>enumdef));
                  end;
@@ -1657,7 +1672,7 @@ implementation
                             begin
                               { we need to copy the whole tree to force another pass_1 }
                               include(localswitches,cs_full_boolean_eval);
-                              exclude(flags,nf_short_bool);
+                              exclude(addnodeflags,anf_short_bool);
                               result:=getcopy;
                               exit;
                             end;
@@ -1874,6 +1889,7 @@ implementation
         n: taddnode;
       begin
         n:=taddnode(inherited dogetcopy);
+        n.addnodeflags:=addnodeflags;
         n.resultrealdef:=resultrealdef;
         result:=n;
       end;
@@ -1985,7 +2001,7 @@ implementation
                         elem,nil)));
 
             result:=cinlinenode.create(in_insert_x_y_z,false,para);
-            include(aktassignmentnode.flags,nf_assign_done_in_right);
+            include(aktassignmentnode.assignmentnodeflags,anf_assign_done_in_right);
           end;
 
       begin
@@ -2237,7 +2253,7 @@ implementation
            begin
               { set for & and | operations in macpas mode: they only work on }
               { booleans, and always short circuit evaluation                }
-              if (nf_short_bool in flags) then
+              if (anf_short_bool in addnodeflags) then
                 begin
                   if not is_boolean(ld) then
                     begin
@@ -2759,11 +2775,11 @@ implementation
                     else
                       CGMessage3(type_e_operator_not_supported_for_types,node2opstr(nodetype),ld.typename,rd.typename);
 
-                    if not(nf_has_pointerdiv in flags) and
+                    if not(anf_has_pointerdiv in addnodeflags) and
                       (tpointerdef(rd).pointeddef.size>1) then
                       begin
                         hp:=getcopy;
-                        include(hp.flags,nf_has_pointerdiv);
+                        include(taddnode(hp).addnodeflags, anf_has_pointerdiv);
                         result:=cmoddivnode.create(divn,hp,
                           cordconstnode.create(tpointerdef(rd).pointeddef.size,tpointerdef(rd).pointer_subtraction_result_type,false));
                       end;
@@ -3385,7 +3401,7 @@ implementation
                             'fpc_'+tstringdef(resultdef).stringtypname+'_concat',
                             para
                           );
-                  include(aktassignmentnode.flags,nf_assign_done_in_right);
+                  include(aktassignmentnode.assignmentnodeflags,anf_assign_done_in_right);
                   firstpass(result);
                 end
               else
@@ -3529,7 +3545,7 @@ implementation
               left:=nil;
               right:=nil;
 
-              include(aktassignmentnode.flags,nf_assign_done_in_right);
+              include(aktassignmentnode.assignmentnodeflags,anf_assign_done_in_right);
               firstpass(result);
             end
           else
@@ -3742,7 +3758,7 @@ implementation
                             'fpc_dynarray_concat',
                             para
                           );
-                  include(aktassignmentnode.flags,nf_assign_done_in_right);
+                  include(aktassignmentnode.assignmentnodeflags,anf_assign_done_in_right);
                   firstpass(result);
                 end
               else
@@ -4755,5 +4771,27 @@ implementation
         end;
     end;
 {$endif}
+{$ifdef DEBUG_NODE_XML}
+    procedure TAddNode.XMLPrintNodeInfo(var T: Text);
+      var
+        i: TAddNodeFlag;
+        First: Boolean;
+      begin
+        inherited XMLPrintNodeInfo(T);
+        First := True;
+        for i in addnodeflags do
+          begin
+            if First then
+              begin
+                Write(T, ' addnodeflags="', i);
+                First := False;
+              end
+            else
+              Write(T, ',', i)
+          end;
+        if not First then
+          Write(T, '"');
+      end;
+{$endif DEBUG_NODE_XML}
 
 end.

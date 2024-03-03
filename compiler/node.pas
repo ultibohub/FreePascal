@@ -228,36 +228,17 @@ interface
          { Node cannot be assigned to }
          nf_no_lvalue,
          { this node is the user code entry, if a node with this flag is removed
-           during simplify, the flag must be moved to another node }
+           during simplify, the flag must be moved to another node.  Though
+           normally applicable to block nodes, they can also appear on asm nodes
+           in the case of pure assembly routines }
          nf_usercode_entry,
-
-         { tderefnode }
-         nf_no_checkpointer,
-
-         { tvecnode }
-         nf_memindex,
-         nf_memseg,
-         nf_callunique,
 
          { tloadnode/ttypeconvnode }
          nf_absolute,
 
-         { taddnode }
+         { taddnode, but appears in typeconv nodes as well among other places }
          { if the result type of a node is currency, then this flag denotes, that the value is already mulitplied by 10000 }
          nf_is_currency,
-         nf_has_pointerdiv,
-         { the node shall be short boolean evaluated, this flag has priority over localswitches }
-         nf_short_bool,
-
-         { tmoddivnode }
-         nf_isomod,
-
-         { tassignmentnode }
-         nf_assign_done_in_right,
-
-         { tarrayconstructnode }
-         nf_forcevaria,
-         nf_novariaallowed,
 
          { ttypeconvnode, and the first one also treal/ord/pointerconstn }
          { second one also for subtractions of u32-u32 implicitly upcasted to s64 }
@@ -266,16 +247,11 @@ interface
          nf_internal,  { no warnings/hints generated }
          nf_load_procvar,
 
-         { tinlinenode }
-         nf_inlineconst,
-
-         { tasmnode }
-         nf_get_asm_position,
-
-         { tblocknode }
+         { tblocknode / this is not node-specific because it can also appear on
+           implicit try/finally nodes }
          nf_block_with_exit,
 
-         { tloadvmtaddrnode }
+         { tloadvmtaddrnode / tisnode }
          nf_ignore_for_wpo, { we know that this loadvmtaddrnode cannot be used to construct a class instance }
 
          { node is derived from generic parameter }
@@ -783,7 +759,7 @@ implementation
         ppufile.getset(tppuset5(localswitches));
         verbosity:=ppufile.getlongint;
         ppufile.getderef(resultdefderef);
-        ppufile.getset(tppuset5(flags));
+        ppufile.getset(tppuset4(flags));
         { updated by firstpass }
         expectloc:=LOC_INVALID;
         { updated by secondpass }
@@ -798,7 +774,7 @@ implementation
         ppufile.putset(tppuset5(localswitches));
         ppufile.putlongint(verbosity);
         ppufile.putderef(resultdefderef);
-        ppufile.putset(tppuset5(flags));
+        ppufile.putset(tppuset4(flags));
       end;
 
 

@@ -622,7 +622,7 @@ implementation
          do_typecheckpass(p);
 
          if (p.nodetype=vecn) and
-            (nf_memseg in p.flags) then
+            (vnf_memseg in tvecnode(p).vecnodeflags) then
            CGMessage(parser_e_no_with_for_variable_in_other_segments);
 
          { "with procvar" can never mean anything, so always try
@@ -1099,7 +1099,8 @@ implementation
 
          { Force an empty register list for pure assembler routines,
            so that pass2 won't allocate volatile registers for them. }
-         asmstat.has_registerlist:=(po_assembler in current_procinfo.procdef.procoptions);
+         if (po_assembler in current_procinfo.procdef.procoptions) then
+           Include(asmstat.asmnodeflags,asmnf_has_registerlist);
 
          { END is read, got a list of changed registers? }
          if try_to_consume(_LECKKLAMMER) then
@@ -1139,7 +1140,7 @@ implementation
                   if not try_to_consume(_COMMA) then
                     break;
                 until false;
-                asmstat.has_registerlist:=true;
+                Include(asmstat.asmnodeflags,asmnf_has_registerlist);
               end;
              consume(_RECKKLAMMER);
            end;

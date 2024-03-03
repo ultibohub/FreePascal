@@ -60,6 +60,7 @@ Type
        cpu_zen,
        cpu_zen2,
        cpu_x86_64_v4,
+       cpu_skylake_x,
        cpu_icelake,
        cpu_icelake_client,
        cpu_icelake_server,
@@ -148,6 +149,7 @@ Const
      'ZEN',
      'ZEN2',
      'X86-64-V4',
+     'SKYLAKE-X',
      'ICELAKE',
      'ICELAKE-CLIENT',
      'ICELAKE-SERVER',
@@ -283,9 +285,10 @@ type
      { cpu_zen       } cpu_x86_64_v3_flags,
      { cpu_zen2      } cpu_x86_64_v3_flags,
      { cpu_x86_64_v4 } cpu_x86_64_v4_flags,
-     { cpu_icelake   } cpu_x86_64_v3_flags,
-     { cpu_icelake_client } cpu_x86_64_v3_flags,
-     { cpu_icelake_server } cpu_x86_64_v3_flags,
+     { cpu_skylake-x } cpu_x86_64_v4_flags,
+     { cpu_icelake   } cpu_x86_64_v4_flags,
+     { cpu_icelake_client } cpu_x86_64_v4_flags,
+     { cpu_icelake_server } cpu_x86_64_v4_flags,
      { cpu_zen3      } cpu_x86_64_v3_flags,
      { cpu_zen4      } cpu_x86_64_v4_flags
    );
@@ -293,7 +296,7 @@ type
    fpu_x86_64_v1_flags = [];
    fpu_x86_64_v2_flags = fpu_x86_64_v1_flags+[FPUX86_HAS_SSE3,FPUX86_HAS_SSE4_1,FPUX86_HAS_SSE4_2,FPUX86_HAS_SSSE3];
    fpu_x86_64_v3_flags = fpu_x86_64_v2_flags+[FPUX86_HAS_AVXUNIT,FPUX86_HAS_FMA,FPUX86_HAS_F16C,FPUX86_HAS_AVX2];
-   fpu_x86_64_v4_flags = fpu_x86_64_v3_flags;
+   fpu_x86_64_v4_flags = fpu_x86_64_v3_flags+[FPUX86_HAS_32MMREGS,FPUX86_HAS_AVX512F,FPUX86_HAS_AVX512BW,FPUX86_HAS_AVX512CD,FPUX86_HAS_AVX512DQ,FPUX86_HAS_AVX512VL];
 
    fpu_capabilities : array[tfputype] of set of tfpuflags = (
       { fpu_none      }  [],
@@ -330,6 +333,7 @@ type
       { cpu_zen       } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_zen2      } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_x86_64_v4 } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
+      { cpu_skylake-x } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_icelake   } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_icelake_client } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],
       { cpu_icelake_server } [CPUX86_HINT_FAST_BT_REG_IMM,CPUX86_HINT_FAST_BTX_REG_IMM,CPUX86_HINT_FAST_BT_MEM_IMM,CPUX86_HINT_FAST_XCHG,CPUX86_HINT_FAST_PDEP_PEXT,CPUX86_HINT_FAST_3COMP_ADDR],

@@ -64,6 +64,7 @@ type
 
     class function Construct(const AComparison: TOnComparison<T>): IComparer<T>; overload;
     class function Construct(const AComparison: TComparisonFunc<T>): IComparer<T>; overload;
+    class function Construct(const AComparison: TComparison<T>): IComparer<T>; overload;
   end;
 
   TDelegatedComparerEvents<T> = class(TComparer<T>)
@@ -1088,6 +1089,13 @@ function _LookupVtableInfo(AGInterface: TDefaultGenericInterface; ATypeInfo: PTy
 function _LookupVtableInfoEx(AGInterface: TDefaultGenericInterface; ATypeInfo: PTypeInfo; ASize: SizeInt;
   AFactory: THashFactoryClass): Pointer;
 
+Type
+
+  TCollectionItemComparer = IComparer<TCollectionItem>;
+  TCollectionHelper = Class helper for TCollection
+    Procedure sort(const AComparer: TCollectionItemComparer); overload;
+  end;  
+
 implementation
 
 { TComparer<T> }
@@ -1103,6 +1111,11 @@ end;
 class function TComparer<T>.Construct(const AComparison: TOnComparison<T>): IComparer<T>;
 begin
   Result := TDelegatedComparerEvents<T>.Create(AComparison);
+end;
+
+class function TComparer<T>.Construct(const AComparison: TComparison<T>): IComparer<T>;
+begin
+  Result := TDelegatedComparer<T>.Create(AComparison);
 end;
 
 class function TComparer<T>.Construct(const AComparison: TComparisonFunc<T>): IComparer<T>;
@@ -3474,6 +3487,26 @@ begin
     Exit(nil);
   end;
 end;
+
+{ TCollectionHelper }
+
+
+Function GenericCollSort(Item1,Item2 : TCollectionItem; aContext : Pointer) : Integer;
+
+begin
+  Result:=TCollectionItemComparer(aContext).Compare(Item1,Item2);   
+end;
+
+Procedure TCollectionHelper.sort(const AComparer: TCollectionItemComparer);
+
+begin
+  aComparer._AddRef;
+  try
+    Sort(GenericCollSort,Pointer(aComparer));
+  finally
+    aComparer._Release;
+  end;  
+end;  
 
 end.
 

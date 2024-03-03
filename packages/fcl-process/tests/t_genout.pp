@@ -1,3 +1,6 @@
+{%norun}
+{%neededafter}
+
 program genout;
 
 uses sysutils;

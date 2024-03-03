@@ -1,3 +1,6 @@
+{%norun}
+{%neededafter}
+
 program docat;
 
 Procedure ReadAndWrite(var O : Text);

@@ -589,7 +589,7 @@ implementation
                        end
                      else
                        if oo_is_sealed in childof.objectoptions then
-                         Message1(parser_e_sealed_descendant,childof.typename)
+                         Message1(parser_e_sealed_descendant,childof.typesymbolprettyname)
                        else
                          childof:=find_real_class_definition(childof,true);
                    odt_interfacecorba,
@@ -1084,7 +1084,8 @@ implementation
         vdoptions: tvar_dec_options;
         fieldlist: tfpobjectlist;
         rtti_attrs_def: trtti_attribute_list;
-
+        attr_element_count,fldCount : Integer;
+        method_def : tprocdef;
 
       procedure parse_const;
         begin
@@ -1242,7 +1243,6 @@ implementation
               end;
             _ID :
               begin
-                check_unbound_attributes;
                 if is_objcprotocol(current_structdef) and
                    ((idtoken=_REQUIRED) or
                     (idtoken=_OPTIONAL)) then
@@ -1323,7 +1323,6 @@ implementation
                       begin
                         if object_member_blocktype=bt_general then
                           begin
-                            rtti_attrs_def := nil;
                             if (idtoken=_GENERIC) and
                                 not (m_delphi in current_settings.modeswitches) and
                                 (
@@ -1367,13 +1366,47 @@ implementation
                                   include(vdoptions,vd_final);
                                 if threadvar_fields then
                                   include(vdoptions,vd_threadvar);
-                                read_record_fields(vdoptions,fieldlist,nil,hadgeneric);
+                                // Record count
+                                fldCount:=FieldList.Count;
+                                read_record_fields(vdoptions,fieldlist,nil,hadgeneric,attr_element_count);
+                                {
+                                  attr_element_count returns the number of fields to which the attribute must be applied.
+                                  For
+                                  [someattr]
+                                  a : integer;
+                                  b : integer;
+                                  attr_element_count returns 1. For
+                                  [someattr]
+                                  a, b : integer;
+                                  it returns 2.
+                                  Basically the number of variables before the first colon.
+                                }
+                                if assigned(rtti_attrs_def) then
+                                  begin
+                                  { read_record_fields can read a list of fields with the same type.
+                                    for the first fields, we simply copy. for the last one we bind.}
+                                  While (attr_element_count>1) do
+                                    begin
+                                    trtti_attribute_list.copyandbind(rtti_attrs_def,tfieldvarsym(fieldlist[FldCount]).rtti_attribute_list);
+                                    inc(fldcount);
+                                    dec(attr_element_count);
+                                    end;
+                                  if fldCount<FieldList.Count then
+                                    trtti_attribute_list.bind(rtti_attrs_def,tfieldvarsym(fieldlist[FldCount]).rtti_attribute_list)
+                                  else
+                                    rtti_attrs_def.free;
+                                  end;
+                                rtti_attrs_def:=nil;
                               end;
                           end
                         else if object_member_blocktype=bt_type then
+                          begin
+                          check_unbound_attributes;
                           types_dec(true,hadgeneric, rtti_attrs_def)
+                          end
                         else if object_member_blocktype=bt_const then
                           begin
+                            check_unbound_attributes;
                             typedconstswritable:=false;
                             if final_fields then
                               begin
@@ -1394,9 +1427,6 @@ implementation
               end;
             _PROPERTY :
               begin
-                { for now attributes are only allowed on published properties }
-                if current_structdef.symtable.currentvisibility<>vis_published then
-                  check_unbound_attributes;
                 struct_property_dec(is_classdef, rtti_attrs_def);
                 fields_allowed:=false;
                 is_classdef:=false;
@@ -1413,9 +1443,12 @@ implementation
             _CONSTRUCTOR,
             _DESTRUCTOR :
               begin
-                check_unbound_attributes;
-                rtti_attrs_def := nil;
-                method_dec(current_structdef,is_classdef,hadgeneric);
+                method_def:=method_dec(current_structdef,is_classdef,hadgeneric);
+                if assigned(rtti_attrs_def) then
+                  begin
+                  trtti_attribute_list.bind(rtti_attrs_def,method_def.rtti_attribute_list);
+                  rtti_attrs_def:=nil;
+                  end;
                 fields_allowed:=false;
                 is_classdef:=false;
                 hadgeneric:=false;
@@ -1673,6 +1706,14 @@ implementation
             { apply $RTTI directive to current object }
             current_structdef.apply_rtti_directive(current_module.rtti_directive);
 
+            { generate TObject VMT space }
+            { We must insert the VMT at the start for system.tobject, and class_tobject was already set.
+              The cs_compilesystem is superfluous, but we add it for safety.
+
+            }
+            if (current_objectdef=class_tobject) and (cs_compilesystem in current_settings.moduleswitches) then
+              current_objectdef.insertvmt;
+
             { parse and insert object members }
             parse_object_members;
 
@@ -1706,15 +1747,18 @@ implementation
           end;
 
         { generate vmt space if needed }
+        {
+           Here we only do it for non-classes, all classes have it since they depend on TObject
+           so their vmt is already created when TObject was parsed.
+        }
         if not(oo_has_vmt in current_structdef.objectoptions) and
+           not(current_objectdef.objecttype in [odt_class]) and
            not(oo_is_forward in current_structdef.objectoptions) and
            not(parse_generic) and
            { no vmt for helpers ever }
            not is_objectpascal_helper(current_structdef) and
-           (
-            ([oo_has_virtual,oo_has_constructor,oo_has_destructor]*current_structdef.objectoptions<>[]) or
-            (current_objectdef.objecttype in [odt_class])
-           ) then
+            ([oo_has_virtual,oo_has_constructor,oo_has_destructor]*current_structdef.objectoptions<>[])
+           then
           current_objectdef.insertvmt;
 
         { for implemented classes with a vmt check if there is a constructor }

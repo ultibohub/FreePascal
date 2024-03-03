@@ -1,4 +1,9 @@
+{%norun}
+{%neededafter}
+
 program dols;
+
+{$mode objfpc}
 
 uses sysutils;
 

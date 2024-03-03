@@ -505,6 +505,10 @@ unit TypInfo;
         NamePtr: PShortString;
         Flags: Byte;
         VmtIndex: Smallint;
+        {$IFNDEF VER3_2}
+        CodeAddress : CodePointer;
+        AttributeTable : PAttributeTable;
+        {$ENDIF}
         property Name: ShortString read GetName;
         property Param[Index: Word]: PVmtMethodParam read GetParam;
         property ResultLocs: PParameterLocations read GetResultLocs;
@@ -556,6 +560,9 @@ unit TypInfo;
         FieldType: PPTypeInfo;
         Flags: Byte;
         Name: PShortString;
+      {$ifdef PROVIDE_ATTR_TABLE}
+        AttributeTable : PAttributeTable;
+      {$endif}
         property FieldVisibility: TVisibilityClass read GetVisibility;
         property StrictVisibility: Boolean read GetStrictVisibility;
         property Tail: Pointer read GetTail;
@@ -658,6 +665,10 @@ unit TypInfo;
         {$ENDIF}
         NamePtr: PShortString;
         Flags: Byte;
+        {$IFNDEF VER3_2}
+        CodeAddress : CodePointer;
+        AttributeTable : PAttributeTable;
+        {$ENDIF}
         { Params: array[0..ParamCount - 1] of TRecMethodParam }
         { ResultLocs: PParameterLocations (if ResultType != Nil) }
         property Name: ShortString read GetName;
@@ -2098,11 +2109,8 @@ Var
 
 begin
   Result:=0;
-  // Clear list
   repeat
     TD:=PClassData(GetTypeData(TypeInfo))^.ExRTTITable;
-    if PropList<>Nil then
-      FillChar(PropList^,TD^.PropCount*sizeof(PPropInfoEx),0);
     Count:=TD^.PropCount;
     // Now point TP to first propinfo record.
     For I:=0 to Count-1 do
@@ -2265,8 +2273,6 @@ begin
   if aRecord=Nil then exit;
   FieldTable:=aRecord^.ExtendedFields;
   if FieldTable=Nil then exit;
-  if FieldList<>Nil then
-    FillChar(FieldList^[Result],FieldTable^.FieldCount*sizeof(Pointer),0);
   For I:=0 to FieldTable^.FieldCount-1 do
     begin
     FieldEntry:=FieldTable^.Field[i];
@@ -4396,7 +4402,11 @@ end;
 
 function TExtendedVmtFieldEntry.GetTail: Pointer;
 begin
-  Result := PByte(@Name) + SizeOf(Pointer);
+
+  Result := PByte(@Name) + SizeOf(Pointer) ;
+  {$ifdef PROVIDE_ATTR_TABLE}
+  Result := Result + SizeOf(Pointer) ;
+  {$ENDIF}
 end;
 
 function TExtendedVmtFieldEntry.GetVisibility: TVisibilityClass;
@@ -4648,7 +4658,11 @@ var
 
 begin
   if ParamCount = 0 then
+{$IFNDEF VER3_2}
+    Result := PByte(@CodeAddress) + SizeOf(CodePointer)+SizeOf(AttributeTable)
+{$ELSE}
     Result := PByte(@VmtIndex) + SizeOf(VmtIndex)
+{$ENDIF}
   else
     Result:=Param[ParamCount-1]^.GetTail;
   if Assigned(ResultType) then
@@ -4670,6 +4684,9 @@ end;
 function TRecMethodExEntry.GetParamsStart: PByte;
 begin
   Result:=PByte(aligntoptr(PByte(@NamePtr) + SizeOf(NamePtr)+SizeOf(FLags)));
+  {$IFNDEF VER3_2}
+  Result:=Result+SizeOf(CodeAddress)+SizeOf(AttributeTable);
+  {$ENDIF}
 end;
 
 function TRecMethodExEntry.GetMethodVisibility: TVisibilityClass;
@@ -4700,7 +4717,7 @@ end;
 
 function TRecMethodExEntry.GetTail: Pointer;
 begin
-  Result := PByte(@Flags) + SizeOf(Flags);
+  Result := GetParamsStart;
   if ParamCount > 0 then
     Result := PByte(aligntoptr(Result)) + ParamCount * PtrUInt(aligntoptr(Pointer(SizeOf(TRecMethodParam))));
   if Assigned(ResultType) then

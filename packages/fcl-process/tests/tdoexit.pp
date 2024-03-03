@@ -1,3 +1,6 @@
+{%norun}
+{%neededafter}
+
 program doexit;
 
 uses sysutils;

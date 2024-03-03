@@ -9,7 +9,7 @@
         <MainUnitHasScaledStatement Value="False"/>
       </Flags>
       <SessionStorage Value="InProjectDir"/>
-      <Title Value="docat"/>
+      <Title Value="testrunner.rtlobjpas"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
     </General>
@@ -25,7 +25,11 @@
     </RunParams>
     <Units>
       <Unit>
-        <Filename Value="docat.pp"/>
+        <Filename Value="testrunner.rtlobjpas.pp"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="tests.rtti.attrtypes.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
     </Units>
@@ -33,12 +37,18 @@
   <CompilerOptions>
     <Version Value="11"/>
     <Target>
-      <Filename Value="docat"/>
+      <Filename Value="testrunner.rtlobjpas"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir)"/>
+      <OtherUnitFiles Value="../src/inc"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
+    <Linking>
+      <Debugging>
+        <DebugInfoType Value="dsDwarf3"/>
+      </Debugging>
+    </Linking>
     <Other>
       <ConfigFile>
         <WriteConfigFilePath Value=""/>

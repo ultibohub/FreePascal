@@ -38,7 +38,9 @@ const
 Const
   Epsilon: Single = 1E-40;
   Epsilon2: Single = 1E-30;
-
+  
+  CurveKappa = 0.5522847498; 
+  CurveKappaInv = 1 - CurveKappa;
 
 type
   TEndian =  Objpas.TEndian;
@@ -493,6 +495,8 @@ function RectCenter(var R: TRect; const Bounds: TRect): TRect;
 function RectCenter(var R: TRectF; const Bounds: TRectF): TRectF;
 function RectHeight(const Rect: TRect): Integer; inline; 
 function RectHeight(const Rect: TRectF): Single; inline; 
+function RectWidth(const Rect: TRect): Integer; inline; 
+function RectWidth(const Rect: TRectF): Single; inline; 
 function UnionRect(var Rect : TRect; const R1,R2 : TRect) : Boolean;
 function UnionRect(var Rect : TRectF; const R1,R2 : TRectF) : Boolean;
 function UnionRect(const R1,R2 : TRect) : TRect;
@@ -809,6 +813,8 @@ function RectHeight(const Rect: TRectF): Single; inline;
 begin
   Result:=Rect.Height
 end;
+
+
 
 function RectCenter(var R: TRect; const Bounds: TRect): TRect;
 

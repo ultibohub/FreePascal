@@ -422,11 +422,13 @@ Procedure NoThreadError;
 begin
 {$if not(defined(EMBEDDED)) and not(defined(ULTIBO))}
 {$ifdef FPC_HAS_FEATURE_CONSOLEIO}
+{$ifndef FPC_SYSTEM_NO_VERBOSE_THREADERROR}
   If IsConsole then
     begin
     Writeln(StdErr,SNoThreads);
     Writeln(StdErr,SRecompileWithThreads);
     end;
+{$endif FPC_SYSTEM_NO_VERBOSE_THREADERROR}
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
 {$endif not(defined(EMBEDDED)) and not(defined(ULTIBO))}
   RunError(232)

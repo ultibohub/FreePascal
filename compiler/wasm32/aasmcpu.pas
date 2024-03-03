@@ -43,6 +43,16 @@ uses
     type
       TWasmBasicTypeList = array of TWasmBasicType;
 
+      { TWasmGlobalAsmSymbol }
+
+      TWasmGlobalAsmSymbol = class(TAsmSymbol)
+      private
+        FWasmGlobalType: TWasmBasicType;
+        procedure SetWasmGlobalType(AValue: TWasmBasicType);
+      public
+        property WasmGlobalType: TWasmBasicType read FWasmGlobalType write SetWasmGlobalType;
+      end;
+
       { TWasmValueStack }
 
       TWasmValueStack = class
@@ -98,8 +108,10 @@ uses
         FValueStack: TWasmValueStack;
         FCtrlStack: TWasmControlStack;
         FGetLocalType: TGetLocalTypeProc;
+        FFuncType: TWasmFuncType;
+        FEndFunctionReached: Boolean;
       public
-        constructor Create(AGetLocalType: TGetLocalTypeProc);
+        constructor Create(AGetLocalType: TGetLocalTypeProc; AFuncType: TWasmFuncType);
         destructor Destroy; override;
 
         procedure PushVal(vt: TWasmBasicType);
@@ -143,6 +155,7 @@ uses
          constructor op_sym(op : tasmop;_op1 : tasmsymbol);
 
          constructor op_sym_const(op : tasmop;_op1 : tasmsymbol;_op2 : aint);
+         constructor op_sym_functype(op : tasmop;_op1 : tasmsymbol;_op2 : TWasmFuncType);
 
          constructor op_single(op : tasmop;_op1 : single);
          constructor op_double(op : tasmop;_op1 : double);
@@ -322,7 +335,7 @@ uses
         immutable: boolean;
         is_external: boolean;
         is_global: boolean;
-        sym       : tasmsymbol;
+        sym       : TWasmGlobalAsmSymbol;
         constructor create(const aglobalname:string; atype: TWasmBasicType; aimmutable: boolean);
         constructor create_local(const aglobalname:string; atype: TWasmBasicType; aimmutable: boolean; def: tdef);
         constructor create_global(const aglobalname:string; atype: TWasmBasicType; aimmutable: boolean; def: tdef);
@@ -378,6 +391,17 @@ uses
 
     function wasm_convert_first_item_to_structured(srclist: TAsmList): tai; forward;
     procedure map_structured_asmlist_inner(l: TAsmList; f: TAsmMapFunc; blockstack: twasmstruc_stack); forward;
+
+    { TWasmGlobalAsmSymbol }
+
+    procedure TWasmGlobalAsmSymbol.SetWasmGlobalType(AValue: TWasmBasicType);
+      begin
+        if FWasmGlobalType=AValue then
+          Exit;
+        if FWasmGlobalType<>wbt_Unknown then
+          Internalerror(2024022503);
+        FWasmGlobalType:=AValue;
+      end;
 
     { TWasmValueStack }
 
@@ -478,11 +502,14 @@ uses
 
     { TWasmValidationStacks }
 
-    constructor TWasmValidationStacks.Create(AGetLocalType: TGetLocalTypeProc);
+    constructor TWasmValidationStacks.Create(AGetLocalType: TGetLocalTypeProc; AFuncType: TWasmFuncType);
       begin
+        FEndFunctionReached:=False;
         FGetLocalType:=AGetLocalType;
         FValueStack:=TWasmValueStack.Create;
         FCtrlStack:=TWasmControlStack.Create;
+        FFuncType:=AFuncType;
+        PushCtrl(a_block,[],[]);
       end;
 
     destructor TWasmValidationStacks.Destroy;
@@ -512,7 +539,7 @@ uses
     function TWasmValidationStacks.PopVal(expect: TWasmBasicType): TWasmBasicType;
       begin
         Result:=wbt_Unknown;
-        Result:=PopVal;
+        Result:=PopVal();
         if (Result<>expect) and (Result<>wbt_Unknown) and (expect<>wbt_Unknown) then
           internalerror(2024013105);
       end;
@@ -617,7 +644,12 @@ uses
             end;
         end;
 
+      var
+        frame: TWasmControlFrame;
+        n: TCGInt;
       begin
+        if FEndFunctionReached then
+          internalerror(2024022602);
         case a.opcode of
           a_nop:
             ;
@@ -973,6 +1005,144 @@ uses
               PopVal(FGetLocalType(GetLocalIndex));
               PushVal(FGetLocalType(GetLocalIndex));
             end;
+          a_global_get,
+          a_global_set:
+            begin
+              if a.ops<>1 then
+                internalerror(2024022504);
+              if a.oper[0]^.typ<>top_ref then
+                internalerror(2024022505);
+              if not assigned(a.oper[0]^.ref^.symbol) then
+                internalerror(2024022506);
+              if (a.oper[0]^.ref^.base<>NR_NO) or (a.oper[0]^.ref^.index<>NR_NO) or (a.oper[0]^.ref^.offset<>0) then
+                internalerror(2024022507);
+              if a.oper[0]^.ref^.symbol.typ<>AT_WASM_GLOBAL then
+                internalerror(2024022508);
+              case a.opcode of
+                a_global_get:
+                  PushVal(TWasmGlobalAsmSymbol(a.oper[0]^.ref^.symbol).WasmGlobalType);
+                a_global_set:
+                  PopVal(TWasmGlobalAsmSymbol(a.oper[0]^.ref^.symbol).WasmGlobalType);
+                else
+                  internalerror(2024022509);
+              end;
+            end;
+          a_call:
+            begin
+              if a.ops<>2 then
+                internalerror(2024022501);
+              if a.oper[1]^.typ<>top_functype then
+                internalerror(2024022502);
+              PopVals(a.oper[1]^.functype.params);
+              PushVals(a.oper[1]^.functype.results);
+            end;
+          a_call_indirect:
+            begin
+              if a.ops<>1 then
+                internalerror(2024022401);
+              if a.oper[0]^.typ<>top_functype then
+                internalerror(2024022402);
+              PopVal(wbt_i32);
+              PopVals(a.oper[0]^.functype.params);
+              PushVals(a.oper[0]^.functype.results);
+            end;
+          a_if,
+          a_block,
+          a_loop,
+          a_try:
+            begin
+              if a.opcode=a_if then
+                PopVal(wbt_i32);
+              if a.ops>1 then
+                internalerror(2024022510);
+              if a.ops=0 then
+                PushCtrl(a.opcode,[],[])
+              else
+                begin
+                  if a.oper[0]^.typ<>top_functype then
+                    internalerror(2024022511);
+                  PopVals(a.oper[0]^.functype.params);
+                  PushCtrl(a.opcode,a.oper[0]^.functype.params,a.oper[0]^.functype.results);
+                end;
+            end;
+          a_else:
+            begin
+              frame:=PopCtrl;
+              if frame.opcode<>a_if then
+                internalerror(2024022512);
+              PushCtrl(a_else,frame.start_types,frame.end_types);
+            end;
+          a_catch:
+            begin
+              frame:=PopCtrl;
+              if (frame.opcode<>a_try) and (frame.opcode<>a_catch) then
+                internalerror(2024022701);
+              PushCtrl(a_catch,frame.start_types,frame.end_types);
+            end;
+          a_end_if:
+            begin
+              frame:=PopCtrl;
+              if (frame.opcode<>a_if) and (frame.opcode<>a_else) then
+                internalerror(2024022513);
+              PushVals(frame.end_types);
+            end;
+          a_end_block:
+            begin
+              frame:=PopCtrl;
+              if frame.opcode<>a_block then
+                internalerror(2024022514);
+              PushVals(frame.end_types);
+            end;
+          a_end_loop:
+            begin
+              frame:=PopCtrl;
+              if frame.opcode<>a_loop then
+                internalerror(2024022515);
+              PushVals(frame.end_types);
+            end;
+          a_end_try:
+            begin
+              frame:=PopCtrl;
+              if (frame.opcode<>a_try) and (frame.opcode<>a_catch) then
+                internalerror(2024022702);
+              PushVals(frame.end_types);
+            end;
+          a_br:
+            begin
+              if a.ops<>1 then
+                internalerror(2024022516);
+              if a.oper[0]^.typ<>top_const then
+                internalerror(2024022517);
+              n:=a.oper[0]^.val;
+              if FCtrlStack.Count < n then
+                internalerror(2024022518);
+              PopVals(label_types(FCtrlStack[n]));
+              Unreachable;
+            end;
+          a_br_if:
+            begin
+              if a.ops<>1 then
+                internalerror(2024022519);
+              if a.oper[0]^.typ<>top_const then
+                internalerror(2024022520);
+              n:=a.oper[0]^.val;
+              if FCtrlStack.Count < n then
+                internalerror(2024022521);
+              PopVal(wbt_i32);
+              PopVals(label_types(FCtrlStack[n]));
+              PushVals(label_types(FCtrlStack[n]));
+            end;
+          a_throw:
+            Unreachable;
+          a_rethrow:
+            Unreachable;
+          a_return:
+            begin
+              PopVals(FFuncType.results);
+              Unreachable;
+            end;
+          a_end_function:
+            FEndFunctionReached:=True;
           else
             internalerror(2024030502);
         end;
@@ -1632,7 +1802,8 @@ uses
     constructor tai_globaltype.create(const aglobalname: string; atype: TWasmBasicType; aimmutable: boolean);
       begin
         inherited Create;
-        sym:=current_asmdata.RefAsmSymbol(aglobalname,AT_WASM_GLOBAL);
+        sym:=TWasmGlobalAsmSymbol(current_asmdata.RefAsmSymbolByClass(TWasmGlobalAsmSymbol,aglobalname,AT_WASM_GLOBAL));
+        sym.WasmGlobalType:=atype;
         typ:=ait_globaltype;
         globalname:=aglobalname;
         gtype:=atype;
@@ -1644,7 +1815,8 @@ uses
     constructor tai_globaltype.create_local(const aglobalname: string; atype: TWasmBasicType; aimmutable: boolean; def: tdef);
       begin
         inherited Create;
-        sym:=current_asmdata.DefineAsmSymbol(aglobalname,AB_LOCAL,AT_WASM_GLOBAL,def);
+        sym:=TWasmGlobalAsmSymbol(current_asmdata.DefineAsmSymbolByClass(TWasmGlobalAsmSymbol,aglobalname,AB_LOCAL,AT_WASM_GLOBAL,def));
+        sym.WasmGlobalType:=atype;
         typ:=ait_globaltype;
         globalname:=aglobalname;
         gtype:=atype;
@@ -1656,7 +1828,8 @@ uses
     constructor tai_globaltype.create_global(const aglobalname: string; atype: TWasmBasicType; aimmutable: boolean; def: tdef);
       begin
         inherited Create;
-        sym:=current_asmdata.DefineAsmSymbol(aglobalname,AB_GLOBAL,AT_WASM_GLOBAL,def);
+        sym:=TWasmGlobalAsmSymbol(current_asmdata.DefineAsmSymbolByClass(TWasmGlobalAsmSymbol,aglobalname,AB_GLOBAL,AT_WASM_GLOBAL,def));
+        sym.WasmGlobalType:=atype;
         typ:=ait_globaltype;
         globalname:=aglobalname;
         gtype:=atype;
@@ -1795,6 +1968,15 @@ uses
         ops:=2;
         loadsymbol(0,_op1,0);
         loadconst(1,_op2);
+      end;
+
+
+    constructor taicpu.op_sym_functype(op : tasmop;_op1 : tasmsymbol;_op2 : TWasmFuncType);
+      begin
+        inherited create(op);
+        ops:=2;
+        loadsymbol(0,_op1,0);
+        loadfunctype(1,_op2);
       end;
 
 
@@ -2331,7 +2513,7 @@ uses
             end;
           a_call:
             begin
-              if ops<>1 then
+              if ops<>2 then
                 internalerror(2021092021);
               with oper[0]^ do
                 case typ of
@@ -3310,7 +3492,7 @@ uses
             end;
           a_call:
             begin
-              if ops<>1 then
+              if ops<>2 then
                 internalerror(2021092021);
               with oper[0]^ do
                 case typ of

@@ -804,6 +804,7 @@ type
   TCollectionItemClass = class of TCollectionItem;
   TCollectionNotification = (cnAdded, cnExtracting, cnDeleting);
   TCollectionSortCompare = function (Item1, Item2: TCollectionItem): Integer;
+  TCollectionSortCompare_Context = function (Item1, Item2: TCollectionItem; context : Pointer): Integer;
 
   TCollection = class(TPersistent)
   private
@@ -848,6 +849,7 @@ type
     procedure Exchange(Const Index1, index2: integer);
     procedure Move(Const Index1, index2: integer);
     procedure Sort(Const Compare : TCollectionSortCompare);
+    procedure Sort(Const Compare : TCollectionSortCompare_Context; Context : Pointer);
     property Count: Integer read GetCount;
     property ItemClass: TCollectionItemClass read FItemClass;
     property Items[Index: Integer]: TCollectionItem read GetItem write SetItem;
@@ -2434,6 +2436,8 @@ type
   protected
     FComponentStyle: TComponentStyle;
     function GetObservers: TObservers;virtual;
+    function CanObserve(const ID: Integer): Boolean; virtual;
+    procedure ObserverAdded(const ID: Integer; const Observer: IObserver); virtual;
     procedure GetDeltaStreams(aProc: TGetStreamProc); virtual;
     procedure ReadDeltaStream(const S: TStream);
     procedure ReadDeltaState; virtual;
@@ -2827,9 +2831,13 @@ procedure RegisterNoIcon(ComponentClasses: array of TComponentClass);
 procedure RegisterNonActiveX(ComponentClasses: array of TComponentClass;
   AxRegType: TActiveXRegType);
 
+Type
+  TIsUniqueGlobalComponentName = function(const Name: string): Boolean;
+
 var
   GlobalNameSpace: IReadWriteSync;
-
+  IsUniqueGlobalComponentNameProc: TIsUniqueGlobalComponentName;
+  
 { Object filing routines }
 
 type
@@ -2842,7 +2850,7 @@ type
   TIntToIdent = function(Int: Longint; var Ident: string): Boolean;
   TFindGlobalComponent = function(const Name: string): TComponent;
   TInitComponentHandler = function(Instance: TComponent; RootAncestor : TClass): boolean;
-
+  
 var
   MainThreadID: TThreadID;
 
@@ -2856,6 +2864,7 @@ function FindIdentToInt(AIntegerType: Pointer): TIdentToInt;
 procedure RegisterFindGlobalComponentProc(AFindGlobalComponent: TFindGlobalComponent);
 procedure UnregisterFindGlobalComponentProc(AFindGlobalComponent: TFindGlobalComponent);
 function FindGlobalComponent(const Name: string): TComponent;
+function IsUniqueGlobalComponentName(const aName: string): Boolean;
 
 function InitInheritedComponent(Instance: TComponent; RootAncestor: TClass): Boolean;
 function InitComponentRes(const ResName: string; Instance: TComponent): Boolean;

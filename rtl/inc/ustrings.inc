@@ -1047,6 +1047,40 @@ function StringToWideChar(const Src : RawByteString;Dest : PWideChar;DestSize : 
   end;
 {$endif FPC_HAS_STRING_LEN_TO_WIDECHAR}
 
+function UnicodeFromLocaleChars(CodePage, Flags: Cardinal; LocaleStr: PAnsiChar;
+  LocaleStrLen: Integer; UnicodeStr: PWideChar; UnicodeStrLen: Integer): Integer; overload;
+
+var
+  temp: widestring;
+  Len: SizeInt;
+begin
+  widestringmanager.Ansi2WideMoveProc(LocaleStr,CodePage,temp,LocaleStrLen);
+  Len:=Length(temp);
+  // Only move when we have room.
+  if (UnicodeStrLen>0) then
+    begin  
+    if UnicodeStrLen<=Len then
+      Len:=UnicodeStrLen-1;
+    move(temp[1],UnicodeStr^,Len*SizeOf(WideChar));
+    UnicodeStr[Len]:=#0;
+    end;
+  // Return length  
+  result:=len;
+end;
+
+function UnicodeFromLocaleChars(const LocaleName: AnsiString; Flags: Cardinal;
+  LocaleStr: PAnsiChar; LocaleStrLen: Integer; UnicodeStr: PWideChar;
+  UnicodeStrLen: Integer): Integer; overload;
+
+var
+  CP : TSystemCodePage;
+
+begin
+  if not LocaleNameToCodePage(LocaleName,CP) then
+    Result:=0
+  else
+    Result:=UnicodeFromLocaleChars(CP,Flags,LocaleStr,LocaleStrLen,UnicodeStr,UnicodeStrLen);
+end;
 
 {$ifndef FPC_HAS_UNICODECHAR_LEN_TO_STRING}
 {$define FPC_HAS_UNICODECHAR_LEN_TO_STRING}
@@ -2227,11 +2261,13 @@ procedure unimplementedunicodestring;
   begin
 {$ifdef FPC_HAS_FEATURE_CONSOLEIO}
 {$ifndef HAS_WIDESTRINGMANAGER}
+{$ifndef FPC_SYSTEM_NO_VERBOSE_UNICODEERROR}
     If IsConsole then
       begin
       Writeln(StdErr,SNoUnicodestrings);
       Writeln(StdErr,SRecompileWithUnicodestrings);
       end;
+{$endif FPC_SYSTEM_NO_VERBOSE_UNICODEERROR}
 {$endif HAS_WIDESTRINGMANAGER}
 {$endif FPC_HAS_FEATURE_CONSOLEIO}
     HandleErrorAddrFrameInd(234{RuntimeErrorExitCodes[reCodesetConversion]},get_pc_addr,get_frame);
@@ -2414,3 +2450,24 @@ begin
   Result := UTF8ToString(rs);
 end;
 {$endif not CPUJVM}
+
+
+Function LocaleNameToCodePage(const localename : shortstring; out codepage : TSystemCodePage) : Boolean;
+
+begin
+  Result:=(localename='UTF-8') or (localename='UTF8');
+  if Result then
+    CodePage:=CP_UTF8
+  else 
+    begin
+    Result:=(localename='UTF-7') or (localename='UTF7');
+    if Result then  
+      CodePage:=CP_UTF7
+    else 
+      begin
+      Result:=Assigned(LocaleNameToCodePageCallBack);
+      If Result then
+        LocaleNameToCodePageCallBack(LocaleName,CodePage,Result);
+      end;
+    end;  
+end;
