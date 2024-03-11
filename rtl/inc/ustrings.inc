@@ -194,22 +194,16 @@ Function NewUnicodeString(Len : SizeInt) : Pointer;
   Allocate a new UnicodeString on the heap.
   initialize it to zero length and reference count 1.
 }
-Var
-  P : Pointer;
 begin
-  GetMem(P,Len*sizeof(UnicodeChar)+(UnicodeFirstOff+sizeof(UnicodeChar)));
-  If P<>Nil then
-    begin
-      PUnicodeRec(P)^.Len:=Len;       { Initial length }
-      PUnicodeRec(P)^.Ref:=1;         { Initial Refcount }
-      PUnicodeRec(P)^.CodePage:=DefaultUnicodeCodePage;
-      PUnicodeRec(P)^.ElementSize:=SizeOf(UnicodeChar);
-      inc(p,UnicodeFirstOff);         { Points to string now }
-      PUnicodeChar(P)^:=#0;           { Terminating #0 }
-    end
-  else
+  Result:=GetMem(Len*sizeof(UnicodeChar)+(UnicodeFirstOff+sizeof(UnicodeChar)));
+  If Result=Nil then
     UnicodeStringError;
-  NewUnicodeString:=P;
+  PUnicodeRec(Result)^.Len:=Len;  { Initial length }
+  PUnicodeRec(Result)^.Ref:=1;    { Initial Refcount }
+  PUnicodeRec(Result)^.CodePage:=DefaultUnicodeCodePage;
+  PUnicodeRec(Result)^.ElementSize:=SizeOf(UnicodeChar);
+  inc(Result,UnicodeFirstOff);    { Points to string now }
+  PUnicodeChar(Result)^:=#0;      { Terminating #0 }
 end;
 {$endif FPC_HAS_NEW_UNICODESTRING}
 
@@ -1047,6 +1041,8 @@ function StringToWideChar(const Src : RawByteString;Dest : PWideChar;DestSize : 
   end;
 {$endif FPC_HAS_STRING_LEN_TO_WIDECHAR}
 
+{$ifndef FPC_HAS_UNICODEFROMLOCALECHARS}
+{$define FPC_HAS_UNICODEFROMLOCALECHARS}
 function UnicodeFromLocaleChars(CodePage, Flags: Cardinal; LocaleStr: PAnsiChar;
   LocaleStrLen: Integer; UnicodeStr: PWideChar; UnicodeStrLen: Integer): Integer; overload;
 
@@ -1067,6 +1063,7 @@ begin
   // Return length  
   result:=len;
 end;
+{$endif ndef FPC_HAS_UNICODEFROMLOCALECHARS}
 
 function UnicodeFromLocaleChars(const LocaleName: AnsiString; Flags: Cardinal;
   LocaleStr: PAnsiChar; LocaleStrLen: Integer; UnicodeStr: PWideChar;
