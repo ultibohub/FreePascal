@@ -658,15 +658,15 @@ implementation
                        (def_cgsize(TTypeConvNode(indexnode).resultdef) in [OS_64, OS_S64]) then
                        begin
                          { Convert to the 32-bit type }
-                         indexnode.resultdef := loadnode.resultdef;
-                         node_reset_flags(indexnode,[nf_pass1_done]);
+                         indexnode.resultdef:=loadnode.resultdef;
+                         node_reset_flags(indexnode,[],[tnf_pass1_done]);
 
                          { We should't be getting any new errors }
                          if do_firstpass(indexnode) then
                            InternalError(2022110202);
 
                          { Keep things internally consistent in case indexnode changed }
-                         tshlshrnode(taddnode(valuenode).left).right := indexnode;
+                         tshlshrnode(taddnode(valuenode).left).right:=indexnode;
                        end;
 {$endif x86_64}
                      secondpass(indexnode);
@@ -1143,11 +1143,16 @@ implementation
 {$ifdef i8086}
           { BTS and BTR are 386+ }
           if current_settings.cputype < cpu_386 then
+{$else i8086}
+          { bts on memory locations is very slow, so even the default code is faster }
+          if not(cs_opt_size in current_settings.optimizerswitches) and (tcallparanode(tcallparanode(left).right).left.expectloc<>LOC_CONSTANT) and
+            (tcallparanode(left).left.expectloc=LOC_REFERENCE) then
+{$endif i8086}
             begin
               inherited;
               exit;
             end;
-{$endif i8086}
+
           if is_smallset(tcallparanode(left).resultdef) then
             begin
               opdef:=tcallparanode(left).resultdef;
@@ -1206,7 +1211,7 @@ implementation
               hlcg.location_force_reg(current_asmdata.CurrAsmList,tcallparanode(tcallparanode(left).right).left.location,tcallparanode(tcallparanode(left).right).left.resultdef,opdef,true);
               register_maybe_adjust_setbase(current_asmdata.CurrAsmList,tcallparanode(tcallparanode(left).right).left.resultdef,tcallparanode(tcallparanode(left).right).left.location,setbase);
               hregister:=tcallparanode(tcallparanode(left).right).left.location.register;
-              if (tcallparanode(left).left.location.loc=LOC_REFERENCE) then
+              if tcallparanode(left).left.location.loc=LOC_REFERENCE then
                 emit_reg_ref(asmop,tcgsize2opsize[opsize],hregister,tcallparanode(left).left.location.reference)
               else
                 begin

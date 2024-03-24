@@ -548,6 +548,7 @@ PROFILEUNIT=DOSApi.Profile
 RASPI2UNIT=EmbeddedApi.raspi2
 RASPI3UNIT=EmbeddedApi.raspi3
 RASPIUARTUNIT=EmbeddedApi.raspiuart
+RP2040UNIT=EmbeddedApi.rp2040
 RTLCONSTSUNIT=System.RtlConsts
 SAM3X8EUNIT=EmbeddedApi.sam3x8e
 SAMD51P19AUNIT=EmbeddedApi.samd51p19a
@@ -795,6 +796,7 @@ PROFILEUNIT=profile
 RASPI2UNIT=raspi2
 RASPI3UNIT=raspi3
 RASPIUARTUNIT=raspiuart
+RP2040UNIT=rp2040
 RTLCONSTSUNIT=rtlconsts
 SAM3X8EUNIT=sam3x8e
 SAMD51P19AUNIT=samd51p19a
@@ -3671,3 +3673,5 @@ SI_G_DEPS=si_g.pp si_intf.inc $(SYSNRINC) $(ARCH)/si_g.inc $(SYSTEMUNIT)$(PPUEXT
 	  $(SI_G_DEPS_OS) $(SI_G_DEPS_CPU)
 si_g$(PPUEXT) : $(SI_G_DEPS)
 	$(COMPILER) $<
+buildrtl$(PPUEXT): buildrtl.pp $(SYSTEMUNIT)$(PPUEXT) $(OBJPASUNIT)$(PPUEXT) $(HEAPTRCUNIT)$(PPUEXT)
+	$(COMPILER) -Fi$(OBJPASDIR)/sysutils -Fi$(OBJPASDIR)/classes -Fu$(PROCINC) -Fu$(UNIXINC) -Fu$(RTL)/charmaps -I$(INC) -Fu$(INC) -Fu$(OBJPASDIR) buildrtl
