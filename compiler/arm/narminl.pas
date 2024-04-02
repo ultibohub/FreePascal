@@ -412,8 +412,9 @@ implementation
     procedure tarminlinenode.second_abs_long;
       var
         opsize : tcgsize;
+        ovloc: tlocation;
       begin
-        if GenerateThumbCode then
+        if GenerateThumbCode or is_64bitint(left.resultdef)  then
           begin
             inherited second_abs_long;
             exit;
@@ -431,7 +432,14 @@ implementation
         if GenerateThumb2Code then
           current_asmdata.CurrAsmList.concat(taicpu.op_cond(A_IT,C_MI));
 
-        current_asmdata.CurrAsmList.concat(setcondition(taicpu.op_reg_reg_const(A_RSB,location.register,location.register, 0), C_MI));
+        if cs_check_overflow in current_settings.localswitches then
+          begin
+            current_asmdata.CurrAsmList.concat(setoppostfix(setcondition(taicpu.op_reg_reg_const(A_RSB,location.register,location.register, 0), C_MI),PF_S));
+            location_reset(ovloc,LOC_VOID,opsize);
+            cg.g_overflowCheck_loc(current_asmdata.CurrAsmList,ovloc,resultdef,ovloc);
+          end
+        else
+          current_asmdata.CurrAsmList.concat(setcondition(taicpu.op_reg_reg_const(A_RSB,location.register,location.register, 0), C_MI));
 
         cg.a_reg_dealloc(current_asmdata.CurrAsmList,NR_DEFAULTFLAGS);
       end;
