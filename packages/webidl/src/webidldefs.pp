@@ -314,6 +314,13 @@ type
     Property IsForward: Boolean read FIsForward write FIsForward;
   end;
 
+  { TIDLNamespaceDefinition }
+
+  TIDLNamespaceDefinition = class(TIDLStructuredDefinition)
+  Public
+    Function AsString (aFull : Boolean) : UTF8String; override;
+  end;
+
   { TIDLArgumentDefinition }
 
   TIDLArgumentDefinition = Class(TIDLDefinition)
@@ -482,16 +489,18 @@ type
   end;
 
   { TIDLSequenceTypeDefDefinition }
-
+  TSequenceType = (stSequence,stFrozenArray,stObservableArray);
   TIDLSequenceTypeDefDefinition = Class(TIDLTypeDefDefinition)
   private
     FElementType: TIDLTypeDefDefinition;
+    FSequenceType: TSequenceType;
     procedure SetElementType(AValue: TIDLTypeDefDefinition);
   Public
     Function AsString(Full: Boolean): UTF8String; override;
     Function Clone (aParent : TIDLDefinition) : TIDLTypeDefDefinition; override;
     Destructor Destroy; override;
     property ElementType : TIDLTypeDefDefinition Read FElementType Write SetElementType;
+    Property SequenceType : TSequenceType Read FSequenceType Write FSequenceType;
   end;
 
   { TIDLSetlikeDefinition }
@@ -548,14 +557,20 @@ type
 
   TIDLIterableDefinition = Class(TIDLDefinition)
   private
+    FIsAsync: Boolean;
     FValueType: TIDLTypeDefDefinition;
     FKeyType: TIDLTypeDefDefinition;
+    FArguments: TIDLDefinitionList;
+    function GetArguments: TIDLDefinitionList;
     procedure SetKeyType(AValue: TIDLTypeDefDefinition);
     procedure SetValueType(AValue: TIDLTypeDefDefinition);
   Public
     Destructor Destroy; override;
+    Function HaveArguments : Boolean;
     property ValueType : TIDLTypeDefDefinition Read FValueType Write SetValueType;
     property KeyType : TIDLTypeDefDefinition Read FKeyType Write SetKeyType;
+    Property IsAsync : Boolean Read FIsAsync Write FIsAsync;
+    Property Arguments : TIDLDefinitionList Read GetArguments;
   end;
 
 function NameToWebIDLBaseType(const s: string): TWebIDLBaseType;
@@ -720,6 +735,22 @@ begin
     Result:=Attributes.AsString(true)+' '+Result;
 end;
 
+{ TIDLNamespaceDefinition }
+
+function TIDLNamespaceDefinition.AsString(aFull: Boolean): UTF8String;
+
+begin
+  Result:='namespace '+Name;
+  if IsPartial then
+    Result:='partial '+Result;
+  if Not HasMembers then
+    Result:=Result+' {'+sLineBreak+'}'
+  else
+    Result:=Result+' '+Members.AsString(true);
+  if aFull and HasAttributes then
+    Result:=Attributes.AsString(true)+' '+Result;
+end;
+
 { TIDLTypeDefDefinition }
 
 function TIDLTypeDefDefinition.Clone(aParent: TIDLDefinition): TIDLTypeDefDefinition;
@@ -817,6 +848,13 @@ begin
   FKeyType:=AValue;
 end;
 
+function TIDLIterableDefinition.GetArguments: TIDLDefinitionList;
+begin
+  if FArguments=nil then
+    FArguments:=TIDLDefinitionList.Create(Self,True);
+  Result:=FArguments;
+end;
+
 procedure TIDLIterableDefinition.SetValueType(AValue: TIDLTypeDefDefinition);
 begin
   if (AValue=FValueType) then exit;
@@ -828,7 +866,13 @@ destructor TIDLIterableDefinition.Destroy;
 begin
   ValueType:=Nil;
   KeyType:=Nil;
+  FreeAndNil(FArguments);
   inherited Destroy;
+end;
+
+function TIDLIterableDefinition.HaveArguments: Boolean;
+begin
+  Result:=Assigned(FArguments);
 end;
 
 { TIDLAttributeDefinition }
@@ -1020,11 +1064,19 @@ begin
 end;
 
 function TIDLSequenceTypeDefDefinition.AsString(Full: Boolean): UTF8String;
+
+var
+  TT : String;
+
 begin
+  Case SequenceType of
+    stSequence : TT:='sequence';
+    stFrozenArray : TT:='FrozenArray';
+    stObservableArray : TT:='ObservableArray';
+  end;
+  Result:=TT+' <'+ElementType.TypeName+'>';
   if Full then
-    Result:='typedef sequence <'+ElementType.TypeName+'> '+Name
-  else
-    Result:='sequence <'+ElementType.TypeName+'>';
+    Result:='typedef '+Result+' '+Name;
   if full and HasAttributes then
     Result:=Attributes.AsString(True)+' '+Result;
 end;

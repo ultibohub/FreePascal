@@ -2089,4 +2089,5 @@ ppuinfo :
 	echo RMPPULOG list is "$(RMPPULOGLIST)"
 cleanppulogs : $(RMPPULOGLIST)
 testppudump :
-	$(MAKE) cleanppulogs ppulogs
+	$(MAKE) cleanppulogs
+	$(MAKE) ppulogs
