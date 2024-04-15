@@ -4673,7 +4673,8 @@ cleanppulogs :
 cleanrtlppulogs :
 	-$(RMPROG) $(RTLPPULOGLIST)
 testppudump :
-	$(MAKE) cleanrtlppulogs cleanppulogs ppulogs rtlppulogs
+	$(MAKE) cleanrtlppulogs cleanppulogs
+	$(MAKE) ppulogs rtlppulogs
 localmake:=$(strip $(wildcard makefile.loc))
 ifdef localmake
 include ./$(localmake)
