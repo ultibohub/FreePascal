@@ -2902,7 +2902,7 @@ unit aoptx86;
 
     function TX86AsmOptimizer.FuncMov2Func(var p: tai; const hp1: tai): Boolean;
       var
-        hp2: tai;
+        hp2, hp_regalloc: tai;
         p_SourceReg, p_TargetReg: TRegister;
 
       begin
@@ -2962,15 +2962,32 @@ unit aoptx86;
                   else
                     begin
                       DebugMsg(SPeepholeOptimization + 'Removed MOV and changed destination on previous instruction to optimise register usage (FuncMov2Func)', p);
-                      taicpu(hp2).oper[taicpu(hp2).ops-1]^.reg := p_TargetReg;
+
+                      { if %reg2 (p_SourceReg) is allocated before func., remove it completely }
+                      hp_regalloc := FindRegAllocBackward(p_SourceReg, hp2);
+                      if Assigned(hp_regalloc) then
+                        begin
+                          Asml.Remove(hp_regalloc);
+
+                          if Assigned(FindRegDealloc(p_SourceReg, p)) then
+                            begin
+                              ExcludeRegFromUsedRegs(p_SourceReg, UsedRegs);
+                              hp_regalloc.Free;
+                            end
+                          else
+                            { If the register is not explicitly deallocated, it's
+                              being reused, so move the allocation to after func. }
+                            AsmL.InsertAfter(hp_regalloc, hp2);
+                        end;
 
                       if not RegInInstruction(p_TargetReg, hp2) then
                         begin
-                          { Since we're allocating from an earlier point, we
-                            need to remove the register from the tracking }
-                          ExcludeRegFromUsedRegs(p_TargetReg, TmpUsedRegs);
+                          TransferUsedRegs(TmpUsedRegs);
                           AllocRegBetween(p_TargetReg, hp2, p, TmpUsedRegs);
                         end;
+
+                      { Actually make the changes }
+                      taicpu(hp2).oper[taicpu(hp2).ops-1]^.reg := p_TargetReg;
                       RemoveCurrentp(p, hp1);
 
                       { If the Func was another MOV instruction, we might get
@@ -9200,6 +9217,8 @@ unit aoptx86;
               Exit;
             end;
 
+          TransferUsedRegs(TmpUsedRegs);
+
           hp3 := p;
           DebugMsg(SPeepholeOptimization + 'Duplicated ' + debug_tostr(Count) + ' assignment(s) and redirected jump', p);
           while True do
@@ -9243,8 +9262,6 @@ unit aoptx86;
                   begin
                     { Duplicate the MOV instruction }
                     hp3:=tai(hp1.getcopy);
-                    if first_assignment = nil then
-                      first_assignment := hp3;
 
                     asml.InsertBefore(hp3, p);
 
@@ -9256,24 +9273,53 @@ unit aoptx86;
                             top_ref:
                               begin
                                 if (ref^.base <> NR_NO) and
-                                  (getsupreg(ref^.base) <> RS_ESP) and
-                                  (getsupreg(ref^.base) <> RS_EBP)
+                                  (getsupreg(ref^.base) <> RS_STACK_POINTER_REG) and
+                                  (
+                                    (getsupreg(ref^.base) <> RS_FRAME_POINTER_REG) or
+                                    (
+                                      { Allow the frame pointer if it's not being used by the procedure as such }
+                                      Assigned(current_procinfo) and
+                                      (current_procinfo.framepointer <> NR_FRAME_POINTER_REG)
+                                    )
+                                  )
                                   {$ifdef x86_64} and (ref^.base <> NR_RIP) {$endif x86_64}
                                   then
-                                  AllocRegBetween(ref^.base, hp3, tai(p.Next), UsedRegs);
+                                  begin
+                                    AllocRegBetween(ref^.base, hp3, p, TmpUsedRegs);
+                                    if not Assigned(first_assignment) then
+                                      IncludeRegInUsedRegs(ref^.base, UsedRegs);
+                                  end;
                                 if (ref^.index <> NR_NO) and
-                                  (getsupreg(ref^.index) <> RS_ESP) and
-                                  (getsupreg(ref^.index) <> RS_EBP)
+                                  (getsupreg(ref^.index) <> RS_STACK_POINTER_REG) and
+                                  (
+                                    (getsupreg(ref^.index) <> RS_FRAME_POINTER_REG) or
+                                    (
+                                      { Allow the frame pointer if it's not being used by the procedure as such }
+                                      Assigned(current_procinfo) and
+                                      (current_procinfo.framepointer <> NR_FRAME_POINTER_REG)
+                                    )
+                                  )
                                   {$ifdef x86_64} and (ref^.index <> NR_RIP) {$endif x86_64} and
                                   (ref^.index <> ref^.base) then
-                                  AllocRegBetween(ref^.index, hp3, tai(p.Next), UsedRegs);
+                                  begin
+                                    AllocRegBetween(ref^.index, hp3, p, TmpUsedRegs);
+                                    if not Assigned(first_assignment) then
+                                      IncludeRegInUsedRegs(ref^.index, UsedRegs);
+                                  end;
                               end;
                             top_reg:
-                              AllocRegBetween(reg, hp3, tai(p.Next), UsedRegs);
+                              begin
+                                AllocRegBetween(reg, hp3, p, TmpUsedRegs);
+                                if not Assigned(first_assignment) then
+                                  IncludeRegInUsedRegs(reg, UsedRegs);
+                              end;
                             else
                               ;
                           end;
                         end;
+
+                    if first_assignment = nil then
+                      first_assignment := hp3;
                   end;
               end;
 

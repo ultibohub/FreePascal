@@ -125,14 +125,6 @@ end;
 
 procedure TWebIDLToPasApplication.DoRun;
 
-  procedure E(const Msg: string);
-  begin
-    {AllowWriteln}
-    writeln('Error: ',Msg);
-    {AllowWriteln-}
-    Halt(1);
-  end;
-
 var
   A,ErrorMsg: String;
   I : Integer;
@@ -142,7 +134,7 @@ var
 begin
   Terminate;
   // quick check parameters
-  ErrorMsg:=CheckOptions('ced::f:g:hi:m:n:o:pt:u:vw:x:', [
+  ErrorMsg:=CheckOptions('ced::f:g:hi:m:n:o:pt:u:vw:x:r', [
     'help',
     'constexternal',
     'dicttoclass::',
@@ -158,7 +150,8 @@ begin
     'unitname:',
     'verbose',
     'webidlversion:',
-    'extra:'
+    'extra:',
+    'chrome'
     ]);
   if (ErrorMsg<>'') or HasOption('h','help') then
     begin
@@ -181,7 +174,10 @@ begin
         end;
       end;
     if not ok then
-      E('unknown outputformat "'+A+'"');
+      begin
+      WriteHelp('unknown outputformat "'+A+'"');
+      exit;
+      end;
     end;
   InitWebIDLToPas;
 
@@ -195,7 +191,7 @@ begin
     TWebIDLToPas2js(FWebIDLToPas).DictionaryClassParent:=GetOptionValue('d','dicttoclass');
 
   CheckBaseOption(coExpandUnionTypeArgs,'e','expandunionargs');
-
+  CheckBaseOption(coChromeWindow,'r','chrome');
   // -f ?
 
   A:=GetOptionValue('g','globals');
@@ -249,14 +245,15 @@ begin
     if (I<>-1) then
       FWebIDLToPas.WebIDLVersion:=TWebIDLVersion(I)
     else
-      E('Invalid webidl version: "'+A+'"');
+      begin
+      WriteHelp('Invalid webidl version: "'+A+'"');
+      exit;
+      end;
     end;
 
   FWebIDLToPas.ExtraUnits:=GetOptionValue('x','extra');
 
   FWebIDLToPas.Execute;
-  // stop program loop
-  Terminate;
 end;
 
 procedure TWebIDLToPasApplication.InitWebIDLToPas;

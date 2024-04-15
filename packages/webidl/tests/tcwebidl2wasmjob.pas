@@ -5,7 +5,7 @@ unit tcwebidl2wasmjob;
 interface
 
 uses
-  Classes, SysUtils, fpcunit, testregistry, webidlscanner, webidltowasmjob, pascodegen;
+  Classes, SysUtils, fpcunit, testregistry, webidlscanner, webidltopas, webidltowasmjob, pascodegen;
 
 type
 
@@ -36,9 +36,20 @@ type
     // typedefs
     procedure TestWJ_Typedef_Boolean;
     procedure TestWJ_Typedef_Sequence;
+    procedure TestWJ_Typedef_Aliased;
 
     // attributes
     procedure TestWJ_IntfAttribute_Boolean;
+    procedure TestWJ_IntfStringifier;
+    procedure TestWJ_IntfAttribute_ArrayBuffer;
+    procedure TestWJ_IntfAttribute_ArrayBufferView;
+    procedure TestWJ_IntfAttribute_ChromeOnly;
+
+    procedure TestWJ_CallBackObjectArg;
+    procedure TestWJ_CallBackEnumArg;
+    procedure TestWJ_CallBackSequenceArg;
+
+
     // todo procedure TestWJ_IntfAttribute_Any;
 
     // functions
@@ -46,8 +57,24 @@ type
     procedure TestWJ_IntfFunction_SetEventHandler;
     procedure TestWJ_IntfFunction_Promise;
     procedure TestWJ_IntfFunction_ArgAny;
+    procedure TestWJ_IntfFunction_EnumResult;
+    procedure TestWJ_IntfFunction_SequenceArg;
+    procedure TestWJ_IntfFunction_2SequenceArg;
+    procedure TestWJ_IntfFunction_Constructor;
+    procedure TestWJ_IntfFunction_ArrayBufferArg;
+    procedure TestWJ_IntfFunction_ArrayBufferViewArg;
+    procedure TestWJ_IntfFunction_SequenceResult;
+    procedure TestWJ_IntfFunction_GlobalSequenceResult;
+    procedure TestWJ_IntfFunction_ChromeOnly;
+    procedure TestWJ_IntfFunction_ChromeOnlyNewObject;
+    procedure TestWJ_IntfFunction_DictionaryResult;
+    procedure TestWJ_IntfFunction_AliasResult;
+    procedure TestWJ_IntfFunction_NestedUnionSequence;
+    procedure TestWJ_intfFunction_UnionOptional;
     // Namespace attribute
     procedure TestWJ_NamespaceAttribute_Boolean;
+    // maplike
+    procedure TestWJ_MaplikeInterface;
   end;
 
 function LinesToStr(Args: array of const): TIDLString;
@@ -299,7 +326,7 @@ procedure TCustomTestWebIDL2WasmJob.OnLog(Sender: TObject;
 begin
   if LogType=cltInfo then ;
   if Sender=nil then ;
-  writeln('TCustomTestWebIDL2WasmJob.OnLog ',Msg);
+  Status('TCustomTestWebIDL2WasmJob.OnLog '+Msg);
 end;
 
 procedure TCustomTestWebIDL2WasmJob.Setup;
@@ -417,10 +444,26 @@ begin
   ['Type',
   '  // Forward class definitions',
   '  TPerformanceEntry = Boolean;',
-  '  TPerformanceEntryList = IJSArray; // array of TPerformanceEntry',
+  '  TPerformanceEntryDynArray = IJSArray; // array of TPerformanceEntry',
   'implementation',
   'end.',
   '']);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_Typedef_Aliased;
+begin
+  WebIDLToPas.TypeAliases.Add('Float32List=IJSFloat32Array');
+  TestWebIDL([
+  '  typedef ([AllowShared] Float32Array or sequence<GLfloat>) Float32List;',
+  ''],
+  ['',
+  'Type',
+  '  // Forward class definitions',
+  'implementation',
+  '',
+  'end.',
+  ''
+  ]);
 end;
 
 procedure TTestWebIDL2WasmJob.TestWJ_IntfAttribute_Boolean;
@@ -473,6 +516,259 @@ begin
   '',
   'end.',
   '']);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfStringifier;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  stringifier;',
+  '};',
+  ''],
+  ['Type',
+  '  // Forward class definitions',
+  '  IJSAttr = interface;',
+  '  TJSAttr = class;',
+  '  { --------------------------------------------------------------------',
+  '    TJSAttr',
+  '    --------------------------------------------------------------------}',
+  '',
+  '  IJSAttr = interface(IJSObject)',
+  '    [''{AA94F45E-60F0-381A-A2A6-208CA4B2AF2A}'']',
+  '  end;',
+  '',
+  '  TJSAttr = class(TJSObject,IJSAttr)',
+  '  Private',
+  '  Public',
+  '    class function Cast(const Intf: IJSObject): IJSAttr;',
+  '  end;',
+  '',
+  'implementation',
+  '',
+  'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+  'begin',
+  '  Result:=TJSAttr.JOBCast(Intf);',
+  'end;',
+  '',
+  'end.',
+  '']);
+
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfAttribute_ArrayBuffer;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  [SameObject, Throws] readonly attribute ArrayBuffer signature;',
+  '};',
+  ''],
+  [
+  'Type',
+    '  // Forward class definitions',
+    '  IJSAttr = interface;',
+    '  TJSAttr = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSAttr',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSAttr = interface(IJSObject)',
+    '    [''{2D39068A-1305-3879-B4DC-37563664D5F5}'']',
+    '    function _Getsignature: IJSArrayBuffer;',
+    '    property signature: IJSArrayBuffer read _Getsignature;',
+    '  end;',
+    '',
+    '  TJSAttr = class(TJSObject,IJSAttr)',
+    '  Private',
+    '    function _Getsignature: IJSArrayBuffer;',
+    '  Public',
+    '    class function Cast(const Intf: IJSObject): IJSAttr;',
+    '    property signature: IJSArrayBuffer read _Getsignature;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'function TJSAttr._Getsignature: IJSArrayBuffer;',
+    'begin',
+    '  Result:=ReadJSPropertyObject(''signature'',TJSArrayBuffer) as IJSArrayBuffer;',
+    'end;',
+    '',
+    'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+    'begin',
+    '  Result:=TJSAttr.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''
+  ]);
+
+
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfAttribute_ArrayBufferView;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  [SameObject, Throws] readonly attribute ArrayBufferView signature;',
+  '};',
+  ''],
+  [
+  'Type',
+    '  // Forward class definitions',
+    '  IJSAttr = interface;',
+    '  TJSAttr = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSAttr',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSAttr = interface(IJSObject)',
+    '    [''{2D390654-2475-3879-B4DC-37563664D5F5}'']',
+    '    function _Getsignature: IJSArrayBufferView;',
+    '    property signature: IJSArrayBufferView read _Getsignature;',
+    '  end;',
+    '',
+    '  TJSAttr = class(TJSObject,IJSAttr)',
+    '  Private',
+    '    function _Getsignature: IJSArrayBufferView;',
+    '  Public',
+    '    class function Cast(const Intf: IJSObject): IJSAttr;',
+    '    property signature: IJSArrayBufferView read _Getsignature;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'function TJSAttr._Getsignature: IJSArrayBufferView;',
+    'begin',
+    '  Result:=ReadJSPropertyObject(''signature'',TJSArrayBufferView) as IJSArrayBufferView;',
+    'end;',
+    '',
+    'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+    'begin',
+    '  Result:=TJSAttr.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''
+  ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfAttribute_ChromeOnly;
+
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  [ChromeOnly, Throws] readonly attribute long soso;',
+  '};',
+  ''],
+  [
+  'Type',
+    '  // Forward class definitions',
+    '  IJSAttr = interface;',
+    '  TJSAttr = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSAttr',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSAttr = interface(IJSObject)',
+    '    [''{AA94F48A-149D-354C-96E7-B1ACA4B2AF2A}'']',
+    '  end;',
+    '',
+    '  TJSAttr = class(TJSObject,IJSAttr)',
+    '  Private',
+    '  Public',
+    '    class function Cast(const Intf: IJSObject): IJSAttr;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+    'begin',
+    '  Result:=TJSAttr.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''
+  ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_CallBackObjectArg;
+
+begin
+  WebIDLToPas.TypeAliases.Add('AudioWorkletProcessor=IJSObject');
+  TestWebIDL([
+  '  callback constructor AudioWorkletProcessorConstructor = AudioWorkletProcessor (object options);'
+  ],
+  [
+  'Type',
+  '  // Forward class definitions',
+  '  TAudioWorkletProcessorConstructor = function (options: IJSObject): IJSObject of object;',
+  '',
+  'implementation',
+  '',
+  'function JOBCallTAudioWorkletProcessorConstructor(const aMethod: TMethod; var H: TJOBCallbackHelper): PByte;',
+  ' var',
+  '   options: IJSObject;',
+  'begin',
+  '  options:=H.GetObject;',
+  '  Result:=H.AllocIntf(TAudioWorkletProcessorConstructor(aMethod)(options));',
+  'end;',
+  '',
+  'end.'
+  ]);
+
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_CallBackEnumArg;
+begin
+  TestWebIDL([
+  'enum E { ',
+  '  "allowed", ',
+  '  "disallowed" ',
+  '}; ',
+  'callback getit = long (E a);'
+  ],[
+  'Type',
+  '// Forward class definitions',
+  '  TE = UnicodeString;',
+  '  Tgetit = function (a: TE): Integer of object;',
+  '',
+  'implementation',
+  '',
+  'function JOBCallTgetit(const aMethod: TMethod; var H: TJOBCallbackHelper): PByte; ',
+  'var',
+  '  a: TE;',
+  'begin',
+  '  a:=H.GetString;',
+  '  Result:=H.AllocLongint(Tgetit(aMethod)(a));',
+  'end;',
+  '',
+  'end.'
+  ]);
+
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_CallBackSequenceArg;
+begin
+  TestWebIDL([
+  'typedef sequence<long> E;',
+  'callback getit = long (E a);'
+  ],[
+  'Type',
+  '// Forward class definitions',
+  '  TIntegerDynArray = IJSArray; // array of Integer',
+  '  Tgetit = function (const a: TIntegerDynArray): Integer of object;',
+  '',
+  'implementation',
+  '',
+  'function JOBCallTgetit(const aMethod: TMethod; var H: TJOBCallbackHelper): PByte; ',
+  'var',
+  '  a: TIntegerDynArray;',
+  'begin',
+  '  a:=H.GetArray;',
+  '  Result:=H.AllocLongint(Tgetit(aMethod)(a));',
+  'end;',
+  '',
+  'end.'
+  ]);
 end;
 
 procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_Void;
@@ -686,6 +982,688 @@ begin
   '']);
 end;
 
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_EnumResult;
+begin
+  TestWebIDL([
+  'enum E { ',
+  '  "allowed", ',
+  '  "disallowed" ',
+  '}; ',
+  'interface IE { ',
+  '   E get(long a); ',
+  '};'
+  ],[
+  'Type',
+    '  // Forward class definitions',
+    '  IJSIE = interface;',
+    '  TJSIE = class;',
+    '  TE = UnicodeString;',
+    '  { --------------------------------------------------------------------',
+    '    TJSIE',
+    '    --------------------------------------------------------------------}',
+    '  IJSIE = interface(IJSObject)',
+    '    [''{04D06E4C-6063-3E89-A483-3296C9C8AA41}'']',
+    '    function get(a: Integer) : TE;',
+    '  end;',
+    '',
+    '  TJSIE = class(TJSObject,IJSIE)',
+    '  Private',
+    '  Public',
+    '    function get(a: Integer) : TE;',
+    '    class function Cast(const Intf: IJSObject): IJSIE;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'function TJSIE.get(a: Integer) : TE;',
+    'begin',
+    '  Result:=InvokeJSUnicodeStringResult(''get'',[a]);',
+    'end;',
+    '',
+    'class function TJSIE.Cast(const Intf: IJSObject): IJSIE;',
+    'begin',
+    '  Result:=TJSIE.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.'
+  ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_SequenceArg;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  boolean vibrate(sequence<long> pattern);',
+  '};',
+  ''],
+  [
+   'Type',
+   '',
+   '  // Forward class definitions',
+   '  IJSAttr = interface;',
+   '  TJSAttr = class;',
+   '',
+   '  { --------------------------------------------------------------------',
+   '    TJSAttr',
+   '    --------------------------------------------------------------------}',
+   '',
+   '  TIntegerDynArray = IJSArray; // array of Integer',
+   '',
+   '  IJSAttr = interface(IJSObject)',
+   '    [''{AA94F48A-2BFB-3877-82A6-208CA4B2AF2A}'']',
+   '    function vibrate(const aPattern: TIntegerDynArray): Boolean;',
+   '  end;',
+   '',
+   '  TJSAttr = class(TJSObject,IJSAttr)',
+   '  Private',
+   '  Public',
+   '     function vibrate(const aPattern: TIntegerDynArray): Boolean;',
+   '     class function Cast(const Intf: IJSObject): IJSAttr;',
+   '  end;',
+   '',
+   'implementation',
+   '',
+   'function TJSAttr.vibrate(const aPattern: TIntegerDynArray): Boolean;',
+   'begin',
+   '  Result:=InvokeJSBooleanResult(''vibrate'',[aPattern]);',
+   'end;',
+   '',
+   'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+   'begin',
+   '  Result:=TJSAttr.JOBCast(Intf);',
+   'end;',
+   '',
+   'end.'
+    ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_2SequenceArg;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  boolean vibrate(sequence<long> pattern);',
+  '  boolean beep(sequence<long> pattern);',
+  '};',
+  ''],
+  [
+   'Type',
+   '',
+   '  // Forward class definitions',
+   '  IJSAttr = interface;',
+   '  TJSAttr = class;',
+   '',
+   '  { --------------------------------------------------------------------',
+   '    TJSAttr',
+   '    --------------------------------------------------------------------}',
+   '',
+   '  TIntegerDynArray = IJSArray; // array of Integer',
+   '',
+   '  IJSAttr = interface(IJSObject)',
+   '    [''{AA94F48A-8A01-3EFF-A44E-4EDCA4B2AF2A}'']',
+   '    function vibrate(const aPattern: TIntegerDynArray): Boolean;',
+   '    function beep(const aPattern: TIntegerDynArray): Boolean;',
+   '  end;',
+   '',
+   '  TJSAttr = class(TJSObject,IJSAttr)',
+   '  Private',
+   '  Public',
+   '     function vibrate(const aPattern: TIntegerDynArray): Boolean;',
+   '     function beep(const aPattern: TIntegerDynArray): Boolean;',
+   '     class function Cast(const Intf: IJSObject): IJSAttr;',
+   '  end;',
+   '',
+   'implementation',
+   '',
+   'function TJSAttr.vibrate(const aPattern: TIntegerDynArray): Boolean;',
+   'begin',
+   '  Result:=InvokeJSBooleanResult(''vibrate'',[aPattern]);',
+   'end;',
+   '',
+   'function TJSAttr.beep(const aPattern: TIntegerDynArray): Boolean;',
+   'begin',
+   '  Result:=InvokeJSBooleanResult(''beep'',[aPattern]);',
+   'end;',
+   '',
+   'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+   'begin',
+   '  Result:=TJSAttr.JOBCast(Intf);',
+   'end;',
+   '',
+   'end.'
+    ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_Constructor;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  constructor(long options); ',
+  '};'
+  ],
+  ['Type',
+  '  // Forward class definitions',
+  '  IJSAttr = interface;',
+  '  TJSAttr = class;',
+  '  { --------------------------------------------------------------------',
+  '    TJSAttr',
+  '    --------------------------------------------------------------------}',
+  '',
+  '  IJSAttr = interface(IJSObject)',
+  '    [''{AA94F48A-EA1E-381A-A2A6-208CA4B2AF2A}'']',
+  '  end;',
+  '',
+  '  TJSAttr = class(TJSObject,IJSAttr)',
+  '  Private',
+  '  Public',
+  '    class function Create(aOptions : Integer) : TJSAttr;',
+  '    class function Cast(const Intf: IJSObject): IJSAttr;',
+  '  end;',
+  '',
+  'implementation',
+  '',
+  'class function TJSAttr.Create(aOptions: Integer) : TJSAttr;',
+  'begin',
+  '  Result:=InvokeJSObjectResult(''Attr'',[aOptions],TJSAttr) as TJSAttr;',
+  'end;',
+  '',
+  'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+  'begin',
+  '  Result:=TJSAttr.JOBCast(Intf);',
+  'end;',
+  '',
+  'end.',
+  '']);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_ArrayBufferArg;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  undefined appendBuffer(ArrayBuffer data);',
+  '};'
+  ],[
+  'Type',
+    '  // Forward class definitions',
+    '  IJSAttr = interface;',
+    '  TJSAttr = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSAttr',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSAttr = interface(IJSObject)',
+    '    [''{AA94F48A-84D7-3FB2-97EF-71ACA4B2AF2A}'']',
+    '    procedure appendBuffer(aData: IJSArrayBuffer);',
+    '  end;',
+    '',
+    '  TJSAttr = class(TJSObject,IJSAttr)',
+    '  Private',
+    '  Public',
+    '    procedure appendBuffer(aData: IJSArrayBuffer);',
+    '    class function Cast(const Intf: IJSObject): IJSAttr;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'procedure TJSAttr.appendBuffer(aData: IJSArrayBuffer);',
+    'begin',
+    '  InvokeJSNoResult(''appendBuffer'',[aData]);',
+    'end;',
+    '',
+    'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+    'begin',
+    '  Result:=TJSAttr.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''  ]);
+
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_ArrayBufferViewArg;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  undefined appendBuffer(ArrayBufferView data);',
+  '};'
+  ],[
+  'Type',
+    '  // Forward class definitions',
+    '  IJSAttr = interface;',
+    '  TJSAttr = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSAttr',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSAttr = interface(IJSObject)',
+    '    [''{AA94F48A-84D7-3FB2-97EF-71ACA4B2AF2A}'']',
+    '    procedure appendBuffer(aData: IJSArrayBufferView);',
+    '  end;',
+    '',
+    '  TJSAttr = class(TJSObject,IJSAttr)',
+    '  Private',
+    '  Public',
+    '    procedure appendBuffer(aData: IJSArrayBufferView);',
+    '    class function Cast(const Intf: IJSObject): IJSAttr;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'procedure TJSAttr.appendBuffer(aData: IJSArrayBufferView);',
+    'begin',
+    '  InvokeJSNoResult(''appendBuffer'',[aData]);',
+    'end;',
+    '',
+    'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+    'begin',
+    '  Result:=TJSAttr.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''  ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_SequenceResult;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  sequence<long> vibrate();',
+  '};',
+  ''],
+  [
+   'Type',
+   '',
+   '  // Forward class definitions',
+   '  IJSAttr = interface;',
+   '  TJSAttr = class;',
+   '',
+   '  { --------------------------------------------------------------------',
+   '    TJSAttr',
+   '    --------------------------------------------------------------------}',
+   '',
+   '  TIntegerDynArray = IJSArray; // array of Integer',
+   '',
+   '  IJSAttr = interface(IJSObject)',
+   '    [''{AA94F48A-2BFB-3877-82A6-208CA4B2AF2A}'']',
+   '    function vibrate: TIntegerDynArray;',
+   '  end;',
+   '',
+   '  TJSAttr = class(TJSObject,IJSAttr)',
+   '  Private',
+   '  Public',
+   '    function vibrate: TIntegerDynArray;',
+   '    class function Cast(const Intf: IJSObject): IJSAttr;',
+   '  end;',
+   '',
+   'implementation',
+   '',
+   'function TJSAttr.vibrate: TIntegerDynArray;',
+   'begin',
+   '  Result:=InvokeJSObjectResult(''vibrate'',[],TJSArray) as TIntegerDynArray;',
+   'end;',
+   '',
+   'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+   'begin',
+   '  Result:=TJSAttr.JOBCast(Intf);',
+   'end;',
+   '',
+   'end.'
+    ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_GlobalSequenceResult;
+begin
+  TestWebIDL([
+  'typedef sequence <long> LongSeq;',
+  'interface Attr {',
+  '  LongSeq vibrate();',
+  '};',
+  ''],
+  [
+   'Type',
+   '',
+   '  // Forward class definitions',
+   '  IJSAttr = interface;',
+   '  TJSAttr = class;',
+   '  TIntegerDynArray = IJSArray; // array of Integer',
+   '',
+   '  { --------------------------------------------------------------------',
+   '    TJSAttr',
+   '    --------------------------------------------------------------------}',
+   '',
+   '  IJSAttr = interface(IJSObject)',
+   '    [''{AA94F48A-2BFB-3877-82A6-208CA4B2AF2A}'']',
+   '    function vibrate: TIntegerDynArray;',
+   '  end;',
+   '',
+   '  TJSAttr = class(TJSObject,IJSAttr)',
+   '  Private',
+   '  Public',
+   '    function vibrate: TIntegerDynArray;',
+   '    class function Cast(const Intf: IJSObject): IJSAttr;',
+   '  end;',
+   '',
+   'implementation',
+   '',
+   'function TJSAttr.vibrate: TIntegerDynArray;',
+   'begin',
+   '  Result:=InvokeJSObjectResult(''vibrate'',[],TJSArray) as TIntegerDynArray;',
+   'end;',
+   '',
+   'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+   'begin',
+   '  Result:=TJSAttr.JOBCast(Intf);',
+   'end;',
+   '',
+   'end.'
+ ]);
+
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_ChromeOnly;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  [ChromeOnly, Throws] long soso();',
+  '};',
+  ''],
+  [
+  'Type',
+    '  // Forward class definitions',
+    '  IJSAttr = interface;',
+    '  TJSAttr = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSAttr',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSAttr = interface(IJSObject)',
+    '    [''{AA94F48A-149D-381A-A2A6-208CA4B2AF2A}'']',
+    '  end;',
+    '',
+    '  TJSAttr = class(TJSObject,IJSAttr)',
+    '  Private',
+    '  Public',
+    '    class function Cast(const Intf: IJSObject): IJSAttr;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+    'begin',
+    '  Result:=TJSAttr.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''
+  ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_ChromeOnlyNewObject;
+begin
+
+    TestWebIDL([
+    'interface Attr {',
+    '  [ChromeOnly, NewObject] ',
+    '  ConsoleInstance createInstance(optional ConsoleInstanceOptions options = {});',
+    '};'
+    ],
+    [
+    'Type',
+      '  // Forward class definitions',
+      '  IJSAttr = interface;',
+      '  TJSAttr = class;',
+      '  { --------------------------------------------------------------------',
+      '    TJSAttr',
+      '    --------------------------------------------------------------------}',
+      '',
+      '  IJSAttr = interface(IJSObject)',
+      '    [''{AA94F48A-9540-32B7-B05B-E99EB8B2AF2A}'']',
+      '  end;',
+      '',
+      '  TJSAttr = class(TJSObject,IJSAttr)',
+      '  Private',
+      '  Public',
+      '    class function Cast(const Intf: IJSObject): IJSAttr;',
+      '  end;',
+      '',
+      'implementation',
+      '',
+      'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+      'begin',
+      '  Result:=TJSAttr.JOBCast(Intf);',
+      'end;',
+      '',
+      'end.',
+      ''
+    ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_DictionaryResult;
+begin
+  WebIDLToPas.BaseOptions:=WebIDLToPas.BaseOptions+[coDictionaryAsClass];
+  TestWebIDL([
+  'dictionary MyDict { long a = 0; };',
+  'interface Attr {',
+  '  MyDict get();',
+  '};',
+  ''],
+  [
+   'Type',
+   '',
+   '  // Forward class definitions',
+   '  IJSAttr = interface;',
+   '  TJSAttr = class;',
+//   '',
+   '  TJSMyDict = TJOB_Dictionary;',
+   '',
+   '  { --------------------------------------------------------------------',
+   '    TJSMyDict',
+   '    --------------------------------------------------------------------}',
+   '',
+   '  TJSMyDictRec = record',
+   '     a: Integer;',
+   '   end;',
+   '  { --------------------------------------------------------------------',
+   '    TJSAttr',
+   '    --------------------------------------------------------------------}',
+   '',
+   '',
+   '  IJSAttr = interface(IJSObject)',
+   '    [''{AA94F48A-B218-381A-A2A6-208CA4B2AF2A}'']',
+   '    function get: TJSMyDict;',
+   '  end;',
+   '',
+   '  TJSAttr = class(TJSObject,IJSAttr)',
+   '  Private',
+   '  Public',
+   '    function get: TJSMyDict;',
+   '    class function Cast(const Intf: IJSObject): IJSAttr;',
+   '  end;',
+   '',
+   'implementation',
+   '',
+   'function TJSAttr.get: TJSMyDict;',
+   'begin',
+   '  Result:=InvokeJSObjectResult(''get'',[],TJSMyDict) as TJSMyDict;',
+   'end;',
+   '',
+   'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+   'begin',
+   '  Result:=TJSAttr.JOBCast(Intf);',
+   'end;',
+   '',
+   'end.'
+    ]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_AliasResult;
+
+begin
+  WebIDLToPas.TypeAliases.Add('Float32Array=IJSFloat32Array');
+  TestWebIDL([
+  'interface Attr {',
+  '  Float32Array vibrate();',
+  '};',
+  ''],
+[
+ 'Type',
+ '',
+ '  // Forward class definitions',
+ '  IJSAttr = interface;',
+ '  TJSAttr = class;',
+ '',
+ '  { --------------------------------------------------------------------',
+ '    TJSAttr',
+ '    --------------------------------------------------------------------}',
+ '',
+ '  IJSAttr = interface(IJSObject)',
+ '    [''{AA94F48A-2BFB-3877-82A6-208CA4B2AF2A}'']',
+ '    function vibrate: IJSFloat32Array;',
+ '  end;',
+ '',
+ '  TJSAttr = class(TJSObject,IJSAttr)',
+ '  Private',
+ '  Public',
+ '    function vibrate: IJSFloat32Array;',
+ '    class function Cast(const Intf: IJSObject): IJSAttr;',
+ '  end;',
+ '',
+ 'implementation',
+ '',
+ 'function TJSAttr.vibrate: IJSFloat32Array;',
+ 'begin',
+ '  Result:=InvokeJSObjectResult(''vibrate'',[],TJSArray) as IJSFloat32Array;',
+ 'end;',
+ '',
+ 'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+ 'begin',
+ '  Result:=TJSAttr.JOBCast(Intf);',
+ 'end;',
+ '',
+ 'end.'
+]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_IntfFunction_NestedUnionSequence;
+begin
+  TestWebIDL([
+  'interface Attr {',
+  '  long roundRect((double or sequence<(double or long)>) radii);',
+  '};',
+  ''],
+[
+ 'Type',
+ '',
+ '  // Forward class definitions',
+ '  IJSAttr = interface;',
+ '  TJSAttr = class;',
+ '',
+ '  { --------------------------------------------------------------------',
+ '    TJSAttr',
+ '    --------------------------------------------------------------------}',
+ '',
+ '   TVariantDynArray = IJSArray; // array of Variant',
+ '  IJSAttr = interface(IJSObject)',
+ '    [''{AA94F48A-0CA1-3A6F-A546-208CA4B2AF2A}'']',
+ '    function roundRect(aRadii: Double): Integer; overload;',
+ '    function roundRect(const aRadii: TVariantDynArray): Integer; overload;',
+ '  end;',
+ '',
+ '  TJSAttr = class(TJSObject,IJSAttr)',
+ '  Private',
+ '  Public',
+ '    function roundRect(aRadii: Double): Integer; overload;',
+ '    function roundRect(const aRadii: TVariantDynArray): Integer; overload;',
+ '    class function Cast(const Intf: IJSObject): IJSAttr;',
+ '  end;',
+ '',
+ 'implementation',
+ '',
+ 'function TJSAttr.roundRect(aRadii: Double): Integer; overload;',
+ 'begin',
+ '  Result:=InvokeJSLongIntResult(''roundRect'',[aRadii]);',
+ 'end;',
+ '',
+ 'function TJSAttr.roundRect(const aRadii: TVariantDynArray): Integer; overload;',
+ 'begin',
+ '  Result:=InvokeJSLongIntResult(''roundRect'',[aRadii]);',
+ 'end;',
+ '',
+ 'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+ 'begin',
+ '  Result:=TJSAttr.JOBCast(Intf);',
+ 'end;',
+ '',
+ 'end.'
+]);
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_intfFunction_UnionOptional;
+begin
+  TestwebIDL(
+  ['interface Attr {',
+  '  void roundRect((DOMString or sequence<DOMString>) a, optional long b);',
+  '};'
+  ],[
+  'Type',
+  '',
+  '  // Forward class definitions',
+  '  IJSAttr = interface;',
+  '  TJSAttr = class;',
+  '',
+  '  { --------------------------------------------------------------------',
+  '    TJSAttr',
+  '    --------------------------------------------------------------------}',
+  '  TUnicodeStringDynArray = IJSArray; // array of UnicodeString',
+  '  IJSAttr = interface(IJSObject)',
+  '    [''{AA94F48A-0CA1-3A6F-A546-208CA4B2AF2A}'']',
+  '    procedure roundRect(const a: UnicodeString; aB: Integer); overload;',
+  '    procedure roundRect(const a: TUnicodeStringDynArray; aB: Integer); overload;',
+  '    procedure roundRect(const a: TUnicodeStringDynArray); overload;',
+  '    procedure roundRect(const a: UnicodeString); overload;',
+  '  end;',
+  '',
+  '  TJSAttr = class(TJSObject,IJSAttr)',
+  '  Private',
+  '  Public',
+  '    procedure roundRect(const a: UnicodeString; aB: Integer); overload;',
+  '    procedure roundRect(const a: TUnicodeStringDynArray; aB: Integer); overload;',
+  '    procedure roundRect(const a: TUnicodeStringDynArray); overload;',
+  '    procedure roundRect(const a: UnicodeString); overload;',
+  '    class function Cast(const Intf: IJSObject): IJSAttr;',
+  '  end;',
+  '',
+  'implementation',
+  '',
+  'procedure TJSAttr.roundRect(const a: UnicodeString; aB: Integer); overload;',
+  'begin',
+  '  InvokeJSNoResult(''roundRect'',[a,aB]);',
+  'end;',
+  '',
+  'procedure TJSAttr.roundRect(const a: TUnicodeStringDynArray; aB: Integer); overload;',
+  'begin',
+  '  InvokeJSNoResult(''roundRect'',[a,aB]);',
+  'end;',
+  '',
+  'procedure TJSAttr.roundRect(const a: TUnicodeStringDynArray); overload;',
+  'begin',
+  '  InvokeJSNoResult(''roundRect'',[a]);',
+  'end;',
+  '',
+  'procedure TJSAttr.roundRect(const a: UnicodeString); overload;',
+  'begin',
+  '  InvokeJSNoResult(''roundRect'',[a]);',
+  'end;',
+  '',
+  'class function TJSAttr.Cast(const Intf: IJSObject): IJSAttr;',
+  'begin',
+  '  Result:=TJSAttr.JOBCast(Intf);',
+  'end;',
+  '',
+  'end.'
+ ]);
+end;
+
+
 procedure TTestWebIDL2WasmJob.TestWJ_NamespaceAttribute_Boolean;
 begin
   TestWebIDL([
@@ -739,6 +1717,87 @@ begin
   'end.',
   '']);
 
+end;
+
+procedure TTestWebIDL2WasmJob.TestWJ_MaplikeInterface;
+begin
+  TestWebIDL([
+  '  interface PM {',
+  '    readonly maplike<DOMString, boolean>;',
+  '  };'
+  ],[
+  'Type',
+    '  // Forward class definitions',
+    '  IJSPM = interface;',
+    '  TJSPM = class;',
+    '  { --------------------------------------------------------------------',
+    '    TJSPM',
+    '    --------------------------------------------------------------------}',
+    '',
+    '  IJSPM = interface(IJSObject)',
+    '    [''{04D12607-C063-3E89-A483-3296C9C8AA41}'']',
+    '    function _Getsize: LongInt;',
+    '    function get(key: UnicodeString) : Boolean;',
+    '    function has(key: UnicodeString) : Boolean;',
+    '    function entries : IJSIterator;',
+    '    function keys : IJSIterator;',
+    '    function values : IJSIterator;',
+    '    property size : LongInt read _Getsize;',
+    '  end;',
+    '',
+    '  TJSPM = class(TJSObject,IJSPM)',
+    '  Private',
+    '    function _Getsize: LongInt;',
+    '  Public',
+    '    function get(key: UnicodeString) : Boolean;',
+    '    function has(key: UnicodeString) : Boolean;',
+    '    function entries : IJSIterator;',
+    '    function keys : IJSIterator;',
+    '    function values : IJSIterator;',
+    '    class function Cast(const Intf: IJSObject): IJSPM;',
+    '    property size : LongInt read _Getsize;',
+    '  end;',
+    '',
+    'implementation',
+    '',
+    'function TJSPM._Getsize: LongInt;',
+    'begin',
+    '  Result:=ReadJSPropertyLongInt(''size'');',
+    'end;',
+    '',
+    'function TJSPM.get(key: UnicodeString) : Boolean;',
+    'begin',
+    '  Result:=InvokeJSBooleanResult(''get'',[key]);',
+    'end;',
+    '',
+    'function TJSPM.has(key: UnicodeString) : Boolean;',
+    'begin',
+    '  Result:=InvokeJSBooleanResult(''has'',[key]);',
+    'end;',
+    '',
+    'function TJSPM.entries : IJSIterator;',
+    'begin',
+    '  Result:=InvokeJSObjectResult(''entries'',[],TJSIterator) as IJSIterator;',
+    'end;',
+    '',
+    'function TJSPM.keys : IJSIterator;',
+    'begin',
+    '  Result:=InvokeJSObjectResult(''keys'',[],TJSIterator) as IJSIterator;',
+    'end;',
+    '',
+    'function TJSPM.values : IJSIterator;',
+    'begin',
+    '  Result:=InvokeJSObjectResult(''values'',[],TJSIterator) as IJSIterator;',
+    'end;',
+    '',
+    'class function TJSPM.Cast(const Intf: IJSObject): IJSPM;',
+    'begin',
+    '  Result:=TJSPM.JOBCast(Intf);',
+    'end;',
+    '',
+    'end.',
+    ''
+  ]);
 end;
 
 initialization
