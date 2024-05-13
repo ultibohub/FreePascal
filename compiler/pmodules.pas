@@ -200,8 +200,10 @@ implementation
         if not load_ok then
           { We must schedule a compile. }
           task_handler.addmodule(hp);
+
         { add to symtable stack }
-        symtablestack.push(hp.globalsymtable);
+        if assigned(hp.globalsymtable) then
+          symtablestack.push(hp.globalsymtable);
         if (m_mac in current_settings.modeswitches) and
             assigned(hp.globalmacrosymtable) then
            macrosymtablestack.push(hp.globalmacrosymtable);
@@ -383,6 +385,8 @@ implementation
         begin
           m:=AddUnit(curr,s,true);
           OK:=assigned(m) and (m.state in [ms_processed,ms_compiled]);
+          if not ok then
+            Message2(unit_f_cant_find_ppu,s,curr.realmodulename^);
           Result:=ok and Result;
         end;
 
@@ -1204,6 +1208,11 @@ type
             exit;
           end;
 
+        { we need to be able to reference these in descendants,
+          so they must be generated and included in the interface }
+        if (target_cpu=tsystemcpu.cpu_wasm32) then
+          add_synthetic_interface_classes_for_st(curr.globalsymtable,true,false);
+
         { Our interface is compiled, generate CRC and switch to implementation }
         if not(cs_compilesystem in current_settings.moduleswitches) and
           (Errorcount=0) then
@@ -1477,8 +1486,8 @@ type
          // This needs to be done before we generate the VMTs
          if (target_cpu=tsystemcpu.cpu_wasm32) then
            begin
-           add_synthetic_interface_classes_for_st(module.globalsymtable);
-           add_synthetic_interface_classes_for_st(module.localsymtable);
+           add_synthetic_interface_classes_for_st(module.globalsymtable,false,true);
+           add_synthetic_interface_classes_for_st(module.localsymtable,true,true);
            end;
 
          { generate construction functions for all attributes in the unit:
@@ -2543,7 +2552,7 @@ type
 
         { This needs to be done before we generate the VMTs }
         if (target_cpu=tsystemcpu.cpu_wasm32) then
-          add_synthetic_interface_classes_for_st(curr.localsymtable);
+          add_synthetic_interface_classes_for_st(curr.localsymtable,true,true);
 
         { Generate VMTs }
         if Errorcount=0 then

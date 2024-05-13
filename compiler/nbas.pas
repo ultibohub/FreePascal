@@ -112,15 +112,28 @@ interface
        end;
        tstatementnodeclass = class of tstatementnode;
 
+       TBlockNodeFlag = (
+         bnf_strippable { Block node can be removed via simplify etc. }
+       );
+
+       TBlockNodeFlags = set of TBlockNodeFlag;
+
        tblocknode = class(tunarynode)
+          blocknodeflags : TBlockNodeFlags;
           constructor create(l : tnode);virtual;
           destructor destroy; override;
+          constructor ppuload(t:tnodetype;ppufile:tcompilerppufile);override;
+          procedure ppuwrite(ppufile:tcompilerppufile);override;
+          function dogetcopy : tnode;override;
           function simplify(forinline : boolean) : tnode; override;
           function pass_1 : tnode;override;
           function pass_typecheck:tnode;override;
 {$ifdef state_tracking}
           function track_state_pass(exec_known:boolean):boolean;override;
 {$endif state_tracking}
+{$ifdef DEBUG_NODE_XML}
+          procedure XMLPrintNodeInfo(var T: Text); override;
+{$endif DEBUG_NODE_XML}
           property statements : tnode read left write left;
        end;
        tblocknodeclass = class of tblocknode;
@@ -206,7 +219,7 @@ interface
        { already been disposed and to make sure the coherency between temps and     }
        { temp references is kept after a getcopy                                    }
        ptempinfo = ^ttempinfo;
-       ttempinfo = object
+       ttempinfo = record
         private
          flags                      : ttempinfoflags;
         public
@@ -371,7 +384,8 @@ implementation
       begin
         { create dummy initial statement }
         laststatement := cstatementnode.create(cnothingnode.create,nil);
-        internalstatements := cblocknode.create(laststatement);
+        result := cblocknode.create(laststatement);
+        Include(result.blocknodeflags, bnf_strippable);
       end;
 
 
@@ -686,6 +700,7 @@ implementation
 
       begin
          inherited create(blockn,l);
+         blocknodeflags:=[];
       end;
 
     destructor tblocknode.destroy;
@@ -706,6 +721,27 @@ implementation
       end;
 
 
+    constructor tblocknode.ppuload(t:tnodetype;ppufile:tcompilerppufile);
+      begin
+        inherited ppuload(t,ppufile);
+        ppufile.getset(tppuset1(blocknodeflags));
+      end;
+
+
+    procedure tblocknode.ppuwrite(ppufile:tcompilerppufile);
+      begin
+        inherited ppuwrite(ppufile);
+        ppufile.putset(tppuset1(blocknodeflags));
+      end;
+
+
+    function tblocknode.dogetcopy : tnode;
+      begin
+        Result:=inherited dogetcopy;
+        TBlockNode(Result).blocknodeflags:=blocknodeflags;
+      end;
+
+
     function NodesEqual(var n: tnode; arg: pointer): foreachnoderesult;
       begin
         if n.IsEqual(tnode(arg)) then
@@ -716,8 +752,9 @@ implementation
 
 
     function tblocknode.simplify(forinline : boolean): tnode;
-{$ifdef break_inlining}
       var
+        n, p, first, last: tstatementnode;
+{$ifdef break_inlining}
         a : array[0..3] of tstatementnode;
 {$endif break_inlining}
       begin
@@ -727,32 +764,115 @@ implementation
           main program body, and those nodes should always be blocknodes
           since that's what the compiler expects elsewhere. }
 
-        if assigned(left) and
-           not assigned(tstatementnode(left).right) then
+        if assigned(left) then
           begin
-            case tstatementnode(left).left.nodetype of
-              blockn:
-                begin
-                  { if the current block contains only one statement, and
-                    this one statement only contains another block, replace
-                    this block with that other block.                       }
-                  result:=tstatementnode(left).left;
-                  tstatementnode(left).left:=nil;
-                  { make sure the nf_block_with_exit flag is safeguarded }
-                  result.flags:=result.flags+(flags*[nf_block_with_exit,nf_usercode_entry]);
-                  exit;
+            if not assigned(tstatementnode(left).right) then
+              begin
+                { Block has a lone statement }
+                case tstatementnode(left).left.nodetype of
+                  blockn:
+                    begin
+                      { if the current block contains only one statement, and
+                        this one statement only contains another block, replace
+                        this block with that other block.                       }
+                      result:=tstatementnode(left).left;
+                      tstatementnode(left).left:=nil;
+                      { make sure the nf_block_with_exit flag is safeguarded }
+                      result.flags:=result.flags+(flags*[nf_block_with_exit,nf_usercode_entry]);
+                      exit;
+                    end;
+                  nothingn:
+                    begin
+                      { if the block contains only a statement with a nothing node,
+                        get rid of the statement }
+                      left.Free;
+                      left:=nil;
+                      exit;
+                    end;
+                  else
+                    ;
                 end;
-              nothingn:
-                begin
-                  { if the block contains only a statement with a nothing node,
-                    get rid of the statement }
-                  left.Free;
-                  left:=nil;
-                  exit;
-                end;
-              else
-                ;
-            end;
+              end
+            else if forinline or (cs_opt_level2 in current_settings.optimizerswitches) then
+              begin
+                n := TStatementNode(left);
+                while Assigned(n) do
+                  begin
+                    case n.left.nodetype of
+                      raisen, exitn, breakn, continuen, goton:
+                        { Remove all subsequent statements, stopping only at a
+                          label or asm block since code can theoretically jump
+                          to them.  Also, don't delete temp creates and deletes }
+                        begin
+                          last := n;
+                          p := TStatementNode(n.Next);
+                          while Assigned(p) do
+                            begin
+                              if (TStatementNode(p).left.nodetype in [labeln, asmn, tempcreaten, tempdeleten, blockn]) then
+                                Break;
+
+                              last := p;
+                              p := TStatementNode(p.Next);
+                            end;
+
+                          if (last <> n) then
+                            begin
+                              last.next := nil; { Make sure we stop one before p }
+                              n.next.Free;
+                              n.next := p;
+                              n := p;
+                              Continue;
+                            end;
+                        end;
+                      else
+                        ;
+                    end;
+
+                    { Look one statement ahead in case it can be deleted - we
+                      need the previous statement to stitch the tree correctly
+                    }
+                    p := TStatementNode(n.Next);
+                    if not Assigned(p) then
+                      Break;
+
+                    if Assigned(p.left) then
+                      begin
+                        case p.left.nodetype of
+                          blockn:
+                            if (bnf_strippable in TBlockNode(p.left).blocknodeflags) and
+                              ((p.left.flags * [nf_block_with_exit] = []) or no_exit_statement_in_block(p.left)) then
+                              begin
+                                { Attempt to merge this block into the main statement
+                                  set }
+
+                                { Find last statement }
+                                first := TStatementNode(TBlockNode(p.left).PruneKeepLeft());
+                                if Assigned(first) then
+                                  begin
+                                    last := first;
+                                    while Assigned(last.right) do
+                                      last := TStatementNode(last.right);
+
+                                    n.right := first;
+                                  end
+                                else
+                                  last := n;
+
+                                last.right := p.PruneKeepRight();
+
+                                { make sure the nf_usercode_entry flag is safeguarded }
+                                Flags := Flags + (p.left.flags * [nf_usercode_entry]);
+
+                                p.Free;
+                                Continue;
+                              end;
+                          else
+                            ;
+                        end;
+                      end;
+                    n := TStatementNode(n.Next);
+                  end;
+              end;
           end;
 {$ifdef break_inlining}
         { simple sequence of tempcreate, assign and return temp.? }
@@ -863,6 +983,30 @@ implementation
             end;
       end;
 {$endif state_tracking}
+{$ifdef DEBUG_NODE_XML}
+    procedure TBlockNode.XMLPrintNodeInfo(var T: Text);
+      var
+        i_bnf: TBlockNodeFlag;
+        First: Boolean;
+      begin
+        inherited XMLPrintNodeInfo(T);
+
+        First := True;
+        for i_bnf in blocknodeflags do
+          begin
+            if First then
+              begin
+                Write(T, ' blocknodeflags="', i_bnf);
+                First := False;
+              end
+            else
+              Write(T, ',', i_bnf)
+          end;
+
+        if not First then
+          write(T,'"');
+      end;
+{$endif DEBUG_NODE_XML}
 
 {*****************************************************************************
                              TASMNODE
