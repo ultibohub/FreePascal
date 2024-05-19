@@ -18,17 +18,19 @@ program webidl2pas;
 
 uses
   Classes, SysUtils, CustApp, webidlscanner, webidltopas, pascodegen, typinfo,
-  webidltopas2js, webidltowasmjob;
+  webidltopas2js, webidltowasmjob, webidltowasmstub;
 
 type
   TWebIDLToPasFormat = (
     wifPas2js,
-    wifWasmJob
+    wifWasmJob,
+    wifWasmJobStub
     );
 const
   WebIDLToPasFormatNames: array[TWebIDLToPasFormat] of string = (
     'pas2js',
-    'wasmjob'
+    'wasmjob',
+    'wasmjobstub'
     );
 
 type
@@ -261,6 +263,8 @@ begin
   case OutputFormat of
   wifWasmJob:
     FWebIDLToPas:=TWebIDLToPasWasmJob.Create(Self);
+  wifWasmJobStub:
+    FWebIDLToPas:=TWebIDLToPasWasmJobStub.Create(Self);
   else
     FWebIDLToPas:=TWebIDLToPas2js.Create(Self);
   end;
