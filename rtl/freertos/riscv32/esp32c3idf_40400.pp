@@ -14,20 +14,17 @@
 
  **********************************************************************}
 {$IFNDEF FPC_DOTTEDUNITS}
-unit esp32c3idf_50000;
+unit esp32c3idf_40400;
 {$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
 {$linklib app_update,static}
 {$linklib bootloader_support,static}
-{$linklib core,static}
 {$linklib driver,static}
 {$linklib efuse,static}
-{$linklib esp_app_format,static}
 {$linklib esp_common,static}
 {$linklib esp_hw_support,static}
-{$linklib esp_partition,static}
 {$linklib esp_pm,static}
 {$linklib esp_ringbuf,static}
 {$linklib esp_rom,static}
