@@ -335,7 +335,8 @@ type
     constructor JOBCast(const Intf: IJSObject); overload;
     constructor JOBCreateFromID(aID: TJOBObjectID); virtual; // use this only for the owner (it will release it on free)
     constructor JOBCreateGlobal(const aID: UnicodeString); virtual;
-    constructor JOBCreate(Args : Array of const);
+    constructor JOBCreate(const Args : Array of const);
+    constructor JOBCreate(aOwnsObjectID : Boolean; const Args : Array of const);
     class function JSClassName : UnicodeString; virtual;
     class function Cast(const Intf: IJSObject): IJSObject; overload;
     constructor Create; virtual;
@@ -704,15 +705,24 @@ type
 
   IJSTypedArray = interface(IJSObject)
     ['{6A76602B-9555-4136-A7B7-2E683265EA82}']
+    function GetBuffer: IJSArrayBuffer;
+    procedure  set_(aArray : IJSTypedArray; TargetOffset : Integer);
+    procedure  set_(aArray : IJSTypedArray);
+    property Buffer : IJSArrayBuffer read GetBuffer;
   end;
 
   { TJSTypedArray }
 
   TJSTypedArray = class(TJSObject,IJSTypedArray)
+  private
+    function GetBuffer: IJSArrayBuffer;
   public
     constructor Create(aBytes : PByte; aLen : NativeUInt);
     constructor Create(aBytes : TBytes);
     class function Cast(const Intf: IJSObject): IJSTypedArray; overload;
+    procedure set_(aArray : IJSTypedArray; TargetOffset : Integer);
+    procedure set_(aArray : IJSTypedArray);
+    property Buffer : IJSArrayBuffer read GetBuffer;
   end;
 
   { IJSInt8Array }
@@ -1463,6 +1473,11 @@ end;
 
 { TJSTypedArray }
 
+function TJSTypedArray.GetBuffer: IJSArrayBuffer;
+begin
+  Result:=ReadJSPropertyObject('buffer',TJSArrayBuffer) as IJSArrayBuffer;
+end;
+
 constructor TJSTypedArray.Create(aBytes: PByte; aLen: NativeUInt);
 
 var
@@ -1470,7 +1485,7 @@ var
 
 begin
   Data:=TJOB_ArrayOfByte.Create(aBytes,aLen);
-  JobCreate([Data]);
+  JobCreate(True,[Data]);
 end;
 
 constructor TJSTypedArray.Create(aBytes: TBytes);
@@ -1478,12 +1493,22 @@ var
   Data : TJOB_JSValue;
 begin
   Data:=TJOB_ArrayOfByte.Create(aBytes);
-  JobCreate([Data]);
+  JobCreate(True,[Data]);
 end;
 
 class function TJSTypedArray.Cast(const Intf: IJSObject): IJSTypedArray;
 begin
   Result:=TJSTypedArray.Cast(Intf);
+end;
+
+procedure TJSTypedArray.set_(aArray: IJSTypedArray; TargetOffset: Integer);
+begin
+  InvokeJSNoResult('set',[aArray,TargetOffset]);
+end;
+
+procedure TJSTypedArray.set_(aArray: IJSTypedArray);
+begin
+  InvokeJSNoResult('set',[aArray]);
 end;
 
 { TJSArrayBuffer }
@@ -2422,11 +2447,8 @@ end;
 constructor TJOB_ArrayOfByte.Create(const TheValues: PByte; TheLen: NativeUInt);
 begin
   inherited Create(jjvkArrayOfByte);
-  Writeln('A');
   Values:=TheValues;
-  Writeln('B');
   Len:=TheLen;
-  Writeln('C');
 end;
 
 constructor TJOB_ArrayOfByte.Create(const TheValues: TBytes);
@@ -3016,8 +3038,13 @@ begin
   FJOBObjectIDOwner:=true;
 end;
 
-constructor TJSObject.JOBCreate(Args : Array of const);
+constructor TJSObject.JOBCreate(const Args: array of const);
 
+begin
+  JOBCreate(True,Args);
+end;
+
+constructor TJSObject.JOBCreate(aOwnsObjectID: Boolean; const Args: array of const);
 var
   N : Unicodestring;
   InvokeArgs: PByte;
@@ -3028,6 +3055,7 @@ begin
     InvokeArgs:=CreateInvokeJSArgs(Args)
   else
     InvokeArgs:=Nil;
+  FJOBObjectIDOwner:=aOwnsObjectID;
   FJobObjectID:=__job_create_object(PWideChar(N),Length(N),InvokeArgs);
   {$IFDEF VERBOSEJOB}
   Writeln('[',ClassName,'] Created new object with ID: ',FJobObjectID);
@@ -3049,11 +3077,14 @@ end;
 constructor TJSObject.Create;
 
 begin
-  JOBCreate([]);
+  JOBCreate(True,[]);
 end;
 
 destructor TJSObject.Destroy;
 begin
+  {$IFDEF VERBOSEJOB}
+  Writeln('Destroying ',ClassName,': Owning JOB object ID: ',FJOBObjectIDOwner);
+  {$ENDIF}
   if FJOBCastSrc<>nil then
     FJOBCastSrc:=nil
   else if (JOBObjectID>=0) and JOBObjectIDOwner then
@@ -3206,8 +3237,7 @@ begin
   Result:=UTF8Encode(InvokeJSUnicodeStringResult(aName,Args,Invoke));
 end;
 
-function TJSObject.InvokeJSLongIntResult(const aName: UTF8string;
-  const args: array of const; Invoke: TJOBInvokeType): LongInt;
+function TJSObject.InvokeJSLongIntResult(const aName: UTF8String; const args: array of const; Invoke: TJOBInvokeType): LongInt;
 var
   d: Double;
 begin
@@ -3218,8 +3248,7 @@ begin
     Result:=Trunc(d);
 end;
 
-function TJSObject.InvokeJSMaxIntResult(const aName: UTF8string;
-  const args: array of const; Invoke: TJOBInvokeType): int64;
+function TJSObject.InvokeJSMaxIntResult(const aName: UTF8String; const args: array of const; Invoke: TJOBInvokeType): int64;
 var
   d: Double;
 begin
@@ -3230,14 +3259,13 @@ begin
     Result:=Trunc(d);
 end;
 
-function TJSObject.InvokeJSTypeOf(const aName: UTF8string;
-  const Args: array of const): TJOBResult;
+function TJSObject.InvokeJSTypeOf(const aName: UTF8String; const Args: array of const): TJOBResult;
 begin
   Result:=InvokeJSNoResultFunc(aName,Args,@__job_invoke_noresult,jiGetTypeOf);
 end;
 
-function TJSObject.InvokeJSUnicodeStringArrayResult(const aName: UTF8string;
-  const Args: array of const; Invoke: TJOBInvokeType): TUnicodeStringDynArray;
+function TJSObject.InvokeJSUnicodeStringArrayResult(const aName: UTF8String; const Args: array of const; Invoke: TJOBInvokeType
+  ): TUnicodeStringDynArray;
 var
   ResultP: NativeInt;
   aError: TJOBResult;
@@ -3253,110 +3281,102 @@ begin
   end;
 end;
 
-function TJSObject.ReadJSPropertyBoolean(const aName: UTF8string): boolean;
+function TJSObject.ReadJSPropertyBoolean(const aName: UTF8String): boolean;
 begin
   Result:=InvokeJSBooleanResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyDouble(const aName: UTF8string): double;
+function TJSObject.ReadJSPropertyDouble(const aName: UTF8String): double;
 begin
   Result:=InvokeJSDoubleResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyUnicodeString(const aName: UTF8string
-  ): UnicodeString;
+function TJSObject.ReadJSPropertyUnicodeString(const aName: UTF8String): UnicodeString;
 begin
   Result:=InvokeJSUnicodeStringResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyObject(const aName: UTF8string;
-  aResultClass: TJSObjectClass): TJSObject;
+function TJSObject.ReadJSPropertyObject(const aName: UTF8String; aResultClass: TJSObjectClass): TJSObject;
 begin
   Result:=InvokeJSObjectResult(aName,[],aResultClass,jiGet);
 end;
 
-function TJSObject.ReadJSPropertyUtf8String(const aName: UTF8string): UTF8string;
+function TJSObject.ReadJSPropertyUtf8String(const aName: UTF8String): UTF8String;
 begin
   Result:=InvokeJSUtf8StringResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyLongInt(const aName: UTF8string): LongInt;
+function TJSObject.ReadJSPropertyLongInt(const aName: UTF8String): LongInt;
 begin
   Result:=InvokeJSLongIntResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyInt64(const aName: UTF8string): Int64;
+function TJSObject.ReadJSPropertyInt64(const aName: UTF8String): Int64;
 begin
   Result:=Trunc(InvokeJSDoubleResult(aName,[],jiGet));
 end;
 
-function TJSObject.ReadJSPropertyValue(const aName: UTF8string): TJOB_JSValue;
+function TJSObject.ReadJSPropertyValue(const aName: UTF8String): TJOB_JSValue;
 begin
   Result:=InvokeJSValueResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyVariant(const aName: UTF8string): Variant;
+function TJSObject.ReadJSPropertyVariant(const aName: UTF8String): Variant;
 begin
   Result:=InvokeJSVariantResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyMethod(const aName: UTF8string): TMethod;
+function TJSObject.ReadJSPropertyMethod(const aName: UTF8String): TMethod;
 begin
 //  Result:=InvokeJSVariantResult(aName,[],jiGet);
 end;
 
-procedure TJSObject.WriteJSPropertyBoolean(const aName: UTF8string; Value: Boolean);
+procedure TJSObject.WriteJSPropertyBoolean(const aName: UTF8String; Value: Boolean);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyDouble(const aName: UTF8string; Value: Double);
+procedure TJSObject.WriteJSPropertyDouble(const aName: UTF8String; Value: Double);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyUnicodeString(const aName: UTF8string;
-  const Value: UnicodeString);
+procedure TJSObject.WriteJSPropertyUnicodeString(const aName: UTF8String; const Value: UnicodeString);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyUtf8String(const aName: UTF8string;
-  const Value: UTF8String);
+procedure TJSObject.WriteJSPropertyUtf8String(const aName: UTF8String; const Value: UTF8String);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyObject(const aName: UTF8string; Value: IJSObject
-  );
+procedure TJSObject.WriteJSPropertyObject(const aName: UTF8String; Value: IJSObject);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyLongInt(const aName: UTF8string; Value: LongInt);
+procedure TJSObject.WriteJSPropertyLongInt(const aName: UTF8String; Value: LongInt);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyInt64(const aName: UTF8string; Value: Int64);
+procedure TJSObject.WriteJSPropertyInt64(const aName: UTF8String; Value: Int64);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyValue(const aName: UTF8string;
-  Value: TJOB_JSValue);
+procedure TJSObject.WriteJSPropertyValue(const aName: UTF8String; Value: TJOB_JSValue);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyVariant(const aName: UTF8string;
-  const Value: Variant);
+procedure TJSObject.WriteJSPropertyVariant(const aName: UTF8String; const Value: Variant);
 begin
   InvokeJSNoResult(aName,[Value],jiSet);
 end;
 
-procedure TJSObject.WriteJSPropertyMethod(const aName: UTF8string;
-  const Value: TMethod);
+procedure TJSObject.WriteJSPropertyMethod(const aName: UTF8String; const Value: TMethod);
 begin
   // TODO InvokeJSNoResult(aName,[Value],jiSet);
 end;
