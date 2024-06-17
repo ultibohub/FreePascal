@@ -1679,6 +1679,9 @@ parser_e_nostringaliasinsystem=03370_E_Using 'string' alias is not allowed in th
 parser_e_coperators_off=03371_E_C styled assignment operators are turned off
 % By default, c style assignment operators (+=, -=, *=, /=) are turn off. Either turn them on by the command line
 % parameter -Sc or in the source code by {\$COPERATORS ON}
+parser_e_cannot_evaluate_expression_at_compile_time=03372_E_Expression cannot be evaluted at compile time
+% Certain operations like the size of an object cannot be determined at compile time,
+% so it cannot be e.g. part of a constant expression.
 %
 % \end{description}
 %
@@ -4324,7 +4327,9 @@ A*2Twince_Windows CE
 # aarch64 targets
 a*2Tandroid_Android
 a*2Tdarwin_Darwin/Mac OS X
+a*2Tembedded_Embedded
 a*2Tfreebsd_FreeBSD
+a*2Tiphonesim_iPhoneSimulator
 a*2Tios_iOS
 a*2Tlinux_Linux
 a*2Twin64_Windows 64

@@ -5601,7 +5601,7 @@ rtlclean:
 rtlinstall:
 	$(MAKE) -C $(PACKAGEDIR_RTL) install
 PPUDIR=$(COMPILER_UNITTARGETDIR)
-ALLPPUDIR=$(CPU_TARGET)/units/*
+ALLPPUDIRS:=$(wildcard $(CPU_TARGET)/units/*)
 PPULIST=$(wildcard $(PPUDIR)/*.ppu)
 PPULOGLIST=$(subst .ppu,.log-ppu,$(PPULIST))
 RTLPPUDIR=../rtl/units/$(TARGETSUFFIX)
@@ -5617,6 +5617,7 @@ vpath %.log-ppu $(PPUDIR) $(RTLPPUDIR) $(ALLPPUDIR)
 ./utils/ppudump$(EXEEXT):
 	$(MAKE) -C $(COMPILERUTILSDIR) ppudump$(EXEEXT)
 ppuinfo :
+	echo list of PPU directories is "$(ALLPPUDIRS)"
 	echo PPU list is "$(PPULIST)"
 	echo PPULOG list is "$(PPULOGLIST)"
 	echo RTLPPUDIR is "$(RTLPPUDIR)"

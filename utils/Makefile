@@ -2966,7 +2966,7 @@ else
 clean:
 	$(FPMAKE_BIN_CLEAN) clean $(FPMAKE_OPT)
 endif
-CLEAN_TARGET_DIRS=$(subst /Makefile.fpc, ,$(wildcard */Makefile.fpc))
+CLEAN_TARGET_DIRS=$(subst /Makefile, ,$(wildcard */Makefile))
 %_distclean:
 	$(MAKE) -C $* distclean
 ifeq ($(FPMAKE_BIN_CLEAN),)
@@ -3005,14 +3005,12 @@ ifdef UNIXHier
 else
 	$(LOCALFPMAKE) archive $(FPMAKE_OPT) --zipprefix=$(DIST_DESTDIR)/$(ZIPPREFIX) --prefix=source\\$(INSTALL_FPCSUBDIR)\\\$$\(PACKAGEDIRECTORY\)
 endif
-PPULIST:=$(wildcard */units/*/*.ppu) $(wildcard units/*/*.ppu)
+PPULIST:=$(wildcard */units/$(TARGETSUFFIX)/*.ppu) $(wildcard units/$(TARGETSUFFIX)/*.ppu)
 PPULOGLIST:=$(subst .ppu,.log-ppu,$(PPULIST))
 RMPPULOGLIST:=$(subst .ppu,.rm-log-ppu,$(PPULIST))
+ALLPPUDIRS:=$(wildcard units/*) $(wildcard */units/*)
 .PHONY : ppulogs cleanppulogs testppudump $(RMPPULOGLIST)
 ppulogs : $(PPULOGLIST)
-vpath %.ppu $(ALLPPUDIRS)
-vpath %.log-ppu $(ALLPPUDIRS)
-vpath %.rm-log-ppu $(ALLPPUDIRS)
 %.log-ppu : %.ppu
 	ppudump -VA -M $< > $@
 %.rm-log-ppu : %.ppu ../compiler/utils/ppudump$(EXEEXT)
@@ -3020,6 +3018,7 @@ vpath %.rm-log-ppu $(ALLPPUDIRS)
 ../compiler/utils/ppudump$(EXEEXT):
 	$(MAKE) -C $(COMPILERDIR)/utils ppudump$(EXEEXT)
 ppuinfo :
+	echo list of PPU directories is "$(ALLPPUDIRS)"
 	echo PPU list is "$(PPULIST)"
 	echo PPULOG list is "$(PPULOGLIST)"
 cleanppulogs : $(RMPPULOGLIST)
