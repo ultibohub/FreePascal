@@ -173,7 +173,7 @@ type
     function GetLongInt: longint;
     function GetMaxInt: int64;
     function GetArray : TJSArray;
-    function GetFunction : TJSFunction;
+    function GetFunction : IJSFunction;
 
     function AllocUndefined: PByte;
     function AllocBool(b: boolean): PByte;
@@ -454,6 +454,7 @@ type
     property prototyp: IJSFunction read _GetPrototyp;
     property length: NativeInt read _GetLength;
     function apply(thisArg: TJSObject; const ArgArray: Array of const): Variant;
+    function apply(const ArgArray: Array of const): Variant;
     //function bind(thisArg: TJSObject): JSValue; varargs;
     //function call(thisArg: TJSObject): JSValue; varargs;
   end;
@@ -466,6 +467,7 @@ type
   public
     Constructor Create(aObjectID : TJOBObjectID);
     Constructor Create(aObjectID,aThisID : TJOBObjectID);
+    destructor Destroy; override;
     function _GetLength: NativeInt;
     function _GetName: UnicodeString;
     function _GetPrototyp: IJSFunction;
@@ -738,10 +740,14 @@ type
     ['{6A76602B-9555-4136-A7B7-2E683265EA82}']
     function GetBuffer: IJSArrayBuffer;
     function _GetLength: NativeInt;
+    function _GetByteLength: NativeInt;
+    function _GetByteOffset: NativeInt;
     procedure  set_(aArray : IJSTypedArray; TargetOffset : Integer);
     procedure  set_(aArray : IJSTypedArray);
     property Buffer : IJSArrayBuffer read GetBuffer;
     Property Length: NativeInt Read _GetLength;
+    Property byteLength: NativeInt Read _GetByteLength;
+    Property byteOffset: NativeInt Read _GetByteOffset;
   end;
 
   { TJSTypedArray }
@@ -750,6 +756,8 @@ type
   private
     function GetBuffer: IJSArrayBuffer;
     function _GetLength: NativeInt;
+    function _GetByteLength: NativeInt;
+    function _GetByteOffset: NativeInt;
   public
     constructor Create(aBytes : PByte; aLen : NativeUInt);
     constructor Create(aBytes : TBytes);
@@ -758,127 +766,198 @@ type
     procedure set_(aArray : IJSTypedArray);
     property Buffer : IJSArrayBuffer read GetBuffer;
     Property Length: NativeInt Read _GetLength;
+    Property byteLength: NativeInt Read _GetByteLength;
+    Property byteOffset: NativeInt Read _GetByteOffset;
   end;
 
   { IJSInt8Array }
 
   IJSInt8Array = interface(IJSTypedArray)
     ['{72D65C5E-E18E-4294-8709-D7A63BF12958}']
+    function _GetElement(aIndex : NativeInt) : Shortint;
+    procedure _SetElement(aIndex : NativeInt; aValue : Shortint);
+    property Element[Index: NativeInt]: Shortint read _GetElement write _SetElement; default;
   end;
 
   { TJSInt8Array }
 
   TJSInt8Array = class(TJSTypedArray,IJSInt8Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Shortint;
+    procedure _SetElement(aIndex : NativeInt; aValue : Shortint);
   public
     class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSInt8Array; overload;
+    property Element[Index: NativeInt]: Shortint read _GetElement write _SetElement; default;
   end;
 
   { IJSUint8Array }
 
   IJSUint8Array = interface(IJSTypedArray)
     ['{99EC7B3A-30E5-425F-933C-C169B2F4193C}']
+    function _GetElement(aIndex : NativeInt) : Byte;
+    procedure _SetElement(aIndex : NativeInt; aValue : Byte);
+    property Element[Index: NativeInt]: Byte read _GetElement write _SetElement; default;
   end;
 
   { TJSUint8Array }
 
   TJSUint8Array = class(TJSTypedArray,IJSUint8Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Byte;
+    procedure _SetElement(aIndex : NativeInt; aValue : Byte);
   public
     Class function GetGlobal : TJSUint8Array;
     class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSUint8Array; overload;
+    property Element[Index: NativeInt]: byte read _GetElement write _SetElement; default;
   end;
 
   { IJSUint8ClampedArray }
 
   IJSUint8ClampedArray = interface(IJSTypedArray)
     ['{A1508D6E-8629-4416-875E-9F669ECDC47F}']
+    function _GetElement(aIndex : NativeInt) : Byte;
+    procedure _SetElement(aIndex : NativeInt; aValue : Byte);
+    property Element[Index: NativeInt]: Byte read _GetElement write _SetElement; default;
   end;
 
   { TJSUint8ClampedArray }
 
   TJSUint8ClampedArray = class(TJSTypedArray,IJSUint8ClampedArray)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Byte;
+    procedure _SetElement(aIndex : NativeInt; aValue : Byte);
   public
     class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSUint8ClampedArray; overload;
+    property Element[Index: NativeInt]: Byte read _GetElement write _SetElement; default;
   end;
 
   { IJSInt16Array }
 
   IJSInt16Array = interface(IJSTypedArray)
     ['{B5FA7A13-D8CA-44E4-ADAE-F10FFFAE46B4}']
+    function _GetElement(aIndex : NativeInt) : SmallInt;
+    procedure _SetElement(aIndex : NativeInt; aValue : SmallInt);
+    property Element[Index: NativeInt]: SmallInt read _GetElement write _SetElement; default;
   end;
 
   { TJSInt16Array }
 
   TJSInt16Array = class(TJSTypedArray,IJSInt16Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : SmallInt;
+    procedure _SetElement(aIndex : NativeInt; aValue : SmallInt);
   public
     class function Cast(const Intf: IJSObject): IJSInt16Array; overload;
+    class function JSClassName: UnicodeString; override;
+    property Element[Index: NativeInt]: SmallInt read _GetElement write _SetElement; default;
   end;
 
   { IJSUint16Array }
 
   IJSUint16Array = interface(IJSTypedArray)
     ['{6023E2BC-C464-4288-A8DA-4A5D0B2B915E}']
+    function _GetElement(aIndex : NativeInt) : Word;
+    procedure _SetElement(aIndex : NativeInt; aValue : Word);
+    property Element[Index: NativeInt]: Word read _GetElement write _SetElement; default;
   end;
 
   { TJSUint16Array }
 
   TJSUint16Array = class(TJSTypedArray,IJSUint16Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Word;
+    procedure _SetElement(aIndex : NativeInt; aValue : Word);
   public
+    class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSUint16Array; overload;
+    property Element[Index: NativeInt]: Word read _GetElement write _SetElement; default;
   end;
 
   { IJSInt32Array }
 
   IJSInt32Array = interface(IJSTypedArray)
     ['{16F1A6FB-2F26-4A64-8A2B-D883DE2F58C4}']
+    function _GetElement(aIndex : NativeInt) : LongInt;
+    procedure _SetElement(aIndex : NativeInt; aValue : LongInt);
+    property Element[Index: NativeInt]: LongInt read _GetElement write _SetElement; default;
   end;
 
   { TJSInt32Array }
 
   TJSInt32Array = class(TJSTypedArray,IJSInt32Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : LongInt;
+    procedure _SetElement(aIndex : NativeInt; aValue : LongInt);
   public
+    class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSInt32Array; overload;
+    property Element[Index: NativeInt]: LongInt read _GetElement write _SetElement; default;
   end;
 
   { IJSUint32Array }
 
   IJSUint32Array = interface(IJSTypedArray)
     ['{C637B2FA-CED6-4EC7-8D97-C56824EAF8B3}']
+    function _GetElement(aIndex : NativeInt) : Cardinal;
+    procedure _SetElement(aIndex : NativeInt; aValue : Cardinal);
+    property Element[Index: NativeInt]: Cardinal read _GetElement write _SetElement; default;
   end;
 
   { TJSUint32Array }
 
   TJSUint32Array = class(TJSTypedArray,IJSUint32Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Cardinal;
+    procedure _SetElement(aIndex : NativeInt; aValue : Cardinal);
   public
+    class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSUint32Array; overload;
+    property Element[Index: NativeInt]: Cardinal read _GetElement write _SetElement; default;
   end;
 
   { IJSFloat32Array }
 
   IJSFloat32Array = interface(IJSTypedArray)
     ['{B5CE57F6-CA7C-4168-AEA3-32EF13DA52D6}']
+    function _GetElement(aIndex : NativeInt) : SIngle;
+    procedure _SetElement(aIndex : NativeInt; aValue : SIngle);
+    property Element[Index: NativeInt]: SIngle read _GetElement write _SetElement; default;
   end;
 
   { TJSFloat32Array }
 
   TJSFloat32Array = class(TJSTypedArray,IJSFloat32Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Single;
+    procedure _SetElement(aIndex : NativeInt; aValue : Single);
   public
+    class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSFloat32Array; overload;
+    property Element[Index: NativeInt]: Single read _GetElement write _SetElement; default;
   end;
 
   { IJSFloat64Array }
 
   IJSFloat64Array = interface(IJSTypedArray)
     ['{A7876DC5-9549-4FDA-BE35-A641CE9D9F0B}']
+    function _GetElement(aIndex : NativeInt) : Double;
+    procedure _SetElement(aIndex : NativeInt; aValue : Double);
+    property Element[Index: NativeInt]: Double read _GetElement write _SetElement; default;
   end;
 
   { TJSFloat64Array }
 
   TJSFloat64Array = class(TJSTypedArray,IJSFloat64Array)
+  Protected
+    function _GetElement(aIndex : NativeInt) : Double;
+    procedure _SetElement(aIndex : NativeInt; aValue : Double);
   public
+    class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSFloat64Array; overload;
+    property Element[Index: NativeInt]: Double read _GetElement write _SetElement; default;
   end;
 
   { IJSBufferSource }
@@ -970,6 +1049,13 @@ type
   { TJSPromise }
 
   TJSPromise = class(TJSObject,IJSPromise)
+    FResolveCallback,
+    FRejectCallback : IJSFunction;
+    FExecutor : TJSPromiseExecutor;
+    function HandleResolve(const aValue : Variant): variant;
+    function HandleReject(const aValue : Variant): variant;
+  protected
+    Procedure DoExecutor(const OnResolve, OnReject: TJSPromiseResolver); virtual;
   public
     constructor Create(const Executor: TJSPromiseExecutor); overload;
     function all(const arg: Variant): IJSPromise; overload;
@@ -1268,38 +1354,23 @@ begin
   TJSPromiseFinallyHandler(aMethod)();
 end;
 
-Type
-
-  { TPromiseHelper }
-
-  TPromiseHelper = Class(TObject)
-    FResolveCallback : TJSFunction;
-    FRejectCallback : TJSFunction;
-    constructor create (aResolve,aReject : TJSFunction);
-    function HandleResolve(const aValue : Variant): variant;
-    function HandleReject(const aValue : Variant): variant;
-  end;
-
 function JOBCallTJSPromiseExecutor(const aMethod: TMethod; var H: TJOBCallbackHelper): PByte;
 
 var
-  F1,F2 : TJSFunction;
-  Helper : TPromiseHelper;
+  P : TJSPromise;
 
 begin
-  F1:=H.GetFunction;
-  F2:=H.GetFunction;
-  Helper:=TPromiseHelper.Create(F1,F2);
+  P:=TJSPromise(aMethod.Data);
+  P.FResolveCallback:=H.GetFunction;
+  P.FRejectCallBack:=H.GetFunction;
   try
-     TJSPromiseExecutor(aMethod)(@Helper.HandleResolve, @Helper.HandleReject);
-     Helper.Free;
+     TJSPromiseExecutor(aMethod)(@P.HandleResolve, @P.HandleReject);
   except
     on E : Exception do
       begin
       {$IFDEF VerboseJOB}
       Writeln('Wasm error calling promise executor : ',E.Message);
       {$ENDIF}
-      Helper.Free;
       Raise;
       end;
     on O : TObject do
@@ -1307,7 +1378,6 @@ begin
       {$IFDEF VerboseJOB}
       Writeln('Wasm error calling promise executor : ',O.ClassName);
       {$ENDIF}
-      Helper.Free;
       Raise;
       end;
   end;
@@ -1315,24 +1385,6 @@ begin
   Writeln('Wasm: Making function result');
   {$ENDIF}
   Result:=H.AllocUndefined;
-end;
-
-{ TPromiseHelper }
-
-constructor TPromiseHelper.create(aResolve, aReject: TJSFunction);
-begin
-  FResolveCallback:=aResolve;
-  FRejectCallback:=aReject;
-end;
-
-function TPromiseHelper.HandleResolve(const aValue: Variant): variant;
-begin
-  result:=FResolveCallback.apply([aValue]);
-end;
-
-function TPromiseHelper.HandleReject(const aValue: Variant): variant;
-begin
-  Result:=FRejectCallback.apply([aValue]);
 end;
 
 
@@ -1352,12 +1404,30 @@ end;
 
 { TJSPromise }
 
+
+
+function TJSPromise.HandleResolve(const aValue: Variant): variant;
+begin
+  result:=FResolveCallback.apply([aValue]);
+end;
+
+function TJSPromise.HandleReject(const aValue: Variant): variant;
+begin
+  Result:=FRejectCallback.apply([aValue]);
+end;
+
+procedure TJSPromise.DoExecutor(const OnResolve, OnReject: TJSPromiseResolver);
+begin
+  FExecutor(OnResolve,OnReject);
+end;
+
 constructor TJSPromise.Create(const Executor: TJSPromiseExecutor);
 
 var
   m: TJOB_Method;
 begin
-  m:=TJOB_Method.Create(TMethod(Executor),@JobCallTJSPromiseExecutor);
+  FExecutor:=Executor;
+  m:=TJOB_Method.Create(TMethod(@DoExecutor),@JobCallTJSPromiseExecutor);
   try
     JOBCreate([m]);
   finally
@@ -1519,12 +1589,42 @@ end;
 
 { TJSFloat64Array }
 
+function TJSFloat64Array._GetElement(aIndex: NativeInt): Double;
+begin
+  Result:=InvokeJSDoubleResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSFloat64Array._SetElement(aIndex: NativeInt; aValue: Double);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
+
+class function TJSFloat64Array.JSClassName: UnicodeString;
+begin
+  Result:='Float64Array';
+end;
+
 class function TJSFloat64Array.Cast(const Intf: IJSObject): IJSFloat64Array;
 begin
   Result:=TJSFloat64Array.Cast(Intf);
 end;
 
 { TJSFloat32Array }
+
+function TJSFloat32Array._GetElement(aIndex: NativeInt): SIngle;
+begin
+  Result:=InvokeJSDoubleResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSFloat32Array._SetElement(aIndex: NativeInt; aValue: SIngle);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
+
+class function TJSFloat32Array.JSClassName: UnicodeString;
+begin
+  Result:='Float32Array';
+end;
 
 class function TJSFloat32Array.Cast(const Intf: IJSObject): IJSFloat32Array;
 begin
@@ -1533,12 +1633,42 @@ end;
 
 { TJSUint32Array }
 
+function TJSUint32Array._GetElement(aIndex: NativeInt): Cardinal;
+begin
+  Result:=Cardinal(InvokeJSMaxIntResult(IntToStr(aIndex),[],jiGet));
+end;
+
+procedure TJSUint32Array._SetElement(aIndex: NativeInt; aValue: Cardinal);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
+
+class function TJSUint32Array.JSClassName: UnicodeString;
+begin
+  Result:=inherited JSClassName;
+end;
+
 class function TJSUint32Array.Cast(const Intf: IJSObject): IJSUint32Array;
 begin
   Result:=TJSUint32Array.Cast(Intf);
 end;
 
 { TJSInt32Array }
+
+function TJSInt32Array._GetElement(aIndex: NativeInt): LongInt;
+begin
+  Result:=InvokeJSLongintResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSInt32Array._SetElement(aIndex: NativeInt; aValue: LongInt);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
+
+class function TJSInt32Array.JSClassName: UnicodeString;
+begin
+  Result:='Int32Array';
+end;
 
 class function TJSInt32Array.Cast(const Intf: IJSObject): IJSInt32Array;
 begin
@@ -1547,19 +1677,59 @@ end;
 
 { TJSUint16Array }
 
+class function TJSUint16Array.JSClassName: UnicodeString;
+begin
+  Result:='Uint16Array';
+end;
+
 class function TJSUint16Array.Cast(const Intf: IJSObject): IJSUint16Array;
 begin
   Result:=TJSUint16Array.Cast(Intf);
 end;
 
+function TJSUint16Array._GetElement(aIndex: NativeInt): Word;
+begin
+  Result:=InvokeJSLongintResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSUint16Array._SetElement(aIndex: NativeInt; aValue: Word);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
+
 { TJSInt16Array }
+
+function TJSInt16Array._GetElement(aIndex: NativeInt): SmallInt;
+begin
+  Result:=InvokeJSLongintResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSInt16Array._SetElement(aIndex: NativeInt; aValue: SmallInt);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
 
 class function TJSInt16Array.Cast(const Intf: IJSObject): IJSInt16Array;
 begin
   Result:=TJSInt16Array.Cast(Intf);
 end;
 
+class function TJSInt16Array.JSClassName: UnicodeString;
+begin
+  Result:='Int16Array';
+end;
+
 { TJSUint8ClampedArray }
+
+function TJSUint8ClampedArray._GetElement(aIndex: NativeInt): Byte;
+begin
+  Result:=InvokeJSLongintResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSUint8ClampedArray._SetElement(aIndex: NativeInt; aValue: Byte);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
 
 class function TJSUint8ClampedArray.JSClassName: UnicodeString;
 begin
@@ -1573,6 +1743,16 @@ begin
 end;
 
 { TJSUInt8Array }
+
+function TJSUint8Array._GetElement(aIndex: NativeInt): Byte;
+begin
+  Result:=InvokeJSLongintResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSUint8Array._SetElement(aIndex: NativeInt; aValue: Byte);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
 
 class function TJSUint8Array.GetGlobal: TJSUint8Array;
 begin
@@ -1592,6 +1772,16 @@ begin
 end;
 
 { TJSInt8Array }
+
+function TJSInt8Array._GetElement(aIndex: NativeInt): Shortint;
+begin
+  Result:=InvokeJSLongintResult(IntToStr(aIndex),[],jiGet);
+end;
+
+procedure TJSInt8Array._SetElement(aIndex: NativeInt; aValue: Shortint);
+begin
+  InvokeJSNoResult(IntToStr(aIndex),[aValue],jiSet);
+end;
 
 class function TJSInt8Array.JSClassName: UnicodeString;
 begin
@@ -1614,6 +1804,16 @@ function TJSTypedArray._GetLength: NativeInt;
 begin
   // For the time being
   Result:=ReadJSPropertyLongInt('length');
+end;
+
+function TJSTypedArray._GetByteLength: NativeInt;
+begin
+  Result:=ReadJSPropertyLongInt('byteLength');
+end;
+
+function TJSTypedArray._GetByteOffset: NativeInt;
+begin
+  Result:=ReadJSPropertyLongInt('byteOffset');
 end;
 
 constructor TJSTypedArray.Create(aBytes: PByte; aLen: NativeUInt);
@@ -1929,6 +2129,11 @@ begin
   FThisID:=aThisID;
 end;
 
+destructor TJSFunction.destroy;
+begin
+  Inherited;
+end;
+
 function TJSFunction._GetLength: NativeInt;
 begin
   Result:=ReadJSPropertyLongInt('length');
@@ -2185,10 +2390,11 @@ begin
   inc(Index);
 end;
 
-function TJOBCallbackHelper.GetFunction: TJSFunction;
+function TJOBCallbackHelper.GetFunction: IJSFunction;
 var
   aType : byte;
   ObjId,ThisId: LongWord;
+  F : TJSFunction;
 
 begin
   {$IFDEF VerboseJOB}
@@ -2207,8 +2413,9 @@ begin
     ThisId:=PLongWord(p)^;
     inc(p,4);
     end;
-  Result:=TJSFunction.Create(ObjId,ThisId);
-  Result.JOBObjectIDOwner:=false; // owned by caller (JS code in browser)
+  F:=TJSFunction.Create(ObjId,ThisId);
+  F.JOBObjectIDOwner:=false; // owned by caller (JS code in browser)
+  Result:=F;
 end;
 
 function TJOBCallbackHelper.GetValue: TJOB_JSValue;
@@ -2545,7 +2752,6 @@ constructor TJOB_String.Create(const aValue: UnicodeString);
 begin
   Kind:=jjvkString;
   Value:=aValue;
-  Writeln('Creating unicode string : ',aValue);
 end;
 
 function TJOB_String.AsString: UTF8string;
