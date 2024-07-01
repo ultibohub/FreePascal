@@ -229,7 +229,6 @@ type
     FEditRow : TJSONData;
     FRowType: TJSONRowType;
     FDeletedRows: TFPList;
-    procedure AddToRows(AValue: TJSONArray);
     procedure AppendToIndexes;
     procedure CreateIndexes;
     procedure SetMetaData(AValue: TJSONObject);
@@ -263,6 +262,7 @@ type
     procedure SetBookmarkFlag(Buffer: TRecordBuffer; Value: TBookmarkFlag); override;
     procedure SetBookmarkData(Buffer: TRecordBuffer; Data: Pointer); override;
     function GetRecordCount: Integer; override;
+    procedure AddToRows(AValue: TJSONArray);
     procedure SetRecNo(Value: Integer); override;
     function GetRecNo: Integer; override;
   Protected

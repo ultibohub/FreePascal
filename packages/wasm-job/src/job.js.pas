@@ -288,7 +288,7 @@ type
     function ReadJSPropertyInt64(const aName: UTF8String): Int64; virtual;
     function ReadJSPropertyValue(const aName: UTF8String): TJOB_JSValue; virtual;
     function ReadJSPropertyVariant(const aName: UTF8String): Variant; virtual;
-    function ReadJSPropertyMethod(const aName: UTF8String): TMethod; virtual;
+    function ReadJSPropertyMethod(const aName: UTF8String):  TMethod; virtual;
     // write a property
     procedure WriteJSPropertyBoolean(const aName: UTF8String; Value: Boolean); virtual;
     procedure WriteJSPropertyDouble(const aName: UTF8String; Value: Double); virtual;
@@ -389,7 +389,7 @@ type
     function ReadJSPropertyInt64(const aName: UTF8String): Int64; virtual;
     function ReadJSPropertyValue(const aName: UTF8String): TJOB_JSValue; virtual;
     function ReadJSPropertyVariant(const aName: UTF8String): Variant; virtual;
-    function ReadJSPropertyMethod(const aName: UTF8String): TMethod; virtual;
+    function ReadJSPropertyMethod(const aName: UTF8String): TMethod ; virtual;
     // write a property
     procedure WriteJSPropertyBoolean(const aName: UTF8String; Value: Boolean); virtual;
     procedure WriteJSPropertyDouble(const aName: UTF8String; Value: Double); virtual;
@@ -710,29 +710,54 @@ type
 
   IJSArrayBuffer = interface(IJSObject)
     ['{A1612EED-4F05-46C0-90BE-ACD511B15E89}']
+    function Slice : IJSArrayBuffer;
+    function Slice (aStart : NativeInt): IJSArrayBuffer;
+    function Slice (aStart,aEndExclusive : NativeInt): IJSArrayBuffer;
+    function _getByteLength: Nativeint;
+    function _getDetached: Boolean;
+    function _getMaxByteLength: Nativeint;
+    function _getResizable: Boolean;
+    property byteLength : Nativeint Read _getByteLength;
+    property maxByteLength : Nativeint Read _getMaxByteLength;
+    property detached : Boolean Read _getDetached;
+    property resizable : Boolean Read _getResizable;
   end;
 
 
   { TJSArrayBuffer }
 
   TJSArrayBuffer = class(TJSObject,IJSArrayBuffer)
+  Protected
+    function _getByteLength: Nativeint;
+    function _getDetached: Boolean;
+    function _getMaxByteLength: Nativeint;
+    function _getResizable: Boolean;
   public
+    constructor create (aSize : integer);
+    class function GlobalMemory : TJSArrayBuffer;
+    function Slice : IJSArrayBuffer;
+    function Slice (aStart : NativeInt): IJSArrayBuffer;
+    function Slice (aStart,aEndExclusive : NativeInt): IJSArrayBuffer;
     class function Cast(const Intf: IJSObject): IJSArrayBuffer; overload;
+    class function JSClassName: UnicodeString; override;
+    property byteLength : Nativeint Read _getByteLength;
+    property maxByteLength : Nativeint Read _getMaxByteLength;
+    property detached : Boolean Read _getDetached;
+    property resizable : Boolean Read _getResizable;
+
   end;
 
   { IJSArrayBufferView }
-  
   IJSArrayBufferView = interface(IJSObject)
     ['{A1612EED-4F05-46C0-90BE-ACD511B1598E}']
   end;
-  
+
   { TJSArrayBufferView }
-  
+
   TJSArrayBufferView = class(TJSObject,IJSArrayBufferView)
   public
     class function Cast(const Intf: IJSObject): IJSArrayBufferView; overload;
   end;
-
 
   { IJSTypedArray }
 
@@ -759,8 +784,11 @@ type
     function _GetByteLength: NativeInt;
     function _GetByteOffset: NativeInt;
   public
+    constructor Create(aLen : NativeUInt);
+    constructor Create(aObject : IJSObject);
     constructor Create(aBytes : PByte; aLen : NativeUInt);
     constructor Create(aBytes : TBytes);
+    constructor create(aArray : IJSArrayBuffer);
     class function Cast(const Intf: IJSObject): IJSTypedArray; overload;
     procedure set_(aArray : IJSTypedArray; TargetOffset : Integer);
     procedure set_(aArray : IJSTypedArray);
@@ -1101,6 +1129,7 @@ type
 var
   JSObject: IJSObject; // singleton of JS 'Object'
   JSDate: IJSDate; // singleton of JS 'Date'
+  JSJSON: IJSJSON; // singleton of JS 'Date'
 
 // imported functions from browser
 function __job_invoke_noresult(
@@ -1816,6 +1845,16 @@ begin
   Result:=ReadJSPropertyLongInt('byteOffset');
 end;
 
+constructor TJSTypedArray.Create(aLen: NativeUInt);
+begin
+  JobCreate(True,[aLen]);
+end;
+
+constructor TJSTypedArray.Create(aObject: IJSObject);
+begin
+  JobCreate(True,[aObject]);
+end;
+
 constructor TJSTypedArray.Create(aBytes: PByte; aLen: NativeUInt);
 
 var
@@ -1832,6 +1871,11 @@ var
 begin
   Data:=TJOB_ArrayOfByte.Create(aBytes);
   JobCreate(True,[Data]);
+end;
+
+constructor TJSTypedArray.create(aArray: IJSArrayBuffer);
+begin
+  JobCreate(True,[aArray]);
 end;
 
 class function TJSTypedArray.Cast(const Intf: IJSObject): IJSTypedArray;
@@ -1851,9 +1895,60 @@ end;
 
 { TJSArrayBuffer }
 
+function TJSArrayBuffer._getByteLength: Nativeint;
+begin
+  Result:=ReadJSPropertyInt64('byteLength');
+
+end;
+
+function TJSArrayBuffer._getDetached: Boolean;
+begin
+  Result:=ReadJSPropertyBoolean('detached');
+end;
+
+function TJSArrayBuffer._getMaxByteLength: Nativeint;
+begin
+  Result:=ReadJSPropertyInt64('maxByteLength');
+end;
+
+function TJSArrayBuffer._getResizable: Boolean;
+begin
+  Result:=ReadJSPropertyBoolean('resizable');
+end;
+
+constructor TJSArrayBuffer.create(aSize: integer);
+begin
+  JobCreate(True,[aSize])
+end;
+
+class function TJSArrayBuffer.GlobalMemory: TJSArrayBuffer;
+begin
+  Result:=JOBCreateGlobal('InstanceBuffer');
+end;
+
+function TJSArrayBuffer.Slice: IJSArrayBuffer;
+begin
+  Result:=InvokeJSObjectResult('slice',[],TJSArrayBuffer) as IJSArrayBuffer;
+end;
+
+function TJSArrayBuffer.Slice(aStart: NativeInt): IJSArrayBuffer;
+begin
+  Result:=InvokeJSObjectResult('slice',[aStart],TJSArrayBuffer) as IJSArrayBuffer;
+end;
+
+function TJSArrayBuffer.Slice(aStart, aEndExclusive: NativeInt): IJSArrayBuffer;
+begin
+  Result:=InvokeJSObjectResult('slice',[aStart,aEndExclusive],TJSArrayBuffer) as IJSArrayBuffer;
+end;
+
 class function TJSArrayBuffer.Cast(const Intf: IJSObject): IJSArrayBuffer;
 begin
-  Result:=TJSArrayBuffer.Cast(Intf);
+  Result:=TJSArrayBuffer.JOBCast(Intf);
+end;
+
+class function TJSArrayBuffer.JSClassName: UnicodeString;
+begin
+  Result:='ArrayBuffer';
 end;
 
 { TJSArrayBufferView }
@@ -1862,9 +1957,6 @@ class function TJSArrayBufferView.Cast(const Intf: IJSObject): IJSArrayBufferVie
 begin
   Result:=TJSArrayBufferView.JOBCast(Intf);
 end;
-
-
-
 
 { TJSArray }
 
@@ -3857,9 +3949,11 @@ begin
   Result:=InvokeJSVariantResult(aName,[],jiGet);
 end;
 
-function TJSObject.ReadJSPropertyMethod(const aName: UTF8String): TMethod;
+function TJSObject.ReadJSPropertyMethod(const aName: UTF8String):  TMethod;
 begin
-//  Result:=InvokeJSVariantResult(aName,[],jiGet);
+  Result.Data:=nil;
+  Result.Code:=nil;
+//  Result:=InvokeJSObjectResult(aName,[],TJSFunction,jiGet) as IJSFunction;
 end;
 
 procedure TJSObject.WriteJSPropertyBoolean(const aName: UTF8String; Value: Boolean);
@@ -3983,10 +4077,12 @@ begin
   Result:=InvokeJSUnicodeStringResult('toLocaleDateString',[]);
 end;
 
+
 exports JOBCallback;
 
 initialization
   JSObject:=TJSObject.JOBCreateGlobal('Object') as IJSObject;
   JSDate:=TJSDate.JOBCreateGlobal('Date') as IJSDate;
+  JSJSON:=TJSJSON.JOBCreateGlobal('JSON') as IJSJSON;
 end.
 
