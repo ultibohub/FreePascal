@@ -231,6 +231,8 @@ Implementation
           else
             opoffset:=1;
           taicpu(hp1).loadReg(opoffset+1,taicpu(p).oper[1]^.reg);
+          if not(shiftmode in [SM_SXTX,SM_UXTX,SM_LSL]) then
+            setsubreg(taicpu(hp1).oper[opoffset+1]^.reg,R_SUBD);
           taicpu(hp1).ops:=opoffset+3;
           shifterop_reset(so);
           so.shiftmode:=shiftmode;
@@ -1519,6 +1521,7 @@ Implementation
               taicpu(hp1).opcode:=A_AND;
               taicpu(hp1).ops:=3;
               taicpu(hp1).loadReg(1,taicpu(p).oper[1]^.reg);
+              setsubreg(taicpu(hp1).oper[1]^.reg,getsubreg(taicpu(hp1).oper[0]^.reg));
               taicpu(hp1).loadconst(2,taicpu(p).oper[2]^.val);
               GetNextInstruction(p,hp1);
               asml.remove(p);
