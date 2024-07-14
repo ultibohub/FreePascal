@@ -1734,7 +1734,7 @@ type
     procedure BeginComponent(var Flags: TFilerFlags; var AChildPos: Integer;
       var CompUnitName, CompClassName, CompName: String); virtual; overload;
     function BeginProperty: String; virtual; abstract;
-
+    procedure ReadPrefix(var Flags: TFilerFlags; var AChildPos: Integer); virtual;
     //Please don't use read, better use ReadBinary whenever possible
     procedure Read(var Buf; Count: LongInt); virtual; abstract;
     { All ReadXXX methods are called _after_ the value type has been read! }
@@ -1764,6 +1764,7 @@ type
   { TBinaryObjectReader }
 
   TBinaryObjectReader = class(TAbstractObjectReader)
+  private
   public
     {$ScopedEnums on}
     type
@@ -1796,6 +1797,7 @@ type
     destructor Destroy; override;
     function NextValue: TValueType; override;
     function ReadValue: TValueType; override;
+    procedure ReadPrefix(var Flags: TFilerFlags; var AChildPos: Integer); override;
     procedure BeginRootComponent; override;
     procedure BeginComponent(var Flags: TFilerFlags; var AChildPos: Integer;
       var CompClassName, CompName: String); override; overload;
@@ -1881,6 +1883,7 @@ type
     FOnFindComponentClass: TFindComponentClassEvent;
     FOnCreateComponent: TCreateComponentEvent;
     FPropName: rawbytestring;
+    FRawMode : Boolean;
     FCanHandleExcepts: Boolean;
     FOnReadStringProperty:TReadWriteStringPropertyEvent;
     procedure DoFixupReferences;
@@ -1966,6 +1969,7 @@ type
     property OnFindComponentClass: TFindComponentClassEvent read FOnFindComponentClass write FOnFindComponentClass;
     property OnFindComponentClassEx: TFindComponentClassExEvent read FOnFindComponentClassEx write FOnFindComponentClassEx;
     property OnReadStringProperty: TReadWriteStringPropertyEvent read FOnReadStringProperty write FOnReadStringProperty;
+    Property RawMode : Boolean Read FRawMode Write FRawMode;
   end;
 
 
@@ -2521,6 +2525,10 @@ type
     function Invoke(DispID: Integer; const IID: TGUID; LocaleID: Integer;
       Flags: Word; var Params; VarResult, ExcepInfo, ArgErr: Pointer): HResult; stdcall;
   public
+    Type
+       TToStringNameMode = (snmNameClassName,snmClassName,snmName);
+    class var ToStringNameMode : TToStringNameMode;
+  public
     //!! Moved temporary
     // fpdoc doesn't handle this yet :(
 {$ifndef fpdocsystem}
@@ -2550,6 +2558,7 @@ type
     property ComObject: IUnknown read GetComObject;
     function IsImplementorOf (const Intf:IInterface):boolean;
     procedure ReferenceInterface(const intf:IInterface;op:TOperation);
+    function ToString : RTLString; override;
     property Components[Index: Integer]: TComponent read GetComponent;
     property ComponentCount: Integer read GetComponentCount;
     property ComponentIndex: Integer read GetComponentIndex write SetComponentIndex;
