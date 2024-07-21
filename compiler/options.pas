@@ -1515,12 +1515,27 @@ begin
         set_system_compvar('IDF_VERSION','40200');
         idf_version:=40200;
       end;
+    ct_esp32s2,ct_esp32s3:
+      begin
+        set_system_compvar('IDF_VERSION','50006');
+        idf_version:=40400;
+      end;
 {$endif}
 {$ifdef RISCV32}
+    ct_esp32c2:
+      begin
+        set_system_compvar('IDF_VERSION','50006');
+        idf_version:=40400;
+      end;
     ct_esp32c3:
       begin
-        set_system_compvar('IDF_VERSION','40400');
+        set_system_compvar('IDF_VERSION','50006');
         idf_version:=40400;
+      end;
+    ct_esp32c6:
+      begin
+        set_system_compvar('IDF_VERSION','50201');
+        idf_version:=50200;
       end;
 {$endif RISCV32}
     else
@@ -1576,7 +1591,7 @@ begin
          (opt[1]='-') and
          (
           ((length(opt)>1) and (opt[2] in ['i','d','v','T','t','u','n','x','X','l','U'])) or
-          ((length(opt)>3) and (opt[2]='F') and (opt[3]='e')) or
+          ((length(opt)>3) and (opt[2]='F') and (opt[3] in ['e','f'])) or
           ((length(opt)>2) and (opt[2]='C') and (opt[3] in ['a','b','f','p'])) or
           ((length(opt)>3) and (opt[2]='W') and (opt[3] in ['m','p']))
          )
@@ -2669,7 +2684,34 @@ begin
            s:=upper(copy(more,j+1));
 {$ifdef cpucapabilities}
            { find first occurrence of + or - }
-           deletepos:=PosCharset(['+','-'],s);
+
+  {$ifdef x86_64}
+           { Workaround - don't remove the "-" signs from ICELAKE-CLIENT,
+             ICELAKE-SERVER, SKYLAKE-X, X86-64 and X86-64-V1 etc. }
+           if (Copy(s,1,8)='ICELAKE-') and
+             (
+               (Copy(s,9,6)='CLIENT') or
+               (Copy(s,9,6)='SERVER')
+             ) then
+             begin
+               extrasettings:=Copy(s,15,Length(s));
+               deletepos:=PosCharset(['+','-'],extrasettings);
+             end
+           else if (Copy(s,1,9)='SKYLAKE-X') or
+             ((Copy(s,1,8)='X86-64-V') and (s[9] in ['1','2','3','4'])) then
+             begin
+               extrasettings:=Copy(s,10,Length(s));
+               deletepos:=PosCharset(['+','-'],extrasettings);
+             end
+           else if (Copy(s,1,6)='X86-64') then
+             begin
+               extrasettings:=Copy(s,7,Length(s));
+               deletepos:=PosCharset(['+','-'],extrasettings);
+             end
+           else
+  {$endif x86_64}
+             deletepos:=PosCharset(['+','-'],s);
+
            if deletepos<>0 then
              begin
                extrasettings:=Copy(s,deletepos,Length(s));

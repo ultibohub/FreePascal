@@ -45,7 +45,8 @@ type
   TOprType=(OPR_NONE,OPR_CONSTANT,OPR_SYMBOL,OPR_LOCAL,
             OPR_REFERENCE,OPR_REGISTER,OPR_COND,OPR_REGSET,
             OPR_SHIFTEROP,OPR_MODEFLAGS,OPR_SPECIALREG,
-            OPR_REGPAIR,OPR_FENCEFLAGS,OPR_INDEXEDREG);
+            OPR_REGPAIR,OPR_FENCEFLAGS,OPR_INDEXEDREG,OPR_FLOATCONSTANT,
+            OPR_FUNCTYPE);
 
   TOprRec = record
     case typ:TOprType of
@@ -89,6 +90,10 @@ type
 {$if defined(riscv32) or defined(riscv64)}
       OPR_FENCEFLAGS: (fenceflags : TFenceFlags);
 {$endif aarch64}
+{$ifdef wasm32}
+      OPR_FLOATCONSTANT: (floatval:double);
+      OPR_FUNCTYPE     : (functype: TWasmFuncType);
+{$endif wasm32}
   end;
 
   TInstruction = class;
@@ -1332,6 +1337,19 @@ end;
              OPR_FENCEFLAGS:
                ai.loadfenceflags(i-1,fenceflags);
 {$endif riscv32 or riscv64}
+{$ifdef wasm32}
+              OPR_FLOATCONSTANT:
+                case opcode of
+                  a_f32_const:
+                    ai.loadsingle(i-1,floatval);
+                  a_f64_const:
+                    ai.loaddouble(i-1,floatval);
+                  else
+                    internalerror(2024072001);
+                end;
+              OPR_FUNCTYPE:
+                ai.loadfunctype(i-1,functype);
+{$endif wasm32}
               { ignore wrong operand }
               OPR_NONE:
                 ;

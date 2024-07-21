@@ -293,12 +293,12 @@ Const
        { specified with -FW and -Fw }
        wpofeedbackinput,
        wpofeedbackoutput : TPathStr;
-{$if defined(XTENSA) or defined(RISCV32)}
+{$if defined(XTENSA) or defined(RISCV32) or defined(ARM)}
        { specified with -Ff }
        idfpath           : TPathStr;
        { specified with }
        idf_version       : longint;
-{$endif defined(XTENSA) or defined(RISCV32)}
+{$endif defined(XTENSA) or defined(RISCV32) or defined(ARM)}
        { external assembler extra option }
        asmextraopt       : string;
 
@@ -986,6 +986,22 @@ implementation
        result:=getrealtime(st);
      end;
 
+   function idfversionstring(version : longint):string;
+   {
+     Convert back the numerical idf_version for esp32 to string
+   }
+     begin
+       result := '';
+       if version > 0 then
+         begin
+           result := inttostr(version div 10000)+'.';
+           version := version - (version div 10000)*10000;
+           result := result + inttostr(version div 100)+'.';
+           version := version - (version div 100)*100;
+           result := result + inttostr(version);
+         end;
+     end;
+
 {****************************************************************************
                           Default Macro Handling
 ****************************************************************************}
@@ -1065,6 +1081,19 @@ implementation
          Replace(s,'$OPENBSD_LOCALBASE',GetOpenBSDLocalBase);
          Replace(s,'$OPENBSD_X11BASE',GetOpenBSDX11Base);
 {$endif openbsd}
+{$ifdef xtensa}
+         if idf_version > 0 then
+           Replace(s,'$IDF_VERSION',idfversionstring(idf_version));
+         if idfpath <> '' then
+           Replace(s,'$IDFPATH',idfpath);
+{$endif xtensa}
+{$ifdef riscv32}
+         if idf_version > 0 then
+           Replace(s,'$IDF_VERSION',idfversionstring(idf_version));
+         if idfpath <> '' then
+           Replace(s,'$IDFPATH',idfpath);
+{$endif riscv32}
+
          if not substitute_env_variables then
            exit;
          { Replace environment variables between dollar signs }

@@ -20,6 +20,8 @@ unit espidf_40200;
 interface
 
 {$linklib esp32,static}
+{$linklib coexist,static}
+{$linklib esp_wifi,static}
 {$linklib soc,static}
 {$linklib driver,static}
 {$linklib freertos,static}

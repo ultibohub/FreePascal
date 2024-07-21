@@ -54,6 +54,8 @@ Unit rawasmtext;
         actasmpattern_origcase: string;
         actasmtoken   : tasmtoken;
         prevasmtoken  : tasmtoken;
+        actinttoken   : aint;
+        actfloattoken : double;
         procedure SetupTables;
         procedure GetToken;
         function consume(t : tasmtoken):boolean;
@@ -61,8 +63,8 @@ Unit rawasmtext;
         function is_valtype(const s: string):boolean;
         procedure HandleInstruction;
         procedure HandleFoldedInstruction;
-        procedure HandlePlainInstruction;
-        procedure HandleBlockInstruction;virtual;abstract;
+        function HandlePlainInstruction: TWasmInstruction;
+        procedure HandleBlockInstruction;
       public
         function Assemble: tlinkedlist;override;
       end;
@@ -79,12 +81,13 @@ Unit rawasmtext;
       { aasm }
       cpuinfo,aasmtai,aasmdata,aasmcpu,
       { symtable }
-      symconst,symbase,symtype,symsym,symtable,symdef,symutil,
+      symconst,symbase,symtype,symsym,symtable,symdef,symutil,symcpu,
       { parser }
       scanner,pbase,
       procinfo,
       rabase,rautils,
       cgbase,cgutils,cgobj,
+      hlcgobj,hlcgcpu,
       { wasm }
       itcpuwasm
       ;
@@ -106,9 +109,61 @@ Unit rawasmtext;
 
 
     procedure twasmreader.GetToken;
+
+      var
+        has_sign, is_hex, is_float: Boolean;
+
+      function GetIntToken: aint;
+        var
+          s: string;
+          u64: UInt64;
+        begin
+          s:=actasmpattern;
+          if has_sign and (s[1]='-') then
+            begin
+              delete(s,1,1);
+              if is_hex then
+                begin
+                  delete(s,1,2);
+                  Val('$'+s,u64);
+                end
+              else
+                Val(s,u64);
+{$push} {$R-}{$Q-}
+              result:=aint(-u64);
+{$pop}
+            end
+          else
+            begin
+              if has_sign then
+                delete(s,1,1);
+              if is_hex then
+                begin
+                  delete(s,1,2);
+                  Val('$'+s,u64);
+                end
+              else
+                Val(s,u64);
+              result:=aint(u64);
+            end;
+        end;
+
+      function GetFloatToken: double;
+        var
+          s: string;
+        begin
+          s:=actasmpattern;
+          if is_hex then
+            begin
+              { TODO: parse hex floats }
+              internalerror(2024071501);
+            end
+          else
+            Val(s,result);
+        end;
+
       var
         len: Integer;
-        has_sign, is_hex, is_float: Boolean;
         tmpS: string;
         tmpI, tmpCode: Integer;
       begin
@@ -298,9 +353,15 @@ Unit rawasmtext;
                 end;
               actasmpattern[0]:=chr(len);
               if is_float then
-                actasmtoken:=AS_REALNUM
+                begin
+                  actasmtoken:=AS_REALNUM;
+                  actfloattoken:=GetFloatToken;
+                end
               else
-                actasmtoken:=AS_INTNUM;
+                begin
+                  actasmtoken:=AS_INTNUM;
+                  actinttoken:=GetIntToken;
+                end;
             end;
           '"':
             begin
@@ -483,6 +544,8 @@ Unit rawasmtext;
 
 
     procedure twasmreader.HandleInstruction;
+      var
+        instr: TWasmInstruction;
       begin
         case actasmtoken of
           AS_LPAREN:
@@ -498,11 +561,14 @@ Unit rawasmtext;
                 a_if:
                   HandleBlockInstruction;
                 else
-                  HandlePlainInstruction;
+                  begin
+                    instr:=HandlePlainInstruction;
+                    instr.ConcatInstruction(curlist);
+                  end;
               end;
             end;
           else
-            {error};
+            internalerror(2024071603);
         end;
       end;
 
@@ -514,6 +580,7 @@ Unit rawasmtext;
         instr: TWasmInstruction;
         tmpS: string;
       begin
+        instr:=nil;
         //Consume(AS_LPAREN);
         case actasmtoken of
           AS_OPCODE:
@@ -630,8 +697,16 @@ Unit rawasmtext;
                   end;
                 else
                   begin
-                    HandlePlainInstruction;
-                    {todo: parse next folded instructions, insert plain instruction after these}
+                    instr:=HandlePlainInstruction;
+                    while actasmtoken<>AS_RPAREN do
+                      begin
+                        Consume(AS_LPAREN);
+                        HandleFoldedInstruction;
+                      end;
+                    instr.ConcatInstruction(curlist);
+                    instr.Free;
+                    instr:=nil;
+                    Consume(AS_RPAREN);
                   end;
               end;
             end;
@@ -641,16 +716,19 @@ Unit rawasmtext;
       end;
 
 
-    procedure twasmreader.HandlePlainInstruction;
+    function twasmreader.HandlePlainInstruction: TWasmInstruction;
       var
-        instr: TWasmInstruction;
+        srsym: tsym;
+        srsymtable: TSymtable;
       begin
+        result:=nil;
         case actasmtoken of
           AS_OPCODE:
             begin
-              instr:=TWasmInstruction.create(TWasmOperand);
-              instr.opcode:=actopcode;
-              case actopcode of
+              result:=TWasmInstruction.create(TWasmOperand);
+              result.opcode:=actopcode;
+              Consume(AS_OPCODE);
+              case result.opcode of
                 { instructions, which require 0 operands }
                 a_nop,
                 a_unreachable,
@@ -708,14 +786,285 @@ Unit rawasmtext;
                 a_i32_extend16_s,
                 a_i64_extend8_s,
                 a_i64_extend16_s,
-                a_i64_extend32_s:
+                a_i64_extend32_s,
+
+                a_atomic_fence:
                   ;
+                { instructions with an integer const operand }
+                a_i32_const,
+                a_i64_const:
+                  begin
+                    if actasmtoken=AS_INTNUM then
+                      begin
+                        result.ops:=1;
+                        result.operands[1].opr.typ:=OPR_CONSTANT;
+                        result.operands[1].opr.val:=actinttoken;
+                        Consume(AS_INTNUM);
+                      end
+                    else
+                      begin
+                        { error: expected integer }
+                        result.Free;
+                        result:=nil;
+                        Consume(AS_INTNUM);
+                      end;
+                  end;
+                { instructions with a float const operand }
+                a_f32_const,
+                a_f64_const:
+                  begin
+                    case actasmtoken of
+                      AS_INTNUM:
+                        begin
+                          result.ops:=1;
+                          result.operands[1].opr.typ:=OPR_FLOATCONSTANT;
+                          result.operands[1].opr.floatval:=actinttoken;
+                          Consume(AS_INTNUM);
+                        end;
+                      AS_REALNUM:
+                        begin
+                          result.ops:=1;
+                          result.operands[1].opr.typ:=OPR_FLOATCONSTANT;
+                          result.operands[1].opr.floatval:=actfloattoken;
+                          Consume(AS_REALNUM);
+                        end;
+                      else
+                        begin
+                          { error: expected real }
+                          result.Free;
+                          result:=nil;
+                          Consume(AS_REALNUM);
+                        end;
+                    end;
+                  end;
+                { instructions with an optional memarg operand }
+                a_i32_load,
+                a_i64_load,
+                a_f32_load,
+                a_f64_load,
+                a_i32_load8_s,
+                a_i32_load8_u,
+                a_i32_load16_s,
+                a_i32_load16_u,
+                a_i64_load8_s,
+                a_i64_load8_u,
+                a_i64_load16_s,
+                a_i64_load16_u,
+                a_i64_load32_s,
+                a_i64_load32_u,
+                a_i32_store,
+                a_i64_store,
+                a_f32_store,
+                a_f64_store,
+                a_i32_store8,
+                a_i32_store16,
+                a_i64_store8,
+                a_i64_store16,
+                a_i64_store32,
+
+                a_memory_atomic_notify,
+                a_memory_atomic_wait32,
+                a_memory_atomic_wait64,
+
+                a_i32_atomic_load,
+                a_i64_atomic_load,
+                a_i32_atomic_load8_u,
+                a_i32_atomic_load16_u,
+                a_i64_atomic_load8_u,
+                a_i64_atomic_load16_u,
+                a_i64_atomic_load32_u,
+                a_i32_atomic_store,
+                a_i64_atomic_store,
+                a_i32_atomic_store8,
+                a_i32_atomic_store16,
+                a_i64_atomic_store8,
+                a_i64_atomic_store16,
+                a_i64_atomic_store32,
+
+                a_i32_atomic_rmw_add,
+                a_i64_atomic_rmw_add,
+                a_i32_atomic_rmw8_add_u,
+                a_i32_atomic_rmw16_add_u,
+                a_i64_atomic_rmw8_add_u,
+                a_i64_atomic_rmw16_add_u,
+                a_i64_atomic_rmw32_add_u,
+
+                a_i32_atomic_rmw_sub,
+                a_i64_atomic_rmw_sub,
+                a_i32_atomic_rmw8_sub_u,
+                a_i32_atomic_rmw16_sub_u,
+                a_i64_atomic_rmw8_sub_u,
+                a_i64_atomic_rmw16_sub_u,
+                a_i64_atomic_rmw32_sub_u,
+
+                a_i32_atomic_rmw_and,
+                a_i64_atomic_rmw_and,
+                a_i32_atomic_rmw8_and_u,
+                a_i32_atomic_rmw16_and_u,
+                a_i64_atomic_rmw8_and_u,
+                a_i64_atomic_rmw16_and_u,
+                a_i64_atomic_rmw32_and_u,
+
+                a_i32_atomic_rmw_or,
+                a_i64_atomic_rmw_or,
+                a_i32_atomic_rmw8_or_u,
+                a_i32_atomic_rmw16_or_u,
+                a_i64_atomic_rmw8_or_u,
+                a_i64_atomic_rmw16_or_u,
+                a_i64_atomic_rmw32_or_u,
+
+                a_i32_atomic_rmw_xor,
+                a_i64_atomic_rmw_xor,
+                a_i32_atomic_rmw8_xor_u,
+                a_i32_atomic_rmw16_xor_u,
+                a_i64_atomic_rmw8_xor_u,
+                a_i64_atomic_rmw16_xor_u,
+                a_i64_atomic_rmw32_xor_u,
+
+                a_i32_atomic_rmw_xchg,
+                a_i64_atomic_rmw_xchg,
+                a_i32_atomic_rmw8_xchg_u,
+                a_i32_atomic_rmw16_xchg_u,
+                a_i64_atomic_rmw8_xchg_u,
+                a_i64_atomic_rmw16_xchg_u,
+                a_i64_atomic_rmw32_xchg_u,
+
+                a_i32_atomic_rmw_cmpxchg,
+                a_i64_atomic_rmw_cmpxchg,
+                a_i32_atomic_rmw8_cmpxchg_u,
+                a_i32_atomic_rmw16_cmpxchg_u,
+                a_i64_atomic_rmw8_cmpxchg_u,
+                a_i64_atomic_rmw16_cmpxchg_u,
+                a_i64_atomic_rmw32_cmpxchg_u:
+                  begin
+                    { TODO: parse the optional memarg operand }
+                    result.ops:=1;
+                    result.operands[1].opr.typ:=OPR_CONSTANT;
+                    result.operands[1].opr.val:=0;
+                  end;
+
+                { instructions that take a local variable parameter (or index) }
+                a_local_get,
+                a_local_set,
+                a_local_tee:
+                  case actasmtoken of
+                    AS_INTNUM:
+                      begin
+                        result.ops:=1;
+                        result.operands[1].opr.typ:=OPR_CONSTANT;
+                        result.operands[1].opr.val:=actinttoken;
+                        Consume(AS_INTNUM);
+                      end;
+                    {TODO:AS_ID}
+                    else
+                      begin
+                        { error: expected integer }
+                        result.Free;
+                        result:=nil;
+                        Consume(AS_INTNUM);
+                      end;
+                  end;
+
+                a_global_get,
+                a_global_set:
+                  case actasmtoken of
+                    AS_INTNUM:
+                      begin
+                        result.ops:=1;
+                        result.operands[1].opr.typ:=OPR_CONSTANT;
+                        result.operands[1].opr.val:=actinttoken;
+                        Consume(AS_INTNUM);
+                      end;
+                    AS_ID:
+                      begin
+                        case actasmpattern of
+                          '$'+STACK_POINTER_SYM:
+                            begin
+                              result.ops:=1;
+                              result.operands[1].opr.typ:=OPR_SYMBOL;
+                              result.operands[1].opr.symbol:=thlcgwasm(hlcg).RefStackPointerSym;
+                              Consume(AS_ID);
+                            end;
+                          else
+                            internalerror(2024072002);
+                        end;
+                      end;
+                    else
+                      begin
+                        { error: expected integer }
+                        result.Free;
+                        result:=nil;
+                        Consume(AS_INTNUM);
+                      end;
+                  end;
+
+                a_call:
+                  case actasmtoken of
+                    AS_ID:
+                      begin
+                        AsmSearchSym(upper(Copy(actasmpattern,2,Length(actasmpattern)-1)),srsym,srsymtable);
+                        if assigned(srsym) then
+                          begin
+                            case srsym.typ of
+                              procsym:
+                                begin
+                                  if Tprocsym(srsym).ProcdefList.Count>1 then
+                                    Message(asmr_w_calling_overload_func);
+
+                                  result.ops:=2;
+                                  result.operands[1].opr.typ:=OPR_SYMBOL;
+                                  result.operands[1].opr.symbol:=current_asmdata.RefAsmSymbol(tprocdef(tprocsym(srsym).ProcdefList[0]).mangledname,AT_FUNCTION);
+
+                                  result.operands[2].opr.typ:=OPR_FUNCTYPE;
+                                  result.operands[2].opr.functype:=tcpuprocdef(tprocsym(srsym).ProcdefList[0]).create_functype;
+
+                                  Consume(AS_ID);
+                                end;
+                              else
+                                Message(asmr_e_wrong_sym_type);
+                            end;
+                          end
+                        else
+                          Message1(sym_e_unknown_id,actasmpattern);
+                      end;
+                    else
+                      begin
+                        { error: expected identifier }
+                        result.Free;
+                        result:=nil;
+                        Consume(AS_ID);
+                      end;
+                  end;
+
                 else
                   internalerror(2024071401);
               end;
             end;
           else
-            {error};
+            internalerror(2024071604);
+        end;
+      end;
+
+
+    procedure twasmreader.HandleBlockInstruction;
+      var
+        instr: TWasmInstruction;
+      begin
+        if actasmtoken<>AS_OPCODE then
+          internalerror(2024071601);
+        case actopcode of
+          a_if,
+          a_block,
+          a_loop:
+            begin
+              instr:=TWasmInstruction.create(TWasmOperand);
+              instr.opcode:=actopcode;
+              Consume(AS_OPCODE);
+              {TODO: implement the rest}
+              internalerror(2024071699);
+            end;
+          else
+            internalerror(2024071602);
         end;
       end;
 
@@ -740,10 +1089,12 @@ Unit rawasmtext;
         gettoken;
         { main loop }
         repeat
-          Writeln(actasmtoken);
           case actasmtoken of
             AS_END:
               break; { end assembly block }
+            AS_OPCODE,
+            AS_LPAREN:
+              HandleInstruction;
             else
               begin
                 Consume(actasmtoken);

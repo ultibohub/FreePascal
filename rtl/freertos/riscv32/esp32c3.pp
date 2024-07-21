@@ -13,8 +13,13 @@ unit esp32c3;
 
   implementation
 
+{$IFDEF FPC_DOTTEDUNITS}
+    uses
+      EmbeddedApi.ConsoleIO,EmbeddedApi.HeapMGR;
+{$ELSE FPC_DOTTEDUNITS}
     uses
       consoleio,heapmgr;
+{$ENDIF FPC_DOTTEDUNITS}
 
     var
       _stack_top: record end; public name '_stack_top';

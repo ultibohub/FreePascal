@@ -507,10 +507,25 @@ implementation
                 CheckAddUnit('espidf_40100')
               else if (idf_version>=40200) and (idf_version<40400) then
                 CheckAddUnit('espidf_40200')
-              else if idf_version>=40400 then
+              else if (idf_version>=40400) and (idf_version<50000) then
                 CheckAddUnit('espidf_40400')
+              else if (idf_version>=50000) and (idf_version<50200) then
+                CheckAddUnit('espidf_50000')
+              else if idf_version>=50200 then
+                CheckAddUnit('espidf_50200')
               else
                 Comment(V_Warning, 'Unsupported esp-idf version');
+            end
+          else if (current_settings.controllertype=ct_esp32s2) or (current_settings.controllertype=ct_esp32s3) then
+            begin
+              if (idf_version>=40400) and (idf_version<50000) then
+                CheckAddUnit('espidf_40400')
+              else if (idf_version>=50000) and (idf_version<50200) then
+                CheckAddUnit('espidf_50000')
+              else if idf_version>=50200 then
+                CheckAddUnit('espidf_50200')
+              else
+                Message(unit_w_unsupported_esp_idf_version);
             end
           else if (current_settings.controllertype=ct_esp8266) then
             begin
@@ -519,21 +534,41 @@ implementation
               else if idf_version>=30400 then
                 CheckAddUnit('esp8266rtos_30400')
               else
-                Comment(V_Warning, 'Unsupported esp-rtos version');
+                Message(unit_w_unsupported_esp_idf_version);
             end;
 {$endif XTENSA}
 {$ifdef RISCV32}
         if not(curr.is_unit) and (target_info.system=system_riscv32_freertos) then
+          if (current_settings.controllertype=ct_esp32c2) then
+            begin
+              if idf_version>=50200 then
+                CheckAddUnit('esp32c2idf_50200')
+              else if idf_version>=50000 then
+                CheckAddUnit('esp32c2idf_50000')
+              else if idf_version>=40400 then
+                CheckAddUnit('esp32c2idf_40400')
+              else
+                Comment(V_Warning, 'Unsupported esp-idf version');
+            end;
           if (current_settings.controllertype=ct_esp32c3) then
             begin
-              if idf_version>=50000 then
+              if idf_version>=50200 then
+                CheckAddUnit('esp32c3idf_50200')
+              else if idf_version>=50000 then
                 CheckAddUnit('esp32c3idf_50000')
               else if idf_version>=40400 then
                 CheckAddUnit('esp32c3idf_40400')
               else
+                Message(unit_w_unsupported_esp_idf_version);
+            end;
+          if (current_settings.controllertype=ct_esp32c6) then
+            begin
+              if idf_version>=50200 then
+                CheckAddUnit('esp32c6idf_50200')
+              else
                 Comment(V_Warning, 'Unsupported esp-idf version');
             end;
-{$endif XTENSA}
+{$endif RISCV32}
       end;
 
 

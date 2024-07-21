@@ -125,6 +125,26 @@ type
   end;
   Ph68kdos_filbuf = ^Th68kdos_filbuf;
 
+type
+  Th68kdos_exfilbuf = record
+    searchatr: byte;
+    driveno: byte;
+    dirsec: dword;
+    dirlft: word;
+    dirpos: word;
+    filename: array[0..7] of char;
+    ext: array[0..2] of char;
+    atr: byte;
+    time: word;
+    date: word;
+    filelen: dword;
+    name: array[0..22] of char;
+    drive: array[0..2] of char;
+    path: array[0..64] of char;
+    unused: array[0..20] of byte;
+  end;
+  Ph68kdos_exfilbuf = ^Th68kdos_exfilbuf;
+
 // as used by seek
 const
     SEEK_FROM_START   = 0;
@@ -134,6 +154,7 @@ const
 procedure h68kdos_exit; noreturn; syscall $ff00;
 function h68kdos_chgdrv(newdrv: word): longint; syscall $ff0e;
 function h68kdos_curdrv: longint; syscall $ff17;
+function h68kdos_super(stack: longint): longint; syscall $ff20;
 function h68kdos_gettim2: longint; syscall $ff27;
 function h68kdos_settim2(time: longint): longint; syscall $ff28;
 function h68kdos_getdate: longint; syscall $ff2a;

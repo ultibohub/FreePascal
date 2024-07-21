@@ -788,6 +788,18 @@ type
 (* means that default handling should be used. *)
   TCtrlBreakHandler = function (CtrlBreak: boolean): boolean;
 
+  Int128Rec = packed record
+    case integer of
+{$ifdef FPC_LITTLE_ENDIAN}
+      0 : (Lo,Hi : QWord);
+{$else FPC_LITTLE_ENDIAN}
+      0 : (Hi,Lo : QWord);
+{$endif FPC_LITTLE_ENDIAN}
+      1 : (DWords : Array[0..3] of DWord);
+      2 : (Words : Array[0..7] of Word);
+      3 : (Bytes : Array[0..15] of Byte);
+  end;
+
 { Numbers for routines that have compiler magic }
 {$I innr.inc}
 
@@ -919,7 +931,7 @@ function  IndexChar(const buf;len:SizeInt;b:widechar):SizeInt;
 function  IndexByte(const buf;len:SizeInt;b:byte):SizeInt; {$if defined(cpui386) and not defined(CPUX86_HAS_SSE2)} inline; {$endif}
 function  Indexword(const buf;len:SizeInt;b:word):SizeInt; {$if defined(cpui386) and not defined(CPUX86_HAS_SSE2)} inline; {$endif}
 function  IndexDWord(const buf;len:SizeInt;b:DWord):SizeInt; {$if defined(cpui386) and not defined(CPUX86_HAS_SSE2)} inline; {$endif}
-function  IndexQWord(const buf;len:SizeInt;b:QWord):SizeInt; {$if defined(cpui386) or defined(cpux86_64)} inline; {$endif}
+function  IndexQWord(const buf;len:SizeInt;b:QWord):SizeInt; {$if (defined(cpui386) or defined(cpux86_64)) and not defined(CPUX86_HAS_SSE4_1)} inline; {$endif}
 function  CompareChar(const buf1,buf2;len:SizeInt):SizeInt;
 function  CompareByte(const buf1,buf2;len:SizeInt):SizeInt; {$if defined(cpui386) and not defined(CPUX86_HAS_SSE2)} inline; {$endif}
 function  CompareWord(const buf1,buf2;len:SizeInt):SizeInt; {$if defined(cpui386) and not defined(CPUX86_HAS_SSE2)} inline; {$endif}
