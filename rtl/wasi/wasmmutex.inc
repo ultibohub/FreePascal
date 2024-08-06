@@ -3,34 +3,36 @@
 
 
 Type
-  // We us an alias here.
+  // We use an alias here.
   TWasmMutex = TRTLCriticalSection;
   TMutexKind = (mkNormal,mkRecursive);
   TLockMutexResult = (lmrNone,lmrOK,lmrNotOwner,lmrError,lmrTimeout);
 
-Function MutexKind(M : TWasmMutex) : TMutexKind;
+Function MutexKind(const M : TWasmMutex) : TMutexKind;
 
 begin
   Result:=TMutexKind(M.Kind);
 end;
 
-procedure InitMutex(M : TWasmMutex; aKind : TMutexKind = mkNormal; aOwner : TThreadID = Nil);
+procedure InitMutex(var M : TWasmMutex; aKind : TMutexKind = mkNormal; aOwner : TThreadID = Nil);
 
 begin
   FillChar(M,SizeOf(TWasmMutex),0);
   if aOwner=Nil then
     aOwner:=GetSelfThread;
-  M.Owner:=aOwner;
+  M.Creator:=aOwner;
   M.Kind:=Ord(aKind);
+  fpc_wasm32_i32_atomic_store(@M.Owner,0);
+  fpc_wasm32_i32_atomic_store(@M.Locked,0);
 end;
 
-procedure DoneMutex(M : TWasmMutex);
+procedure DoneMutex(var M : TWasmMutex);
 
 Var
   a : LongInt;
 
 begin
-  if (M.Locked>0) and (M.Owner=GetSelfThread) then
+  if (fpc_wasm32_i32_atomic_load(@M.Locked)<>0) and (M.Creator=GetSelfThread) then
     begin
     M.Destroying:=True;
     a:=fpc_wasm32_memory_atomic_notify(@M.Locked,MaxThreadSignal);
@@ -44,7 +46,7 @@ Var
 
 begin
   // We already have the lock ?
-  Res:=(M.Locked=1) and (M.Owner=GetSelfThread);
+  Res:=(fpc_wasm32_i32_atomic_load(@M.Locked)=1) and (TThreadID(fpc_wasm32_i32_atomic_load(@M.Owner))=GetSelfThread);
   if Not Res then
     Res:=fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@M.Locked,0,1)=0
   else
@@ -57,95 +59,95 @@ begin
     if (MutexKind(M)=mkRecursive) or (M.Count=0) then
       InterLockedIncrement(M.Count);
 //    {$IFDEF DEBUGWASMTHREADS}DebugWriteln('TryLockMutex : setting owner to '+IntToStr(PtrUint(GetSelfThread))+'.');{$ENDIF}
-    M.Owner:=GetSelfThread;
+    fpc_wasm32_i32_atomic_store(@M.Owner,LongWord(GetSelfThread));
     end;
   TryLockMutex:=Res;
 end;
 
 
-// aTimeOutNS is in milliseconds. -1 is infinite
-Function LockMutexTimeoutNoWait(var m : TWasmMutex; aTimeOutMS : LongInt) : TLockMutexResult;
+// aTimeOutNS is in nanoseconds. <0 (e.g. -1) is infinite
+Function LockMutexTimeoutNoWait(var m : TWasmMutex; aTimeOutNS : Int64) : TLockMutexResult;
 
 Var
   Res : TLockMutexResult;
-  MyThread : TThreadID;
   EndTime: TOSTime;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutNoWait('+IntToStr(m.locked)+','+intToStr(aTimeOutMs)+')');{$ENDIF}
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutNoWait('+IntToStr(m.locked)+','+intToStr(aTimeOutNS)+')');{$ENDIF}
   Res:=lmrNone;
-  EndTime:=GetClockTime+aTimeOutMS*1000;
-  MyThread:=GetSelfThread;
+  if aTimeOutNS>=0 then
+    EndTime:=GetClockTime+aTimeOutNS
+  else
+    EndTime:=0;
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutNoWait: entering loop');{$ENDIF}
   Repeat
     if TryLockMutex(M) then
-      Result:=lmrOK
-    else
-      begin
-      If (GetThreadState(MyThread)<>tsRunning) then
-        Res:=lmrError
-      else
-        begin
-        If (aTimeOutMS<>-1) and (GetClockTime>EndTime) then
-          Res:=lmrTimeOut
-        end;
-      end;
+      Res:=lmrOK
+    else if (aTimeOutNS>=0) and (GetClockTime>EndTime) then
+      Res:=lmrTimeOut;
   Until (res<>lmrNone);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutNoWait: done loop');{$ENDIF}
   LockMutexTimeoutNoWait:=Res;
 end;
 
-Function LockMutexTimeoutWait(var m : TWasmMutex; aTimeOutMS : LongInt) : TLockMutexResult;
+Function LockMutexTimeoutWait(var m : TWasmMutex; aTimeOutNS : Int64) : TLockMutexResult;
 
 Var
   Res : TLockMutexResult;
-  MyThread : TThreadID;
   EndTime: TOSTime;
+  RemainingTime: Int64;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutWait('+IntToStr(m.locked)+','+intToStr(aTimeOutMs)+')');{$ENDIF}
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutWait('+IntToStr(m.locked)+','+intToStr(aTimeOutNS)+')');{$ENDIF}
   Res:=lmrNone;
-  MyThread:=GetSelfThread;
-  EndTime:=GetClockTime+aTimeOutMS*1000;
+  if aTimeOutNS>=0 then
+    EndTime:=GetClockTime+aTimeOutNS
+  else
+    begin
+      EndTime:=0;
+      RemainingTime:=-1;
+    end;
   InterLockedIncrement(M.Waiters);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutWait: entering loop');{$ENDIF}
   Repeat
-    Case fpc_wasm32_memory_atomic_wait32(@M.Locked,1,1000) of
-      0 : begin
-          if M.Destroying then
-            Res:=lmrError
-          else
-            Res:=lmrOK;
+    if TryLockMutex(m) then
+      Res:=lmrOk
+    else
+      begin
+        if aTimeOutNS>=0 then
+          begin
+            RemainingTime:=EndTime-GetClockTime;
+            if RemainingTime<0 then
+              Res:=lmrTimeOut;;
           end;
-      1 : Res:=lmrError;
-      2 : begin
-          if M.Destroying then
-            Res:=lmrError
-          else if (GetThreadState(MyThread)<>tsRunning) then
-            Res:=lmrError
-          else
-            begin
-            If (aTimeOutMS<>-1) and (GetClockTime>EndTime) then
-              Res:=lmrTimeOut
-            end;
-          end;
-    end;
+        if Res<>lmrNone then
+          Case fpc_wasm32_memory_atomic_wait32(@M.Locked,1,RemainingTime) of
+            0, 1:
+              if M.Destroying then
+                Res:=lmrError;
+            2:
+              if M.Destroying then
+                Res:=lmrError
+              else
+                Res:=lmrTimeOut;
+        end;
+      end;
   Until Res<>lmrNone;
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('LockMutexTimeoutWait: done loop');{$ENDIF}
   InterLockedDecrement(M.Waiters);
   LockMutexTimeoutWait:=Res;
 end;
 
-Function LockMutexTimeout(var m : TWasmMutex; aTimeOutMS : Int64) : TLockMutexResult;
+Function LockMutexTimeout(var m : TWasmMutex; aTimeOutNS : Int64) : TLockMutexResult;
 
 
 begin
   if TryLockMutex(M) then
     Result:=lmrOK
   else if isWaitAllowed then
-    Result:=LockMutexTimeoutWait(m,aTimeOutMS)
+    Result:=LockMutexTimeoutWait(m,aTimeOutNS)
   else
-    Result:=LockMutexTimeoutNoWait(m,aTimeOutMS)
+    Result:=LockMutexTimeoutNoWait(m,aTimeOutNS)
 end;
 
 Function LockMutex(var m : TRTLCriticalSection) : TLockMutexResult;
@@ -165,7 +167,7 @@ var
 begin
   Res:=lmrNone;
   MyThread:=GetSelfThread;
-  if MyThread<>M.owner then
+  if MyThread<>TThreadID(fpc_wasm32_i32_atomic_load(@M.Owner)) then
     Res:=lmrNotOwner
   else if M.Count=0 then
     Res:=lmrError
@@ -175,7 +177,11 @@ begin
     if (MutexKind(M)=mkRecursive) or (M.Count=1) then
       InterLockedDecrement(M.Count);
     if (M.Count=0) then
-      a:=fpc_wasm32_memory_atomic_notify(@M.Locked,1);
+      begin
+        fpc_wasm32_i32_atomic_store(@M.Owner,0);
+        fpc_wasm32_i32_atomic_store(@M.Locked,0);
+        a:=fpc_wasm32_memory_atomic_notify(@M.Locked,1);
+      end;
     end;
 end;
 

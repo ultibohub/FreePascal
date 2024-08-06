@@ -4032,6 +4032,7 @@ function TValue.ToString: String;
 var
   Obj : TObject;
 
+
 begin
   if IsEmpty then
     Exit('(empty)');
@@ -4040,6 +4041,7 @@ begin
     tkUString : result := AsUnicodeString;
     tkSString,
     tkAString : result := AsAnsiString;
+    tkFloat   : Str(AsDouble:12:4,Result);
     tkInteger : result := IntToStr(AsInteger);
     tkQWord   : result := IntToStr(AsUInt64);
     tkInt64   : result := IntToStr(AsInt64);
@@ -4059,7 +4061,7 @@ begin
         Result:='<Nil>';  
       end  
   else
-    result := '<unknown kind>';
+    result := '<unknown kind: '+GetEnumName(System.TypeInfo(TTypeKind),Ord(Kind))+'>';
   end;
 end;
 
@@ -4590,7 +4592,7 @@ begin
   if not Assigned(IntfData^.Parent) then
     Exit(Nil);
 
-  context := TRttiContext.Create;
+  context := TRttiContext.Create(FUsePublishedOnly);
   try
     Result := context.GetType(IntfData^.Parent^) as TRttiInterfaceType;
   finally
@@ -4638,7 +4640,7 @@ begin
   if not Assigned(IntfData^.Parent) then
     Exit(Nil);
 
-  context := TRttiContext.Create;
+  context := TRttiContext.Create(FUsePublishedOnly);
   try
     Result := context.GetType(IntfData^.Parent^) as TRttiInterfaceType;
   finally
@@ -4820,7 +4822,7 @@ begin
   if not Assigned(FIntfMethodEntry^.ResultType) then
     Exit(Nil);
 
-  context := TRttiContext.Create;
+  context := TRttiContext.Create(FUsePublishedOnly);
   try
     Result := context.GetType(FIntfMethodEntry^.ResultType^);
   finally
@@ -4882,7 +4884,7 @@ begin
   SetLength(FParams, FIntfMethodEntry^.ParamCount);
   SetLength(FParamsAll, FIntfMethodEntry^.ParamCount);
 
-  context := TRttiContext.Create;
+  context := TRttiContext.Create(FUsePublishedOnly);
   try
     total := 0;
     visible := 0;
@@ -5572,7 +5574,7 @@ begin
   SetLength(FParams, visible);
 
   if FTypeData^.ParamCount > 0 then begin
-    context := TRttiContext.Create;
+    context := TRttiContext.Create(FUsePublishedOnly);
     try
       paramtypes := PPPTypeInfo(AlignTypeData(ptr));
       visible := 0;
@@ -5716,7 +5718,7 @@ begin
   if not Assigned(FTypeData^.ProcSig.ResultTypeRef) then
     Exit(Nil);
 
-  context := TRttiContext.Create;
+  context := TRttiContext.Create(FUsePublishedOnly);
   try
     Result := context.GetType(FTypeData^.ProcSig.ResultTypeRef^);
   finally
@@ -5814,7 +5816,7 @@ begin
 
   SetLength(fDeclaredMethods, methtable^.Count);
 
-  context := TRttiContext.Create;
+  context := TRttiContext.Create(FUsePublishedOnly);
   try
     method := methtable^.Method[0];
     count := methtable^.Count;
@@ -5913,24 +5915,25 @@ begin
       else
         begin
         NameIndexes[IdxCount]:=TP^.NameIndex;
-        Inc(IdxCount);
         obj := GRttiPool[FUsePublishedOnly].GetByHandle(TP);
         if Assigned(obj) then
           begin
           Prop:=obj as TRttiProperty;
-          FProperties[I]:=Prop;
+          FProperties[IdxCount]:=Prop;
           end
         else
           begin
           Prop:=TRttiProperty.Create(Self, TP);
-          FProperties[I]:=Prop;
+          FProperties[IdxCount]:=Prop;
           GRttiPool[FUsePublishedOnly].AddObject(Prop);
           end;
+        Inc(IdxCount);
         end;
       Prop.FVisibility:=MemberVisibilities[Info^.Visibility];
       Prop.FStrictVisibility:=Info^.StrictVisibility;
       end;
     FPropertiesResolved:=True;
+    SetLength(FProperties,IdxCount);
   finally
     if Assigned(List) then
       FreeMem(List);
@@ -6021,9 +6024,8 @@ begin
       FreeMem(Tbl);
     exit;
     end;
-  Ctx:=TRttiContext.Create;
+  Ctx:=TRttiContext.Create(FUsePublishedOnly);
   try
-    Ctx.UsePublishedOnly:=False;
     For I:=0 to Len-1 do
       begin
       aData:=Tbl^[i];
@@ -6167,9 +6169,8 @@ Var
   Ctx : TRttiContext;
 
 begin
-  Ctx:=TRttiContext.Create;
+  Ctx:=TRttiContext.Create(FUsePublishedOnly);
   try
-    Ctx.UsePublishedOnly:=False;
     FMethodsResolved:=True;
     Len:=GetMethodList(FTypeInfo,Tbl,[]);
     if not FUsePublishedOnly then
@@ -6934,6 +6935,7 @@ begin
   if not Assigned(FContextToken) then
     FContextToken := TPoolToken.Create(UsePublishedOnly);
   (FContextToken as IPooltoken).RttiPool.AddObject(AObject);
+  AObject.FUsePublishedOnly := UsePublishedOnly;
 end;
 
 function TRttiContext.GetType(ATypeInfo: PTypeInfo): TRttiType;

@@ -19,7 +19,10 @@
   {$fatal This file shouldn't be included if thread support is disabled!}
 {$endif FPC_WASM_THREADS}
 
-{$DEFINE DEBUGWASMTHREADS}
+{$DEFINE FPC_WASM_MAIN_THREAD_CAN_WAIT}
+{$UNDEF FPC_WASM_WORKER_THREADS_CAN_WAIT}
+
+{//$DEFINE DEBUGWASMTHREADS}
 
 Const
   MaxThreadSignal = 1000; // maximum threads to signal
@@ -40,17 +43,23 @@ Type
   PWasmRTLEvent = ^TWasmRTLEvent;
   TWasmRTLEvent = record
     Signal : Longint;
-    mutex: TWasmMutex;
     Destroying : Boolean;
   end;
 
   PWasmThread = ^TWasmThread;
   TWasmThread = Record
-    ID : LongInt; // Allocated by host javascript code
+    InitialStackPointer : Pointer;
+    InitTLSBase : Pointer;
+    ID : LongInt; // Allocated by host
+    ThreadFunction : TThreadFunc;
+    ThreadFunctionArg : Pointer;
     State : TThreadState;
     DoneEvent : PWasmRTLEvent;
     Running : TWasmMutex;
     ExitCode : Cardinal;
+    StackBlock : Pointer;
+    TLSBlock : Pointer;
+    StackSize : PtrUInt;
     ThreadName : Array of byte; // UTF8 name
   end;
 
@@ -101,11 +110,25 @@ end;
 
 function WasiInitManager: Boolean;
 begin
-  DebugWriteln('Initializing manager');
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('Initializing manager');{$ENDIF}
+  FillChar(MainThread,SizeOf(MainThread),0);
+  MainThread.State:=tsRunning;
+  GlobalIsMainThread:=1;
+  GlobalIsWorkerThread:=0;
+  GlobalCurrentThread:=@MainThread;
+{$IFDEF FPC_WASM_MAIN_THREAD_CAN_WAIT}
+  GlobalIsThreadBlockable:=1;
+{$ELSE FPC_WASM_MAIN_THREAD_CAN_WAIT}
+  GlobalIsThreadBlockable:=0;
+{$ENDIF FPC_WASM_MAIN_THREAD_CAN_WAIT}
+  InitMutex(TWasmMutex(InitialHeapCriticalSection));
+  InitialHeapCriticalSectionInitialized:=true;
   if TLSInfoBlock=Nil then
     TLSInfoBlock:=AllocateOSInfoBlock;
+{$IFDEF DEBUGWASMTHREADS}
   if TLSInfoBlock = Nil then
     DebugWriteln('Initializing manager done: failed');
+{$ENDIF}
   WasiInitManager:=True;
 end;
 
@@ -156,9 +179,9 @@ Var
 
 begin
   New(P);
-  P^.Signal:=0;
-  P^.Destroying:=False;
-  InitMutex(P^.Mutex);
+  fpc_wasm32_i32_atomic_store(@P^.Signal,0);
+  fpc_wasm32_i32_atomic_store8(@P^.Destroying,0);
+  Result:=P;
 end;
 
 procedure WasiRTLEventSetEvent(AEvent:PRTLEvent);
@@ -168,12 +191,9 @@ Var
   a : longint;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : locking mutex');{$ENDIF}
-  LockMutex(P^.Mutex);
-  P^.Signal:=1;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : unlocking mutex');{$ENDIF}
-  UnLockMutex(P^.Mutex);
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : send signal');{$ENDIF}
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : setting signal=1');{$ENDIF}
+  fpc_wasm32_i32_atomic_store(@P^.Signal,1);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : notifying waiting threads');{$ENDIF}
   a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),MaxThreadSignal);
 end;
 
@@ -183,14 +203,12 @@ Var
   P : PWasmRTLEvent absolute aEvent;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : locking mutex');{$ENDIF}
-  LockMutex(P^.Mutex);
-  P^.Destroying:=True;
-  UnlockMutex(P^.Mutex);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : setting destroying to true');{$ENDIF}
+  fpc_wasm32_i32_atomic_store8(@P^.Destroying,1);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : setting event to notify others');{$ENDIF}
   WasiRTLEventSetEvent(aEvent);
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : set event to notify others');{$ENDIF}
-  FreeMem(P);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : freeing memory');{$ENDIF}
+  Dispose(P);
 end;
 
 
@@ -200,42 +218,41 @@ Var
   P : PWasmRTLEvent absolute aEvent;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventResetEvent : locking mutex');{$ENDIF}
-  LockMutex(P^.Mutex);
-  P^.Signal:=0;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventResetEvent : unlocking mutex');{$ENDIF}
-  UnLockMutex(P^.Mutex);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventResetEvent : setting signal=0');{$ENDIF}
+  fpc_wasm32_i32_atomic_store(@P^.Signal,0);
 end;
 
-procedure WasiRTLEventWaitFor_WaitAllowed(AEvent:PWasmRTLEvent; aTimeoutMs : Longint);
+procedure WasiRTLEventWaitFor_WaitAllowed(AEvent:PWasmRTLEvent; aTimeoutNs : Int64);
 
 Var
   a : Longint;
 
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitAllowed : waiting');{$ENDIF}
-  a:=fpc_wasm32_memory_atomic_wait32(@(aEvent^.Signal),1,aTimeoutMs*1000);
+  a:=fpc_wasm32_memory_atomic_wait32(@(aEvent^.Signal),0,aTimeoutNs);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitAllowed : done');{$ENDIF}
 end;
 
 
-procedure WasiRTLEventWaitFor_WaitNotAllowed(AEvent:PWasmRTLEvent; aTimeoutMs : Longint);
+procedure WasiRTLEventWaitFor_WaitNotAllowed(AEvent:PWasmRTLEvent; aTimeoutNs : Int64);
 
 Var
   EndTime : Int64;
   IsTimeOut : Boolean;
   IsDone : Boolean;
-  isMain : Boolean;
 
 begin
-  IsMain:=GlobalIsMainThread<>0;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitNotAllowed : waiting (is main: '+intToStr(Ord(IsMain))+')');{$ENDIF}
-  EndTime:=GetClockTime+aTimeoutMs*1000;
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitNotAllowed : waiting');{$ENDIF}
+  if aTimeoutNs>=0 then
+    EndTime:=GetClockTime+aTimeoutNs
+  else
+    EndTime:=0;
   Repeat
-    IsTimeOut:=(aTimeOutMS<>0) and (GetClockTime>EndTime);
-    IsDone:=(aEvent^.Signal=1) or (aEvent^.Destroying) or (Not IsMain and (GetThreadState(GetSelfThread)<>tsRunning));
+    IsTimeOut:=(aTimeoutNs>=0) and (GetClockTime>EndTime);
+    IsDone:=(fpc_wasm32_i32_atomic_load(@aEvent^.Signal)=1) or (fpc_wasm32_i32_atomic_load8_u(@aEvent^.Destroying)<>0);
   Until isTimeOut or IsDone;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitNotAllowed : done waiting');{$ENDIF}
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitNotAllowed : done waiting (isTimeout='+intToStr(Ord(isTimeOut))+',IsDone='+intToStr(Ord(IsDone))+
+                                        ',Signal='+IntToStr(aEvent^.Signal)+',Destroying='+IntToStr(Ord(aEvent^.Destroying))+')');{$ENDIF}
 end;
 
 procedure WasiRTLEventWaitFor(AEvent:PRTLEvent);
@@ -245,20 +262,25 @@ Var
 
 begin
   if IsWaitAllowed then
-    WasiRTLEventWaitFor_WaitAllowed(P,0)
+    WasiRTLEventWaitFor_WaitAllowed(P,-1)
   else
-    WasiRTLEventWaitFor_WaitNotAllowed(P,0);
+    WasiRTLEventWaitFor_WaitNotAllowed(P,-1);
 end;
 
 procedure WasiRTLEventWaitForTimeout(AEvent:PRTLEvent;timeout : longint);
 Var
   P : PWasmRTLEvent absolute aEvent;
+  TimeoutNs: Int64;
 
 begin
-  if IsWaitAllowed then
-    WasiRTLEventWaitFor_WaitAllowed(P,TimeOut)
+  if timeout=-1 then
+    TimeoutNs:=-1
   else
-    WasiRTLEventWaitFor_WaitNotAllowed(P,TimeOut);
+    TimeoutNs:=Int64(timeout)*1000000;
+  if IsWaitAllowed then
+    WasiRTLEventWaitFor_WaitAllowed(P,TimeoutNs)
+  else
+    WasiRTLEventWaitFor_WaitNotAllowed(P,TimeoutNs);
 end;
 
 
@@ -267,45 +289,83 @@ end;
   ----------------------------------------------------------------------}
 
 
-procedure FPCWasmThreadSetStackPointer(Address: Pointer); [public, alias: 'FPC_WASM_THREAD_SET_STACK_POINTER'];
-begin
-  fpc_wasm32_set_base_pointer(Address);
-end;
+//procedure FPCWasmThreadSetStackPointer(Address: Pointer); [public, alias: 'FPC_WASM_THREAD_SET_STACK_POINTER'];
+//begin
+//  fpc_wasm32_set_base_pointer(Address);
+//end;
 
 // Javascript definition: TThreadInitInstanceFunction = Function(IsWorkerThread : Longint; IsMainThread : Integer; CanBlock : Integer) : Integer;
 
-Function FPCWasmThreadInit(IsWorkerThread : Longint; IsMainThread : Longint; CanBlock : Longint) : Longint; [public, alias: 'FPC_WASM_THREAD_INIT'];
-
-begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadInit('+IntToStr(IsWorkerThread)+','+IntToStr(IsMainThread)+','+IntToStr(CanBlock)+')');{$ENDIF}
-  GlobalIsWorkerThread:=IsWorkerThread;
-  GlobalIsMainThread:=IsMainThread;
-  GlobalIsThreadBlockable:=CanBlock;
-  Result:=0;
-end;
+//Function FPCWasmThreadInit(IsWorkerThread : Longint; IsMainThread : Longint; CanBlock : Longint) : Longint; [public, alias: 'FPC_WASM_THREAD_INIT'];
+//
+//begin
+//  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadInit('+IntToStr(IsWorkerThread)+','+IntToStr(IsMainThread)+','+IntToStr(CanBlock)+')');{$ENDIF}
+//  GlobalIsWorkerThread:=IsWorkerThread;
+//  GlobalIsMainThread:=IsMainThread;
+//  GlobalIsThreadBlockable:=CanBlock;
+//  Result:=0;
+//end;
 
 procedure WasiAllocateThreadVars; forward;
 
 // Javascript definition: TThreadEntryFunction = Function(ThreadId : Longint; RunFunction : Longint; Args : LongInt) : Longint;
 
-Function FPCWasmThreadEntry(ThreadID : PWasmThread; RunFunction : Pointer; Args : Pointer) : Longint; [public, alias: 'FPC_WASM_THREAD_ENTRY'];
+//Function FPCWasmThreadEntry(ThreadID : PWasmThread; RunFunction : Pointer; Args : Pointer) : Longint; [public, alias: 'FPC_WASM_THREAD_ENTRY'];
+//begin
+//  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry('+IntToStr(PtrUint(ThreadID))+','+IntToStr(PtrUint(RunFunction))+','+IntToStr(PtrUint(Args))+')');{$ENDIF}
+//  GlobalCurrentThread:=ThreadID;
+//  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry: allocating threadvars (thread function: '+intToStr(PtrUint(RunFunction))+')');{$ENDIF}
+//  WasiAllocateThreadVars;
+//  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry: calling initthread (thread function: '+intToStr(PtrUint(RunFunction))+')');{$ENDIF}
+//  InitThread;
+//  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry: calling thread function '+intToStr(PtrUint(RunFunction)));{$ENDIF}
+//  Result:=tthreadfunc(RunFunction)(args);
+//end;
+
+{$push}{$S-}  // no stack checking for this procedure
+procedure FPCWasmThreadStartPascal(tid: longint; start_arg: PWasmThread);
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry('+IntToStr(PtrUint(ThreadID))+','+IntToStr(PtrUint(RunFunction))+','+IntToStr(PtrUint(Args))+')');{$ENDIF}
-  GlobalCurrentThread:=ThreadID;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry: allocating threadvars (thread function: '+intToStr(PtrUint(RunFunction))+')');{$ENDIF}
-  WasiAllocateThreadVars;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry: calling initthread (thread function: '+intToStr(PtrUint(RunFunction))+')');{$ENDIF}
-  InitThread;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadEntry: calling thread function '+intToStr(PtrUint(RunFunction)));{$ENDIF}
-  Result:=tthreadfunc(RunFunction)(args);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadStartPascal(...)');{$ENDIF}
+  fpc_wasm32_init_tls(start_arg^.InitTLSBase);
+
+  start_arg^.ID:=tid;
+  GlobalCurrentThread:=@start_arg;
+  GlobalIsMainThread:=0;
+  GlobalIsWorkerThread:=1;
+{$IFDEF FPC_WASM_WORKER_THREADS_CAN_WAIT}
+  GlobalIsThreadBlockable:=1;
+{$ELSE FPC_WASM_WORKER_THREADS_CAN_WAIT}
+  GlobalIsThreadBlockable:=0;
+{$ENDIF FPC_WASM_WORKER_THREADS_CAN_WAIT}
+
+  start_arg^.State:=tsRunning;
+  InitThread(start_arg^.StackSize);
+  StackBottom:=start_arg^.StackBlock;
+  start_arg^.ExitCode:=Cardinal(start_arg^.ThreadFunction(start_arg^.ThreadFunctionArg));
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadStartPascal: Signaling end of thread');{$ENDIF}
+  WasiRTLEventSetEvent(start_arg^.DoneEvent);
+end;
+{$pop}
+
+procedure wasi_thread_start(tid: longint; start_arg: PWasmThread); assembler; nostackframe;
+asm
+  local.get 1
+  i32.load
+  global.set $__stack_pointer
+
+  local.get 0
+  local.get 1
+  call $FPCWasmThreadStartPascal
 end;
 
-exports FPCWasmThreadSetStackPointer, FPCWasmThreadInit, FPCWasmThreadEntry;
+exports wasi_thread_start;
 
-Function thread_spawn(thread_id : PInteger; attrs: Pointer; thread_start_func : Pointer; args : Pointer) : LongInt;  external 'FPCThreading' name 'thread_spawn';
+Function wasi_thread_spawn(start_arg: PWasmThread) : LongInt; external 'wasi' name 'thread-spawn';
 
 function WasiBeginThread(sa : Pointer;stacksize : PtrUInt; ThreadFunction : tthreadfunc;p : pointer;creationFlags : dword; var ThreadId : TThreadID) : TThreadID;
 
+Const
+  HeapAlignment=16;
 Var
   T : PWasmThread;
 
@@ -314,10 +374,21 @@ begin
   T:=GetMem(SizeOf(TWasmThread));
   ThreadID:=T;
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread thread ID : '+IntToStr(PtrUint(ThreadID)));{$ENDIF}
+  T^.ThreadFunction:=ThreadFunction;
+  T^.ThreadFunctionArg:=p;
+  if stacksize<=0 then
+    stacksize:=StkLen;
+  T^.StackSize:=stacksize;
+  T^.StackBlock:=GetMem(stacksize);
+  T^.InitialStackPointer:=Pointer(PtrUInt(PtrUInt(T^.StackBlock)+stacksize) and $FFFFFFF0);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: InitialStackPointer='+IntToStr(PtrUint(T^.InitialStackPointer)));{$ENDIF}
+  T^.TLSBlock:=AllocMem(fpc_wasm32_tls_size+fpc_wasm32_tls_align-1);
+  T^.InitTLSBase:=Align(T^.TLSBlock,fpc_wasm32_tls_align);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: InitTLSBase='+IntToStr(PtrUint(T^.InitTLSBase)));{$ENDIF}
   InitMutex(T^.Running,mkNormal);
   T^.DoneEvent:=WasiRTLCreateEvent;
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: Locked mutex');{$ENDIF}
-  if thread_spawn(@(T^.ID),Nil,ThreadFunction,P)=0 then
+  if wasi_thread_spawn(T)>0 then
     begin
     {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: spawn thread OK, setting result');{$ENDIF}
     WasiBeginThread:=T;
@@ -378,15 +449,20 @@ end;
 function WasiWaitForThreadTerminate(threadHandle : TThreadID; TimeoutMs : longint) : dword;
 
 Var
-  Res : Integer;
+  Res : LongInt;
   TH : PWasmThread absolute ThreadHandle;
+  TimeoutNs : Int64;
 
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WaitForThreadTerminate('+IntToStr(PtrUINT(TH))+','+IntToStr(TimeoutMs)+')');{$ENDIF}
+  if TimeoutMs>=0 then
+    TimeoutNs:=TimeoutMs*1000000
+  else
+    TimeoutNs:=-1;
   WasiRTLEventWaitFor(TH^.DoneEvent);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WaitForThreadTerminate('+IntToStr(PtrUINT(TH))+') : Event set, waiting for lock');{$ENDIF}
-  Case LockMuTexTimeout(PWasmThread(ThreadHandle)^.Running,TimeoutMS) of
-    lmrOK : Res:=0;
+  Case LockMuTexTimeout(PWasmThread(ThreadHandle)^.Running,TimeoutNs) of
+    lmrOK : Res:=LongInt(TH^.ExitCode);
     lmrError : Res:=-2;
   else
      Res:=-1;

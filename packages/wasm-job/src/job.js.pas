@@ -782,39 +782,32 @@ type
 
   end;
 
-  { IJSArrayBufferView }
-  IJSArrayBufferView = interface(IJSObject)
-    ['{A1612EED-4F05-46C0-90BE-ACD511B1598E}']
-  end;
+  IJSArrayBufferView = interface (IJSObject) ['{E4585865-E907-40CE-B3E5-7E5E343EBED6}']
 
-  { TJSArrayBufferView }
+    function _getBuffer: IJSArrayBuffer;
+    function _getByteLength: NativeInt;
+    function _getByteOffset: NativeInt;
 
-  TJSArrayBufferView = class(TJSObject,IJSArrayBufferView)
-  public
-    class function Cast(const Intf: IJSObject): IJSArrayBufferView; overload;
+    property buffer : IJSArrayBuffer Read _getBuffer;
+    property byteLength : NativeInt Read _getByteLength;
+    property byteOffset : NativeInt Read _getByteOffset;
   end;
 
   { IJSTypedArray }
 
-  IJSTypedArray = interface(IJSObject)
+  IJSTypedArray = interface(IJSArrayBufferView)
     ['{6A76602B-9555-4136-A7B7-2E683265EA82}']
-    function GetBuffer: IJSArrayBuffer;
     function _GetLength: NativeInt;
-    function _GetByteLength: NativeInt;
-    function _GetByteOffset: NativeInt;
     procedure  set_(aArray : IJSTypedArray; TargetOffset : Integer);
     procedure  set_(aArray : IJSTypedArray);
-    property Buffer : IJSArrayBuffer read GetBuffer;
     Property Length: NativeInt Read _GetLength;
-    Property byteLength: NativeInt Read _GetByteLength;
-    Property byteOffset: NativeInt Read _GetByteOffset;
   end;
 
   { TJSTypedArray }
 
   TJSTypedArray = class(TJSObject,IJSTypedArray)
-  private
-    function GetBuffer: IJSArrayBuffer;
+  protected
+    function _GetBuffer: IJSArrayBuffer;
     function _GetLength: NativeInt;
     function _GetByteLength: NativeInt;
     function _GetByteOffset: NativeInt;
@@ -827,11 +820,14 @@ type
     class function Cast(const Intf: IJSObject): IJSTypedArray; overload;
     procedure set_(aArray : IJSTypedArray; TargetOffset : Integer);
     procedure set_(aArray : IJSTypedArray);
-    property Buffer : IJSArrayBuffer read GetBuffer;
+    property Buffer : IJSArrayBuffer read _GetBuffer;
     Property Length: NativeInt Read _GetLength;
     Property byteLength: NativeInt Read _GetByteLength;
     Property byteOffset: NativeInt Read _GetByteOffset;
   end;
+
+  // We need to be able to create a IJSArrayBufferView
+  TJSArrayBufferView = TJSTypedArray;
 
   { IJSInt8Array }
 
@@ -1036,18 +1032,99 @@ type
     class function Cast(const Intf: IJSObject): IJSBufferSource; overload;
   end;
 
+
+
   { IJSDataView }
 
-  IJSDataView = interface(IJSObject)
+  IJSDataView = interface(IJSArrayBufferView)
     ['{42F14387-FAD2-46BA-8CB4-057445095CEE}']
+
+    function getBigInt64(aByteOffset : Longint) : Int64;
+    function getBigInt64(aByteOffset : Longint; littleEndian : Boolean) : Int64;
+    function getInt32(aByteOffset : Longint) : Longint;
+    function getInt32(aByteOffset : Longint; littleEndian : Boolean) : Longint;
+    function getInt16(aByteOffset : Longint) : Smallint;
+    function getInt16(aByteOffset : Longint; littleEndian : Boolean) : Smallint;
+    function getInt8(aByteOffset : Longint) : ShortInt;
+    function getUint32(aByteOffset : Longint) : Cardinal;
+    function getUint32(aByteOffset : Longint; littleEndian : Boolean) : Cardinal;
+    function getUint16(aByteOffset : Longint) : Word;
+    function getUint16(aByteOffset : Longint; littleEndian : Boolean) : Word;
+    function getUint8(aByteOffset : Longint) : Byte;
+    function getFloat64(aByteOffset : Longint) : Double;
+    function getFloat64(aByteOffset : Longint; littleEndian : Boolean) : Double;
+    function getFloat32(aByteOffset : Longint) : Single;
+    function getFloat32(aByteOffset : Longint; littleEndian : Boolean) : Single;
+
+    procedure setBigInt64(aByteOffset : Longint; aValue : Int64);
+    procedure setBigInt64(aByteOffset : Longint; aValue : Int64; littleEndian : Boolean);
+    procedure setInt32(aByteOffset : Longint; aValue : Longint);
+    procedure setInt32(aByteOffset : Longint; aValue : Longint; littleEndian : Boolean);
+    procedure setInt16(aByteOffset : Longint; aValue : Smallint);
+    procedure setInt16(aByteOffset : Longint; aValue : Smallint; littleEndian : Boolean);
+    procedure setInt8(aByteOffset : Longint; aValue : Shortint);
+    procedure setUint32(aByteOffset : Longint; aValue : Cardinal);
+    procedure setUint32(aByteOffset : Longint; aValue : Cardinal; littleEndian : Boolean);
+    procedure setUint16(aByteOffset : Longint; aValue : Word);
+    procedure setUint16(aByteOffset : Longint; aValue : Word; littleEndian : Boolean);
+    procedure setUint8(aByteOffset : Longint; aValue : Byte);
+    procedure setFloat64(aByteOffset : Longint; aValue: Double);
+    procedure setFloat64(aByteOffset : Longint; aValue : Double; littleEndian : Boolean);
+    procedure setFloat32(aByteOffset : Longint; aValue : Single);
+    procedure setFloat32(aByteOffset : Longint; aValue : Single; littleEndian : Boolean);
+
   end;
+
+
 
   { TJSDataView }
 
   TJSDataView = class(TJSObject,IJSDataView)
+  protected
+    function _getBuffer: IJSArrayBuffer;
+    function _getByteLength: NativeInt;
+    function _getByteOffset: NativeInt;
   public
+    constructor create(aBuffer : IJSArrayBuffer);
+    constructor create(aBuffer : IJSArrayBuffer; aOffset : longint);
+    constructor create(aBuffer : IJSArrayBuffer; aOffset, aByteLength : longint);
+    class function JSClassName: UnicodeString; override;
     class function Cast(const Intf: IJSObject): IJSDataView; overload;
+    function getBigInt64(aByteOffset : Longint) : Int64;
+    function getBigInt64(aByteOffset : Longint; littleEndian : Boolean) : Int64;
+    function getInt32(aByteOffset : Longint) : Longint;
+    function getInt32(aByteOffset : Longint; littleEndian : Boolean) : Longint;
+    function getInt16(aByteOffset : Longint) : Smallint;
+    function getInt16(aByteOffset : Longint; littleEndian : Boolean) : Smallint;
+    function getInt8(aByteOffset : Longint) : ShortInt;
+    function getUint32(aByteOffset : Longint) : Cardinal;
+    function getUint32(aByteOffset : Longint; littleEndian : Boolean) : Cardinal;
+    function getUint16(aByteOffset : Longint) : Word;
+    function getUint16(aByteOffset : Longint; littleEndian : Boolean) : Word;
+    function getUint8(aByteOffset : Longint) : Byte;
+    function getFloat64(aByteOffset : Longint) : Double;
+    function getFloat64(aByteOffset : Longint; littleEndian : Boolean) : Double;
+    function getFloat32(aByteOffset : Longint) : Single;
+    function getFloat32(aByteOffset : Longint; littleEndian : Boolean) : Single;
+
+    procedure setBigInt64(aByteOffset : Longint; aValue : Int64);
+    procedure setBigInt64(aByteOffset : Longint; aValue : Int64; littleEndian : Boolean);
+    procedure setInt32(aByteOffset : Longint; aValue : Longint);
+    procedure setInt32(aByteOffset : Longint; aValue : Longint; littleEndian : Boolean);
+    procedure setInt16(aByteOffset : Longint; aValue : Smallint);
+    procedure setInt16(aByteOffset : Longint; aValue : Smallint; littleEndian : Boolean);
+    procedure setInt8(aByteOffset : Longint; aValue : Shortint);
+    procedure setUint32(aByteOffset : Longint; aValue : Cardinal);
+    procedure setUint32(aByteOffset : Longint; aValue : Cardinal; littleEndian : Boolean);
+    procedure setUint16(aByteOffset : Longint; aValue : Word);
+    procedure setUint16(aByteOffset : Longint; aValue : Word; littleEndian : Boolean);
+    procedure setUint8(aByteOffset : Longint; aValue : Byte);
+    procedure setFloat64(aByteOffset : Longint; aValue: Double);
+    procedure setFloat64(aByteOffset : Longint; aValue : Double; littleEndian : Boolean);
+    procedure setFloat32(aByteOffset : Longint; aValue : Single);
+    procedure setFloat32(aByteOffset : Longint; aValue : Single; littleEndian : Boolean);
   end;
+
 
   { IJSJSON }
 
@@ -1080,13 +1157,17 @@ type
 
   IJSError = interface(IJSObject)
     ['{80532C4D-CAD2-4C70-A4EA-01B29BB8C2C8}']
+    function _getMessage : String;
+    property Message : string Read _getMessage;
   end;
 
   { TJSError }
 
   TJSError = class(TJSObject,IJSError)
+    function _getMessage : String;
   public
     class function Cast(const Intf: IJSObject): IJSError; overload;
+    property Message : string Read _GetMessage;
   end;
 
   TJSPromiseResolver = function(const aValue: Variant): Variant of object;
@@ -1254,6 +1335,15 @@ function __job_create_object(
 function JOBCallback(const Func: TJOBCallback; Data, Code: Pointer; Args: PByte): PByte;
 function VarRecToJSValue(const V: TVarRec): TJOB_JSValue;
 
+Type
+  TJobCallbackErrorEvent = Procedure (E : Exception; M : TMethod; H : TJobCallbackHelper; Var ReRaise : Boolean) of Object;
+  TJobCallBackErrorCallback = Procedure (E : Exception; M : TMethod; H : TJobCallbackHelper; Var ReRaise : Boolean);
+
+var
+  JobCallbackErrorHandler : TJobCallbackErrorEvent;
+  JobCallbackErrorCallBack : TJobCallBackErrorCallback;
+
+
 implementation
 
 const
@@ -1309,16 +1399,34 @@ function JOBCallback(const Func: TJOBCallback; Data, Code: Pointer; Args: PByte
 var
   m: TMethod;
   h: TJOBCallbackHelper;
+  reraise : Boolean;
+
 begin
   Result:=nil;
   try
-    {$IFDEF VERBOSEJOB}
-    writeln('In JOBCallback');
-    {$ENDIF}
-    m.Data:=Data;
-    m.Code:=Code;
-    h.Init(Args);
-    Result:=Func(m,h);
+    try
+      {$IFDEF VERBOSEJOB}
+      writeln('In JOBCallback');
+      {$ENDIF}
+      m.Data:=Data;
+      m.Code:=Code;
+      h.Init(Args);
+      Result:=Func(m,h);
+    except
+      On E : Exception do
+        begin
+        {$IFDEF VERBOSEJOB}
+        writeln('In JOBCallback: caught exception ',E.ClassName,': ',E.Message);
+        {$ENDIF}
+        ReRaise:=True;
+        If Assigned(JobCallbackErrorHandler) then
+          JobCallbackErrorHandler(E,M,H,ReRaise)
+        else If Assigned(JobCallbackErrorCallback) then
+          JobCallbackErrorCallback(E,M,H,ReRaise);
+        if ReRaise then
+          Raise;
+        end
+    end;
   finally
     if Args<>nil then
       FreeMem(Args);
@@ -1593,10 +1701,17 @@ end;
 
 { TJSError }
 
+function TJSError._getMessage: String;
+begin
+  Result:=ReadJSPropertyUnicodeString('message');
+end;
+
 class function TJSError.Cast(const Intf: IJSObject): IJSError;
 begin
   Result:=TJSError.JOBCast(Intf);
 end;
+
+
 
 { TJSJSON }
 
@@ -1639,9 +1754,204 @@ end;
 
 { TJSDataView }
 
+function TJSDataView._getBuffer: IJSArrayBuffer;
+begin
+  Result:=ReadJSPropertyObject('buffer',TJSArrayBuffer) as IJSArrayBuffer;
+end;
+
+function TJSDataView._getByteLength: NativeInt;
+begin
+  Result:=ReadJSPropertyLongInt('byteLength');
+end;
+
+function TJSDataView._getByteOffset: NativeInt;
+begin
+  Result:=ReadJSPropertyLongInt('byteOffset');
+end;
+
+constructor TJSDataView.create(aBuffer: IJSArrayBuffer);
+begin
+  JOBCreate([aBuffer]);
+end;
+
+constructor TJSDataView.create(aBuffer: IJSArrayBuffer; aOffset: longint);
+begin
+  JOBCreate([aBuffer,aOffset]);
+end;
+
+constructor TJSDataView.create(aBuffer: IJSArrayBuffer; aOffset, aByteLength: longint);
+begin
+  JOBCreate([aBuffer,aOffset,aByteLength]);
+end;
+
+class function TJSDataView.JSClassName: UnicodeString;
+begin
+  Result:='DataView';
+end;
+
 class function TJSDataView.Cast(const Intf: IJSObject): IJSDataView;
 begin
   Result:=TJSDataView.JOBCast(Intf);
+end;
+
+function TJSDataView.getBigInt64(aByteOffset: Longint): Int64;
+begin
+  Result:=InvokeJSMaxIntResult('getBigInt64',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getBigInt64(aByteOffset: Longint; littleEndian: Boolean): Int64;
+begin
+  Result:=InvokeJSMaxIntResult('getBigInt64',[aByteOffset,littleEndian],jiCall);
+end;
+
+function TJSDataView.getInt32(aByteOffset: Longint): Longint;
+begin
+  Result:=InvokeJSLongIntResult('getInt32',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getInt32(aByteOffset: Longint; littleEndian: Boolean): Longint;
+begin
+  Result:=InvokeJSLongIntResult('getInt32',[aByteOffset,littleEndian],jiCall);
+end;
+
+function TJSDataView.getInt16(aByteOffset: Longint): Smallint;
+begin
+  Result:=InvokeJSLongIntResult('getInt16',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getInt16(aByteOffset: Longint; littleEndian: Boolean): Smallint;
+begin
+  Result:=InvokeJSLongIntResult('getInt16',[aByteOffset,littleEndian],jiCall);
+end;
+
+function TJSDataView.getInt8(aByteOffset: Longint): ShortInt;
+begin
+  Result:=InvokeJSLongIntResult('getInt8',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getUint32(aByteOffset: Longint): Cardinal;
+begin
+  Result:=InvokeJSMaxIntResult('getUint32',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getUint32(aByteOffset: Longint; littleEndian: Boolean): Cardinal;
+begin
+  Result:=InvokeJSMaxIntResult('getUint32',[aByteOffset,littleEndian],jiCall);
+end;
+
+function TJSDataView.getUint16(aByteOffset: Longint): Word;
+begin
+  Result:=InvokeJSLongIntResult('getUint16',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getUint16(aByteOffset: Longint; littleEndian: Boolean): Word;
+begin
+  Result:=InvokeJSLongIntResult('getUint16',[aByteOffset,littleEndian],jiCall);
+end;
+
+function TJSDataView.getUint8(aByteOffset: Longint): Byte;
+begin
+  Result:=InvokeJSLongIntResult('getUint8',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getFloat64(aByteOffset: Longint): Double;
+begin
+  Result:=InvokeJSDoubleResult('getFloat64',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getFloat64(aByteOffset: Longint; littleEndian: Boolean): Double;
+begin
+  Result:=InvokeJSDoubleResult('getFloat64',[aByteOffset,littleEndian],jiCall);
+end;
+
+function TJSDataView.getFloat32(aByteOffset: Longint): Single;
+begin
+  Result:=InvokeJSDoubleResult('getFloat32',[aByteOffset],jiCall);
+end;
+
+function TJSDataView.getFloat32(aByteOffset: Longint; littleEndian: Boolean): Single;
+begin
+  Result:=InvokeJSDoubleResult('getFloat32',[aByteOffset,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setBigInt64(aByteOffset: Longint; aValue: Int64);
+begin
+  InvokeJSNoResult('setBigInt64',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setBigInt64(aByteOffset: Longint; aValue: Int64; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setBigInt64',[aByteOffset,aValue,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setInt32(aByteOffset: Longint; aValue: Longint);
+begin
+  InvokeJSNoResult('setInt32',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setInt32(aByteOffset: Longint; aValue: Longint; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setInt32',[aByteOffset,aValue,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setInt16(aByteOffset: Longint; aValue: Smallint);
+begin
+  InvokeJSNoResult('setInt16',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setInt16(aByteOffset: Longint; aValue: Smallint; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setInt16',[aByteOffset,aValue,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setInt8(aByteOffset: Longint; aValue: Shortint);
+begin
+  InvokeJSNoResult('setInt8',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setUint32(aByteOffset: Longint; aValue: Cardinal);
+begin
+  InvokeJSNoResult('setUint32',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setUint32(aByteOffset: Longint; aValue: Cardinal; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setUint32',[aByteOffset,aValue,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setUint16(aByteOffset: Longint; aValue: Word);
+begin
+  InvokeJSNoResult('setUint16',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setUint16(aByteOffset: Longint; aValue: Word; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setUint16',[aByteOffset,aValue,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setUint8(aByteOffset: Longint; aValue: Byte);
+begin
+  InvokeJSNoResult('setUint8',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setFloat64(aByteOffset: Longint; aValue: Double);
+begin
+  InvokeJSNoResult('setFloat64',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setFloat64(aByteOffset: Longint; aValue: Double; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setFloat64',[aByteOffset,aValue,littleEndian],jiCall);
+end;
+
+procedure TJSDataView.setFloat32(aByteOffset: Longint; aValue: Single);
+begin
+  InvokeJSNoResult('setFloat32',[aByteOffset,aValue],jiCall);
+end;
+
+procedure TJSDataView.setFloat32(aByteOffset: Longint; aValue: Single; littleEndian: Boolean);
+begin
+  InvokeJSNoResult('setFloat32',[aByteOffset,aValue,littleEndian],jiCall);
 end;
 
 { TJSBufferSource }
@@ -1859,7 +2169,7 @@ end;
 
 { TJSTypedArray }
 
-function TJSTypedArray.GetBuffer: IJSArrayBuffer;
+function TJSTypedArray._GetBuffer: IJSArrayBuffer;
 begin
   Result:=ReadJSPropertyObject('buffer',TJSArrayBuffer) as IJSArrayBuffer;
 end;
@@ -1986,12 +2296,6 @@ begin
   Result:='ArrayBuffer';
 end;
 
-{ TJSArrayBufferView }
-
-class function TJSArrayBufferView.Cast(const Intf: IJSObject): IJSArrayBufferView;
-begin
-  Result:=TJSArrayBufferView.JOBCast(Intf);
-end;
 
 { TJSArray }
 
@@ -2047,6 +2351,7 @@ function TJSArray._GetNativeInts(Index: NativeInt): NativeInt;
 
 var
   V : TJOB_JSValue;
+  I : Integer;
 
 begin
   V:=Elements[Index];
@@ -2056,8 +2361,11 @@ begin
         Exit(Round(TJOB_Double(V).Value));
     if V is TJOB_String then
       begin
-      if TryStrToInt(TJOB_STRING(V).Value,Result) then
+      if TryStrToInt(TJOB_STRING(V).Value,I) then
+        begin
+        Result:=I;
         Exit
+        end;
       end;
   finally
     V.Free;
