@@ -41,7 +41,8 @@ Type
        cpu_rv32i,
        cpu_rv32e,
        cpu_rv32imc,
-       cpu_rv32ec
+       cpu_rv32ec,
+       cpu_rv32gc
       );
 
    tfputype =
@@ -172,7 +173,8 @@ Const
      'RV32I',
      'RV32E',
      'RV32IMC',
-     'RV32EC'
+     'RV32EC',
+     'RV32GC'
    );
 
    fputypestr : array[tfputype] of string[8] = (         
@@ -202,7 +204,13 @@ Const
       (CPURV_HAS_MUL,
        CPURV_HAS_ATOMIC,
        CPURV_HAS_COMPACT,
-       CPURV_HAS_16REGISTERS
+       CPURV_HAS_16REGISTERS,
+       CPURV_HAS_ZBA,
+       CPURV_HAS_ZBb,
+       CPURV_HAS_ZBC,
+       CPURV_HAS_ZBS,
+       CPURV_HAS_CSR_INSTRUCTIONS,   { extension Zicsr    }
+       CPURV_HAS_FETCH_FENCE         { extension Zifencei }
       );
 
  const
@@ -214,7 +222,8 @@ Const
        { cpu_rv32i     } [],
        { cpu_rv32e     } [CPURV_HAS_16REGISTERS],
        { cpu_rv32imc   } [CPURV_HAS_MUL,CPURV_HAS_COMPACT],
-       { cpu_rv32ec    } [CPURV_HAS_16REGISTERS,CPURV_HAS_COMPACT]
+       { cpu_rv32ec    } [CPURV_HAS_16REGISTERS,CPURV_HAS_COMPACT],
+       { cpu_rv32gc    } [CPURV_HAS_MUL,CPURV_HAS_ATOMIC,CPURV_HAS_COMPACT]
      );
 
 Implementation

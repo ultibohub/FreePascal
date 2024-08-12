@@ -63,6 +63,16 @@ Type
     ThreadName : Array of byte; // UTF8 name
   end;
 
+  { EWasmThreadTerminate }
+
+  EWasmThreadTerminate = class(TObject)
+  strict private
+    FExitCode : DWord;
+  public
+    constructor Create(AExitCode: DWord);
+    property ExitCode: DWord read FExitCode;
+  end;
+
 Var
   MainThread : TWasmThread;
   WasiThreadManager : TThreadManager;
@@ -71,6 +81,12 @@ Var
   GlobalIsThreadBlockable : Longint; section 'WebAssembly.Global';
   GlobalCurrentThread : PWasmThread; section 'WebAssembly.Global';
 
+{ EWasmThreadTerminate }
+
+constructor EWasmThreadTerminate.Create(AExitCode: DWord);
+begin
+  FExitCode:=AExitCode;
+end;
 
 
 // Forward functions
@@ -326,7 +342,6 @@ procedure WasiAllocateThreadVars; forward;
 procedure FPCWasmThreadStartPascal(tid: longint; start_arg: PWasmThread);
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadStartPascal(...)');{$ENDIF}
-  fpc_wasm32_init_tls(start_arg^.InitTLSBase);
 
   start_arg^.ID:=tid;
   GlobalCurrentThread:=@start_arg;
@@ -341,7 +356,21 @@ begin
   start_arg^.State:=tsRunning;
   InitThread(start_arg^.StackSize);
   StackBottom:=start_arg^.StackBlock;
-  start_arg^.ExitCode:=Cardinal(start_arg^.ThreadFunction(start_arg^.ThreadFunctionArg));
+  try
+    start_arg^.ExitCode:=Cardinal(start_arg^.ThreadFunction(start_arg^.ThreadFunctionArg));
+  except
+    on e: EWasmThreadTerminate do
+      begin
+        {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadStartPascal: Caught EWasmThreadTerminate with ExitCode='+IntToStr(e.ExitCode));{$ENDIF}
+        start_arg^.ExitCode:=e.ExitCode;
+      end;
+    else
+      begin
+        {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadStartPascal: Uncaught exception');{$ENDIF}
+        { TODO: what should we return here? }
+        start_arg^.ExitCode:=High(Cardinal);
+      end;
+  end;
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('FPCWasmThreadStartPascal: Signaling end of thread');{$ENDIF}
   WasiRTLEventSetEvent(start_arg^.DoneEvent);
 end;
@@ -349,12 +378,22 @@ end;
 
 procedure wasi_thread_start(tid: longint; start_arg: PWasmThread); assembler; nostackframe;
 asm
-  local.get 1
-  i32.load
+  local.get 1  ;; start_arg
+  i32.load     ;; load InitialStackPointer
   global.set $__stack_pointer
 
-  local.get 0
-  local.get 1
+  ;; call fpc_wasm32_init_tls from within assembly code, because in branchful
+  ;; exceptions mode, Free Pascal generates threadvar access after every
+  ;; function call. Therefore, we want threadvars to be initialized, before we
+  ;; call any sort of Pascal code.
+  local.get 1  ;; start_arg
+  i32.const 4  ;; offset to InitTLSBase
+  i32.add
+  i32.load
+  call $fpc_wasm32_init_tls
+
+  local.get 0  ;; tid
+  local.get 1  ;; start_arg
   call $FPCWasmThreadStartPascal
 end;
 
@@ -371,7 +410,9 @@ Var
 
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread(sa: '+IntToStr(PtrUint(Sa))+',ss: '+IntToStr(PtrUint(StackSize))+',TF: '+IntToStr(PtrUint(ThreadFunction))+',Arg: '+IntToStr(PtrUint(P))+',fl: '+IntToStr(PtrUint(CreationFlags))+',ID: '+IntToStr(PtrUint(ThreadID))+')');{$ENDIF}
-  T:=GetMem(SizeOf(TWasmThread));
+  New(T);
+  T^.StackBlock:=nil;
+  T^.TLSBlock:=nil;
   ThreadID:=T;
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread thread ID : '+IntToStr(PtrUint(ThreadID)));{$ENDIF}
   T^.ThreadFunction:=ThreadFunction;
@@ -397,7 +438,13 @@ begin
   else
     begin
     {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: spawn thread failed');{$ENDIF}
-    FreeMem(T);
+    WasiRTLEventDestroy(T^.DoneEvent);
+    DoneMutex(T^.Running);
+    if Assigned(T^.StackBlock) then
+      FreeMem(T^.StackBlock);
+    if Assigned(T^.TLSBlock) then
+      FreeMem(T^.TLSBlock);
+    Dispose(T);
     {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: spawn thread failed, freeing thread struct');{$ENDIF}
     WasiBeginThread:=TThreadID(0);
     {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: spawn thread failed, returning 0');{$ENDIF}
@@ -410,14 +457,7 @@ Var
   T : PWasmThread;
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('EndThread('+IntToStr(ExitCode)+')');{$ENDIF}
-  T:=PWasmThread(GetSelfThread);
-  T^.ExitCode:=ExitCode;
-  // Signal that we're done
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('EndThread: Signaling end of thread');{$ENDIF}
-  WasiRTLEventSetEvent(T^.DoneEvent);
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('EndThread: Unlocking mutex');{$ENDIF}
-  // Now unlock running mutex
-  UnlockMutex(T^.Running);
+  raise EWasmThreadTerminate.Create(ExitCode);
 end;
 
 function WasiSuspendThread(threadHandle : TThreadID) : dword;
@@ -443,7 +483,6 @@ end;
 procedure WasiThreadSwitch;
 begin
   // Normally a yield, but this does not (yet) exist in webassembly.
-  {todo:implement}
 end;
 
 function WasiWaitForThreadTerminate(threadHandle : TThreadID; TimeoutMs : longint) : dword;
