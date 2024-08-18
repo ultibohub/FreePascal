@@ -24,10 +24,11 @@ interface
 
 {$IFDEF FPC_DOTTEDUNITS}
 uses
-  System.Classes, System.SysUtils, System.Net.Ssockets, Fcl.ThreadPool, FpWeb.WebSocket.Protocol;
+  System.Classes, System.SysUtils, System.Contnrs, System.Net.Ssockets, Fcl.ThreadPool, FpWeb.WebSocket.Protocol;
 {$ELSE FPC_DOTTEDUNITS}
 uses
-  Classes, SysUtils, ssockets, fpthreadpool, fpwebsocket;
+  Classes, SysUtils, Contnrs,
+  ssockets, fpthreadpool, fpwebsocket;
 {$ENDIF FPC_DOTTEDUNITS}
 
 Const
@@ -49,7 +50,18 @@ Type
 
   { TWSConnectionList }
 
-  TWSConnectionList = Class(TThreadList)
+  TWSConnectionList = class
+  private
+    FList: TFPHashList;
+    FLock: TRTLCriticalSection;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Add(Item: TWSConnection);
+    procedure Clear;
+    function LockList: TFPHashList;
+    procedure Remove(Item: TWSConnection);
+    procedure UnlockList;
     Function ForEach(aIterator : TConnectionIterator) : Boolean;
     Function FindConnectionById(const aID : String) : TWSConnection;
   end;
@@ -275,11 +287,70 @@ implementation
 
 { TWSConnectionList }
 
-function TWSConnectionList.ForEach(aIterator: TConnectionIterator): Boolean;
-Var
-  L : TList;
-  I : Integer;
+constructor TWSConnectionList.Create;
+begin
+  FList := TFPHashList.Create;
+  InitCriticalSection(FLock);
+end;
 
+destructor TWSConnectionList.Destroy;
+begin
+  LockList;
+  try
+    FList.Free;
+    inherited Destroy;
+  finally
+    UnlockList;
+    DoneCriticalSection(FLock);
+  end;
+end;
+
+procedure TWSConnectionList.Add(Item: TWSConnection);
+begin
+  LockList;
+  try
+    if FList.IndexOf(Item) = -1 then
+      FList.Add(Item.ConnectionID, Item);
+  finally
+    UnlockList;
+  end;
+end;
+
+procedure TWSConnectionList.Clear;
+begin
+  Locklist;
+  try
+    FList.Clear;
+  finally
+    UnLockList;
+  end;
+end;
+
+function TWSConnectionList.LockList: TFPHashList;
+begin
+  Result:=FList;
+  System.EnterCriticalSection(FLock);
+end;
+
+procedure TWSConnectionList.Remove(Item: TWSConnection);
+begin
+  LockList;
+  try
+    FList.Remove(Item);
+  finally
+    UnlockList;
+  end;
+end;
+
+procedure TWSConnectionList.UnlockList;
+begin
+  LeaveCriticalSection(FLock);
+end;
+
+function TWSConnectionList.ForEach(aIterator: TConnectionIterator): Boolean;
+var
+  L : TFPHashList;
+  I : Integer;
 begin
   Result:=True;
   L:=LockList;
@@ -297,21 +368,12 @@ end;
 
 function TWSConnectionList.FindConnectionById(const aID: String): TWSConnection;
 Var
-  L : TList;
-  I : Integer;
-
+  L: TFPHashList;
 begin
   Result:=Nil;
   L:=LockList;
   try
-    I:=0;
-    While (Result=Nil) and (I<L.Count) do
-      begin
-      Result:=TWSServerConnection(L[I]);
-      if Result.ConnectionID<>aID then
-        Result:=Nil;
-      Inc(I);
-      end;
+    Result := TWSConnection(L.Find(aId));
   finally
     UnlockList;
   end;
@@ -422,7 +484,7 @@ procedure TCustomWSServer.SendDataTo(AData: TBytes; aSelector: TWSSendToFilter);
 
 var
   Connection: TWSServerConnection;
-  L : TList;
+  L : TFPHashList;
   I : integer;
 
 begin
@@ -441,17 +503,19 @@ end;
 
 procedure TCustomWSServer.Foreach(aIterator: TConnectionIterator);
 Var
-  L : TList;
+  L : TFPHashList;
   aContinue : Boolean;
   I : Integer;
-
 begin
   aContinue:=True;
   L:=Connections.LockList;
   try
     For I:=L.Count-1 downto 0 do
-      if aContinue then
-        aIterator(TWSServerConnection(L[i]),aContinue);
+      begin
+        aIterator(TWSServerConnection(L[i]), aContinue);
+        if not aContinue then
+          RemoveConnection(TWSServerConnection(L[i]), True);
+      end;
   finally
     Connections.UnlockList;
   end;
@@ -469,7 +533,7 @@ procedure TCustomWSServer.SendFrameTo(aFrame: TWSFrame; aSelector: TWSSendToFilt
 
 var
   Connection: TWSServerConnection;
-  L : TList;
+  L : TFPHashList;
   I : integer;
 
 begin
@@ -499,7 +563,7 @@ procedure TCustomWSServer.SendMessageTo(const AMessage: string;
 
 var
   Connection: TWSServerConnection;
-  L : TList;
+  L : TFPHashList;
   I : integer;
 
 begin
@@ -587,7 +651,7 @@ end;
 function TCustomWSServer.GetActiveConnectionCount: Integer;
 
 Var
-  L : TList;
+  L : TFPHashList;
 begin
   L:=Connections.LockList;
   try
@@ -633,13 +697,12 @@ end;
 
 procedure TWSServerConnectionHandler.DoCheckConnectionRequests(aConnection: TWSServerConnection; var aContinue: boolean);
 begin
-  aConnection.CheckIncoming(WaitTime,True);
-  aContinue:=True;
+  aContinue := aConnection.CheckIncoming(WaitTime, True) <> irClose;
 end;
 
 procedure TWSServerConnectionHandler.RemoveConnection(aConnection: TWSServerConnection);
 begin
-  FServer.RemoveConnection(aConnection,True);
+  FServer.RemoveConnection(aConnection, True);
 end;
 
 procedure TWSServerConnectionHandler.HandleError(aConnection : TWSServerConnection; E: Exception);
@@ -700,7 +763,6 @@ begin
 end;
 
 procedure TWSThreadedConnectionHandler.TWSConnectionThread.Execute;
-
 begin
   try
     // Always handle first request
@@ -711,7 +773,7 @@ begin
         Terminate;
       end;
     While not Terminated do
-      if Connection.CheckIncoming(10)=irClose then
+      if Connection.CheckIncoming(WaitTime) = irClose then
       begin
         // answer for client about close connection
         if not (Connection.CloseState = csClosed) then
@@ -827,15 +889,13 @@ begin
 end;
 
 procedure TWSPooledConnectionHandler.ConnectionDone(Sender: TObject);
-
 var
   aTask : THandleRequestTask absolute Sender;
   aConn : TWSServerConnection;
-
 begin
   aConn:=aTask.Connection;
   FBusy.Remove(aConn);
-  if aConn.CheckIncoming(10)=irClose then
+  if aConn.CheckIncoming(WaitTime) = irClose then
     RemoveConnection(aConn);
 end;
 

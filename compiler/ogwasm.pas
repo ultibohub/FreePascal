@@ -253,6 +253,7 @@ interface
             '.rodata',
             '.data',
             'fpc.resources');
+        WasmPageSize = 65536;
       private
         FImports: TFPHashObjectList;
         FFuncTypes: TWasmFuncTypeTable;
@@ -4927,16 +4928,11 @@ implementation
             end;
         end;
 
-      const
-        PageSize = 65536;
-        DefaultMaxMemoryForThreads = 33554432;
       var
         cust_sec: TWasmCustomSectionType;
       begin
         result:=false;
-        FMaxMemoryPages:=align(maxheapsize,PageSize) div PageSize;
-        if (ts_wasm_threads in current_settings.targetswitches) and (FMaxMemoryPages<=0) then
-          FMaxMemoryPages:=align(DefaultMaxMemoryForThreads,PageSize) div PageSize;
+        FMaxMemoryPages:=align(maxheapsize,WasmPageSize) div WasmPageSize;
 
         { each custom sections starts with its name }
         for cust_sec in TWasmCustomSectionType do
@@ -5505,7 +5501,9 @@ implementation
       begin
         BssSec:=FindExeSection('.bss');
         InitialStackPtrAddr := (BssSec.MemPos+BssSec.Size+stacksize+15) and (not 15);
-        FMinMemoryPages := (InitialStackPtrAddr+65535) shr 16;
+        FMinMemoryPages := Max(
+          QWord(Align(QWord(InitialStackPtrAddr),QWord(WasmPageSize)) div WasmPageSize),
+          QWord(Align(QWord(heapsize),QWord(WasmPageSize)) div WasmPageSize));
         FStackPointerSym.LinkingData.GlobalInitializer.init_i32:=Int32(InitialStackPtrAddr);
       end;
 

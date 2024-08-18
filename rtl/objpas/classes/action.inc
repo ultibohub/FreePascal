@@ -45,6 +45,8 @@ end;
 
 function TBasicActionLink.Execute(AComponent: TComponent): Boolean;
 begin
+  if not Assigned(FAction) then 
+    exit;
   FAction.ActionComponent := AComponent;
   try
     Result := FAction.Execute;
@@ -79,7 +81,8 @@ end;
 
 function TBasicActionLink.Update: Boolean;
 begin
-  Result := FAction.Update;
+  if Assigned(Faction) then
+    Result := FAction.Update;
 end;
 
 {****************************************************************************}
