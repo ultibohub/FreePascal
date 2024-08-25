@@ -43,7 +43,7 @@ type
     procedure Parse;
     procedure Parse(Const aSource : String);
     function ParseRule(Const aSource : String) : TCSSRuleElement;
-    procedure AssertEquals(AMessage: String; AExpected, AActual: TCSSUnits);   overload;
+    procedure AssertEquals(AMessage: String; AExpected, AActual: TCSSUnit);   overload;
     procedure AssertEquals(AMessage: String; AExpected, AActual: TCSSBinaryOperation);   overload;
     Function CheckClass(Const aMsg : String; aExpectedClass : TCSSElementClass; aActual : TCSSElement) : TCSSElement;
     Function CheckDeclaration(aRule : TCSSRuleElement; aIndex : Integer) : TCSSDeclarationElement;
@@ -54,7 +54,7 @@ type
     function CheckList(aList: TCSSListElement; aIndex: Integer; const aName: String): TCSSElement;
     function CheckLiteral(Msg: String; aEl: TCSSelement; aValue: String) : TCSSStringElement; overload;
     function CheckLiteral(Msg: String; aEl: TCSSelement; aValue: Integer) : TCSSIntegerElement;  overload;
-    function CheckLiteral(Msg: String; aEl: TCSSelement; aValue: Integer; AUnits : TCSSUnits) : TCSSIntegerElement;  overload;
+    function CheckLiteral(Msg: String; aEl: TCSSelement; aValue: Integer; AUnits : TCSSUnit) : TCSSIntegerElement;  overload;
     Function GetCalArg(aCall : TCSSCallElement; aIndex : Integer) : TCSSElement;
   Public
     Property ParseResult : TCSSElement read FParseResult;
@@ -156,7 +156,7 @@ end;
 procedure TTestCSSFilesParser.SetUp;
 begin
   inherited SetUp;
-  With TMemIniFile.Create(ChangeFileExt(Paramstr(0),RTLString('.ini'))) do
+  With TMemIniFile.Create(ChangeFileExt(Paramstr(0),TCSSString('.ini'))) do
     try
       TestDir:=ReadString('CSS','SourceDir','css');
     finally
@@ -635,10 +635,10 @@ procedure TTestCSSParser.TestOneDeclarationIntValue;
 var
   R : TCSSRuleElement;
   D : TCSSDeclarationElement;
-  U : TCSSUnits;
+  U : TCSSUnit;
 
 begin
-  For U in TCSSUnits do
+  For U in TCSSUnit do
     begin
     R:=ParseRule('{ a : 1'+CSSUnitNames[U]+'; }');
     AssertEquals('selector count',0,R.SelectorCount);
@@ -705,7 +705,7 @@ begin
   AssertEquals('Value count', 1, D.ChildCount);
   F:=TCSSFloatElement(CheckClass('Value', TCSSFloatElement,D.Children[0]));
   AssertEquals('Value ',-0.5,F.Value);
-  if F.Units<>cuEM then
+  if F.Units<>cu_em then
     Fail('Units expected unit em, but found '+IntToStr(ord(F.Units)));
 end;
 
@@ -722,10 +722,10 @@ begin
   AssertEquals('Value count', 1, D.ChildCount);
   L:=TCSSListElement(CheckClass('List',TCSSListElement,D.Children[0]));
   AssertEquals('List element count', 4, L.ChildCount);
-  CheckLiteral('Value 1 ',L.Children[0],1,cuPX);
-  CheckLiteral('Value 2 ',L.Children[1],2,cuPX);
-  CheckLiteral('Value 3 ',L.Children[2],3,cuPX);
-  CheckLiteral('Value 4 ',L.Children[3],4,cuPX);
+  CheckLiteral('Value 1 ',L.Children[0],1,cu_px);
+  CheckLiteral('Value 2 ',L.Children[1],2,cu_px);
+  CheckLiteral('Value 3 ',L.Children[2],3,cu_px);
+  CheckLiteral('Value 4 ',L.Children[3],4,cu_px);
 end;
 
 procedure TTestCSSParser.TestOneDeclarationMultiListValue;
@@ -741,12 +741,12 @@ begin
   AssertEquals('Value count', 2, D.ChildCount);
   L:=TCSSListElement(CheckClass('List',TCSSListElement,D.Children[0]));
   AssertEquals('List element count', 2, L.ChildCount);
-  CheckLiteral('Value 1 ',L.Children[0],1,cuPX);
-  CheckLiteral('Value 2 ',L.Children[1],2,cuPX);
+  CheckLiteral('Value 1 ',L.Children[0],1,cu_px);
+  CheckLiteral('Value 2 ',L.Children[1],2,cu_px);
   L:=TCSSListElement(CheckClass('List',TCSSListElement,D.Children[1]));
   AssertEquals('List element count', 2, L.ChildCount);
-  CheckLiteral('Value 3 ',L.Children[0],3,cuPX);
-  CheckLiteral('Value 4 ',L.Children[1],4,cuPX);
+  CheckLiteral('Value 3 ',L.Children[0],3,cu_px);
+  CheckLiteral('Value 4 ',L.Children[1],4,cu_px);
 end;
 
 procedure TTestCSSParser.TestOneDeclarationExprValue;
@@ -902,7 +902,7 @@ begin
     Result:=FirstRule;
 end;
 
-procedure TTestBaseCSSParser.AssertEquals(AMessage : String; AExpected, AActual: TCSSUnits);
+procedure TTestBaseCSSParser.AssertEquals(AMessage : String; AExpected, AActual: TCSSUnit);
 
 Var
   S,EN1,EN2 : String;
@@ -910,8 +910,8 @@ Var
 begin
   If (AActual<>AExpected) then
     begin
-    EN1:=GetEnumName(TypeINfo(TCSSUnits),Ord(AExpected));
-    EN2:=GetEnumName(TypeINfo(TCSSUnits),Ord(AActual));
+    EN1:=GetEnumName(TypeINfo(TCSSUnit),Ord(AExpected));
+    EN2:=GetEnumName(TypeINfo(TCSSUnit),Ord(AActual));
     S:=Format('%s : %s <> %s',[AMessage,EN1,EN2]);
     Fail(S);
     end;
@@ -1007,7 +1007,7 @@ begin
   AssertEquals(Msg+': Value ',aValue,Result.Value);
 end;
 
-function TTestBaseCSSParser.CheckLiteral(Msg: String; aEl: TCSSelement; aValue: Integer; AUnits: TCSSUnits): TCSSIntegerElement;
+function TTestBaseCSSParser.CheckLiteral(Msg: String; aEl: TCSSelement; aValue: Integer; AUnits: TCSSUnit): TCSSIntegerElement;
 begin
   Result:=CheckLiteral(Msg,aEl,aValue);
   AssertEquals('Units',aUnits,Result.Units);

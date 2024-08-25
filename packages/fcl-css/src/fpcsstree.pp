@@ -18,7 +18,6 @@ unit fpCSSTree;
 {$ENDIF FPC_DOTTEDUNITS}
 
 {$mode ObjFPC}{$H+}
-{$codepage utf8}
 
 interface
 
@@ -29,12 +28,195 @@ uses Contnrs, RtlConsts, SysUtils, Classes, Math;
 {$ENDIF FPC_DOTTEDUNITS}
 
 
+const
+  CSSFormatSettings: TFormatSettings = (
+    CurrencyFormat: 1;
+    NegCurrFormat: 5;
+    ThousandSeparator: ',';
+    DecimalSeparator: '.';
+    CurrencyDecimals: 2;
+    DateSeparator: '-';
+    TimeSeparator: ':';
+    ListSeparator: ',';
+    CurrencyString: '$';
+    ShortDateFormat: 'd/m/y';
+    LongDateFormat: 'dd" "mmmm" "yyyy';
+    TimeAMString: 'AM';
+    TimePMString: 'PM';
+    ShortTimeFormat: 'hh:nn';
+    LongTimeFormat: 'hh:nn:ss';
+    ShortMonthNames: ('Jan','Feb','Mar','Apr','May','Jun',
+                      'Jul','Aug','Sep','Oct','Nov','Dec');
+    LongMonthNames: ('January','February','March','April','May','June',
+                     'July','August','September','October','November','December');
+    ShortDayNames: ('Sun','Mon','Tue','Wed','Thu','Fri','Sat');
+    LongDayNames:  ('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday');
+    TwoDigitYearCenturyWindow: 50;
+  );
+
 Type
   ECSSException = class(Exception);
 
-  TCSSString = UTF8String;
-  TCSSStringDynArray = array of TCSSString;
-  TCSSUnits = (cuNONE, cuPX,cuPERCENT,cuREM,cuEM,cuPT,cuFR,cuVW,cuVH,cuDEG);
+  {$IF FPC_FULLVERSION>30300}
+  TCSSChar = Char;
+  TCSSString = String; // can be AnsiString or UnicodeString
+  {$ELSE}
+  TCSSChar = Char;
+  TCSSString = String;
+  {$ENDIF}
+  PCSSChar = ^TCSSChar;
+  TCSSStringArray = array of TCSSString;
+
+  TCSSUnit = (
+    cuNone, // no unit
+    // absolute lengths
+    cu_px,   // pixels
+    cu_cm,   // centimeters
+    cu_mm,   // milimeters
+    cu_Q,    // quarter-milimeters
+    cu_in,   // inches
+    cu_pt,   // points (1pt = 1/72 of 1in)
+    cu_pc,   // picas (1pc = 12 pt)
+    // percentage
+    cuPercent, // percentage, context sensitive
+    // relative to element's font
+    cu_em,   // relative to the height of char "M" of element's font
+    cu_ex,   // relative to the height of char "x" of element's font
+    cu_cap,  // cap height, relative to nominal height of capital letters
+    cu_ch,   // relative to the width of the "0" (zero)
+    cu_ic,   // advance measure of the "水" glyph (CJK water ideograph, U+6C34)
+    cu_lh,   // line-height
+    // relative to root's font
+    cu_rem,  // root-em, as EM, except the font of the root element
+    cu_rex,  // root-ex
+    cu_rcap, // root-cap height
+    cu_rchh,  // root-ch
+    cu_ric,  // root-ic
+    cu_rlh,  // root-line-height
+    // relative to default viewport size
+    cu_vw,   // relative to 1% of the width of the viewport
+    cu_vh,   // relative to 1% of the height of the viewport
+    cu_vmax, // relative to 1% of viewport's larger dimension
+    cu_vmin, // relative to 1% of viewport's smaller dimension
+    cu_vb,   // relative to 1% of viewport's block axis
+    cu_vi,   // relative to 1% of viewport's inline axis
+    // relative to small viewport (when e.g. viewport is shrunk to show browser interface)
+    cu_svw,  // small-vw
+    cu_svh,  // small-vh
+    cu_svmax,// small-vmax
+    cu_svmin,// small-vmin
+    cu_svb,  // small-vb
+    cu_svi,  // small-vi
+    // relative to large viewport (when e.g. browser hides interface and viewport is expanded)
+    cu_lvw,  // large-vw
+    cu_lvh,  // large-vh
+    cu_lvmax,// large-vmax
+    cu_lvmin,// large-vmin
+    cu_lvb,  // large-vb
+    cu_lvi,  // large-vi
+    // relative to dynamic viewport size aka current size
+    cu_dvw,  // dynamic-vw
+    cu_dvh,  // dynamic-vh
+    cu_dvmax,// dynamic-vmax
+    cu_dvmin,// dynamic-vmin
+    cu_dvb,  // dynamic-vb
+    cu_dvi,  // dynamic-vi
+    // container queries
+    cu_cqw,  // relative to 1% of container's width
+    cu_cqh,  // relative to 1% of container's height
+    cu_cqb,  // relative to 1% of container's block axis dimension
+    cu_cqi,  // relative to 1% of container's inline axis dimension
+    cu_cqmin,// relative to 1% of container's smaller dimension
+    cu_cqmax,// relative to 1% of container's larger dimension
+    // angles
+    cu_deg,  // degrees, full circle is 360deg
+    cu_grad, // gradians, full circle is 400grad
+    cu_rad,  // radians, full circle is (2*pi)rad
+    cu_turn, // turns, full circle is 1turn
+    // special
+    cu_fr    // fraction of flex space
+    );
+  TCSSUnits = set of TCSSUnit;
+const
+  cuAllAbsoluteLengths = [cu_px,cu_cm,cu_mm,cu_Q,cu_in,cu_pt,cu_pc];
+  cuAllViewportLengths = [cu_vw,cu_vh,cu_vmax,cu_vmin,cu_vb,cu_vi,
+                          cu_svw,cu_svh,cu_svmax,cu_svmin,cu_svb,cu_svi,
+                          cu_lvw,cu_lvh,cu_lvmax,cu_lvmin,cu_lvb,cu_lvi,
+                          cu_dvw,cu_dvh,cu_dvmax,cu_dvmin,cu_dvb,cu_dvi];
+  cuAllRelativeFontSize = [cu_em,cu_ex,cu_cap,cu_ch,cu_ic,cu_lh,
+                           cu_rem,cu_rex,cu_rcap,cu_rchh,cu_ric,cu_rlh];
+  cuAllLengths = cuAllAbsoluteLengths+cuAllViewportLengths+cuAllRelativeFontSize;
+  cuAllLengthsAndPercent = cuAllLengths+[cuPercent];
+  cuAllAngles = [cu_deg,cu_grad,cu_rad,cu_turn];
+
+  CSSUnitNames: array[TCSSUnit] of TCSSString = (
+    '',     // no unit
+    // absolute lengths
+    'px',   // pixels
+    'cm',   // centimeters
+    'mm',   // milimeters
+    'Q',    // quarter-milimeters, Big Q!
+    'in',   // inches
+    'pt',   // points
+    'pc',   // picas
+    // %
+    '%',    // percentage
+    // relative to element's font
+    'em',   // elements font-size
+    'ex',   // elements height of "x"
+    'cap',  // cap-height
+    'ch',   // character "0"
+    'ic',   // CJK water ideograph
+    'lh',   // line-height
+    // relative to root's font
+    'rem',  // root-em
+    'rex',  // root-ex
+    'rcap', // root-cap-height
+    'rch',  // root-character "0"
+    'ric',  // root-ic
+    'rlh',  // root-line-height
+    // relative to viewport
+    'vw',   // viewport-width
+    'vh',   // viewport-height
+    'vmax', // viewport larger dimension
+    'vmin', // viewport smaller dimension
+    'vb',   // viewport block axis size
+    'vi',   // viewport inline axis size
+    'svw',  // small-vw
+    'svh',  // small-vh
+    'svmax',// small-vmax
+    'svmin',// small-vmin
+    'svb',  // small-vb
+    'svi',  // small-vi
+    'lvw',  // large-vw
+    'lvh',  // large-vh
+    'lvmax',// large-vmax
+    'lvmin',// large-vmin
+    'lvb',  // large-vb
+    'lvi',  // large-vi
+    'dvw',  // dynamic-vw
+    'dvh',  // dynamic-vh
+    'dvmax',// dynamic-vmax
+    'dvmin',// dynamic-vmin
+    'dvb',  // dynamic-vb
+    'dvi',  // dynamic-vi
+    // container queries
+    'cqw',  // container's width
+    'cqh',  // container's height
+    'cqb',  // container's block axis dimension
+    'cqi',  // container's inline axis dimension
+    'cqmin',// container's smaller dimension
+    'cqmax',// container's larger dimension
+    // angles
+    'deg',  // degrees
+    'grad', // gradians
+    'rad',  // radians
+    'turn', // turns
+    // special
+    'fr'    // fraction
+    );
+
+type
   TCSSType = (
     csstUnknown,
     csstInteger, csstString, csstFloat,
@@ -145,7 +327,7 @@ Type
   TCSSIntegerElement = class(TCSSElement)
   private
     FIsEscaped: Boolean;
-    FUnits: TCSSUnits;
+    FUnits: TCSSUnit;
     FValue: Integer;
   protected
     function GetAsString(aFormat : Boolean; const aIndent : TCSSString): TCSSString; override;
@@ -154,7 +336,7 @@ Type
     function Equals(Obj: TObject): boolean; override;
     Property Value : Integer Read FValue Write FValue;
     Property IsEscaped : Boolean Read FIsEscaped Write FIsEscaped;
-    Property Units : TCSSUnits Read FUnits Write FUnits;
+    Property Units : TCSSUnit Read FUnits Write FUnits;
   end;
   TCSSIntegerElementClass = class of TCSSIntegerElement;
 
@@ -162,7 +344,7 @@ Type
 
   TCSSFloatElement = class(TCSSElement)
   private
-    FUnits: TCSSUnits;
+    FUnits: TCSSUnit;
     FValue: Double;
   protected
     function GetAsString(aFormat : Boolean; const aIndent : TCSSString): TCSSString;override;
@@ -170,7 +352,7 @@ Type
     Class function CSSType : TCSSType; override;
     function Equals(Obj: TObject): boolean; override;
     Property Value : Double Read FValue Write FValue;
-    Property Units : TCSSUnits Read FUnits Write FUnits;
+    Property Units : TCSSUnit Read FUnits Write FUnits;
   end;
   TCSSFloatElementClass = class of TCSSFloatElement;
 
@@ -448,14 +630,14 @@ Function StringToCSSString(const S : TCSSString) : TCSSString;
 // Escapes non-identifier characters C to \C
 Function StringToIdentifier(const S : TCSSString) : TCSSString;
 
+function FloatToCSSStr(const f: double): string;
+
 Function GetCSSObj(El: TCSSElement): TCSSString;
 Function GetCSSPath(El: TCSSElement): TCSSString;
 
 Function CSSElementListEquals(ListA, ListB: TCSSElementList): boolean;
 
 Const
-  CSSUnitNames : Array[TCSSUnits] of TCSSString =
-        ('','px','%','rem','em','pt','fr','vw','vh','deg');
   UnaryOperators : Array[TCSSUnaryOperation] of TCSSString =
         ('::','-','+','/','>','~');
   BinaryOperators : Array[TCSSBinaryOperation] of TCSSString =
@@ -564,6 +746,11 @@ begin
     Inc(iIn);
     end;
   SetLength(Result,iOut);
+end;
+
+function FloatToCSSStr(const f: double): string;
+begin
+  Result:=FloatToStr(f,CSSFormatSettings);
 end;
 
 function GetCSSObj(El: TCSSElement): TCSSString;
@@ -1075,9 +1262,7 @@ end;
 function TCSSFloatElement.GetAsString(aFormat: Boolean;
   const aIndent: TCSSString): TCSSString;
 begin
-  Str(Value:5:2,Result);
-  Result:=TrimLeft(Result); // Space for positive numbers
-  Result:=Result+CSSUnitNames[Units];
+  Result:=FloatToCSSStr(Value)+CSSUnitNames[Units];
   if aFormat then
     Result:=aIndent+Result;
 end;

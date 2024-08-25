@@ -1809,9 +1809,9 @@ implementation
 
   procedure thlcgwasm.a_op_reg_reg_reg_checkoverflow(list: TAsmList; op: TOpCg; size: tdef; src1, src2, dst: tregister; setflags: boolean; var ovloc: tlocation);
     var
-      orgsrc1, orgsrc2: tregister;
+      orgsrc1: tregister = NR_NO;
+      orgsrc2: tregister = NR_NO;
       docheck: boolean;
-      lab: tasmlabel;
     begin
       if not setflags then
         begin
@@ -1860,12 +1860,12 @@ implementation
                   (torddef(size).ordtype in [u64bit,u16bit,u32bit,u8bit,uchar,
                                              pasbool1,pasbool8,pasbool16,pasbool32,pasbool64]))) then
             begin
-              a_load_reg_stack(list,size,src1);
+              a_load_reg_stack(list,size,orgsrc1);
               if op in [OP_SUB,OP_IMUL] then
                 a_op_stack(list,OP_NOT,size);
-              a_op_reg_stack(list,OP_XOR,size,src2);
+              a_op_reg_stack(list,OP_XOR,size,orgsrc2);
               a_op_stack(list,OP_NOT,size);
-              a_load_reg_stack(list,size,src1);
+              a_load_reg_stack(list,size,orgsrc1);
               a_op_reg_stack(list,OP_XOR,size,dst);
               a_op_stack(list,OP_AND,size);
               a_op_const_stack(list,OP_SHR,size,(size.size*8)-1);
@@ -1878,16 +1878,21 @@ implementation
             end
           else
             begin
-              current_asmdata.getjumplabel(lab);
-              { can be optimized by removing duplicate xor'ing to convert dst from
-                signed to unsigned quadrant }
-              list.concat(taicpu.op_none(a_block));
-              a_load_const_reg(list,s32inttype,0,ovloc.register);
-              a_cmp_reg_reg_label(list,size,OC_B,dst,src1,lab);
-              a_cmp_reg_reg_label(list,size,OC_B,dst,src2,lab);
-              a_load_const_reg(list,s32inttype,1,ovloc.register);
-              list.concat(taicpu.op_none(a_end_block));
-              a_label(list,lab);
+              if op=OP_SUB then
+                begin
+                  { unsigned (src1-src2) overflows iff (src1<src2) }
+                  a_cmp_reg_reg_stack(list,size,OC_B,orgsrc1,orgsrc2);
+                  a_load_stack_reg(list,s32inttype,ovloc.register);
+                end
+              else
+                begin
+                  { can be optimized by removing duplicate xor'ing to convert dst from
+                    signed to unsigned quadrant }
+                  a_cmp_reg_reg_stack(list,size,OC_AE,dst,orgsrc1);
+                  a_cmp_reg_reg_stack(list,size,OC_AE,dst,orgsrc2);
+                  a_op_stack(list,OP_AND,s32inttype);
+                  a_load_stack_reg(list,s32inttype,ovloc.register);
+                end;
             end;
         end
       else
@@ -2270,6 +2275,7 @@ implementation
                   (lto > aintmax) then
                  begin
                    g_call_system_proc(list,'fpc_rangeerror',[],nil).resetiftemp;
+                   hlcg.g_maybe_checkforexceptions(current_asmdata.CurrAsmList);
                    exit
                  end;
                { from is signed and to is unsigned -> when looking at to }
@@ -2285,6 +2291,7 @@ implementation
                   (hto < 0) then
                  begin
                    g_call_system_proc(list,'fpc_rangeerror',[],nil).resetiftemp;
+                   hlcg.g_maybe_checkforexceptions(current_asmdata.CurrAsmList);
                    exit
                  end;
                { from is unsigned and to is signed -> when looking at to }
@@ -2314,6 +2321,7 @@ implementation
       thlcgwasm(hlcg).decstack(current_asmdata.CurrAsmList,1);
 
       g_call_system_proc(list,'fpc_rangeerror',[],nil).resetiftemp;
+      hlcg.g_maybe_checkforexceptions(current_asmdata.CurrAsmList);
 
       current_asmdata.CurrAsmList.concat(taicpu.op_none(a_end_if));
     end;
@@ -2451,7 +2459,8 @@ implementation
 
   procedure thlcgwasm.g_procdef(list: TAsmList; pd: tprocdef);
     begin
-      list.Concat(tai_functype.create(pd.mangledname,tcpuprocdef(pd).create_functype));
+      if not pd.is_generic then
+        list.Concat(tai_functype.create(pd.mangledname,tcpuprocdef(pd).create_functype));
     end;
 
   procedure thlcgwasm.g_maybe_checkforexceptions(list: TasmList);

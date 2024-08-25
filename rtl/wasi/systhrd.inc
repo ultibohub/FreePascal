@@ -25,7 +25,7 @@
 {//$DEFINE DEBUGWASMTHREADS}
 
 Const
-  MaxThreadSignal = 1000; // maximum threads to signal
+  MaxThreadSignal = high(uint32); // maximum threads to signal
 
 Type
   TThreadState = (tsNone,tsInit,tsRunning,tsCanceling,tsExit);
@@ -50,6 +50,7 @@ Type
   TWasmThread = Record
     InitialStackPointer : Pointer;
     InitTLSBase : Pointer;
+    ThreadHasFinished : Boolean;
     ID : LongInt; // Allocated by host
     ThreadFunction : TThreadFunc;
     ThreadFunctionArg : Pointer;
@@ -209,21 +210,30 @@ Var
 
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : setting signal=1');{$ENDIF}
-  fpc_wasm32_i32_atomic_store(@P^.Signal,1);
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : notifying waiting threads');{$ENDIF}
-  a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),MaxThreadSignal);
+  if fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@P^.Signal,0,1)=0 then
+    begin
+      {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : notifying 1 waiting thread');{$ENDIF}
+      a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),1);
+    end
+  else
+    begin
+      {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventSetEvent : signal was already 1, nothing to do');{$ENDIF}
+    end;
 end;
 
 procedure WasiRTLEventDestroy(AEvent:PRTLEvent);
 
 Var
   P : PWasmRTLEvent absolute aEvent;
+  a : LongInt;
 
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : setting destroying to true');{$ENDIF}
   fpc_wasm32_i32_atomic_store8(@P^.Destroying,1);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : setting event to notify others');{$ENDIF}
-  WasiRTLEventSetEvent(aEvent);
+  fpc_wasm32_i32_atomic_store(@P^.Signal,1);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : notifying waiting threads');{$ENDIF}
+  a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),MaxThreadSignal);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventDestroy : freeing memory');{$ENDIF}
   Dispose(P);
 end;
@@ -239,37 +249,78 @@ begin
   fpc_wasm32_i32_atomic_store(@P^.Signal,0);
 end;
 
-procedure WasiRTLEventWaitFor_WaitAllowed(AEvent:PWasmRTLEvent; aTimeoutNs : Int64);
+procedure WasiRTLEventWaitFor_WaitAllowed(P:PWasmRTLEvent; aTimeoutNs : Int64);
 
 Var
   a : Longint;
+  EndTime: TOSTime;
+  RemainingTime: Int64;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitAllowed : waiting');{$ENDIF}
-  a:=fpc_wasm32_memory_atomic_wait32(@(aEvent^.Signal),0,aTimeoutNs);
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitAllowed : done');{$ENDIF}
+  if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+    exit;  // abandoned
+  if aTimeOutNS>=0 then
+    EndTime:=GetClockTime+aTimeOutNS
+  else
+    begin
+      EndTime:=0;
+      RemainingTime:=-1;
+    end;
+  repeat
+    if aTimeOutNS>=0 then
+      begin
+        RemainingTime:=EndTime-GetClockTime;
+        if RemainingTime<0 then
+          exit;  // timeout
+      end;
+    case fpc_wasm32_memory_atomic_wait32(@P^.Signal,0,RemainingTime) of
+      0, { "ok" }
+      1: { "not-equal" }
+        begin
+          if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+            exit  // abandoned
+          else if fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@P^.Signal,1,0)=1 then
+            exit  // signaled
+          else
+            ; { try waiting again (loop continues) }
+        end;
+      2: { "timed-out" }
+        exit;  // timeout or abandoned
+      else { invalid result from wait }
+        exit;  // error
+    end;
+  until false;
 end;
 
 
-procedure WasiRTLEventWaitFor_WaitNotAllowed(AEvent:PWasmRTLEvent; aTimeoutNs : Int64);
+procedure WasiRTLEventWaitFor_WaitNotAllowed(P:PWasmRTLEvent; aTimeoutNs : Int64);
 
 Var
-  EndTime : Int64;
-  IsTimeOut : Boolean;
-  IsDone : Boolean;
+  EndTime: TOSTime;
+  RemainingTime: Int64;
 
 begin
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitNotAllowed : waiting');{$ENDIF}
-  if aTimeoutNs>=0 then
-    EndTime:=GetClockTime+aTimeoutNs
+  if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+    exit;  // abandoned
+  if aTimeOutNS>=0 then
+    EndTime:=GetClockTime+aTimeOutNS
   else
-    EndTime:=0;
-  Repeat
-    IsTimeOut:=(aTimeoutNs>=0) and (GetClockTime>EndTime);
-    IsDone:=(fpc_wasm32_i32_atomic_load(@aEvent^.Signal)=1) or (fpc_wasm32_i32_atomic_load8_u(@aEvent^.Destroying)<>0);
-  Until isTimeOut or IsDone;
-  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiRTLEventWaitFor_WaitNotAllowed : done waiting (isTimeout='+intToStr(Ord(isTimeOut))+',IsDone='+intToStr(Ord(IsDone))+
-                                        ',Signal='+IntToStr(aEvent^.Signal)+',Destroying='+IntToStr(Ord(aEvent^.Destroying))+')');{$ENDIF}
+    begin
+      EndTime:=0;
+      RemainingTime:=-1;
+    end;
+  repeat
+    if aTimeOutNS>=0 then
+      begin
+        RemainingTime:=EndTime-GetClockTime;
+        if RemainingTime<0 then
+          exit;  // timeout
+      end;
+    if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+      exit  // abandoned
+    else if fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@P^.Signal,1,0)=1 then
+      exit;  // signaled
+  until false;
 end;
 
 procedure WasiRTLEventWaitFor(AEvent:PRTLEvent);
@@ -396,11 +447,37 @@ asm
   local.get 0  ;; tid
   local.get 1  ;; start_arg
   call $FPCWasmThreadStartPascal
+
+  ;; Set start_arg^.ThreadHasFinished to true.
+  ;; This is done from within inline asm, after the pascal code has finished
+  ;; executing, because it indicates that the thread no longer needs its TLS
+  ;; block and linear stack block, so this means it's safe to free them.
+  local.get 1  ;; start_arg
+  i32.const 8  ;; offset to ThreadHasFinished
+  i32.add
+  i32.const 1  ;; true
+  i32.atomic.store8
 end;
 
 exports wasi_thread_start;
 
 Function wasi_thread_spawn(start_arg: PWasmThread) : LongInt; external 'wasi' name 'thread-spawn';
+
+{ Just because we set the original pointer to nil, using InterlockedExchange
+  to avoid race conditions leading to double free, doesn't mean this function is
+  meant to be called more than once, or from multiple threads. This just adds
+  some extra layer of protection. }
+procedure FreeStackAndTlsBlock(T : PWasmThread);
+var
+  P: Pointer;
+begin
+  P:=InterlockedExchange(T^.StackBlock,nil);
+  if Assigned(P) then
+    FreeMem(P);
+  P:=InterlockedExchange(T^.TLSBlock,nil);
+  if Assigned(P) then
+    FreeMem(P);
+end;
 
 function WasiBeginThread(sa : Pointer;stacksize : PtrUInt; ThreadFunction : tthreadfunc;p : pointer;creationFlags : dword; var ThreadId : TThreadID) : TThreadID;
 
@@ -411,7 +488,9 @@ Var
 
 begin
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread(sa: '+IntToStr(PtrUint(Sa))+',ss: '+IntToStr(PtrUint(StackSize))+',TF: '+IntToStr(PtrUint(ThreadFunction))+',Arg: '+IntToStr(PtrUint(P))+',fl: '+IntToStr(PtrUint(CreationFlags))+',ID: '+IntToStr(PtrUint(ThreadID))+')');{$ENDIF}
+  IsMultiThread:=true;
   New(T);
+  fpc_wasm32_i32_atomic_store8(@T^.ThreadHasFinished,0);
   T^.StackBlock:=nil;
   T^.TLSBlock:=nil;
   ThreadID:=T;
@@ -441,10 +520,7 @@ begin
     {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: spawn thread failed');{$ENDIF}
     WasiRTLEventDestroy(T^.DoneEvent);
     DoneMutex(T^.Running);
-    if Assigned(T^.StackBlock) then
-      FreeMem(T^.StackBlock);
-    if Assigned(T^.TLSBlock) then
-      FreeMem(T^.TLSBlock);
+    FreeStackAndTlsBlock(T);
     Dispose(T);
     {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WasiBeginThread: spawn thread failed, freeing thread struct');{$ENDIF}
     WasiBeginThread:=TThreadID(0);
@@ -511,6 +587,11 @@ begin
   UnLockMuTex(PWasmThread(ThreadHandle)^.Running);
   {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WaitForThreadTerminate('+IntToStr(PtrUINT(TH))+') : Lock released');{$ENDIF}
   WasiWaitForThreadTerminate:=DWord(Res);
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WaitForThreadTerminate('+IntToStr(PtrUINT(TH))+') : Waiting until ThreadHasFinished becomes true');{$ENDIF}
+  repeat
+  until fpc_wasm32_i32_atomic_load8_u(@TH^.ThreadHasFinished)<>0;
+  {$IFDEF DEBUGWASMTHREADS}DebugWriteln('WaitForThreadTerminate('+IntToStr(PtrUINT(TH))+') : FreeStackAndTlsBlock');{$ENDIF}
+  FreeStackAndTlsBlock(TH);
 end;
 
 function WasiThreadSetPriority(threadHandle : TThreadID; Prio: longint): boolean;
@@ -642,31 +723,226 @@ end;
   Basic event
   ----------------------------------------------------------------------}
 
+const
+  wrSignaled  = 0;
+  wrTimeout   = 1;
+  wrAbandoned = 2;
+  wrError     = 3;
 
+type
+  PWasmBasicEventState = ^TWasmBasicEventState;
+  TWasmBasicEventState = record
+    Signal : Longint;
+    ManualReset : Boolean;
+    Destroying : Boolean;
+  end;
 
 function WasiBasicEventCreate(EventAttributes :Pointer;  AManualReset,InitialState : Boolean;const Name:ansistring):pEventState;
+var
+  P: PWasmBasicEventState;
 begin
-  {todo:implement}
+  New(P);
+  fpc_wasm32_i32_atomic_store(@P^.Signal,Ord(InitialState));
+  fpc_wasm32_i32_atomic_store8(@P^.ManualReset,Ord(AManualReset));
+  fpc_wasm32_i32_atomic_store8(@P^.Destroying,0);
+  Result:=P;
 end;
 
 procedure WasiBasicEventDestroy(state:peventstate);
+var
+  P: PWasmBasicEventState absolute state;
+  a: longword;
 begin
-  {todo:implement}
+  fpc_wasm32_i32_atomic_store8(@P^.Destroying,1);
+  fpc_wasm32_i32_atomic_store(@P^.Signal,1);
+  a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),MaxThreadSignal);
+  Dispose(P);
 end;
 
 procedure WasiBasicEventResetEvent(state:peventstate);
+var
+  P: PWasmBasicEventState absolute state;
 begin
-  {todo:implement}
+  fpc_wasm32_i32_atomic_store(@P^.Signal,0);
 end;
 
 procedure WasiBasicEventSetEvent(state:peventstate);
+var
+  P: PWasmBasicEventState absolute state;
+  a: longword;
 begin
-  {todo:implement}
+  if fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@P^.Signal,0,1)=0 then
+    begin
+      if fpc_wasm32_i32_atomic_load8_u(@P^.ManualReset)<>0 then
+        a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),MaxThreadSignal)
+      else
+        a:=fpc_wasm32_memory_atomic_notify(@(P^.Signal),1);
+    end;
+end;
+
+function WasiBasicEventWaitFor_WaitAllowed(aTimeOutNS:Int64;P:PWasmBasicEventState):longint;
+var
+  EndTime: TOSTime;
+  RemainingTime: Int64;
+begin
+  if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+    begin
+      result:=wrAbandoned;
+      exit;
+    end;
+  if fpc_wasm32_i32_atomic_load8_u(@P^.ManualReset)<>0 then
+    begin
+      { manual reset event }
+      case fpc_wasm32_memory_atomic_wait32(@P^.Signal,0,aTimeOutNS) of
+        0, 1:
+          result:=wrSignaled;
+        2:
+          result:=wrTimeout;
+        else
+          result:=wrError;
+      end;
+      if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+        result:=wrAbandoned;
+    end
+  else
+    begin
+      { auto reset event }
+      if aTimeOutNS>=0 then
+        EndTime:=GetClockTime+aTimeOutNS
+      else
+        begin
+          EndTime:=0;
+          RemainingTime:=-1;
+        end;
+      repeat
+        if aTimeOutNS>=0 then
+          begin
+            RemainingTime:=EndTime-GetClockTime;
+            if RemainingTime<0 then
+              begin
+                result:=wrTimeout;
+                exit;
+              end;
+          end;
+        case fpc_wasm32_memory_atomic_wait32(@P^.Signal,0,RemainingTime) of
+          0, { "ok" }
+          1: { "not-equal" }
+            begin
+              if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+                begin
+                  result:=wrAbandoned;
+                  exit;
+                end
+              else if fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@P^.Signal,1,0)=1 then
+                begin
+                  result:=wrSignaled;
+                  exit;
+                end
+              else
+                ; { try waiting again (loop continues) }
+            end;
+          2: { "timed-out" }
+            if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+              begin
+                result:=wrAbandoned;
+                exit;
+              end
+            else
+              begin
+                result:=wrTimeout;
+                exit;
+              end;
+          else { invalid result from wait }
+            begin
+              result:=wrError;
+              exit;
+            end;
+        end;
+      until false;
+    end;
+end;
+
+function WasiBasicEventWaitFor_WaitNotAllowed(aTimeOutNS:Int64;P:PWasmBasicEventState):longint;
+var
+  EndTime: TOSTime;
+  RemainingTime: Int64;
+begin
+  if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+    begin
+      result:=wrAbandoned;
+      exit;
+    end;
+  if aTimeOutNS>=0 then
+    EndTime:=GetClockTime+aTimeOutNS
+  else
+    begin
+      EndTime:=0;
+      RemainingTime:=-1;
+    end;
+  if fpc_wasm32_i32_atomic_load8_u(@P^.ManualReset)<>0 then
+    begin
+      { manual reset event }
+      repeat
+        if aTimeOutNS>=0 then
+          begin
+            RemainingTime:=EndTime-GetClockTime;
+            if RemainingTime<0 then
+              begin
+                result:=wrTimeout;
+                exit;
+              end;
+          end;
+        if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+          begin
+            result:=wrAbandoned;
+            exit;
+          end
+        else if fpc_wasm32_i32_atomic_load(@P^.Signal)<>0 then
+          begin
+            result:=wrSignaled;
+            exit;
+          end;
+      until false;
+    end
+  else
+    begin
+      { auto reset event }
+      repeat
+        if aTimeOutNS>=0 then
+          begin
+            RemainingTime:=EndTime-GetClockTime;
+            if RemainingTime<0 then
+              begin
+                result:=wrTimeout;
+                exit;
+              end;
+          end;
+        if fpc_wasm32_i32_atomic_load8_u(@P^.Destroying)<>0 then
+          begin
+            result:=wrAbandoned;
+            exit;
+          end
+        else if fpc_wasm32_i32_atomic_rmw_cmpxchg_u(@P^.Signal,1,0)=1 then
+          begin
+            result:=wrSignaled;
+            exit;
+          end;
+      until false;
+    end;
 end;
 
 function WasiBasicEventWaitFor(timeout:cardinal;state:peventstate;FUseComWait : Boolean=False):longint;
+var
+  timeoutNS: Int64;
 begin
-  {todo:implement}
+  if timeout<>$FFFFFFFF then
+    timeoutNS:=timeout*1000000
+  else
+    timeoutNS:=-1;
+  if isWaitAllowed then
+      Result:=WasiBasicEventWaitFor_WaitAllowed(timeoutNS,PWasmBasicEventState(state))
+    else
+      Result:=WasiBasicEventWaitFor_WaitNotAllowed(timeoutNS,PWasmBasicEventState(state));
 end;
 
 

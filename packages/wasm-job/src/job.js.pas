@@ -771,7 +771,7 @@ type
     function _getResizable: Boolean;
   public
     constructor create (aSize : integer);
-    class function GlobalMemory : TJSArrayBuffer;
+    class function GlobalMemory : IJSArrayBuffer;
     function Slice : IJSArrayBuffer;
     function Slice (aStart : NativeInt): IJSArrayBuffer;
     function Slice (aStart,aEndExclusive : NativeInt): IJSArrayBuffer;
@@ -821,6 +821,8 @@ type
     constructor Create(aBytes : PByte; aLen : NativeUInt);
     constructor Create(aBytes : TBytes);
     constructor create(aArray : IJSArrayBuffer);
+    constructor create(aArray : IJSArrayBuffer; aByteOffset: NativeUint);
+    constructor create(aArray : IJSArrayBuffer; aByteOffset: NativeUint; Len : NativeUint);
     class function Cast(const Intf: IJSObject): IJSTypedArray; overload;
     procedure set_(aArray : IJSTypedArray; TargetOffset : Integer);
     procedure set_(aArray : IJSTypedArray);
@@ -2234,6 +2236,16 @@ begin
   JobCreate(True,[aArray]);
 end;
 
+constructor TJSTypedArray.create(aArray: IJSArrayBuffer; aByteOffset: NativeUint);
+begin
+  JobCreate(True,[aArray,aByteOffset]);
+end;
+
+constructor TJSTypedArray.create(aArray: IJSArrayBuffer; aByteOffset: NativeUint; Len: NativeUint);
+begin
+  JobCreate(True,[aArray,aByteOffset,Len]);
+end;
+
 class function TJSTypedArray.Cast(const Intf: IJSObject): IJSTypedArray;
 begin
   Result:=TJSTypedArray.JOBCast(Intf);
@@ -2282,9 +2294,15 @@ begin
   JobCreate(True,[aSize])
 end;
 
-class function TJSArrayBuffer.GlobalMemory: TJSArrayBuffer;
+class function TJSArrayBuffer.GlobalMemory: IJSArrayBuffer;
+
+var
+  Obj : TJSArrayBuffer;
+
 begin
-  Result:=JOBCreateGlobal('InstanceBuffer');
+  Obj:=TJSArrayBuffer.JOBCreateGlobal('InstanceBuffer');
+  Obj.FJOBObjectIDOwner:=True;
+  Result:=Obj;
 end;
 
 function TJSArrayBuffer.Slice: IJSArrayBuffer;
@@ -2985,7 +3003,7 @@ begin
       ObjId:=PLongWord(p)^;
       inc(p,4);
       Result:=aResultClass.JOBCreateFromID(ObjId);
-      Result.JOBObjectIDOwner:=false; // owned by caller (JS code in browser)
+      Result.JOBObjectIDOwner:=True; // The objects passed are not freed, we need to do it.
     end
   else
     raise EJSArgParse.Create(JOBArgNames[p^]);
@@ -4355,9 +4373,10 @@ var
   Buf: array[0..7] of byte;
   p: PByte;
   r: TJOBResult;
-  Obj: TJSObject;
+  Obj: IInterface;
   func : TJSFunction;
   objid,thisid : TJOBObjectID;
+  Tmp : TJSObject;
 begin
   FillByte(Buf[0],length(Buf),0);
   p:=@Buf[0];
@@ -4383,8 +4402,10 @@ begin
     end;
   JOBResult_Object:
     begin
-    Obj:=TJSObject.JOBCreateFromID(PJOBObjectID(p)^);
-    Result:=Obj as IJSObject;
+    Tmp:=TJSObject.JOBCreateFromID(PJOBObjectID(p)^);
+    Obj:=Tmp;
+    Result:=Obj;
+    Obj:=nil;
     end;
   else
     VarClear(Result);

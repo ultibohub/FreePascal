@@ -1935,20 +1935,39 @@ begin
   Inherited destroy;
 end;
 
-
-
-function TStringList.Add(const S: string): Integer;
+function TStringList.DoAddObject(const S: string; AObject: TObject): Integer;
 
 begin
   If (SortStyle<>sslAuto) then
     Result:=FCount
   else
     If Find (S,Result) then
-      Case DUplicates of
+      Case Duplicates of
         DupIgnore : Exit;
         DupError : Error(SDuplicateString,0)
       end;
-   InsertItem (Result,S);
+   InsertItem (Result,S);  
+   if (aObject<>Nil) then 
+     begin
+     BeginUpdate;
+     try
+      Objects[Result]:=AObject;
+     finally
+       EndUpdate;
+     end;
+     end;
+end;
+
+function TStringList.Add(const S: string): Integer;
+
+begin
+  Result:=DoAddObject(S, nil);
+end;
+
+function TStringList.AddObject(const S: string; AObject: TObject): Integer;
+
+begin
+  Result:=DoAddObject(S,aObject);
 end;
 
 procedure TStringList.Clear;
