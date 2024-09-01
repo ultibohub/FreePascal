@@ -102,7 +102,7 @@ procedure sincos(theta : single;out sinus,cosinus : single);assembler;
 
 {$define FPC_MATH_HAS_DIVMOD}
 {$asmmode intel}
-procedure DivMod(Dividend: Integer; Divisor: Word; var Result, Remainder: Word);assembler;
+procedure DivMod(Dividend: Integer; Divisor: Word; var Result, Remainder: Word);assembler;nostackframe;
 asm
 {$ifdef WIN64}
   mov eax, ecx
@@ -123,7 +123,7 @@ asm
 end;
 
 
-procedure DivMod(Dividend: Integer; Divisor: Word; var Result, Remainder: SmallInt);assembler;
+procedure DivMod(Dividend: Integer; Divisor: Word; var Result, Remainder: SmallInt);assembler;nostackframe;
 asm
 {$ifdef WIN64}
   mov eax, ecx
@@ -144,7 +144,7 @@ asm
 end;
 
 
-procedure DivMod(Dividend: DWord; Divisor: DWord; var Result, Remainder: DWord);assembler;
+procedure DivMod(Dividend: DWord; Divisor: DWord; var Result, Remainder: DWord);assembler;nostackframe;
 asm
 {$ifdef WIN64}
   mov eax, ecx
@@ -164,7 +164,7 @@ asm
 end;
 
 
-procedure DivMod(Dividend: Integer; Divisor: Integer; var Result, Remainder: Integer);assembler;
+procedure DivMod(Dividend: Integer; Divisor: Integer; var Result, Remainder: Integer);assembler;nostackframe;
 asm
 {$ifdef WIN64}
   mov eax, ecx

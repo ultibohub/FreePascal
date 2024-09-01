@@ -62,10 +62,6 @@ type
 
   TDuplicates = {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Classes.TDuplicates;
 
-  {$ifdef VER3_0_0}
-  TArray<T> = array of T;
-  {$endif}
-
   // bug #24254 workaround
   // should be TArray = record class procedure Sort<T>(...) etc.
   TBinarySearchResult = record
@@ -1335,17 +1331,11 @@ begin
 
     // deferred test for equality
 
+  AFoundIndex := imin;
   LCompare := AComparer.Compare(AValues[imin], AItem);
-  if (imax = imin) and (LCompare = 0) then
-  begin
-    AFoundIndex := imin;
-    Exit(True);
-  end
-  else
-  begin
-    AFoundIndex := -1;
-    Exit(False);
-  end;
+  Result := (imax = imin) and (LCompare = 0);
+  if not Result and (LCompare < 0) then
+    Inc(AFoundIndex);
 end;
 
 { TEnumerator<T> }

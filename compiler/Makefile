@@ -5226,7 +5226,7 @@ $(SYMLINKINSTALL_TARGETS):
 alltargets: $(ALLTARGETS)
 .PHONY: all compiler echotime ppuclean execlean clean distclean
 all: compiler $(addsuffix _all,$(TARGET_DIRS))
-compiler: $(COMPILER_UNITTARGETDIR) $(COMPILER_TARGETDIR) $(EXENAME)
+compiler: msg $(COMPILER_UNITTARGETDIR) $(COMPILER_TARGETDIR) $(EXENAME)
 ifeq ($(MAKELEVEL),0)
 ifndef STARTTIME
 ifdef DATE
@@ -5267,6 +5267,7 @@ distclean: tempclean execlean cleanall $(addsuffix _clean,$(ALLTARGETS) $(BETATA
 $(MSG2INC): $(COMPILER_TARGETDIR) $(COMPILER_UNITTARGETDIR) $(COMPILERUTILSDIR)/msg2inc.pp
 	$(COMPILER) -FE. $(COMPILERUTILSDIR)/msg2inc.pp
 msgtxt.inc: $(MSGFILE)
+	$(MAKE) rtl
 	$(MAKE) $(MSG2INC)
 	$(MSG2INC) $(MSGFILE) msg msg
 msg: msgtxt.inc

@@ -2581,7 +2581,12 @@ endif
 ifndef LOG
 export LOG:=$(TEST_OUTPUTDIR)/log
 endif
-LOGFILES=$(TEST_OUTPUTDIR)/log $(TEST_OUTPUTDIR)/longlog $(TEST_OUTPUTDIR)/faillist
+ifndef SEPLOG
+ifdef MAKEINC_SEPARATE
+export SEPLOG:=$(TEST_OUTPUTDIR)/seplog
+endif
+endif
+LOGFILES=$(LOG) $(LONGLOG) $(FAILLIST) $(SEPLOG)
 LOGEXT=.testlog .tbslog .tbflog .webtbslog .webtbflog
 TESTUNITDIRS=system dos crt objects strings sysutils math sharemem strutils matrix lineinfo ucomplex fpwidestring cpu fmtbcd windows classes character dateutil fpcunit softfpu variants sortbase sortalgs linux unixutil types nullable contnrs convutils
 TESTDIRECTDIRS=
@@ -2844,18 +2849,23 @@ $(GPARMAKE): utils/gparmake.pp $(CREATELST)
 $(CREATELST): utils/createlst.pp
 	$(Q)$(MAKE)  $(COMPILER_UNITTARGETDIR)
 	$(FPC) -FE. utils/createlst.pp $(OPT)
+ifdef MAKEINC_SEPARATE
+  GPARMAKE_OPT=-f
+else
+  GPARMAKE_OPT=
+endif
 $(MAKEINC): $(GPARMAKE) $(CREATELST)
 	$(Q)$(MAKE) $(TEST_OUTPUTDIR)
 	$(Q)$(CREATELST) filelisttest.lst $(TESTDIRS)
-	$(Q)$(GPARMAKE) $(MAKEINC) test 1 $(CHUNKSIZE) @filelisttest.lst
+	$(Q)$(GPARMAKE) $(GPARMAKE_OPT) $(MAKEINC) test 1 $(CHUNKSIZE) @filelisttest.lst
 	$(Q)$(CREATELST) filelisttbs.lst tbs
-	$(Q)$(GPARMAKE) -a $(MAKEINC) tbs 10000 $(CHUNKSIZE) @filelisttbs.lst
+	$(Q)$(GPARMAKE) -a $(GPARMAKE_OPT) $(MAKEINC) tbs 10000 $(CHUNKSIZE) @filelisttbs.lst
 	$(Q)$(CREATELST) filelisttbf.lst tbf
-	$(Q)$(GPARMAKE) -a $(MAKEINC) tbf 15000 $(CHUNKSIZE) @filelisttbf.lst
+	$(Q)$(GPARMAKE) -a $(GPARMAKE_OPT) $(MAKEINC) tbf 15000 $(CHUNKSIZE) @filelisttbf.lst
 	$(Q)$(CREATELST) filelistwebtbs.lst webtbs
-	$(Q)$(GPARMAKE) -a $(MAKEINC) webtbs 20000 $(CHUNKSIZE) @filelistwebtbs.lst
+	$(Q)$(GPARMAKE) -a $(GPARMAKE_OPT) $(MAKEINC) webtbs 20000 $(CHUNKSIZE) @filelistwebtbs.lst
 	$(Q)$(CREATELST) filelistwebtbf.lst webtbf
-	$(Q)$(GPARMAKE) -a $(MAKEINC) webtbf 30000 $(CHUNKSIZE) @filelistwebtbf.lst
+	$(Q)$(GPARMAKE) -a $(GPARMAKE_OPT) $(MAKEINC) webtbf 30000 $(CHUNKSIZE) @filelistwebtbf.lst
 ifeq (,$(findstring clean,$(firstword $(MAKECMDGOALS))))
 ifneq (,$(findstring all,$(MAKECMDGOALS)))
 ifneq (,$(wildcard $(MAKEINC)))

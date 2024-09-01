@@ -71,6 +71,7 @@ interface
         destructor destroy; override;
 {$ifdef WASM}
         procedure WriteFuncType(functype: TWasmFuncType);
+        procedure WriteFuncTypeDirective(hp:tai_functype);virtual;abstract;
 {$endif WASM}
        private
         setcount: longint;
@@ -570,7 +571,9 @@ implementation
              { sectionname may rename those sections, so we do not write flags/progbits for them,
                the assembler will ignore them/spite out a warning anyways }
              if not(atype in [sec_data,sec_rodata,sec_rodata_norel]) and
-                not(asminfo^.id=as_solaris_as) then
+                not(asminfo^.id=as_solaris_as) and
+                not(atype=sec_fpc) and
+                not(target_info.system in (systems_embedded+systems_freertos)) then
                begin
                  usesectionflags:=true;
                  usesectionprogbits:=true;
@@ -815,16 +818,6 @@ implementation
         end;
 
 {$ifdef WASM}
-      procedure WriteFuncTypeDirective(hp:tai_functype);
-        begin
-          writer.AsmWrite(#9'.functype'#9);
-          writer.AsmWrite(hp.funcname);
-          writer.AsmWrite(' ');
-          WriteFuncType(hp.functype);
-          writer.AsmLn;
-        end;
-
-
       procedure WriteTagType(hp: tai_tagtype);
         var
           wasm_basic_typ: TWasmBasicType;
@@ -1484,7 +1477,12 @@ implementation
              end;
            ait_symbol_end :
              begin
-               if tf_needs_symbol_size in target_info.flags then
+               if (tf_needs_symbol_size in target_info.flags) and
+                 { On WebAssembly, the .size directive shouldn't be generated for
+                   function symbols, otherwise LLVM-MC v16 and above produce the
+                   'warning: .size directive ignored for function symbols' message. }
+                  (not (target_info.system in systems_wasm) or
+                   (tai_symbol_end(hp).sym.typ<>AT_FUNCTION)) then
                 begin
                   s:=asminfo^.labelprefix+'e'+tostr(symendcount);
                   inc(symendcount);
