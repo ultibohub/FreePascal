@@ -541,10 +541,6 @@ const menu_key_edit_cut:string[63]=menu_key_edit_cut_borland;
       menu_key_edit_paste:string[63]=menu_key_edit_paste_borland;
       menu_key_edit_all:string[63]=menu_key_edit_all_borland;
       menu_key_hlplocal_copy:string[63]=menu_key_hlplocal_copy_borland;
-      cut_key:word=kbShiftDel;
-      copy_key:word=kbCtrlIns;
-      paste_key:word=kbShiftIns;
-      all_key:word=kbNoKey;
 
 procedure RegisterFPViews;
 
@@ -1896,7 +1892,7 @@ begin
   if OK and ({(Command=cmClose) or already handled in TFileEditor.Valid PM }
      (Command=cmAskSaveAll)) then
     if IsClipboard=false then
-      OK:=SaveAsk(false);
+      OK:=SaveAsk(Command,false);
   Valid:=OK;
 end;
 
@@ -2221,7 +2217,9 @@ begin
     AFileName:='';
   New(Editor, Init(R, HSB, VSB, Indicator,AFileName));
   Editor^.GrowMode:=gfGrowHiX+gfGrowHiY;
-  if LoadFile then
+  {load from file if there is no other window with the same file }
+  if Editor^.Core^.GetBindingCount = 1 then
+    if LoadFile then
     begin
       if Editor^.LoadFile=false then
         ErrorBox(FormatStrStr(msg_errorreadingfile,AFileName),nil)

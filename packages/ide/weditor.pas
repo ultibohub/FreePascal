@@ -63,6 +63,8 @@ const
       cmExpandFold           = 51267;
       cmDelToEndOfWord       = 51268;
       cmInputLineLen         = 51269;
+      cmScrollOneUp          = 51270;
+      cmScrollOneDown        = 51271;
 
       EditorTextBufSize = 32768;
       MaxLineLength     = 255;
@@ -88,6 +90,7 @@ const
       efFolds               = $00008000;
       efNoIndent            = $00010000;
       efKeepLineAttr        = $00020000;
+      efOverwriteBlocks     = $00040000;
       efStoreContent        = $80000000;
 
       attrAsm       = 1;
@@ -501,9 +504,12 @@ type
    {a}procedure   SetIndentSize(AIndentSize: integer); virtual;
    {a}function    IsReadOnly: boolean; virtual;
    {a}function    IsClipboard: Boolean; virtual;
+   {a}function    GetAutoBrackets: boolean; virtual;
+   {a}procedure   SetAutoBrackets(AutoBrackets: boolean); virtual;
    {a}function    GetInsertMode: boolean; virtual;
    {a}procedure   SetInsertMode(InsertMode: boolean); virtual;
       procedure   SetCurPtr(X,Y: sw_integer); virtual;
+      function    InSelectionArea:boolean; {CurPos in selection area}
       procedure   GetSelectionArea(var StartP,EndP: TPoint); virtual;
       procedure   SetSelection(A, B: TPoint); virtual;
       procedure   SetHighlight(A, B: TPoint); virtual;
@@ -647,6 +653,8 @@ type
       procedure LineDown; virtual;
       procedure PageUp; virtual;
       procedure PageDown; virtual;
+      procedure ScrollOneUp; virtual;
+      procedure ScrollOneDown; virtual;
       procedure TextStart; virtual;
       procedure TextEnd; virtual;
       procedure WindowStart; virtual;
@@ -728,6 +736,10 @@ const
        GetShiftState to be considered for extending
        selection (PM) }
      DontConsiderShiftState: boolean  = false;
+     cut_key:word=kbShiftDel;
+     copy_key:word=kbCtrlIns;
+     paste_key:word=kbShiftIns;
+     all_key:word=kbNoKey;
 
      CodeCompleteMinLen : byte = 4; { minimum length of text to try to complete }
 
@@ -816,7 +828,7 @@ const
      kbShift = kbLeftShift+kbRightShift;
 
 const
-  FirstKeyCount = 46;
+  FirstKeyCount = 48;
   FirstKeys: array[0..FirstKeyCount * 2] of Word = (FirstKeyCount,
     Ord(^A), cmWordLeft, Ord(^B), cmJumpLine, Ord(^C), cmPageDown,
     Ord(^D), cmCharRight, Ord(^E), cmLineUp,
@@ -829,7 +841,8 @@ const
     Ord(^R), cmPageUp, Ord(^S), cmCharLeft,
     Ord(^T), cmDelToEndOfWord, Ord(^U), cmUndo,
     Ord(^V), cmInsMode, Ord(^X), cmLineDown,
-    Ord(^Y), cmDelLine, kbLeft, cmCharLeft,
+    Ord(^Y), cmDelLine, Ord(^W), cmScrollOneUp,
+    Ord(^Z), cmScrollOneDown, kbLeft, cmCharLeft,
     kbRight, cmCharRight, kbCtrlLeft, cmWordLeft,
     kbCtrlRight, cmWordRight, kbHome, cmLineStart,
     kbCtrlHome, cmWindowStart, kbCtrlEnd, cmWindowEnd,
@@ -2955,6 +2968,8 @@ begin
   OK:=(Editor^.SelStart.X<>Editor^.SelEnd.X) or (Editor^.SelStart.Y<>Editor^.SelEnd.Y);
   if OK then
   begin
+    if not (Clipboard=@Self) and IsFlagSet(efOverwriteBlocks) and InSelectionArea then
+      DelSelect; {delete selection before paste}
     StartPos:=CurPos; DestPos:=CurPos;
     EPos:=CurPos;
     VerticalBlock:=Editor^.IsFlagSet(efVerticalBlocks);
@@ -3082,14 +3097,18 @@ function TCustomCodeEditor.InsertText(const S: string): Boolean;
 var I: sw_integer;
     OldPos: TPoint;
     HoldUndo : boolean;
+    WasAutoBrackets : boolean;
 begin
   Lock;
   OldPos:=CurPos;
   HoldUndo:=GetStoreUndo;
+  WasAutoBrackets:=GetAutoBrackets;
+  SetAutoBrackets(false);
   SetStoreUndo(false);
   for I:=1 to length(S) do
     AddChar(S[I]);
   InsertText:=true;
+  SetAutoBrackets(WasAutoBrackets);
   SetStoreUndo(HoldUndo);
   AddAction(eaInsertText,OldPos,CurPos,S,GetFlags);
   UnLock;
@@ -3463,10 +3482,10 @@ begin
           SetCurPtr(P.X,P.Y);
           repeat
             GetMousePos(P);
+            SetCurPtr(P.X,P.Y);
             if PointOfs(P)<PointOfs(StartP)
                then SetSelection(P,StartP)
                else SetSelection(StartP,P);
-            SetCurPtr(P.X,P.Y);
             DrawView;
           until not MouseEvent(Event, evMouseMove+evMouseAuto);
           DrawView;
@@ -3546,6 +3565,8 @@ begin
           cmLineDown    : LineDown;
           cmPageUp      : PageUp;
           cmPageDown    : PageDown;
+          cmScrollOneUp : ScrollOneUp;
+          cmScrollOneDown:ScrollOneDown;
           cmTextStart   : TextStart;
           cmTextEnd     : TextEnd;
           cmWindowStart : WindowStart;
@@ -3936,13 +3957,17 @@ begin
 end;
 
 procedure TCustomCodeEditor.DrawCursor;
+var InsertMode : boolean;
 begin
   if Elockflag>0 then
     DrawCursorCalled:=true
   else
     begin
       SetCursor(GetReservedColCount+CurPos.X-Delta.X,EditorToViewLine(CurPos.Y)-Delta.Y);
-      SetState(sfCursorIns,Overwrite);
+      InsertMode:=Overwrite;
+      if IsFlagSet (efBlockInsCursor) then
+         InsertMode:=not InsertMode; {revers insert and overwrite mode cursor shapes}
+      SetState(sfCursorIns,InsertMode);
     end;
 end;
 
@@ -4310,6 +4335,34 @@ begin
     SetCurPtr(CurPos.X,Min(GetLineCount-1,NL));
 end;
 
+procedure TCustomCodeEditor.ScrollOneUp;
+var NL: sw_integer;
+    LinesScroll : sw_integer;
+    cursorInVisibleArea : boolean;
+begin
+  LinesScroll:=-1;
+  cursorInVisibleArea:= (CurPos.Y>=Delta.Y) and (CurPos.Y<(Delta.Y+Size.Y)); {ignore folds here}
+  NL:=NextVisibleLine(CurPos.Y-1,false);
+  ScrollTo(Delta.X, Delta.Y + LinesScroll);
+  if cursorInVisibleArea and (CurPos.Y>=(Delta.Y+Size.Y)) then {do not allow corsor leave visible area}
+  if NL<>-1 then
+    SetCurPtr(CurPos.X,NL); {cursor stick to window bottom line}
+end;
+
+procedure TCustomCodeEditor.ScrollOneDown;
+var NL: sw_integer;
+    LinesScroll : sw_integer;
+    cursorInVisibleArea : boolean;
+begin
+  LinesScroll:=1;
+  cursorInVisibleArea:= (CurPos.Y>=Delta.Y) and (CurPos.Y<(Delta.Y+Size.Y)); {ignore folds here}
+  NL:=NextVisibleLine(CurPos.Y+1,true);
+  ScrollTo(Delta.X, Delta.Y + LinesScroll);
+  if cursorInVisibleArea and (CurPos.Y<Delta.Y) then {do not allow corsor leave visible area}
+  if NL>=0 then
+    SetCurPtr(CurPos.X,Min(GetLineCount-1,NL));  {cursor stick to window top line}
+end;
+
 procedure TCustomCodeEditor.TextStart;
 begin
   SetCurPtr(0,0);
@@ -4328,12 +4381,18 @@ end;
 
 procedure TCustomCodeEditor.WindowStart;
 begin
-  SetCurPtr(CurPos.X,Delta.Y);
-end;
-
-procedure TCustomCodeEditor.WindowEnd;
-begin
-  SetCurPtr(CurPos.X,Delta.Y+Size.Y-1);
+  if not NoSelect and ShouldExtend then
+    TextStart    {select to start}
+  else
+    SetCurPtr(CurPos.X,Delta.Y);
+ end;
+ 
+ procedure TCustomCodeEditor.WindowEnd;
+ begin
+  if not NoSelect and ShouldExtend then
+    TextEnd      {select to end}
+  else
+    SetCurPtr(CurPos.X,Delta.Y+Size.Y-1);
 end;
 
 procedure TCustomCodeEditor.JumpSelStart;
@@ -5167,7 +5226,7 @@ begin
   if ValidBlock=false then
     begin
 {      SetSelection(SelStart,Limit);}
-      P1:=CurPos; P1.X:=0; P2:=CurPos; {P2.X:=length(GetLineText(P2.Y))+1;}
+      P1:=CurPos; P2:=CurPos; {P2.X:=length(GetLineText(P2.Y))+1;}
       SetSelection(P1,P2);
     end
   else
@@ -5317,11 +5376,15 @@ var
   ey,i{,indlen} : Sw_integer;
   S,Ind : String;
   Pos : Tpoint;
+  WasPersistentBlocks : boolean;
 begin
   if IsReadOnly then Exit;
   if (SelStart.X=SelEnd.X) and (SelStart.Y=SelEnd.Y) then Exit;
   Lock;
   AddGroupedAction(eaIndentBlock);
+  WasPersistentBlocks:=IsFlagSet(efPersistentBlocks);
+  if not WasPersistentBlocks then
+    SetFlags(GetFlags or efPersistentBlocks);
   ey:=selend.y;
   if selend.x=0 then
    dec(ey);
@@ -5366,6 +5429,9 @@ begin
      AddAction(eaInsertText,Pos,Pos,Ind,GetFlags);
    end;
   SetCurPtr(CurPos.X,CurPos.Y);
+  {after SetCurPtr return PersistentBlocks as it was before}
+  if not WasPersistentBlocks then
+    SetFlags(GetFlags and (not longword(efPersistentBlocks)));
   { must be added manually here PM }
   AddAction(eaMoveCursor,Pos,CurPos,'',GetFlags);
   UpdateAttrsRange(SelStart.Y,SelEnd.Y,attrAll);
@@ -5380,11 +5446,15 @@ var
   ey,i,j,k,indlen : Sw_integer;
   S : String;
   Pos : TPoint;
+  WasPersistentBlocks : boolean;
 begin
   if IsReadOnly then Exit;
   if (SelStart.X=SelEnd.X) and (SelStart.Y=SelEnd.Y) then Exit;
   Lock;
   AddGroupedAction(eaUnindentBlock);
+  WasPersistentBlocks:=IsFlagSet(efPersistentBlocks);
+  if not WasPersistentBlocks then
+    SetFlags(GetFlags or efPersistentBlocks);
   ey:=selend.y;
   if selend.x=0 then
    dec(ey);
@@ -5442,6 +5512,9 @@ begin
        end;
    end;
   SetCurPtr(CurPos.X,CurPos.Y);
+  {after SetCurPtr return PersistentBlocks as it was before}
+  if not WasPersistentBlocks then
+    SetFlags(GetFlags and (not longword(efPersistentBlocks)));
   UpdateAttrsRange(SelStart.Y,SelEnd.Y,attrAll);
   DrawLines(CurPos.Y);
   SetModified(true);
@@ -5653,8 +5726,9 @@ var S,SC,TabS: string;
     HoldUndo : boolean;
 begin
   if IsReadOnly then Exit;
-
   Lock;
+  if not (Clipboard=@Self) and IsFlagSet(efOverwriteBlocks) and InSelectionArea then
+      DelSelect; {delete selection before}
   SP:=CurPos;
   HoldUndo:=GetStoreUndo;
   SetStoreUndo(false);
@@ -5794,6 +5868,8 @@ begin
           if l>500 then
             PushInfo(msg_readingwinclipboard);
           AddGroupedAction(eaPasteWin);
+          if not (Clipboard=@Self) and IsFlagSet(efOverwriteBlocks) and InSelectionArea then
+            DelSelect; {delete selection before paste}
           p2:=p;
           len:=strlen(p2);
           // issue lines ((#13)#10 terminated) of maximally "linelimit" chars.
@@ -6445,6 +6521,19 @@ begin
     end;
 end;
 
+function TCustomCodeEditor.GetAutoBrackets: boolean;
+begin
+  GetAutoBrackets:=(GetFlags and efAutoBrackets)<>0;
+end;
+
+procedure TCustomCodeEditor.SetAutoBrackets(AutoBrackets: boolean);
+begin
+  if AutoBrackets then
+    SetFlags(GetFlags or efAutoBrackets)
+  else
+    SetFlags(GetFlags and (not efAutoBrackets));
+end;
+
 function TCustomCodeEditor.GetInsertMode: boolean;
 begin
   GetInsertMode:=(GetFlags and efInsertMode)<>0;
@@ -6632,6 +6721,22 @@ end;
 procedure TCustomCodeEditor.HideHighlight;
 begin
   SetHighlight(CurPos,CurPos);
+end;
+
+function TCustomCodeEditor.InSelectionArea:boolean; {CurPos in selection area}
+begin
+  InSelectionArea:=false;
+  if ((SelStart.X<>SelEnd.X) or (SelStart.Y<>SelEnd.Y)) then    {there is selection}
+    begin
+      if (SelStart.Y = SelEnd.Y) and (CurPos.X>=min(SelStart.X,SelEnd.X)) and (CurPos.X<=max(SelStart.X,SelEnd.X)) then
+        InSelectionArea:=true {select in one line}
+      else if (CurPos.Y>min(SelStart.Y,SelEnd.Y)) and (CurPos.Y<max(SelStart.Y,SelEnd.Y)) then
+        InSelectionArea:=true {between first and last selected line}
+      else if (SelStart.Y < SelEnd.Y) and ( ((SelStart.Y=CurPos.Y) and (SelStart.X<=CurPos.X)) or ((SelEnd.Y=CurPos.Y) and (SelEnd.X>=CurPos.X))) then
+        InSelectionArea:=true  {in first line or last line}
+      else if (SelStart.Y > SelEnd.Y) and ( ((SelStart.Y=CurPos.Y) and (SelStart.X>=CurPos.X)) or ((SelEnd.Y=CurPos.Y) and (SelEnd.X<=CurPos.X))) then
+        InSelectionArea:=true; {in first line or last line (selection Start and End revers)}
+    end;
 end;
 
 procedure TCustomCodeEditor.GetSelectionArea(var StartP,EndP: TPoint);
@@ -6886,9 +6991,27 @@ begin
             Assigned(FindReplaceEditor) then
            Begin
              s:=FindReplaceEditor^.GetDisplayText(FindReplaceEditor^.CurPos.Y);
-             s:=Copy(s,FindReplaceEditor^.CurPos.X + 1 -length(Data^),high(s));
-             i:=pos(Data^,s);
-             if i>0 then
+             i:=FindReplaceEditor^.CurPos.X;
+             {finds beginning of word}
+              if i>0 then
+             while s[i] in ['a'..'z','A'..'Z','0'..'9','_'] do
+             begin
+               dec(i);
+               if i=0 then break;
+             end;
+             inc(i);
+             {step out of white space}
+             while (s[i] in [' ']) do
+             begin
+               inc(i);
+               if i=length(s) then break;
+             end;
+             s:=Copy(s,i-length(Data^),length(s)-(i-length(Data^))+1);
+             if length(Data^)=0 then
+               i:=1 {if input line is empty then start from first character of word if any}
+             else
+               i:=pos(Data^,s);
+             if (i>0) and (length(s)>=i+length(Data^)) then               
                begin
                  s:=Data^+s[i+length(Data^)];
                  If not assigned(validator) or
@@ -6901,7 +7024,7 @@ begin
                end;
              ClearEvent(Event);
            End
-         else if (Event.KeyCode=kbShiftIns)  and
+         else if ((Event.KeyCode=kbShiftIns) or (Event.KeyCode=paste_key))  and
                  Assigned(Clipboard) and (Clipboard^.ValidBlock) then
            { paste from clipboard }
            begin
@@ -6929,7 +7052,7 @@ begin
                end;
              ClearEvent(Event);
            end
-         else if (Event.KeyCode=kbCtrlIns)  and
+         else if ((Event.KeyCode=kbCtrlIns) or (Event.KeyCode=copy_key))  and
                  Assigned(Clipboard) then
            { Copy to clipboard }
            begin
@@ -6940,7 +7063,7 @@ begin
              Clipboard^.SelEnd:=Clipboard^.CurPos;
              ClearEvent(Event);
            end
-         else if (Event.KeyCode=kbShiftDel)  and
+         else if ((Event.KeyCode=kbShiftDel) or (Event.KeyCode=cut_key))  and
                  Assigned(Clipboard) then
            { Cut to clipboard }
            begin

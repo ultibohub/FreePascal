@@ -4041,7 +4041,7 @@ W*2Allvm-mc-15_Assemble using llvm-mc-15
 W*2Allvm-mc-16_Assemble using llvm-mc-16
 W*2Allvm-mc-17_Assemble using llvm-mc-17
 W*2Allvm-mc_Assemble using llvm-mc (version 18 or later)
-W*2Awabt_Assemble using wasa (experimental)
+W*2Awasa_Assemble using wasa (experimental)
 x*2Aas_Assemble using GNU AS
 Z*2Asdcc-sdasz80_Assemble using SDCC-SDASZ80
 Z*2Avasm_Assemble using Vasm
@@ -4076,6 +4076,7 @@ L*3Clflsanitize=address_Enable address sanitizer
 L*3Clv<x>_LLVM target version: Xcode-10.1, 7.0, 8.0, .., 10.0
 **2Cn_Omit linking stage
 P*2CN_Generate nil-pointer checks (AIX-only)
+W*2CN_Generate nil-pointer checks
 **2Co_Check overflow of integer operations
 **2CO_Check for possible overflow of integer operations
 **2Cp<x>_Select instruction set; see fpc -i or fpc -ic for possible values
@@ -4222,7 +4223,7 @@ L*2il_Return list of supported LLVM/Xcode versions by the LLVM backend
 F*1P<x>_Target CPU / compiler related options:
 F*2PB_Show default compiler binary
 F*2PP_Show default target cpu
-F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,m68k,mips,mipsel,powerpc,powerpc64,sparc,x86_64)
+F*2P<x>_Set target CPU (aarch64,arm,avr,i386,i8086,jvm,loongarch64,m68k,mips,mipsel,powerpc,powerpc64,riscv32,riscv64,sparc,sparc64,wasm32,x86_64,xtensa,z80)
 **1R<x>_Assembler reading style:
 **2Rdefault_Use default assembler for target
 3*2Ratt_Read AT&T style assembler

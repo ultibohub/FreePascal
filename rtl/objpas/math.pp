@@ -1199,6 +1199,7 @@ begin
   csc := cosecant(x);
 end;
 
+
 { arcsin and arccos functions from AMath library (C) Copyright 2009-2013 Wolfgang Ehrhardt }
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function arcsin(x : Single) : Single;
@@ -1206,12 +1207,16 @@ begin
   arcsin:=arctan2(x,sqrt((1.0-x)*(1.0+x)));
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function arcsin(x : Double) : Double;
 begin
   arcsin:=arctan2(x,sqrt((1.0-x)*(1.0+x)));
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function arcsin(x : Extended) : Extended;
 begin
@@ -1219,18 +1224,23 @@ begin
 end;
 {$ENDIF}
 
+
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function Arccos(x : Single) : Single;
 begin
   arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function Arccos(x : Double) : Double;
 begin
   arccos:=arctan2(sqrt((1.0-x)*(1.0+x)),x);
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function Arccos(x : Extended) : Extended;
 begin
@@ -1263,24 +1273,42 @@ function arctan2(y,x : float) : float;
   end;
 {$endif FPC_MATH_HAS_ARCTAN2}
 
+const
+  huge_single: single = 1e30;
+  huge_double: double = 1e300;
+
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function cosh(x : Single) : Single;
   var
      temp : ValReal;
   begin
-     temp:=exp(x);
+     if (x>8.94159862326326216608E+0001) or (x<-8.94159862326326216608E+0001) then
+       exit(huge_single*huge_single);
+    temp:=exp(x);
+{$push}
+{$safefpuexceptions on}
      cosh:=0.5*(temp+1.0/temp);
+{$pop}
   end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function cosh(x : Double) : Double;
   var
      temp : ValReal;
   begin
+     if (x>7.10475860073943942030E+0002) or (x<-7.10475860073943942030E+0002) then
+       exit(huge_double*huge_double);
      temp:=exp(x);
+{$push}
+{$safefpuexceptions on}
      cosh:=0.5*(temp+1.0/temp);
+{$pop}
   end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function cosh(x : Extended) : Extended;
   var
@@ -1291,29 +1319,48 @@ function cosh(x : Extended) : Extended;
   end;
 {$ENDIF}
 
+
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function sinh(x : Single) : Single;
   var
      temp : ValReal;
   begin
+     if x>8.94159862326326216608E+0001 then
+       exit(huge_single*huge_single);
+     if x<-8.94159862326326216608E+0001 then
+       exit(-(huge_single*huge_single));
      temp:=exp(x);
      { gives better behavior around zero, and in particular ensures that sinh(-0.0)=-0.0 }
      if temp=1 then
        exit(x);
+{$push}
+{$safefpuexceptions on}
      sinh:=0.5*(temp-1.0/temp);
+{$pop}
   end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function sinh(x : Double) : Double;
   var
      temp : ValReal;
   begin
+     if x>7.10475860073943942030E+0002 then
+       exit(huge_double*huge_double);
+     if x<-7.10475860073943942030E+0002 then
+       exit(-(huge_double*huge_double));
      temp:=exp(x);
      if temp=1 then
        exit(x);
+{$push}
+{$safefpuexceptions on}
      sinh:=0.5*(temp-1.0/temp);
+{$pop}
   end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function sinh(x : Extended) : Extended;
   var
@@ -1326,6 +1373,7 @@ function sinh(x : Extended) : Extended;
   end;
 {$ENDIF}
 
+
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function tanh(x : Single) : Single;
   var
@@ -1335,16 +1383,24 @@ function tanh(x : Single) : Single;
       tmp:=exp(2*x);
       if tmp=1 then
         exit(x);
+{$push}
+{$safefpuexceptions on}
       result:=(tmp-1)/(1+tmp)
+{$pop}
     end
     else begin
       tmp:=exp(-2*x);
       if tmp=1 then
         exit(x);
+{$push}
+{$safefpuexceptions on}
       result:=(1-tmp)/(1+tmp)
+{$pop}
     end;
   end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function tanh(x : Double) : Double;
   var
@@ -1354,16 +1410,24 @@ function tanh(x : Double) : Double;
       tmp:=exp(2*x);
       if tmp=1 then
         exit(x);
+{$push}
+{$safefpuexceptions on}
       result:=(tmp-1)/(1+tmp)
+{$pop}
     end
     else begin
       tmp:=exp(-2*x);
       if tmp=1 then
         exit(x);
+{$push}
+{$safefpuexceptions on}
       result:=(1-tmp)/(1+tmp)
+{$pop}
     end;
   end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function tanh(x : Extended) : Extended;
   var
@@ -1393,18 +1457,28 @@ begin
   //https://en.wikipedia.org/wiki/Hyperbolic_functions#Definitions
   //SecH = 2 / (e^X + e^-X)
   Ex:=Exp(X);
+{$push}
+{$safefpuexceptions on}
   SecH:=2/(Ex+1/Ex);
+{$pop}
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function SecH(const X: Double): Double;
 var
   Ex: ValReal;
 begin
   Ex:=Exp(X);
+{$push}
+{$safefpuexceptions on}
   SecH:=2/(Ex+1/Ex);
+{$pop}
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function SecH(const X: Extended): Extended;
 var
@@ -1422,18 +1496,28 @@ var
 begin
   //CscH = 2 / (e^X - e^-X)
   Ex:=Exp(X);
+{$push}
+{$safefpuexceptions on}
   CscH:=2/(Ex-1/Ex);
+{$pop}
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function CscH(const X: Double): Double;
 var
   Ex: ValReal;
 begin
   Ex:=Exp(X);
+{$push}
+{$safefpuexceptions on}
   CscH:=2/(Ex-1/Ex);
+{$pop}
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function CscH(const X: Extended): Extended;
 var
@@ -1453,16 +1537,24 @@ begin
     e2:=exp(2*x);
     if e2=1 then
       exit(1/x);
+{$push}
+{$safefpuexceptions on}
     result:=(1+e2)/(e2-1)
+{$pop}
   end
   else begin
     e2:=exp(-2*x);
     if e2=1 then
       exit(1/x);
+{$push}
+{$safefpuexceptions on}
     result:=(1+e2)/(1-e2)
+{$pop}
   end;
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function CotH(const X: Double): Double;
 var
@@ -1472,16 +1564,24 @@ begin
     e2:=exp(2*x);
     if e2=1 then
       exit(1/x);
+{$push}
+{$safefpuexceptions on}
     result:=(1+e2)/(e2-1)
+{$pop}
   end
   else begin
     e2:=exp(-2*x);
     if e2=1 then
       exit(1/x);
+{$push}
+{$safefpuexceptions on}
     result:=(1+e2)/(1-e2)
+{$pop}
   end;
 end;
 {$ENDIF}
+
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function CotH(const X: Extended): Extended;
 var

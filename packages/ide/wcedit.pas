@@ -234,7 +234,7 @@ type
           PScrollBar; AIndicator: PIndicator; ACore: PCodeEditorCore; const AFileName: string);
       function    Save: Boolean; virtual;
       function    SaveAs: Boolean; virtual;
-      function    SaveAsk(Force: boolean): Boolean; virtual;
+      function    SaveAsk(Command: Word; Force: boolean): boolean; virtual;
       function    LoadFile: boolean; virtual;
       function    ReloadFile: boolean; virtual;
       function    SaveFile: boolean; virtual;
@@ -251,7 +251,7 @@ function DefUseTabsPattern(Editor: PFileEditor): boolean;
 
 const
      DefaultCodeEditorFlags : longint =
-       efBackupFiles+efInsertMode+efAutoIndent+efPersistentBlocks+
+       efBackupFiles+efInsertMode+efAutoIndent+efPersistentBlocks+efOverwriteBlocks+
        {efUseTabCharacters+}efBackSpaceUnindents+efSyntaxHighlight+
        efExpandAllTabs+efCodeComplete{+efFolds};
      DefaultTabSize     : integer = 8;
@@ -265,7 +265,7 @@ implementation
 
 uses Dos,
      WConsts,
-     FVConsts,
+     FVConsts,FPConst,
      App,WViews;
 
 {$ifndef NOOBJREG}
@@ -1281,7 +1281,7 @@ var
   Temp,Idx,Last,Count : Longint;
   StoredFlags : longint;
   UndoTime : longint;
-  WasInserting,IsGrouped,HadefNoIndent : boolean;
+  WasInserting,WasAutoBrackets,IsGrouped,HadefNoIndent : boolean;
   MaxY,MinY : sw_integer;
   Line : String;
 
@@ -1341,9 +1341,12 @@ begin
                 SetCurPtr(EndPos.X,EndPos.Y);
                 WasInserting:=GetInsertMode;
                 SetInsertMode(true);
+                WasAutoBrackets:=GetAutoBrackets;
+                SetAutoBrackets(false);
                 if assigned(text) then
                   for Temp := 1 to length(Text^) do
                     AddChar(Text^[Temp]);
+                SetAutoBrackets(WasAutoBrackets);
                 SetInsertMode(WasInserting);
                 SetMinMax(EndPos.Y);
                 SetCurPtr(StartPos.X,StartPos.Y);
@@ -1354,6 +1357,8 @@ begin
                 Line:=GetDisplayText(StartPos.Y);
                 WasInserting:=GetInsertMode;
                 SetInsertMode(false);
+                WasAutoBrackets:=GetAutoBrackets;
+                SetAutoBrackets(false);
                 if assigned(text) then
                   for Temp := 1 to length(Text^) do
                     begin
@@ -1363,6 +1368,7 @@ begin
                       else
                         Text^[Temp]:=Line[StartPos.X+Temp];
                     end;
+                SetAutoBrackets(WasAutoBrackets);
                 SetInsertMode(WasInserting);
                 SetMinMax(EndPos.Y);
                 SetCurPtr(StartPos.X,StartPos.Y);
@@ -1448,7 +1454,7 @@ procedure TCodeEditor.Redo;
 var
   Temp,Idx,i,Last,Count : Longint;
   StoredFlags : longint;
-  WasInserting,IsGrouped,ShouldInsertText : boolean;
+  WasInserting,WasAutoBrackets,IsGrouped,ShouldInsertText : boolean;
   Line : String;
   MaxY,MinY : sw_integer;
   procedure SetMinMax(y : sw_integer);
@@ -1509,6 +1515,8 @@ begin
             Line:=GetDisplayText(StartPos.Y);
             WasInserting:=GetInsertMode;
             SetInsertMode(false);
+            WasAutoBrackets:=GetAutoBrackets;
+            SetAutoBrackets(false);
             if assigned(text) then
               for Temp := 1 to length(Text^) do
                 begin
@@ -1518,6 +1526,7 @@ begin
                   else
                     Text^[Temp]:=Line[StartPos.X+Temp];
                 end;
+            SetAutoBrackets(WasAutoBrackets);
             SetInsertMode(WasInserting);
             SetCurPtr(EndPos.X,EndPos.Y);
             SetMinMax(StartPos.Y);
@@ -1922,7 +1931,7 @@ begin
   end;
 end;
 
-function TFileEditor.SaveAsk(Force: boolean): boolean;
+function TFileEditor.SaveAsk(Command: Word; Force: boolean): boolean;
 var OK: boolean;
     D: Sw_integer;
 begin
@@ -1937,7 +1946,8 @@ begin
    begin
      OK:=(GetModified=false);
      if (OK=false) and (Core^.GetBindingCount>1) then
-      OK:=true;
+       if (command<>cmAskSaveAll) or (Core^.GetBindingIndex(PCustomCodeEditor(@self))<>0) then
+         OK:=true;
      if OK=false then
       begin
         if FileName = '' then D := edSaveUntitled else D := edSaveModify;
@@ -1993,7 +2003,7 @@ begin
   OK:=inherited Valid(Command);
   if OK and (Command=cmClose) then
     if IsClipboard=false then
-      OK:=SaveAsk(false);
+      OK:=SaveAsk(Command,false);
   Valid:=OK;
 end;
 

@@ -132,6 +132,7 @@ interface
         SegOfs: qword;
         FileSectionOfs: qword;
         MainFuncSymbol: TWasmObjSymbol;
+        CustomSectionIdx: Integer;
         constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);override;
         function IsCode: Boolean;
         function IsData: Boolean;
@@ -753,6 +754,7 @@ implementation
         inherited create(AList, Aname, Aalign, Aoptions);
         SegIdx:=-1;
         SegSymIdx:=-1;
+        CustomSectionIdx:=-1;
         MainFuncSymbol:=nil;
       end;
 
@@ -1679,6 +1681,7 @@ implementation
                 debug_section_nr:=section_nr;
                 Inc(section_nr);
                 objsec.SegSymIdx:=FWasmSymbolTableEntriesCount;
+                objsec.CustomSectionIdx:=debug_section_nr;
                 Inc(FWasmSymbolTableEntriesCount);
                 WriteByte(FWasmSymbolTable,Ord(SYMTAB_SECTION));
                 WriteUleb(FWasmSymbolTable,WASM_SYM_BINDING_LOCAL);
@@ -1984,6 +1987,96 @@ implementation
               end;
           end;
 
+        Writer.write(WasmModuleMagic,SizeOf(WasmModuleMagic));
+        Writer.write(WasmVersion,SizeOf(WasmVersion));
+
+        if ts_wasm_threads in current_settings.targetswitches then
+          begin
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],4);
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'atomics');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'bulk-memory');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'mutable-globals');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'sign-ext');
+          end
+        else
+          begin
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],3);
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'bulk-memory');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'mutable-globals');
+            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
+            WriteName(FWasmCustomSections[wcstTargetFeatures],'sign-ext');
+          end;
+
+        { Write the producers section:
+          https://github.com/WebAssembly/tool-conventions/blob/main/ProducersSection.md }
+        WriteUleb(FWasmCustomSections[wcstProducers],2);
+        WriteName(FWasmCustomSections[wcstProducers],'language');
+        WriteUleb(FWasmCustomSections[wcstProducers],1);
+        WriteName(FWasmCustomSections[wcstProducers],'Pascal');
+        WriteName(FWasmCustomSections[wcstProducers],'');
+        WriteName(FWasmCustomSections[wcstProducers],'processed-by');
+        WriteUleb(FWasmCustomSections[wcstProducers],1);
+        WriteName(FWasmCustomSections[wcstProducers],'Free Pascal Compiler (FPC)');
+        WriteName(FWasmCustomSections[wcstProducers],full_version_string+' ['+date_string+'] for '+target_cpu_string+' - '+target_info.shortname);
+
+        code_section_nr:=-1;
+        data_section_nr:=-1;
+        debug_abbrev_section_nr:=-1;
+        debug_info_section_nr:=-1;
+        debug_str_section_nr:=-1;
+        debug_line_section_nr:=-1;
+        debug_frame_section_nr:=-1;
+        debug_aranges_section_nr:=-1;
+        debug_ranges_section_nr:=-1;
+        section_nr:=0;
+
+        WriteWasmSection(wsiType);
+        Inc(section_nr);
+        WriteWasmSection(wsiImport);
+        Inc(section_nr);
+        WriteWasmSection(wsiFunction);
+        Inc(section_nr);
+        if exception_tags_count>0 then
+          begin
+            WriteWasmSection(wsiTag);
+            Inc(section_nr);
+          end;
+        if globals_count>0 then
+          begin
+            WriteWasmSection(wsiGlobal);
+            Inc(section_nr);
+          end;
+        if export_functions_count>0 then
+          begin
+            WriteWasmSection(wsiExport);
+            Inc(section_nr);
+          end;
+
+        { determine the section numbers for the datacount, code, data and debug sections ahead of time }
+        if segment_count>0 then
+          Inc(section_nr);  { the DataCount section }
+        code_section_nr:=section_nr;  { the Code section }
+        Inc(section_nr);
+        if segment_count>0 then
+          begin
+            data_section_nr:=section_nr; { the Data section }
+            Inc(section_nr);
+          end;
+        { the debug sections }
+        MaybeAddDebugSectionToSymbolTable(wcstDebugAbbrev,debug_abbrev_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugInfo,debug_info_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugStr,debug_str_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugLine,debug_line_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugFrame,debug_frame_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugAranges,debug_aranges_section_nr);
+        MaybeAddDebugSectionToSymbolTable(wcstDebugRanges,debug_ranges_section_nr);
+
         for i:=0 to Data.ObjSymbolList.Count-1 do
           begin
             objsym:=TWasmObjSymbol(Data.ObjSymbolList[i]);
@@ -2080,11 +2173,26 @@ implementation
                   end;
                 WriteName(FWasmSymbolTable,objsym.Name);
               end
-            else if (objsym.typ in [AT_DATA,AT_TLS]) or ((objsym.typ=AT_NONE) and (objsym.bind=AB_EXTERNAL)) then
+            else if (objsym.typ in [AT_DATA,AT_TLS,AT_METADATA]) or ((objsym.typ=AT_NONE) and (objsym.bind=AB_EXTERNAL)) then
               begin
                 if (objsym.bind<>AB_EXTERNAL) and TWasmObjSection(objsym.objsection).IsDebug then
                   begin
-                    {todo: debug symbols}
+                    objsym.SymbolIndex:=FWasmSymbolTableEntriesCount;
+                    Inc(FWasmSymbolTableEntriesCount);
+                    WriteByte(FWasmSymbolTable,Ord(SYMTAB_FPC_CUSTOM));
+                    if objsym.bind=AB_GLOBAL then
+                      SymbolFlags:=0
+                    else if objsym.bind=AB_LOCAL then
+                      SymbolFlags:=WASM_SYM_BINDING_LOCAL
+                    else if objsym.bind=AB_EXTERNAL then
+                      SymbolFlags:=WASM_SYM_UNDEFINED
+                    else
+                      internalerror(2024090701);
+                    WriteUleb(FWasmSymbolTable,SymbolFlags);
+                    WriteName(FWasmSymbolTable,objsym.Name);
+                    WriteUleb(FWasmSymbolTable,TWasmObjSection(objsym.objsection).CustomSectionIdx);
+                    WriteUleb(FWasmSymbolTable,objsym.offset);
+                    WriteUleb(FWasmSymbolTable,objsym.size);
                   end
                 else
                   begin
@@ -2112,96 +2220,6 @@ implementation
                   end;
               end;
           end;
-
-        Writer.write(WasmModuleMagic,SizeOf(WasmModuleMagic));
-        Writer.write(WasmVersion,SizeOf(WasmVersion));
-
-        if ts_wasm_threads in current_settings.targetswitches then
-          begin
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],4);
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'atomics');
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'bulk-memory');
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'mutable-globals');
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'sign-ext');
-          end
-        else
-          begin
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],3);
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'bulk-memory');
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'mutable-globals');
-            WriteUleb(FWasmCustomSections[wcstTargetFeatures],$2B);
-            WriteName(FWasmCustomSections[wcstTargetFeatures],'sign-ext');
-          end;
-
-        { Write the producers section:
-          https://github.com/WebAssembly/tool-conventions/blob/main/ProducersSection.md }
-        WriteUleb(FWasmCustomSections[wcstProducers],2);
-        WriteName(FWasmCustomSections[wcstProducers],'language');
-        WriteUleb(FWasmCustomSections[wcstProducers],1);
-        WriteName(FWasmCustomSections[wcstProducers],'Pascal');
-        WriteName(FWasmCustomSections[wcstProducers],'');
-        WriteName(FWasmCustomSections[wcstProducers],'processed-by');
-        WriteUleb(FWasmCustomSections[wcstProducers],1);
-        WriteName(FWasmCustomSections[wcstProducers],'Free Pascal Compiler (FPC)');
-        WriteName(FWasmCustomSections[wcstProducers],full_version_string+' ['+date_string+'] for '+target_cpu_string+' - '+target_info.shortname);
-
-        code_section_nr:=-1;
-        data_section_nr:=-1;
-        debug_abbrev_section_nr:=-1;
-        debug_info_section_nr:=-1;
-        debug_str_section_nr:=-1;
-        debug_line_section_nr:=-1;
-        debug_frame_section_nr:=-1;
-        debug_aranges_section_nr:=-1;
-        debug_ranges_section_nr:=-1;
-        section_nr:=0;
-
-        WriteWasmSection(wsiType);
-        Inc(section_nr);
-        WriteWasmSection(wsiImport);
-        Inc(section_nr);
-        WriteWasmSection(wsiFunction);
-        Inc(section_nr);
-        if exception_tags_count>0 then
-          begin
-            WriteWasmSection(wsiTag);
-            Inc(section_nr);
-          end;
-        if globals_count>0 then
-          begin
-            WriteWasmSection(wsiGlobal);
-            Inc(section_nr);
-          end;
-        if export_functions_count>0 then
-          begin
-            WriteWasmSection(wsiExport);
-            Inc(section_nr);
-          end;
-
-        { determine the section numbers for the datacount, code, data and debug sections ahead of time }
-        if segment_count>0 then
-          Inc(section_nr);  { the DataCount section }
-        code_section_nr:=section_nr;  { the Code section }
-        Inc(section_nr);
-        if segment_count>0 then
-          begin
-            data_section_nr:=section_nr; { the Data section }
-            Inc(section_nr);
-          end;
-        { the debug sections }
-        MaybeAddDebugSectionToSymbolTable(wcstDebugAbbrev,debug_abbrev_section_nr);
-        MaybeAddDebugSectionToSymbolTable(wcstDebugInfo,debug_info_section_nr);
-        MaybeAddDebugSectionToSymbolTable(wcstDebugStr,debug_str_section_nr);
-        MaybeAddDebugSectionToSymbolTable(wcstDebugLine,debug_line_section_nr);
-        MaybeAddDebugSectionToSymbolTable(wcstDebugFrame,debug_frame_section_nr);
-        MaybeAddDebugSectionToSymbolTable(wcstDebugAranges,debug_aranges_section_nr);
-        MaybeAddDebugSectionToSymbolTable(wcstDebugRanges,debug_ranges_section_nr);
 
         DoRelocations;
 
@@ -2515,6 +2533,8 @@ implementation
           SymIndex: uint32;
           SymOffset: uint32;
           SymSize: uint32;
+          SymCustomSectionIndex: uint32;
+          SymCustomSectionType: TWasmCustomDebugSectionType;
           SymKind: TWasmSymbolType;
           SymName: ansistring;
           ObjSym: TWasmObjSymbol;
@@ -2530,6 +2550,21 @@ implementation
           RelocOffset: uint32;
           RelocIndex: uint32;
           RelocAddend: int32;
+        end;
+
+      function FindDebugSectionByIndex(SectionIndex: Integer; out res: TWasmCustomDebugSectionType): Boolean;
+        var
+          ds: TWasmCustomDebugSectionType;
+        begin
+          for ds in TWasmCustomDebugSectionType do
+            if DebugSectionIndex[ds]=SectionIndex then
+              begin
+                Res:=ds;
+                Result:=True;
+                exit;
+              end;
+          Res:=low(TWasmCustomDebugSectionType);
+          Result:=False;
         end;
 
       function ReadSection: Boolean;
@@ -2936,6 +2971,37 @@ implementation
                                 if not ReadUleb32(SymSize) then
                                   begin
                                     InputError('Error reading the size of a SYMTAB_DATA symbol');
+                                    exit;
+                                  end;
+                              end;
+                          end;
+                        SYMTAB_FPC_CUSTOM:
+                          begin
+                            if not ReadName(SymName) then
+                              begin
+                                InputError('Error reading symbol name of a SYMTAB_FPC_CUSTOM symbol');
+                                exit;
+                              end;
+                            if (SymFlags and WASM_SYM_UNDEFINED)=0 then
+                              begin
+                                if not ReadUleb32(SymCustomSectionIndex) then
+                                  begin
+                                    InputError('Error reading the custom section index of a SYMTAB_FPC_CUSTOM symbol');
+                                    exit;
+                                  end;
+                                if not FindDebugSectionByIndex(SymCustomSectionIndex,SymCustomSectionType) then
+                                  begin
+                                    InputError('Custom section index of SYMTAB_FPC_CUSTOM symbol not pointing to a debug section');
+                                    exit;
+                                  end;
+                                if not ReadUleb32(SymOffset) then
+                                  begin
+                                    InputError('Error reading the offset of a SYMTAB_FPC_CUSTOM symbol');
+                                    exit;
+                                  end;
+                                if not ReadUleb32(SymSize) then
+                                  begin
+                                    InputError('Error reading the size of a SYMTAB_FPC_CUSTOM symbol');
                                     exit;
                                   end;
                               end;
@@ -4327,6 +4393,32 @@ implementation
                     else
                       objsym.typ:=AT_DATA;
                     objsym.objsection:=TObjSection(ObjData.ObjSectionList[FirstDataSegmentIdx+SymIndex]);
+                    objsym.offset:=SymOffset;
+                    objsym.size:=SymSize;
+                  end;
+              SYMTAB_FPC_CUSTOM:
+                if (SymFlags and WASM_SYM_UNDEFINED)<>0 then
+                  begin
+                    objsym:=TWasmObjSymbol(ObjData.CreateSymbol(SymName));
+                    objsym.bind:=AB_EXTERNAL;
+                    if (SymFlags and WASM_SYM_TLS)<>0 then
+                      internalerror(2024080702);
+                    objsym.typ:=AT_DATA;
+                    objsym.objsection:=nil;
+                    objsym.offset:=0;
+                    objsym.size:=0;
+                  end
+                else
+                  begin
+                    objsym:=TWasmObjSymbol(ObjData.CreateSymbol(SymName));
+                    if (SymFlags and WASM_SYM_BINDING_LOCAL)<> 0 then
+                      objsym.bind:=AB_LOCAL
+                    else
+                      objsym.bind:=AB_GLOBAL;
+                    if (SymFlags and WASM_SYM_TLS)<>0 then
+                      internalerror(2024080703);
+                    objsym.typ:=AT_DATA;
+                    objsym.objsection:=TObjSection(ObjData.ObjSectionList.Find(WasmCustomSectionName[SymCustomSectionType]));
                     objsym.offset:=SymOffset;
                     objsym.size:=SymSize;
                   end;

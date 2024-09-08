@@ -470,6 +470,14 @@ end;}
 procedure TCompilerMessageWindow.HandleEvent(var Event: TEvent);
 begin
   case Event.What of
+    evKeyDown :
+      begin
+        if (Event.KeyCode=kbEsc) then
+          begin
+            ClearEvent(Event);
+            Hide;
+          end;
+      end;
     evBroadcast :
       case Event.Command of
         cmListFocusChanged :
@@ -831,7 +839,7 @@ begin
           FileName:=P^.Editor^.FileName;
           if FileName='' then
             begin
-              P^.Editor^.SaveAsk(true);
+              P^.Editor^.SaveAsk(cmValid,true);
               FileName:=P^.Editor^.FileName;
             end;
         end
@@ -980,7 +988,7 @@ begin
 
   { Retrieve created exefile }
   If GetEXEPath<>'' then
-    EXEFile:=FixFileName(GetEXEPath+NameOf(MainFile)+GetTargetExeExt)
+    EXEFile:=FixFileName(GetEXEPath)+NameOf(MainFile)+GetTargetExeExt
   else
     EXEFile:=DirOf(MainFile)+NameOf(MainFile)+GetTargetExeExt;
   DefaultReplacements(ExeFile);
