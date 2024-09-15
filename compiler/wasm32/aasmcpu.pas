@@ -145,6 +145,9 @@ uses
       { taicpu }
 
       taicpu = class(tai_cpu_abstract_sym)
+      private
+         insoffset : longint;
+      public
          is_br_generated_by_goto: boolean;
 
          constructor Create(op : tasmop);override;
@@ -322,11 +325,10 @@ uses
       { tai_local }
 
       tai_local = class(tai)
-        bastyp: TWasmBasicType;
-        name : string;
-        first: boolean;
-        last: boolean;
-        constructor create(abasictype: TWasmBasicType; const aname: string = '');
+        locals: TWasmLocalsDynArray;
+        constructor create(alocals: TWasmLocalsDynArray);
+        procedure AddLocal(abasictype: TWasmBasicType);
+        procedure AddLocals(alocals: TWasmLocalsDynArray);
       end;
 
       { tai_globaltype }
@@ -1890,12 +1892,22 @@ uses
 
     { tai_local }
 
-    constructor tai_local.create(abasictype: TWasmBasicType; const aname: string);
+    constructor tai_local.create(alocals: TWasmLocalsDynArray);
       begin
         inherited Create;
-        bastyp := abasictype;
+        locals := Copy(alocals);
         typ := ait_local;
-        name := aname;
+      end;
+
+    procedure tai_local.AddLocal(abasictype: TWasmBasicType);
+      begin
+        SetLength(locals,Length(locals)+1);
+        locals[high(locals)]:=abasictype;
+      end;
+
+    procedure tai_local.AddLocals(alocals: TWasmLocalsDynArray);
+      begin
+        locals:=Concat(locals,alocals);
       end;
 
     { timpexp_ai }
@@ -2071,12 +2083,15 @@ uses
     function taicpu.Pass1(objdata: TObjData): longint;
 
         function SlebSize(v: tcgint): longint;
+          var
+            b: byte;
           begin
             result:=0;
             repeat
+              b:=byte(v) and 127;
               v:=SarInt64(v,7);
               Inc(result);
-            until ((v=0) and ((byte(v) and 64)=0)) or ((v=-1) and ((byte(v) and 64)<>0));
+            until ((v=0) and ((b and 64)=0)) or ((v=-1) and ((b and 64)<>0));
           end;
 
         function UlebSize(v: tcgint): longint;
@@ -2090,6 +2105,8 @@ uses
 
       begin
         result:=0;
+        { Save the old offset and set the new offset }
+        InsOffset:=ObjData.CurrObjSec.Size;
         case opcode of
           a_unreachable,
           a_nop,
@@ -2228,6 +2245,7 @@ uses
           a_end_if,
           a_end_loop,
           a_end_try,
+          a_end_function,
           a_catch_all,
           a_ref_is_null:
             result:=1;
@@ -2342,8 +2360,6 @@ uses
                     internalerror(2021092011);
                 end;
             end;
-          a_end_function:
-            result:=0;
           a_block,
           a_loop,
           a_if,
@@ -2685,6 +2701,9 @@ uses
           end;
 
       begin
+        { safety check }
+        if objdata.currobjsec.size<>longword(insoffset) then
+          internalerror(200130121);
         case opcode of
           a_unreachable:
             WriteByte($00);
@@ -2982,7 +3001,8 @@ uses
           a_end_block,
           a_end_if,
           a_end_loop,
-          a_end_try:
+          a_end_try,
+          a_end_function:
             WriteByte($0B);
           a_catch_all:
             WriteByte($19);
@@ -3121,8 +3141,6 @@ uses
                     internalerror(2021092011);
                 end;
             end;
-          a_end_function:
-            ;
           a_block,
           a_loop,
           a_if,

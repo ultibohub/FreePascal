@@ -131,6 +131,7 @@ interface
         SegSymIdx: Integer;
         SegOfs: qword;
         FileSectionOfs: qword;
+        EncodedLocalsSize: qword;
         MainFuncSymbol: TWasmObjSymbol;
         CustomSectionIdx: Integer;
         constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);override;
@@ -179,7 +180,7 @@ interface
         procedure DeclareExportName(en: tai_export_name);
         procedure DeclareImportModule(aim: tai_import_module);
         procedure DeclareImportName(ain: tai_import_name);
-        procedure DeclareLocal(al: tai_local);
+        procedure DeclareLocals(al: tai_local);
         procedure symbolpairdefine(akind: TSymbolPairKind;const asym, avalue: string);override;
         property FuncTypes: TWasmFuncTypeTable read FFuncTypes;
       end;
@@ -1202,12 +1203,14 @@ implementation
         ObjSymExtraData.ImportName:=ain.importname;
       end;
 
-    procedure TWasmObjData.DeclareLocal(al: tai_local);
+    procedure TWasmObjData.DeclareLocals(al: tai_local);
       var
         ObjSymExtraData: TWasmObjSymbolExtraData;
+        t: TWasmBasicType;
       begin
         ObjSymExtraData:=TWasmObjSymbolExtraData(FObjSymbolsExtraDataList.Find(FLastFuncName));
-        ObjSymExtraData.AddLocal(al.bastyp);
+        for t in al.locals do
+          ObjSymExtraData.AddLocal(t);
       end;
 
     procedure TWasmObjData.symbolpairdefine(akind: TSymbolPairKind; const asym, avalue: string);
@@ -1321,13 +1324,13 @@ implementation
 
         encoded_locals:=tdynamicarray.Create(64);
         WriteFunctionLocals(encoded_locals,ObjSymExtraData);
-        codelen:=encoded_locals.size+codeexprlen+1;
+        codelen:=encoded_locals.size+codeexprlen;
         WriteUleb(dest,codelen);
         encoded_locals.seek(0);
         CopyDynamicArray(encoded_locals,dest,encoded_locals.size);
         ObjSection.FileSectionOfs:=dest.size-objsym.offset;
+        ObjSection.EncodedLocalsSize:=encoded_locals.size;
         CopyDynamicArray(ObjSection.Data,dest,codeexprlen);
-        WriteByte(dest,$0B);
         encoded_locals.Free;
       end;
 
@@ -1607,7 +1610,20 @@ implementation
                             message1(asmw_e_illegal_unset_index,FuncSym.Name)
                           else
                             WriteUleb(relout,FuncSym.SymbolIndex);
-                          WriteSleb(relout,objrel.Addend+objrel.symbol.address);  { addend to add to the address }
+                          if (objrel.Addend+objrel.symbol.address)=0 then
+                            WriteSleb(relout,objrel.Addend+objrel.symbol.address)  { addend to add to the address }
+                          else
+                            WriteSleb(relout,objrel.Addend+objrel.symbol.address+TWasmObjSection(objrel.symbol.objsection).EncodedLocalsSize);  { addend to add to the address }
+                        end
+                      else if assigned(objrel.symbol) and (objrel.symbol.typ=AT_WASM_GLOBAL) then
+                        begin
+                          Inc(relcount^);
+                          WriteByte(relout,Ord(R_WASM_GLOBAL_INDEX_I32));
+                          WriteUleb(relout,objrel.DataOffset+objsec.FileSectionOfs);
+			  if (TWasmObjSymbol(objrel.symbol).SymbolIndex<0) then
+                            message1(asmw_e_illegal_unset_index,objrel.symbol.name)
+                          else
+                            WriteUleb(relout,TWasmObjSymbol(objrel.symbol).SymbolIndex);
                         end
                       else
                         begin
@@ -2736,7 +2752,8 @@ implementation
                                           R_WASM_MEMORY_ADDR_I32,
                                           R_WASM_TYPE_INDEX_LEB,
                                           R_WASM_GLOBAL_INDEX_LEB,
-                                          R_WASM_TAG_INDEX_LEB]) then
+                                          R_WASM_TAG_INDEX_LEB,
+                                          R_WASM_GLOBAL_INDEX_I32]) then
                       begin
                         InputError('Unsupported relocation type: ' + tostr(Ord(RelocType)));
                         exit;
@@ -2768,7 +2785,8 @@ implementation
                           R_WASM_MEMORY_ADDR_SLEB,
                           R_WASM_MEMORY_ADDR_I32,
                           R_WASM_FUNCTION_OFFSET_I32,
-                          R_WASM_GLOBAL_INDEX_LEB]) and (RelocIndex>High(SymbolTable)) then
+                          R_WASM_GLOBAL_INDEX_LEB,
+                          R_WASM_GLOBAL_INDEX_I32]) and (RelocIndex>High(SymbolTable)) then
                       begin
                         InputError('Relocation index outside the bounds of the symbol table');
                         exit;
@@ -2783,7 +2801,7 @@ implementation
                         InputError('R_WASM_SECTION_OFFSET_I32 must point to a SYMTAB_SECTION symbol');
                         exit;
                       end;
-                    if (RelocType=R_WASM_GLOBAL_INDEX_LEB) and
+                    if (RelocType in [R_WASM_GLOBAL_INDEX_LEB,R_WASM_GLOBAL_INDEX_I32]) and
                        not ((SymbolTable[RelocIndex].SymKind=SYMTAB_GLOBAL) or
                             ((ts_wasm_threads in current_settings.targetswitches) and
                              (SymbolTable[RelocIndex].SymKind=SYMTAB_DATA) and
@@ -4686,6 +4704,12 @@ implementation
                       if Assigned(SymbolTable[RelocIndex].ObjSym.TlsGlobalSym) then
                         ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym.TlsGlobalSym,RELOC_GLOBAL_INDEX_LEB));
                     end;
+                  R_WASM_GLOBAL_INDEX_I32:
+                    begin
+                      ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_ABSOLUTE));
+                      if Assigned(SymbolTable[RelocIndex].ObjSym.TlsGlobalSym) then
+                        ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym.TlsGlobalSym,RELOC_ABSOLUTE));
+                    end;
                   R_WASM_TAG_INDEX_LEB:
                     ObjSec.ObjRelocations.Add(TWasmObjRelocation.CreateSymbol(RelocOffset-BaseSectionOffset,SymbolTable[RelocIndex].ObjSym,RELOC_TAG_INDEX_LEB));
                   else
@@ -5150,6 +5174,20 @@ implementation
                               internalerror(2024010602);
                             objsec.Data.seek(objreloc.DataOffset);
                             writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                          end;
+                        AT_TLS:
+                          begin
+                            if objreloc.IsFunctionOffsetI32 then
+                              internalerror(2024010602);
+                            objsec.Data.seek(objreloc.DataOffset);
+                            writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos-objsym.objsection.ExeSection.MemPos)+objreloc.Addend));
+                          end;
+                        AT_WASM_GLOBAL:
+                          begin
+                            if objreloc.IsFunctionOffsetI32 then
+                              internalerror(2024010602);
+                            objsec.Data.seek(objreloc.DataOffset);
+                            writeUInt32LE(UInt32(objsym.offset+objsym.objsection.MemPos));
                           end;
                         else
                           internalerror(2024010108);

@@ -273,6 +273,9 @@ implementation
       cpubase,cpuinfo,paramgr,
       fmodule,
       defutil,symtable,symcpu,ppu
+{$ifdef wasm}
+      ,aasmcpu
+{$endif wasm}
 {$ifdef OMFOBJSUPPORT}
       ,dbgcodeview
 {$endif OMFOBJSUPPORT}
@@ -1050,7 +1053,7 @@ implementation
 
     procedure TDebugInfoDwarf.append_proc_frame_base(list: TAsmList;
       def: tprocdef);
-{$ifdef i8086}
+{$if defined(i8086)}
       var
         dreg: longint;
         blocksize: longint;
@@ -1073,13 +1076,33 @@ implementation
         current_asmdata.asmlists[al_dwarf_info].concatlist(templist);
         templist.free;
       end;
-{$else i8086}
+{$elseif defined(wasm)}
+      var
+        blocksize: longint;
+        templist: TAsmList;
+      begin
+        with tcpuprocdef(def).frame_pointer_ref do
+          if (base=NR_LOCAL_STACK_POINTER_REG) and
+             (index=NR_NO) then
+            begin
+              templist:=TAsmList.create;
+              templist.concat(tai_const.create_8bit(ord(DW_OP_WASM_location)));
+              templist.concat(tai_const.create_8bit(0)); { wasm local }
+              templist.concat(tai_const.create_uleb128bit(offset));
+              templist.concat(tai_const.create_8bit(ord(DW_OP_stack_value)));
+              blocksize:=3+Lengthuleb128(offset);
+              append_block1(DW_AT_frame_base,blocksize);
+              current_asmdata.asmlists[al_dwarf_info].concatlist(templist);
+              templist.free;
+            end;
+      end;
+{$else}
       begin
         { problem: base reg isn't known here
           DW_AT_frame_base,DW_FORM_block1,1
         }
       end;
-{$endif i8086}
+{$endif}
 
 
 {$ifdef i8086}
@@ -2360,8 +2383,19 @@ implementation
               case sym.typ of
                 staticvarsym:
                   begin
-                    if vo_is_thread_var in sym.varoptions then
+                    if (vo_is_thread_var in sym.varoptions) and
+                       (not (target_info.system in systems_wasm) or
+                            (ts_wasm_threads in current_settings.targetswitches)) then
                       begin
+{$ifdef wasm}
+                        templist.concat(tai_const.create_8bit(ord(DW_OP_WASM_location)));
+                        templist.concat(tai_const.create_8bit(3)); { wasm global }
+                        templist.concat(tai_const.Create_type_name(aitconst_ptr_unaligned,TLS_BASE_SYM,TWasmGlobalAsmSymbol,AT_WASM_GLOBAL,0));
+                        templist.concat(tai_const.create_8bit(ord(DW_OP_addr)));
+                        templist.concat(tai_const.Create_type_name(aitconst_ptr_unaligned,sym.mangledname,0));
+                        templist.concat(tai_const.create_8bit(ord(DW_OP_plus)));
+                        blocksize:=4+2*sizeof(puint);
+{$else wasm}
                         if tf_section_threadvars in target_info.flags then
                           begin
                             case sizeof(puint) of
@@ -2397,6 +2431,7 @@ implementation
                               offset+sizeof(pint)));
                             blocksize:=1+sizeof(puint);
                           end;
+{$endif wasm}
                       end
                     else
                       begin
@@ -3366,9 +3401,9 @@ implementation
             current_asmdata.asmlists[al_dwarf_aranges].concat(tai_const.Create_32bit_unaligned(0));
 {$else i8086}
             { offset }
-            current_asmdata.asmlists[al_dwarf_aranges].concat(tai_const.Create_aint(0));
+            current_asmdata.asmlists[al_dwarf_aranges].concat(tai_const.Create_nil_codeptr);
             { length }
-            current_asmdata.asmlists[al_dwarf_aranges].concat(tai_const.Create_aint(0));
+            current_asmdata.asmlists[al_dwarf_aranges].concat(tai_const.Create_nil_codeptr);
 {$endif i8086}
             current_asmdata.asmlists[al_dwarf_aranges].concat(tai_symbol.createname(target_asm.labelprefix+'earanges0',AT_METADATA,0,voidpointertype));
           end;

@@ -401,6 +401,7 @@ implementation
         i,pos    : longint;
         InlineLevel : longint;
         do_line  : boolean;
+        t: TWasmBasicType;
       const
         WasmBasicTypeStr : array [TWasmBasicType] of string = ('unknown','i32','i64','f32','f64','funcref','externref','v128');
 
@@ -621,16 +622,13 @@ implementation
 
              ait_local :
                begin
-                 writer.AsmWrite(#9#9'(local ');
-                 if tai_local(hp).name <> '' then
+                 for t in tai_local(hp).locals do
                    begin
-                     writer.AsmWrite(' ');
-                     writer.AsmWrite(tai_local(hp).name);
-                     writer.AsmWrite(' ');
+                     writer.AsmWrite(#9#9'(local ');
+                     writer.AsmWrite( WasmBasicTypeStr[ t ] );
+                     writer.AsmWrite(')');
+                     writer.AsmLn;
                    end;
-                 writer.AsmWrite( WasmBasicTypeStr[ tai_local(hp).bastyp ] );
-                 writer.AsmWrite(')');
-                 writer.AsmLn;
                end;
 
              else

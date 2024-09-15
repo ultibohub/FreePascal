@@ -1629,7 +1629,11 @@ BEGIN
   {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetVideoMode(StartupScreenMode);
   {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ClearScreen;
   {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetCursorPos(0,0);
+{$ifdef FV_UNICODE}
+  {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}DoneEnhancedVideo;
+{$else FV_UNICODE}
   {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}DoneVideo;
+{$endif FV_UNICODE}
   VideoInitialized:=false;
 END;
 
