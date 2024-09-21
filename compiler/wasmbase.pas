@@ -50,6 +50,7 @@ type
     wcstLinking,
     wcstRelocCode,
     wcstRelocData,
+    wcstName,
     wcstProducers,
     wcstTargetFeatures,
 
@@ -71,11 +72,28 @@ type
 
   TWasmCustomDebugSectionType = wcstDebugFrame..wcstDebugStr;
 
+  TWasmNameSubsectionType = (
+    wnstModuleName    = 0,
+    wnstFunctionNames = 1,
+    wnstLocalNames    = 2,
+    wnstLabelNames    = 3,   { extended name section }
+    wnstTypeNames     = 4,   { gc proposal }
+    wnstTableNames    = 5,   { extended name section }
+    wnstMemoryNames   = 6,   { extended name section }
+    wnstGlobalNames   = 7,   { extended name section }
+    wnstElemNames     = 8,   { extended name section }
+    wnstDataNames     = 9,   { extended name section }
+    wnstFieldNames    = 10,  { gc proposal }
+    wnstTagNames      = 11   { extended name section }
+  );
+
+
 const
   WasmCustomSectionName: array [TWasmCustomSectionType] of string =
     ('linking',
      'reloc.CODE',
      'reloc.DATA',
+     'name',
      'producers',
      'target_features',
 

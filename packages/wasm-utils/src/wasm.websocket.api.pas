@@ -25,11 +25,20 @@ uses
   {$ELSE}
   sysutils,
   {$ENDIF}
+  wasm.logger.api,
   wasm.websocket.shared;
 
 Type
-  TWasmWebSocketLogLevel = (wllTrace, wllDebug, wllInfo, wllWarning, wllError, wllCritical);
+  TWasmWebSocketLogLevel = TWasmLogLevel;
   TWasmWebSocketLogLevels = set of TWasmWebsocketLogLevel;
+
+const
+  wllTrace    = wasm.logger.api.wllTrace;
+  wllDebug    = wasm.logger.api.wllDebug;
+  wllInfo     = wasm.logger.api.wllInfo;
+  wllWarning  = wasm.logger.api.wllWarning;
+  wllError    = wasm.logger.api.wllError;
+  wllCritical = wasm.logger.api.wllCritical;
 
 function __wasm_websocket_allocate(
     aURL : PByte;
@@ -71,64 +80,64 @@ Function __wasm_websocket_on_open (aWebsocketID : TWasmWebSocketID; aUserData : 
 Function __wasm_websocket_on_close (aWebsocketID : TWasmWebSocketID; aUserData : Pointer; aCode: Longint; aReason : PByte; aReasonLen : Longint; aClean : Longint) : TWebsocketCallBackResult;
 
 
-procedure __wasmwebsocket_log(level : TWasmWebsocketLogLevel; const Msg : String);
-procedure __wasmwebsocket_log(level : TWasmWebSocketLogLevel; const Fmt : String; Args : Array of const);
+procedure __wasmwebsocket_log(level : TWasmLogLevel; const Msg : String);
+procedure __wasmwebsocket_log(level : TWasmLogLevel; const Fmt : String; const Args : Array of const);
 
 var
+  WebSocketLogEnabled : Boolean;
   WebSocketErrorCallback : TWasmWebsocketErrorCallback;
   WebSocketMessageCallback : TWasmWebsocketMessageCallback;
   WebSocketCloseCallback : TWasmWebsocketCloseCallback;
   WebSocketOpenCallback : TWasmWebsocketOpenCallback;
-  OnWebsocketLog : TWasmWebsocketLogHook;
 
 implementation
 
 procedure __wasmwebsocket_log(level : TWasmWebSocketLogLevel; const Msg : String);
 
 begin
-  if assigned(OnWebsocketLog) then
-    OnWebSocketLog(level,msg)
+  if not WebSocketLogEnabled then
+    exit;
+  __wasm_log(level,'websocket',msg);
 end;
 
-procedure __wasmwebsocket_log(level : TWasmWebSocketLogLevel; const Fmt : String; Args : Array of const);
+procedure __wasmwebsocket_log(level : TWasmWebSocketLogLevel; const Fmt : String; const Args : Array of const);
 
 begin
-  if assigned(OnWebsocketLog) then
-    OnWebSocketLog(level,SafeFormat(Fmt,Args));
+  if not WebSocketLogEnabled then
+    exit;
+  __wasm_log(level,'websocket',Fmt,Args);
 end;
 
 
 Function __wasm_websocket_allocate_buffer(aWebsocketID : TWasmWebSocketID; aUserData : Pointer; aBufferLen : Longint) : Pointer;
 
 begin
+    // Silence compiler warning
+  if (aWebSocketID=0) or (aUserData=Nil) then ;
   Result:=GetMem(aBufferLen);
 end;
 
 procedure LogError(const aOperation : String; aError : Exception);
 
 begin
-  __wasmwebsocket_log(wllError,SafeFormat('Error %s during %s callback: %s',[aError.ClassName,aError.Message]));
+  __wasmwebsocket_log(wllError,SafeFormat('Error %s during %s callback: %s',[aError.ClassName,aOperation,aError.Message]));
 end;
 
 Function __wasm_websocket_on_error (aWebsocketID : TWasmWebSocketID; aUserData : Pointer) : TWebsocketCallBackResult;
 
-var
-  lErr : String;
-  Buf : TBytes;
-
 begin
-    if not assigned(WebSocketErrorCallback) then
-      Exit(WASMWS_CALLBACK_NOHANDLER);
-    try
-      WebsocketErrorCallBack(aWebsocketID,aUserData);
-      Result:=WASMWS_CALLBACK_SUCCESS;
-    except
-      On E : exception do
-        begin
-        LogError('error',E);
-        Result:=WASMWS_CALLBACK_ERROR;
-        end;
-    end;
+  if not assigned(WebSocketErrorCallback) then
+    Exit(WASMWS_CALLBACK_NOHANDLER);
+  try
+    WebsocketErrorCallBack(aWebsocketID,aUserData);
+    Result:=WASMWS_CALLBACK_SUCCESS;
+  except
+    On E : exception do
+      begin
+      LogError('error',E);
+      Result:=WASMWS_CALLBACK_ERROR;
+      end;
+  end;
 end;
 
 Function __wasm_websocket_on_message (aWebsocketID : TWasmWebSocketID; aUserData : Pointer; aMessageType : TWasmWebSocketMessageType; aMessage : Pointer; aMessageLen : Integer) : TWebsocketCallBackResult;
@@ -137,6 +146,7 @@ var
   Buf : TBytes;
 
 begin
+  Buf:=[];
   try
     if not assigned(WebSocketMessageCallback) then
       Exit(WASMWS_CALLBACK_NOHANDLER);
@@ -183,6 +193,7 @@ var
   lClean : Boolean;
 
 begin
+  Buf:=[];
   try
     if not assigned(WebSocketCloseCallback) then
       Exit(WASMWS_CALLBACK_NOHANDLER);

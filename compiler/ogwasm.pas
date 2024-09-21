@@ -119,8 +119,10 @@ interface
         GlobalType: TWasmBasicType;
         GlobalIsImmutable: Boolean;
         Locals: array of TWasmBasicType;
+        EncodedLocals: tdynamicarray;
         constructor Create(HashObjectList: TFPHashObjectList; const s: TSymStr);
-        procedure AddLocal(bastyp: TWasmBasicType);
+        destructor Destroy; override;
+        procedure AddLocals(alocals: TWasmLocalsDynArray);
       end;
 
       { TWasmObjSection }
@@ -131,7 +133,6 @@ interface
         SegSymIdx: Integer;
         SegOfs: qword;
         FileSectionOfs: qword;
-        EncodedLocalsSize: qword;
         MainFuncSymbol: TWasmObjSymbol;
         CustomSectionIdx: Integer;
         constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);override;
@@ -175,12 +176,16 @@ interface
         function globalref(asmsym:TAsmSymbol):TObjSymbol;
         function ExceptionTagRef(asmsym:TAsmSymbol):TObjSymbol;
         procedure DeclareGlobalType(gt: tai_globaltype);
-        procedure DeclareFuncType(ft: tai_functype);
+        procedure DeclareFuncType_Pass0(ft: tai_functype);
+        procedure DeclareFuncType_Pass1(ft: tai_functype);
+        procedure DeclareFuncType_Pass2(ft: tai_functype);
         procedure DeclareTagType(tt: tai_tagtype);
         procedure DeclareExportName(en: tai_export_name);
         procedure DeclareImportModule(aim: tai_import_module);
         procedure DeclareImportName(ain: tai_import_name);
-        procedure DeclareLocals(al: tai_local);
+        procedure DeclareLocals_Pass0(al: tai_local);
+        procedure DeclareLocals_Pass1(al: tai_local);
+        procedure WriteLocals_Pass2(al: tai_local);
         procedure symbolpairdefine(akind: TSymbolPairKind;const asym, avalue: string);override;
         property FuncTypes: TWasmFuncTypeTable read FFuncTypes;
       end;
@@ -217,7 +222,6 @@ interface
         procedure WriteWasmCustomSection(wcst: TWasmCustomSectionType);
         function IsExternalFunction(sym: TObjSymbol): Boolean;
         function IsExportedFunction(sym: TWasmObjSymbol): Boolean;
-        procedure WriteFunctionLocals(dest: tdynamicarray; ed: TWasmObjSymbolExtraData);
         procedure WriteFunctionCode(dest: tdynamicarray; objsym: TObjSymbol);
         procedure WriteSymbolTable;
         procedure WriteRelocationCodeTable(CodeSectionIndex: Integer);
@@ -256,6 +260,13 @@ interface
             '.data',
             'fpc.resources');
         WasmPageSize = 65536;
+
+        type
+          TCustomSectionNameMapEntry = record
+            idx: UInt32;
+            name: string;
+          end;
+          TCustomSectionNameMap = array of TCustomSectionNameMapEntry;
       private
         FImports: TFPHashObjectList;
         FFuncTypes: TWasmFuncTypeTable;
@@ -275,6 +286,7 @@ interface
 
         FWasmSections: array [TWasmSectionID] of tdynamicarray;
         FWasmCustomSections: array [TWasmCustomSectionType] of tdynamicarray;
+        FWasmNameSubsections: array [TWasmNameSubsectionType] of tdynamicarray;
         FStackPointerSym: TWasmObjSymbol;
         FTlsBaseSym: TWasmObjSymbol;
         FTlsSizeSym: TWasmObjSymbol;
@@ -283,6 +295,14 @@ interface
         FInitSharedMemoryFunctionSym: TWasmObjSymbol;
         FMinMemoryPages,
         FMaxMemoryPages: Integer;
+        { use for the Name section }
+        FFunctionNameMap: TCustomSectionNameMap;
+        FGlobalNameMap: TCustomSectionNameMap;
+        FDataNameMap: TCustomSectionNameMap;
+        procedure AddToNameMap(var nm: TCustomSectionNameMap; aidx: UInt32; const aname: string);
+        procedure AddToFunctionNameMap(aidx: UInt32; const aname: string);
+        procedure AddToGlobalNameMap(aidx: UInt32; const aname: string);
+        procedure AddToDataNameMap(aidx: UInt32; const aname: string);
         procedure WriteWasmSection(wsid: TWasmSectionID);
         procedure WriteWasmSectionIfNotEmpty(wsid: TWasmSectionID);
         procedure WriteWasmCustomSection(wcst: TWasmCustomSectionType);
@@ -317,7 +337,7 @@ interface
 implementation
 
     uses
-      cutils,verbose,version,globals,ogmap;
+      cutils,verbose,version,globals,fmodule,ogmap;
 
     const
       StackPointerSymStr='__stack_pointer';
@@ -735,15 +755,55 @@ implementation
 
     constructor TWasmObjSymbolExtraData.Create(HashObjectList: TFPHashObjectList; const s: TSymStr);
       begin
+        EncodedLocals:=nil;
         inherited Create(HashObjectList,s);
         TypeIdx:=-1;
         ExceptionTagTypeIdx:=-1;
       end;
 
-    procedure TWasmObjSymbolExtraData.AddLocal(bastyp: TWasmBasicType);
+    destructor TWasmObjSymbolExtraData.Destroy;
       begin
-        SetLength(Locals,Length(Locals)+1);
-        Locals[High(Locals)]:=bastyp;
+        EncodedLocals.Free;
+        inherited Destroy;
+      end;
+
+    procedure TWasmObjSymbolExtraData.AddLocals(alocals: TWasmLocalsDynArray);
+      var
+        i,
+        rle_entries,
+        cnt: Integer;
+        lasttype: TWasmBasicType;
+      begin
+        Locals:=alocals;
+        if Assigned(EncodedLocals) then
+          internalerror(2024081502);
+        EncodedLocals:=tdynamicarray.Create(64);
+        if Length(Locals)=0 then
+          begin
+            WriteUleb(EncodedLocals,0);
+            exit;
+          end;
+
+        rle_entries:=1;
+        for i:=low(Locals)+1 to high(Locals) do
+          if Locals[i]<>Locals[i-1] then
+            inc(rle_entries);
+
+        WriteUleb(EncodedLocals,rle_entries);
+        lasttype:=Locals[Low(Locals)];
+        cnt:=1;
+        for i:=low(Locals)+1 to high(Locals) do
+          if Locals[i]=Locals[i-1] then
+            inc(cnt)
+          else
+            begin
+              WriteUleb(EncodedLocals,cnt);
+              WriteWasmBasicType(EncodedLocals,lasttype);
+              lasttype:=Locals[i];
+              cnt:=1;
+            end;
+        WriteUleb(EncodedLocals,cnt);
+        WriteWasmBasicType(EncodedLocals,lasttype);
       end;
 
 {****************************************************************************
@@ -1155,7 +1215,7 @@ implementation
         ObjSymExtraData.GlobalIsImmutable:=gt.immutable;
       end;
 
-    procedure TWasmObjData.DeclareFuncType(ft: tai_functype);
+    procedure TWasmObjData.DeclareFuncType_Pass0(ft: tai_functype);
       var
         i: Integer;
         ObjSymExtraData: TWasmObjSymbolExtraData;
@@ -1164,6 +1224,16 @@ implementation
         i:=FFuncTypes.AddOrGetFuncType(ft.functype);
         ObjSymExtraData:=AddOrCreateObjSymbolExtraData(ft.funcname);
         ObjSymExtraData.TypeIdx:=i;
+      end;
+
+    procedure TWasmObjData.DeclareFuncType_Pass1(ft: tai_functype);
+      begin
+        FLastFuncName:=ft.funcname;
+      end;
+
+    procedure TWasmObjData.DeclareFuncType_Pass2(ft: tai_functype);
+      begin
+        FLastFuncName:=ft.funcname;
       end;
 
     procedure TWasmObjData.DeclareTagType(tt: tai_tagtype);
@@ -1203,14 +1273,44 @@ implementation
         ObjSymExtraData.ImportName:=ain.importname;
       end;
 
-    procedure TWasmObjData.DeclareLocals(al: tai_local);
+    procedure TWasmObjData.DeclareLocals_Pass0(al: tai_local);
       var
         ObjSymExtraData: TWasmObjSymbolExtraData;
-        t: TWasmBasicType;
       begin
         ObjSymExtraData:=TWasmObjSymbolExtraData(FObjSymbolsExtraDataList.Find(FLastFuncName));
-        for t in al.locals do
-          ObjSymExtraData.AddLocal(t);
+        ObjSymExtraData.AddLocals(al.locals);
+        alloc(ObjSymExtraData.EncodedLocals.size);
+      end;
+
+    procedure TWasmObjData.DeclareLocals_Pass1(al: tai_local);
+      var
+        ObjSymExtraData: TWasmObjSymbolExtraData;
+      begin
+        ObjSymExtraData:=TWasmObjSymbolExtraData(FObjSymbolsExtraDataList.Find(FLastFuncName));
+        alloc(ObjSymExtraData.EncodedLocals.size);
+      end;
+
+    procedure TWasmObjData.WriteLocals_Pass2(al: tai_local);
+      var
+        ObjSymExtraData: TWasmObjSymbolExtraData;
+        d: tdynamicarray;
+        buf: array [0..4095] of byte;
+        bs,size: Integer;
+      begin
+        ObjSymExtraData:=TWasmObjSymbolExtraData(FObjSymbolsExtraDataList.Find(FLastFuncName));
+        d:=ObjSymExtraData.EncodedLocals;
+        d.seek(0);
+        size:=d.size;
+        while size>0 do
+          begin
+            if size<SizeOf(buf) then
+              bs:=Integer(size)
+            else
+              bs:=SizeOf(buf);
+            d.read(buf,bs);
+            writebytes(buf,bs);
+            dec(size,bs);
+          end;
       end;
 
     procedure TWasmObjData.symbolpairdefine(akind: TSymbolPairKind; const asym, avalue: string);
@@ -1274,64 +1374,20 @@ implementation
           result:=false;
       end;
 
-    procedure TWasmObjOutput.WriteFunctionLocals(dest: tdynamicarray; ed: TWasmObjSymbolExtraData);
-      var
-        i,
-        rle_entries,
-        cnt: Integer;
-        lasttype: TWasmBasicType;
-      begin
-        if Length(ed.Locals)=0 then
-          begin
-            WriteUleb(dest,0);
-            exit;
-          end;
-
-        rle_entries:=1;
-        for i:=low(ed.Locals)+1 to high(ed.Locals) do
-          if ed.Locals[i]<>ed.Locals[i-1] then
-            inc(rle_entries);
-
-        WriteUleb(dest,rle_entries);
-        lasttype:=ed.Locals[Low(ed.Locals)];
-        cnt:=1;
-        for i:=low(ed.Locals)+1 to high(ed.Locals) do
-          if ed.Locals[i]=ed.Locals[i-1] then
-            inc(cnt)
-          else
-            begin
-              WriteUleb(dest,cnt);
-              WriteWasmBasicType(dest,lasttype);
-              lasttype:=ed.Locals[i];
-              cnt:=1;
-            end;
-        WriteUleb(dest,cnt);
-        WriteWasmBasicType(dest,lasttype);
-      end;
-
     procedure TWasmObjOutput.WriteFunctionCode(dest: tdynamicarray; objsym: TObjSymbol);
       var
-        encoded_locals: tdynamicarray;
         ObjSymExtraData: TWasmObjSymbolExtraData;
-        codelen: LongWord;
         ObjSection: TWasmObjSection;
-        codeexprlen: QWord;
+        codelen: QWord;
       begin
         ObjSymExtraData:=TWasmObjSymbolExtraData(FData.FObjSymbolsExtraDataList.Find(objsym.Name));
         ObjSection:=TWasmObjSection(objsym.objsection);
         ObjSection.Data.seek(objsym.address);
-        codeexprlen:=objsym.size;
+        codelen:=objsym.size;
 
-        encoded_locals:=tdynamicarray.Create(64);
-        WriteFunctionLocals(encoded_locals,ObjSymExtraData);
-        codelen:=encoded_locals.size+codeexprlen;
         WriteUleb(dest,codelen);
-        encoded_locals.seek(0);
-        CopyDynamicArray(encoded_locals,dest,encoded_locals.size);
         ObjSection.FileSectionOfs:=dest.size-objsym.offset;
-        ObjSection.EncodedLocalsSize:=encoded_locals.size;
-        CopyDynamicArray(ObjSection.Data,dest,codeexprlen);
-        encoded_locals.Free;
+        CopyDynamicArray(ObjSection.Data,dest,codelen);
       end;
 
     procedure TWasmObjOutput.WriteSymbolTable;
@@ -1610,10 +1666,7 @@ implementation
                             message1(asmw_e_illegal_unset_index,FuncSym.Name)
                           else
                             WriteUleb(relout,FuncSym.SymbolIndex);
-                          if (objrel.Addend+objrel.symbol.address)=0 then
-                            WriteSleb(relout,objrel.Addend+objrel.symbol.address)  { addend to add to the address }
-                          else
-                            WriteSleb(relout,objrel.Addend+objrel.symbol.address+TWasmObjSection(objrel.symbol.objsection).EncodedLocalsSize);  { addend to add to the address }
+                          WriteSleb(relout,objrel.Addend+objrel.symbol.address)  { addend to add to the address }
                         end
                       else if assigned(objrel.symbol) and (objrel.symbol.typ=AT_WASM_GLOBAL) then
                         begin
@@ -4339,7 +4392,7 @@ implementation
                   InputError('Code section ' + tostr(i) + ' does not have a main symbol defined in the symbol table');
                   exit;
                 end;
-              if SegIsExported then
+              if SegIsExported or not (cs_link_smart in current_settings.globalswitches) then
                 CurrSec:=ObjData.createsection(SegName,1,[oso_executable,oso_Data,oso_load,oso_keep],false)
               else
                 CurrSec:=ObjData.createsection(SegName,1,[oso_executable,oso_Data,oso_load],false);
@@ -4351,7 +4404,10 @@ implementation
           with DataSegments[i] do
             if Active then
               begin
-                CurrSec:=ObjData.createsection(SegName,1 shl SegAlignment,[oso_Data,oso_load,oso_write],false);
+                if not (cs_link_smart in current_settings.globalswitches) then
+                  CurrSec:=ObjData.createsection(SegName,1 shl SegAlignment,[oso_Data,oso_load,oso_write,oso_keep],false)
+                else
+                  CurrSec:=ObjData.createsection(SegName,1 shl SegAlignment,[oso_Data,oso_load,oso_write],false);
                 CurrSec.DataPos:=DataPos;
                 CurrSec.MemPos:=Offset;
                 CurrSec.Size:=Len;
@@ -4724,6 +4780,31 @@ implementation
                                TWasmExeOutput
 ****************************************************************************}
 
+    procedure TWasmExeOutput.AddToNameMap(var nm: TCustomSectionNameMap; aidx: UInt32; const aname: string);
+      begin
+        SetLength(nm,Length(nm)+1);
+        with nm[High(nm)] do
+          begin
+            idx:=aidx;
+            name:=aname;
+          end;
+      end;
+
+    procedure TWasmExeOutput.AddToFunctionNameMap(aidx: UInt32; const aname: string);
+      begin
+        AddToNameMap(FFunctionNameMap,aidx,aname);
+      end;
+
+    procedure TWasmExeOutput.AddToGlobalNameMap(aidx: UInt32; const aname: string);
+      begin
+        AddToNameMap(FGlobalNameMap,aidx,aname);
+      end;
+
+    procedure TWasmExeOutput.AddToDataNameMap(aidx: UInt32; const aname: string);
+      begin
+        AddToNameMap(FDataNameMap,aidx,aname);
+      end;
+
     procedure TWasmExeOutput.WriteWasmSection(wsid: TWasmSectionID);
       var
         b: byte;
@@ -4821,6 +4902,7 @@ implementation
             exesecdatapos: LongWord;
             dpos, pad: QWord;
           begin
+            AddToDataNameMap(Length(FDataNameMap),exesec.Name);
             if ts_wasm_threads in current_settings.targetswitches then
               WriteByte(FWasmSections[wsiData],1)  { mode passive }
             else
@@ -4965,6 +5047,8 @@ implementation
                     internalerror(2024010114);
                 end;
               WriteByte(FWasmSections[wsiGlobal],$0B);  { end }
+              { add entry for the name section }
+              AddToGlobalNameMap(i,objsec.MainFuncSymbol.Name);
             end;
         end;
 
@@ -5044,6 +5128,44 @@ implementation
             end;
         end;
 
+      procedure WriteNameMap(const nm: TCustomSectionNameMap; dest: tdynamicarray);
+        var
+          i: Integer;
+        begin
+          WriteUleb(dest,Length(nm));
+          for i:=low(nm) to high(nm) do
+            with nm[i] do
+              begin
+                WriteUleb(dest,idx);
+                WriteName(dest,name);
+              end;
+        end;
+
+      procedure WriteNameSubsection(wnst: TWasmNameSubsectionType);
+        begin
+          if FWasmNameSubsections[wnst].size>0 then
+            begin
+              WriteByte(FWasmCustomSections[wcstName],Ord(wnst));
+              WriteUleb(FWasmCustomSections[wcstName],FWasmNameSubsections[wnst].size);
+              FWasmNameSubsections[wnst].seek(0);
+              CopyDynamicArray(FWasmNameSubsections[wnst],FWasmCustomSections[wcstName],FWasmNameSubsections[wnst].size);
+            end;
+        end;
+
+      procedure WriteNameSection;
+        begin
+          WriteName(FWasmNameSubsections[wnstModuleName],current_module.exefilename);
+
+          WriteNameMap(FFunctionNameMap,FWasmNameSubsections[wnstFunctionNames]);
+          WriteNameMap(FGlobalNameMap,FWasmNameSubsections[wnstGlobalNames]);
+          WriteNameMap(FDataNameMap,FWasmNameSubsections[wnstDataNames]);
+
+          WriteNameSubsection(wnstModuleName);
+          WriteNameSubsection(wnstFunctionNames);
+          WriteNameSubsection(wnstGlobalNames);
+          WriteNameSubsection(wnstDataNames);
+        end;
+
       var
         cust_sec: TWasmCustomSectionType;
       begin
@@ -5088,6 +5210,8 @@ implementation
         if ts_wasm_threads in current_settings.targetswitches then
           WriteUleb(FWasmSections[wsiStart],FInitSharedMemoryFunctionSym.LinkingData.ExeFunctionIndex);
 
+        WriteNameSection;
+
         Writer.write(WasmModuleMagic,SizeOf(WasmModuleMagic));
         Writer.write(WasmVersion,SizeOf(WasmVersion));
         WriteWasmSection(wsiType);
@@ -5113,6 +5237,8 @@ implementation
         MaybeWriteDebugSection(wcstDebugFrame);
         MaybeWriteDebugSection(wcstDebugAranges);
         MaybeWriteDebugSection(wcstDebugRanges);
+
+        WriteWasmCustomSection(wcstName);
 
         result := true;
       end;
@@ -5269,6 +5395,7 @@ implementation
       var
         i: TWasmSectionID;
         j: TWasmCustomSectionType;
+        k: TWasmNameSubsectionType;
       begin
         inherited create;
         CObjData:=TWasmObjData;
@@ -5279,6 +5406,8 @@ implementation
           FWasmSections[i] := tdynamicarray.create(SectionDataMaxGrow);
         for j in TWasmCustomSectionType do
           FWasmCustomSections[j] := tdynamicarray.create(SectionDataMaxGrow);
+        for k:=low(FWasmNameSubsections) to high(FWasmNameSubsections) do
+          FWasmNameSubsections[k] := tdynamicarray.create(SectionDataMaxGrow);
         SetLength(FIndirectFunctionTable,1);
         FIndirectFunctionTable[0].FuncIdx:=-1;
       end;
@@ -5287,11 +5416,14 @@ implementation
       var
         i: TWasmSectionID;
         j: TWasmCustomSectionType;
+        k: TWasmNameSubsectionType;
       begin
         for i in TWasmSectionID do
           FWasmSections[i].Free;
         for j in TWasmCustomSectionType do
           FWasmCustomSections[j].Free;
+        for k:=low(FWasmNameSubsections) to high(FWasmNameSubsections) do
+          FWasmNameSubsections[k].Free;
         FFuncTypes.Free;
         inherited destroy;
       end;
@@ -5497,6 +5629,7 @@ implementation
                     newdll:=True;
                     TWasmObjSymbol(exesym.ObjSymbol).LinkingData.ExeFunctionIndex:=
                       AddFunctionImport(ImportLibrary.Name,ImportSymbol.Name,TWasmObjSymbol(exesym.ObjSymbol).LinkingData.FuncType);
+                    AddToFunctionNameMap(TWasmObjSymbol(exesym.ObjSymbol).LinkingData.ExeFunctionIndex,ImportSymbol.MangledName);
                   end;
               end;
           end;
@@ -5548,6 +5681,7 @@ implementation
               begin
                 exemap.Add('  Function[' + tostr(fsym.LinkingData.ExeFunctionIndex) + '] ' + fsym.Name + fsym.LinkingData.FuncType.ToString);
               end;
+            AddToFunctionNameMap(fsym.LinkingData.ExeFunctionIndex,fsym.Name);
           end;
         { set ExeFunctionIndex to the alias symbols as well }
         for i:=0 to ObjDataList.Count-1 do

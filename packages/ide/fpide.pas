@@ -101,6 +101,7 @@ type
       procedure DoShowRegisters;
       procedure DoShowFPU;
       procedure DoShowVector;
+      function  CheckModifiedEditor:boolean;
       function  AskRecompileIfModified:boolean;
       procedure Messages;
       procedure Calculator;
@@ -1038,6 +1039,7 @@ procedure TIDEApp.InitMenuBar;
 begin
   LoadMenuBar;
   DisableCommands(EditorCmds+SourceCmds+CompileCmds);
+  SetCmdState([cmTile,cmCascade],false);
   // Update; Desktop is still nil at that point ...
 end;
 
@@ -1088,7 +1090,7 @@ begin
       StdStatusKeys(
       NewStatusKey('~Cursor~ Move', kbNoKey, 65535,
       NewStatusKey('~Shift+Cursor~ Size', kbNoKey, 65535,
-      NewStatusKey('~'#17'~ Done', kbNoKey, 65535, {#17 = left arrow}
+      NewStatusKey('~'#17#$C4#$D9'~ Done', kbNoKey, 65535, {#17 = left arrow}
       NewStatusKey('~Esc~ Cancel', kbNoKey, 65535,
       nil)))))),
     NewStatusDef(hcStackWindow, hcStackWindow,
@@ -1623,7 +1625,7 @@ procedure TIDEApp.Update;
 begin
   SetCmdState([cmSaveAll],IsThereAnyEditor);
   SetCmdState([cmCloseAll,cmWindowList],IsThereAnyWindow);
-  SetCmdState([cmTile,cmCascade],IsThereAnyVisibleWindow);
+  SetCmdState([cmTile,cmCascade],IsThereAnyVisibleEditorWindow);
   SetCmdState([cmFindProcedure,cmObjects,cmModules,cmGlobals,cmSymbol],IsSymbolInfoAvailable);
 {$ifndef NODEBUG}
   SetCmdState([cmResetDebugger,cmUntilReturn],assigned(debugger) and debugger^.debuggee_started);

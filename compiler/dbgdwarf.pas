@@ -282,7 +282,16 @@ implementation
       ;
 
     const
+{$ifdef WASM}
+      { WasmTime's debugger requires that:
+        (LINE_BASE<=0) and (SignedInt8(LINE_BASE + LINE_RANGE) > 0),
+        so we use different values for WebAssembly }
+      LINE_BASE   = 0;
+      LINE_RANGE  = 127;
+{$else WASM}
       LINE_BASE   = 1;
+      LINE_RANGE  = 255;
+{$endif WASM}
       OPCODE_BASE = 13;
 
     const
@@ -3095,7 +3104,7 @@ implementation
 
         { line_range }
         { only line increase, no adress }
-        linelist.concat(tai_const.create_8bit(255));
+        linelist.concat(tai_const.create_8bit(LINE_RANGE));
 
         { opcode_base }
         linelist.concat(tai_const.create_8bit(OPCODE_BASE));
@@ -3524,6 +3533,7 @@ implementation
         nolineinfolevel : Integer;
         prevlabel,
         currlabel     : tasmlabel;
+        haslineinfo: Boolean = false;
       begin
 {$ifdef OMFOBJSUPPORT}
         if ds_dwarf_omf_linnum in current_settings.debugswitches then
@@ -3616,6 +3626,7 @@ implementation
                 { line changed ? }
                 if (lastfileinfo.line<>currfileinfo.line) and ((currfileinfo.line<>0) or (nolineinfolevel>0)) then
                   begin
+                    haslineinfo:=true;
                     { set address }
                     current_asmdata.getlabel(currlabel, alt_dbgline);
                     list.insertbefore(tai_label.create(currlabel), hp);
@@ -3675,7 +3686,8 @@ implementation
 
                     { set line }
                     diffline := currfileinfo.line - prevline;
-                    if (diffline >= LINE_BASE) and (OPCODE_BASE + diffline - LINE_BASE <= 255) then
+                    if (diffline >= LINE_BASE) and (diffline <= (LINE_BASE + LINE_RANGE - 1)) and
+                       (OPCODE_BASE + diffline - LINE_BASE <= 255) then
                       begin
                         { use special opcode, this also adds a row }
                         asmline.concat(tai_const.create_8bit(OPCODE_BASE + diffline - LINE_BASE));
@@ -3712,10 +3724,15 @@ implementation
           end;
 
         { end sequence }
-        asmline.concat(tai_const.Create_8bit(DW_LNS_extended_op));
-        asmline.concat(tai_const.Create_8bit(1));
-        asmline.concat(tai_const.Create_8bit(DW_LNE_end_sequence));
-        asmline.concat(tai_comment.Create(strpnew('###################')));
+        if haslineinfo or
+           { WasmTime doesn't like it when we emit an end sequence without any previous lines }
+           not (target_info.system in systems_wasm) then
+          begin
+            asmline.concat(tai_const.Create_8bit(DW_LNS_extended_op));
+            asmline.concat(tai_const.Create_8bit(1));
+            asmline.concat(tai_const.Create_8bit(DW_LNE_end_sequence));
+            asmline.concat(tai_comment.Create(strpnew('###################')));
+          end;
       end;
 
 

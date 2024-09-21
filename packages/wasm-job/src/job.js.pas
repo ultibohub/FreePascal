@@ -302,6 +302,7 @@ type
     procedure WriteJSPropertyMethod(const aName: UTF8String; const Value: TMethod); virtual;
     // create a new object using the new-operator
     function NewJSObject(Const Args: Array of const; aResultClass: TJSObjectClass): TJSObject; virtual;
+    procedure ShowAsDebug(Const aMessage : string);
     // JS members
     function getOwnPropertyNames(const Obj: IJSObject): TUnicodeStringDynArray;
     function getPrototypeOf(const Obj: IJSObject): IJSObject;
@@ -361,6 +362,7 @@ type
     constructor JOBCreate(aOwnsObjectID : Boolean; const Args : Array of const);
     class function JSClassName : UnicodeString; virtual;
     class function Cast(const Intf: IJSObject): IJSObject; overload;
+    procedure ShowAsDebug(Const aMessage : string);
     constructor Create; virtual;
     destructor Destroy; override;
     property JOBObjectID: TJOBObjectID read FJOBObjectID;
@@ -1365,10 +1367,19 @@ procedure __job_set_array_from_mem (
   aMaxLen : cardinal
   ); external JOBExportName name JOBFn_SetArrayFromMem;
 
-
+function __job_debug_object (
+  aObjectID : integer;
+  aMessage : PByte;
+  aMessageLen : Longint;
+  aFlags : Longint) : longint; external JOBExportName name JOBFn_DebugObject;
 
 function JOBCallback(const Func: TJOBCallback; Data, Code: Pointer; Args: PByte): PByte;
 function VarRecToJSValue(const V: TVarRec): TJOB_JSValue;
+
+Procedure DebugObject(const Message: String; aObject : IJSObject);
+Procedure DebugObject(const Message: String; aObject : TJSObject);
+Procedure DebugObject(const Message: String; aObject : TJOB_JSValue);
+Procedure ShowLiveObjects(const Message: String);
 
 Type
   TJobCallbackErrorEvent = Procedure (E : Exception; M : TMethod; H : TJobCallbackHelper; Var ReRaise : Boolean) of Object;
@@ -1389,6 +1400,62 @@ const
     JOBInvokeSet,
     JOBInvokeNew
     );
+
+Procedure DebugObject(const Message : String; aObject : IJSObject);
+
+var
+  msg : Rawbytestring;
+
+begin
+  {$IF SIZEOF(CHAR)=2}
+  msg:=UTF8Encode(Message);
+  {$ELSE}
+  msg:=Message;
+  {$ENDIF}
+  __job_debug_object(aObject.GetJSObjectID,PByte(Msg),Length(Msg),0);
+end;
+
+Procedure DebugObject(const Message : String; aObject : TJSObject);
+
+var
+  msg : Rawbytestring;
+
+begin
+  {$IF SIZEOF(CHAR)=2}
+  msg:=UTF8Encode(Message);
+  {$ELSE}
+  msg:=Message;
+  {$ENDIF}
+  __job_debug_object(aObject.GetJSObjectID,PByte(Msg),Length(Msg),0);
+end;
+
+Procedure DebugObject(const Message : String; aObject : TJOB_JSValue);
+
+begin
+  if (aObject is TJOB_Object) then
+    DebugObject(Message,TJOB_Object(aObject).Value)
+  else if aObject is TJOB_String then
+    Writeln(Message,': ',UTF8Encode(TJOB_String(aObject).Value))
+  else if aObject is TJOB_Boolean then
+    Writeln(Message,': ',TJOB_Boolean(aObject).Value)
+  else if aObject is TJOB_Double then
+    Writeln(Message,': ',TJOB_Double(aObject).Value)
+  else
+    Writeln(Message,': ',TJOB_Double(aObject).AsString);
+end;
+
+procedure ShowLiveObjects(const Message: String);
+var
+  msg : Rawbytestring;
+begin
+  {$IF SIZEOF(CHAR)=2}
+  msg:=UTF8Encode(Message);
+  {$ELSE}
+  msg:=Message;
+  {$ENDIF}
+  if not __job_debug_object(-1,PByte(msg),Length(msg),0)=JOBResult_Success then
+    Writeln('Failed to show live objects');
+end;
 
 {$IFDEF VerboseJOB}
 function GetVarRecName(vt: word): string;
@@ -1546,6 +1613,7 @@ begin
     raise EJSArgParse.Create('VarRecToJSValue unsupported VType '+IntToStr(V.VType));
   end;
 end;
+
 
 function JOBCallTJSPromiseResolver(const aMethod: TMethod; var H: TJOBCallbackHelper): PByte;
 var
@@ -4339,6 +4407,16 @@ end;
 class function TJSObject.Cast(const Intf: IJSObject): IJSObject;
 begin
   Result:=JOBCast(Intf);
+end;
+
+procedure TJSObject.ShowAsDebug(const aMessage : string);
+var
+  Msg : String;
+begin
+  Msg:=aMessage;
+  if Msg='' then
+    Msg:='Object '+ClassName;
+  DebugObject(Msg,Self);
 end;
 
 class function TJSObject.JSClassName : UnicodeString;
