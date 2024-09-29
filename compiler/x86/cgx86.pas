@@ -2492,14 +2492,40 @@ unit cgx86;
        else
          tmpreg:=dst;
        opsize:=tcgsize2opsize[srcsize];
+
+       { AMD docs: BSF/R dest, 0 “sets ZF to 1 and does not change the contents of the destination register.”
+         Intel docs: “If the content source operand is 0, the content of the destination operand is undefined.”
+         (However, Intel silently implements the same behavior as AMD, which is understandable.)
+
+         If relying on this behavior, do
+
+         mov tmpreg, $FF
+         bsx tmpreg, src
+
+         If not relying, do
+
+         bsx tmpreg, src
+         jnz .LDone
+         mov tmpreg, $FF
+.LDone:
+         }
+
+       if CPUX86_HINT_BSX_DEST_UNCHANGED_ON_ZF_1 in cpu_optimization_hints[current_settings.optimizecputype] then
+         list.concat(taicpu.op_const_reg(A_MOV,opsize,$ff,tmpreg));
+
        if not reverse then
          list.concat(taicpu.op_reg_reg(A_BSF,opsize,src,tmpreg))
        else
          list.concat(taicpu.op_reg_reg(A_BSR,opsize,src,tmpreg));
-       current_asmdata.getjumplabel(l);
-       a_jmp_cond(list,OC_NE,l);
-       list.concat(taicpu.op_const_reg(A_MOV,opsize,$ff,tmpreg));
-       a_label(list,l);
+
+       if not (CPUX86_HINT_BSX_DEST_UNCHANGED_ON_ZF_1 in cpu_optimization_hints[current_settings.optimizecputype]) then
+         begin
+           current_asmdata.getjumplabel(l);
+           a_jmp_cond(list,OC_NE,l);
+           list.concat(taicpu.op_const_reg(A_MOV,opsize,$ff,tmpreg));
+           a_label(list,l);
+         end;
+
        if tmpreg<>dst then
          a_load_reg_reg(list,srcsize,dstsize,tmpreg,dst);
      end;
@@ -3139,8 +3165,9 @@ unit cgx86;
             getcpuregister(list,REGCX);
             if ts_cld in current_settings.targetswitches then
               list.concat(Taicpu.op_none(A_CLD,S_NO));
-            if (cs_opt_size in current_settings.optimizerswitches) and
-               (len>sizeof(aint)+(sizeof(aint) div 2)) then
+            if ((cs_opt_size in current_settings.optimizerswitches) and
+               (len>sizeof(aint)+(sizeof(aint) div 2))) or
+               ((len<=128) and (CPUX86_HINT_FAST_SHORT_REP_MOVS in cpu_optimization_hints[current_settings.optimizecputype])) then
               begin
                 a_load_const_reg(list,OS_INT,len,REGCX);
                 list.concat(Taicpu.op_none(A_REP,S_NO));

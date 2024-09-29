@@ -3511,8 +3511,26 @@ END;
 {  HandleEvent -> Platforms DOS/DPMI/WIN/NT/OS2 - Updated 30Jul99 LdB       }
 {---------------------------------------------------------------------------}
 PROCEDURE TScroller.HandleEvent (Var Event: TEvent);
+var LinesScroll  : Sw_Integer;
 BEGIN
    Inherited HandleEvent(Event);                      { Call ancestor }
+   case Event.What of
+    evMouseDown:
+      begin
+        if (Event.Buttons=mbScrollUp) then { mouse scroll up}
+          begin
+            LinesScroll:=1;
+            if Event.Double then LinesScroll:=LinesScroll+4;
+            ScrollTo(Delta.X, Delta.Y + LinesScroll);
+          end else
+        if (Event.Buttons=mbScrollDown) then  { mouse scroll down }
+          begin
+            LinesScroll:=-1;
+            if Event.Double then LinesScroll:=LinesScroll-4;
+            ScrollTo(Delta.X, Delta.Y + LinesScroll);
+          end;
+      end;
+   end;
    If (Event.What = evBroadcast) AND
      (Event.Command = cmScrollBarChanged) AND         { Scroll bar change }
      ((Event.InfoPtr = HScrollBar) OR                 { Our scrollbar? }
@@ -3806,6 +3824,15 @@ BEGIN
          End;
      End;
      evMouseDown: Begin                               { Mouse down event }
+       if (Event.Buttons=mbScrollUp) then             { mouse scroll up}
+         begin
+           if Event.Double then MoveFocus(Focused+1) else MoveFocus(Focused+1);
+         end else
+       if (Event.Buttons=mbScrollDown) then           { mouse scroll down }
+         begin
+           if Event.Double then MoveFocus(Focused-1) else MoveFocus(Focused-1);
+         end else
+       begin
        Cw := Size.X DIV NumCols + 1;                  { Column width }
        Oi := Focused;                                 { Hold focused item }
        MakeLocal(Event.Where, Mouse);                 { Localize mouse }
@@ -3846,6 +3873,7 @@ BEGIN
        If (Oi <> Ni) Then MoveFocus(Ni);              { Focus moved again }
        If (Event.Double AND (Range > Focused)) Then
          SelectItem(Focused);                         { Select the item }
+       end;
        ClearEvent(Event);                             { Event was handled }
      End;
    End;

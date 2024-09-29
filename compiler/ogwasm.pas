@@ -299,10 +299,12 @@ interface
         FFunctionNameMap: TCustomSectionNameMap;
         FGlobalNameMap: TCustomSectionNameMap;
         FDataNameMap: TCustomSectionNameMap;
+        FTagNameMap: TCustomSectionNameMap;
         procedure AddToNameMap(var nm: TCustomSectionNameMap; aidx: UInt32; const aname: string);
         procedure AddToFunctionNameMap(aidx: UInt32; const aname: string);
         procedure AddToGlobalNameMap(aidx: UInt32; const aname: string);
         procedure AddToDataNameMap(aidx: UInt32; const aname: string);
+        procedure AddToTagNameMap(aidx: UInt32; const aname: string);
         procedure WriteWasmSection(wsid: TWasmSectionID);
         procedure WriteWasmSectionIfNotEmpty(wsid: TWasmSectionID);
         procedure WriteWasmCustomSection(wcst: TWasmCustomSectionType);
@@ -4805,6 +4807,11 @@ implementation
         AddToNameMap(FDataNameMap,aidx,aname);
       end;
 
+    procedure TWasmExeOutput.AddToTagNameMap(aidx: UInt32; const aname: string);
+      begin
+        AddToNameMap(FTagNameMap,aidx,aname);
+      end;
+
     procedure TWasmExeOutput.WriteWasmSection(wsid: TWasmSectionID);
       var
         b: byte;
@@ -5072,6 +5079,7 @@ implementation
               objsec:=TWasmObjSection(exesec.ObjSectionList[i]);
               WriteByte(FWasmSections[wsiTag],0);
               WriteUleb(FWasmSections[wsiTag],objsec.MainFuncSymbol.LinkingData.ExeTypeIndex);
+              AddToTagNameMap(i,objsec.MainFuncSymbol.Name);
             end;
         end;
 
@@ -5155,15 +5163,22 @@ implementation
       procedure WriteNameSection;
         begin
           WriteName(FWasmNameSubsections[wnstModuleName],current_module.exefilename);
+          WriteNameSubsection(wnstModuleName);
 
           WriteNameMap(FFunctionNameMap,FWasmNameSubsections[wnstFunctionNames]);
-          WriteNameMap(FGlobalNameMap,FWasmNameSubsections[wnstGlobalNames]);
-          WriteNameMap(FDataNameMap,FWasmNameSubsections[wnstDataNames]);
-
-          WriteNameSubsection(wnstModuleName);
           WriteNameSubsection(wnstFunctionNames);
+
+          WriteNameMap(FGlobalNameMap,FWasmNameSubsections[wnstGlobalNames]);
           WriteNameSubsection(wnstGlobalNames);
+
+          WriteNameMap(FDataNameMap,FWasmNameSubsections[wnstDataNames]);
           WriteNameSubsection(wnstDataNames);
+
+          if Length(FTagNameMap)>0 then
+            begin
+              WriteNameMap(FTagNameMap,FWasmNameSubsections[wnstTagNames]);
+              WriteNameSubsection(wnstTagNames);
+            end;
         end;
 
       var
