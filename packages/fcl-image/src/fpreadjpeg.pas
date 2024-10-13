@@ -217,31 +217,16 @@ begin
 end;
 
 procedure TFPReaderJPEG.ReadHeader(Str: TStream; Img: TFPCustomImage);
-var
-   S: TSize;
-
-  function TranslateSize(const Sz: TSize): TSize;
-  begin
-    case FOrientation of
-      eoUnknown, eoNormal, eoMirrorHor, eoMirrorVert, eoRotate180: Result := Sz;
-      eoMirrorHorRot270, eoRotate90, eoMirrorHorRot90, eoRotate270:
-      begin
-        Result.Width := Sz.Height;
-        Result.Height := Sz.Width;
-      end;
-    end;
-  end;
-
 begin
   jpeg_read_header(@FInfo, TRUE);
+
+  FWidth := FInfo.image_width;
+  FHeight := FInfo.image_height;  
 
   if FInfo.saw_EXIF_marker and (FInfo.orientation >= Ord(Low(TExifOrientation))) and (FInfo.orientation <= Ord(High(TExifOrientation))) then
     FOrientation := TExifOrientation(FInfo.orientation)
   else
     FOrientation := Low(TExifOrientation);
-  S := TranslateSize(TSize.Create(FInfo.image_width, FInfo.image_height));
-  FWidth := S.Width;
-  FHeight := S.Height;
 
   FGrayscale := FInfo.jpeg_color_space = JCS_GRAYSCALE;
   FProgressiveEncoding := jpeg_has_multiple_scans(@FInfo);
@@ -262,6 +247,7 @@ var
   c: word;
   Status,Scan: integer;
   ReturnValue,RestartLoop: Boolean;
+  LOutputSize: TSize;
 
   procedure InitReadingPixels;
   var d1,d2:integer;
@@ -460,6 +446,20 @@ var
       inc(y);
     end;
   end;
+
+  function TranslateSize(out ASize: TSize): TSize;
+  var
+    iInt: Integer;
+  begin
+    // returning image dimension depending on orientation
+    if FOrientation in [eoMirrorHorRot270, eoRotate90,  eoMirrorHorRot90, eoRotate270] then
+    begin
+      iInt := ASize.Width;
+      ASize.Width := ASize.Height;
+      ASize.Height := iInt;
+    end;
+  end;  
+
 begin
   InitReadingPixels;
 
@@ -469,7 +469,11 @@ begin
 
   jpeg_start_decompress(@FInfo);
 
-  Img.SetSize(FWidth,FHeight);
+  LOutputSize := Size(FInfo.output_width, FInfo.output_height);
+  TranslateSize(LOutputSize);  
+  FWidth := LOutputSize.Width;
+  FHeight := LOutputSize.Height;
+  Img.SetSize(FWidth, FHeight);
 
   GetMem(SampArray,SizeOf(JSAMPROW));
   GetMem(SampRow,FInfo.output_width*FInfo.output_components);

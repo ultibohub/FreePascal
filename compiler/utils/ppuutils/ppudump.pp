@@ -249,10 +249,11 @@ const
   { 120 } 'Linux-LoongArch64',
   { 121 } 'iPhoneSim-AArch64',
   { 122 } 'Human68k-m68k',
-  { 123 } 'Ultibo-arm',
-  { 124 } 'Ultibo-i386',
-  { 125 } 'Ultibo-x86-64',
-  { 126 } 'Ultibo-AArch64'
+  { 123 } 'PS1-mipsel',
+  { 124 } 'Ultibo-arm',
+  { 125 } 'Ultibo-i386',
+  { 126 } 'Ultibo-x86-64',
+  { 127 } 'Ultibo-AArch64'
   );
 
 const

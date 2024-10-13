@@ -2926,6 +2926,8 @@ var
 
 begin
   j:=1;
+  if length(more)=0 then
+    include(init_settings.globalswitches,cs_link_deffile);
   while j<=length(more) do
     begin
       case more[j] of
@@ -4661,9 +4663,11 @@ procedure read_arguments(cmd:TCmdStr);
         def_system_macro('CPUMIPS32');
         def_system_macro('CPUMIPSEL32');
         def_system_macro('CPU32');
-        def_system_macro('FPC_HAS_TYPE_DOUBLE');
-        def_system_macro('FPC_HAS_TYPE_SINGLE');
-        def_system_macro('FPC_INCLUDE_SOFTWARE_INT64_TO_DOUBLE');
+        if target_info.system <> system_mipsel_ps1 then begin
+          def_system_macro('FPC_HAS_TYPE_DOUBLE');
+          def_system_macro('FPC_HAS_TYPE_SINGLE');
+          def_system_macro('FPC_INCLUDE_SOFTWARE_INT64_TO_DOUBLE');
+        end;
         def_system_macro('FPC_CURRENCY_IS_INT64');
         def_system_macro('FPC_COMP_IS_INT64');
         def_system_macro('FPC_REQUIRES_PROPER_ALIGNMENT');
@@ -5310,7 +5314,8 @@ begin
          system_m68k_amiga,system_m68k_atari,
          system_arm_nds,system_arm_embedded,system_arm_freertos,
          system_riscv32_embedded,system_riscv64_embedded,system_xtensa_linux,
-         system_z80_embedded,system_z80_zxspectrum,system_riscv32_freertos])
+         system_z80_embedded,system_z80_zxspectrum,system_riscv32_freertos,
+         system_mipsel_ps1])
 {$ifdef arm}
       or (target_info.abi=abi_eabi)
 {$endif arm}
@@ -5551,6 +5556,44 @@ begin
           init_settings.optimizecputype:=cpu_pic32mx;
         if not option.FPUSetExplicitly then
           init_settings.fputype:=fpu_soft;
+      end;
+    system_mipsel_PS1:
+      begin
+{
+          init_settings.optimizerswitches:=[
+                                          cs_opt_stackframe,
+                                          cs_opt_size,              // makes smaller
+                                          cs_opt_uncertain, 
+                                          cs_opt_peephole, 
+                                          cs_opt_tailrecursion,
+                                          cs_opt_nodecse,           // makes smaller - don't sets vars to 0
+                                          cs_opt_nodedfa, 
+                                          cs_opt_loopstrength,
+                                          cs_opt_reorder_fields, 
+                                          cs_opt_dead_values,       // makes smaller
+                                          cs_opt_remove_empty_proc, // makes smaller
+                                          cs_opt_dead_store_eliminate, 
+                                          cs_opt_forcenostackframe,                                          
+                                          cs_opt_unused_para,       // makes smaller
+                                          cs_opt_consts];
+
+          // dont work: cs_opt_regvar, cs_opt_constant_propagate
+          // dont compile: cs_opt_scheduler
+          // makes larger: cs_opt_autoinline 
+}
+        init_settings.optimizerswitches:=[];
+        init_settings.debugswitches:= [];
+
+        { set default cpu type to MIPS1 with SoftFPU }
+        if not option.CPUSetExplicitly then
+          init_settings.cputype:=cpu_mips1;
+        if not option.OptCPUSetExplicitly then
+          init_settings.optimizecputype:=cpu_mips1;
+        if not option.FPUSetExplicitly then
+          begin
+            include(init_settings.moduleswitches,cs_fp_emulation);
+            init_settings.fputype:=fpu_soft;
+          end;
       end;
     else
       ;

@@ -429,6 +429,9 @@ interface
          system_jvm_android32
        ];
 
+       { all systems based on the PlayStation 1 }
+       systems_ps1 = [system_mipsel_ps1];
+
        { all systems where typed constants have to be translated into node
          trees that initialise the data instead of into data sections }
        systems_typed_constants_node_init = [

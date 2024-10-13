@@ -57,30 +57,38 @@ implementation
     cgobj,
     cpubase,
     cpuinfo,
-    cgcpu;
+    cgcpu,systems;
 
   function thlcgmips.a_call_name(list: TAsmList; pd: tprocdef; const s: TSymStr; const paras: array of pcgpara; forceresdef: tdef; weak: boolean): tcgpara;
     var
       ref: treference;
       sym: tasmsymbol;
     begin
-      if weak then
-        sym:=current_asmdata.WeakRefAsmSymbol(s,AT_FUNCTION)
-      else
-        sym:=current_asmdata.RefAsmSymbol(s,AT_FUNCTION);
 
-      if (po_external in pd.procoptions) then
-        begin
-          if not (cs_create_pic in current_settings.moduleswitches) then
-            begin
-              reference_reset_symbol(ref,current_asmdata.RefAsmSymbol('_gp',AT_DATA),0,sizeof(aint),[]);
-              list.concat(tai_comment.create(strpnew('Using PIC code for a_call_name')));
-              cg.a_loadaddr_ref_reg(list,ref,NR_GP);
-            end;
-          TCGMIPS(cg).a_call_sym_pic(list,sym);
-        end
-      else
-        cg.a_call_name(list,s,weak);
+      if not (target_info.system in systems_ps1) then begin
+
+        if weak then
+          sym:=current_asmdata.WeakRefAsmSymbol(s,AT_FUNCTION)
+        else
+          sym:=current_asmdata.RefAsmSymbol(s,AT_FUNCTION);
+
+        if (po_external in pd.procoptions) then
+          begin
+            if not (cs_create_pic in current_settings.moduleswitches) then
+              begin
+                reference_reset_symbol(ref,current_asmdata.RefAsmSymbol('_gp',AT_DATA),0,sizeof(aint),[]);
+                list.concat(tai_comment.create(strpnew('Using PIC code for a_call_name')));
+                cg.a_loadaddr_ref_reg(list,ref,NR_GP);
+              end;
+            TCGMIPS(cg).a_call_sym_pic(list,sym);
+          end
+        else
+          cg.a_call_name(list,s,weak);
+
+
+      end else
+          cg.a_call_name(list,s,weak);
+
       { set the result location }
       result:=get_call_result_cgpara(pd,forceresdef);
     end;

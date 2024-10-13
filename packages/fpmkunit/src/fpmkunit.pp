@@ -166,7 +166,7 @@ Type
     win64,wince,gba,nds,embedded,symbian,haiku,iphonesim,
     aix,java,android,nativent,msdos,wii,aros,dragonfly,
     win16,freertos,zxspectrum,msxdos,ios,amstradcpc,sinclairql,
-    wasi,human68k,ultibo
+    wasi,human68k,ps1,ultibo
   );
   TOSes = Set of TOS;
 
@@ -294,6 +294,7 @@ Const
     {sinclairql}( false, false, true,  false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, false, false),
     { wasi }    ( false, false, false, false, false, false, false, false, false, false, false, false, false, false,   false, false, false, true,  false,  false,  false,   false, false, false),
     { human68k }( false, false, true,  false, false, false, false, false, false, false, false, false, false, false,   false, false, false, false, false,  false,  false,   false, false, false),
+    { ps1 }     ( false, false, false, false, false, false, false, false, false, false, false, true,  false, false,   false, false, false, false, false,  false,  false,   false, false, false),
     { ultibo }  ( false, true,  false, false, false, true,  true,  false, false, false, false, false, false, false,   false, false, true,  false, false,  false,  false,   false, false, false)
   );
 
@@ -8491,8 +8492,8 @@ begin
                    Result:=(P.State=tsCompiled);
                    if Result then
                      begin
-                     break;
                      CompileReason:=Format(SDbgPackageDepRecompiled,[P.Name]);
+                     break;
                      end;
                  end;
              end;
@@ -8509,8 +8510,8 @@ begin
             Result:=NeedsCompile(APackage,APackage.Targets.TargetItems[i]);
             if Result then
               begin
-              break;
               CompileReason:=Format(SDbgTargetHasToBeCompiled,[APackage.Targets.TargetItems[i].Name]);
+              break;
               end;
           end;
       Finally

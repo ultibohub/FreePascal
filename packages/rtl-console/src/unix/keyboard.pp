@@ -511,46 +511,121 @@ const
   end;
 
   procedure GenMouseEvent;
+  { format: CSI M char1 charX charY
+       char1 - button nr and state
+       charX - mouse X (if multi byte format then 1 or 2 chars)
+       charY - mouse Y (if multi byte format then 1 or 2 chars)
+  }
   var MouseEvent: TMouseEvent;
       ch : AnsiChar;
       fdsin : tfdSet;
       buttonval:byte;
+      x,y,x1 : word;
+      notMultiByte : boolean;
+      NeedMouseRelease:boolean;
+      addButtMove : byte;
   begin
     fpFD_ZERO(fdsin);
     fpFD_SET(StdInputHandle,fdsin);
 {    Fillchar(MouseEvent,SizeOf(TMouseEvent),#0);}
-    MouseEvent.action:=0;
+    MouseEvent.buttons:=0;
     if inhead=intail then
       fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
     ch:=ttyRecvChar;
+    buttonval:=byte(ch);
+    if ch in [#$c2,#$c3] then
+    begin
+      {xterm multibyte}
+      addButtMove:=(byte(ch) and 1) shl 6;
+      if inhead=intail then
+        fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
+      ch:=ttyRecvChar;
+      buttonval:=byte(ch) or addButtMove;
+    end;
+    NeedMouseRelease:=false;
     { Other bits are used for Shift, Meta and Ctrl modifiers PM }
-    buttonval:=byte(ch)-byte(' ');
+    buttonval:=buttonval and %11100111;
     {bits 0..1: button status
      bit  5   : mouse movement while button down.
      bit  6   : interpret button 1 as button 4
                 interpret button 2 as button 5}
-    case buttonval and 67 of
-      0 : {left button press}
+    case buttonval of
+      %00100000,%01000000 : {left button pressed,moved}
         MouseEvent.buttons:=1;
-      1 : {middle button pressed }
+      %00100001,%01000001 : {middle button pressed,moved }
         MouseEvent.buttons:=2;
-      2 : { right button pressed }
+      %00100010,%01000010 : { right button pressed,moved }
         MouseEvent.buttons:=4;
-      3 : { no button pressed }
+      %00100011,%01000011 : { no button pressed,moved }
         MouseEvent.buttons:=0;
-      64: { button 4 pressed }
-          MouseEvent.buttons:=8;
-      65: { button 5 pressed }
-          MouseEvent.buttons:=16;
+      %01100000: { button 4 pressed }
+          MouseEvent.buttons:=MouseButton4;
+      %10000000: { rxvt - button 4 move }
+          MouseEvent.buttons:=0;  {rxvt does not release button keeps moving it, fake as no button press move}
+      %01100001: { button 5 pressed }
+          MouseEvent.buttons:=MouseButton5;
+      %10000001: { rxvt - button 5 move }
+          MouseEvent.buttons:=0;
+      %10100000,%11000000 : { xterm - button 6 pressed,moved }
+          MouseEvent.buttons:=MouseXButton1;
+      %01100100 : { rxvt - button 6 pressed, have to add fake release }
+          begin MouseEvent.buttons:=MouseXButton1; NeedMouseRelease:=true; end;
+      %10000100 : { rxvt - button 6 move }
+          MouseEvent.buttons:=0;
+      %10100001,%11000001 : { xterm - button 7 pressed,moved }
+          MouseEvent.buttons:=MouseXButton2;
+      %01100101 : { rxvt - button 7 pressed, have to add fake release }
+          begin MouseEvent.buttons:=MouseXButton2; NeedMouseRelease:=true; end;
+      %10000101: { rxvt - button 7 move }
+          MouseEvent.buttons:=0;
     end;
+     notMultiByte:=false;
+     {mouse X}
      if inhead=intail then
        fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
      ch:=ttyRecvChar;
-     MouseEvent.x:=Ord(ch)-ord(' ')-1;
+     x:=byte(ch);
+     x1:=x;
+     {mouse Y}
      if inhead=intail then
-      fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
+       fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
      ch:=ttyRecvChar;
-     MouseEvent.y:=Ord(ch)-ord(' ')-1;
+     y:=byte(ch);
+     {decide if this is a single byte or a multi byte mouse report format}
+     if (x in [127..193]) or (x=0) then
+       notMultiByte:=true
+     else
+     if x >= 194 then
+     begin
+       if ch in [#$80..#$bf] then  {probably multibyte}
+         x1:=128+(byte(ch)-128)+(x-194)*($bf-$80+1)
+       else notMultiByte:=true;
+     end;
+     if y < 128 then
+       notMultiByte:=true;
+     {probability is high for multi byte format and we have extra character in line to read}
+     if not notMultiByte and sysKeyPressed then
+     begin
+       if inhead=intail then
+         fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
+       ch:=ttyRecvChar;
+       if ch > ' ' then
+       begin
+         {we are sure, it is a multi byte mouse report format}
+         x:=x1; {new mouse X}
+         y:=byte(ch); {new mouse Y}
+         if (y <> 0 ) and sysKeyPressed and (y >= 194) then
+         begin
+           if inhead=intail then
+             fpSelect(StdInputHandle+1,@fdsin,nil,nil,10);
+           ch:=ttyRecvChar;
+           y:=128+(byte(ch)-128)+(y-194)*($bf-$80+1); {multibyte mouse Y}
+         end;
+       end else PutBackIntoInBuf(ch);
+     end;
+     if (x=0) or (y=0) then exit; {single byte format hit its limts, no mouse event}
+     MouseEvent.x:=x-32-1;
+     MouseEvent.y:=y-32-1;
      mouseevent.action:=MouseActionMove;
      if (lastmouseevent.buttons=0) and (mouseevent.buttons<>0) then
        MouseEvent.action:=MouseActionDown;
@@ -576,6 +651,8 @@ const
 *)
      PutMouseEvent(MouseEvent);
      if (MouseEvent.buttons and (8+16)) <> 0 then // 'M' escape sequence cannot map button 4&5 release, so fake one.
+       GenFakeReleaseEvent(MouseEvent);
+     if NeedMouseRelease then
        GenFakeReleaseEvent(MouseEvent);
 {$ifdef DebugMouse}
      if MouseEvent.Action=MouseActionDown then
@@ -660,6 +737,24 @@ const
       exit;
     if (Y<(Low(MouseEvent.Y)+1)) or (Y>(High(MouseEvent.Y)+1)) then
       exit;
+    case buttonval and (67 or 128) of
+      0 : {left button press}
+        ButtonMask:=1;
+      1 : {middle button pressed }
+        ButtonMask:=2;
+      2 : { right button pressed }
+        ButtonMask:=4;
+      3 : { no button pressed }
+        ButtonMask:=0;
+      64: { button 4 pressed }
+        ButtonMask:=8;
+      65: { button 5 pressed }
+        ButtonMask:=16;
+      128: { button browse back }
+        ButtonMask:=MouseXButton1;
+      129: { button browse forward }
+        ButtonMask:=MouseXButton2;
+    end;
     MouseEvent.X:=X-1;
     MouseEvent.Y:=Y-1;
     if (buttonval and 32)<>0 then
@@ -669,20 +764,6 @@ const
     end
     else
     begin
-      case buttonval and 67 of
-        0 : {left button press}
-          ButtonMask:=1;
-        1 : {middle button pressed }
-          ButtonMask:=2;
-        2 : { right button pressed }
-          ButtonMask:=4;
-        3 : { no button pressed }
-          ButtonMask:=0;
-        64: { button 4 pressed }
-          ButtonMask:=8;
-        65: { button 5 pressed }
-          ButtonMask:=16;
-      end;
       if ch='M' then
       begin
         MouseEvent.Action:=MouseActionDown;
@@ -888,7 +969,7 @@ type  key_sequence=packed record
         st:string[10];
       end;
 
-const key_sequences:array[0..385] of key_sequence=(
+const key_sequences:array[0..425] of key_sequence=(
        (AnsiChar:0;scan:$39;shift:[essCtrl];st:#0),         { xterm, Ctrl+Space }
        (AnsiChar:0;scan:kbAltA;shift:[essAlt];st:#27'A'),
        (AnsiChar:0;scan:kbAltA;shift:[essAlt];st:#27'a'),
@@ -998,6 +1079,15 @@ const key_sequences:array[0..385] of key_sequence=(
        (AnsiChar:0;scan:kbF12;shift:[];st:#27'Oz'),                   {vt100}
        (AnsiChar:27;scan:kbEsc;shift:[];st:#27'[0~'),                 {if linux keyboard patched, escape
                                                                    returns this}
+       (AnsiChar:0;scan:kbAltF5;shift:[essAlt];st:#27#27'OT'),        {pterm}
+       (AnsiChar:0;scan:kbF5;shift:[];st:#27'OT'),                    {pterm}
+       (AnsiChar:0;scan:kbF6;shift:[];st:#27'OU'),                    {pterm}
+       (AnsiChar:0;scan:kbF7;shift:[];st:#27'OV'),                    {pterm}
+       (AnsiChar:0;scan:kbF8;shift:[];st:#27'OW'),                    {pterm}
+       (AnsiChar:0;scan:kbF9;shift:[];st:#27'OX'),                    {pterm}
+       (AnsiChar:0;scan:kbF10;shift:[];st:#27'OY'),                   {pterm}
+       (AnsiChar:0;scan:kbF11;shift:[];st:#27'OZ'),                   {pterm}
+       (AnsiChar:0;scan:kbF12;shift:[];st:#27'O['),                   {pterm}
        (AnsiChar:0;scan:kbIns;shift:[];st:#27'[2~'),                  {linux,Eterm,rxvt}
        (AnsiChar:0;scan:kbDel;shift:[];st:#27'[3~'),                  {linux,Eterm,rxvt}
        (AnsiChar:0;scan:kbHome;shift:[];st:#27'[1~'),                 {linux}
@@ -1114,6 +1204,7 @@ const key_sequences:array[0..385] of key_sequence=(
        (AnsiChar:0;scan:kbShiftDel;shift:[essShift];st:#27'[3;2~'),   {xterm,konsole}
        (AnsiChar:0;scan:kbCtrlIns;shift:[essCtrl];st:#27'[2;5~'),     {xterm}
        (AnsiChar:0;scan:kbCtrlDel;shift:[essCtrl];st:#27'[3;5~'),     {xterm}
+       (AnsiChar:0;scan:kbShiftIns;shift:[essShift];st:#27'[2$'),     {rxvt}
        (AnsiChar:0;scan:kbShiftDel;shift:[essShift];st:#27'[3$'),     {rxvt}
        (AnsiChar:0;scan:kbCtrlIns;shift:[essCtrl];st:#27'[2^'),       {rxvt}
        (AnsiChar:0;scan:kbCtrlDel;shift:[essCtrl];st:#27'[3^'),       {rxvt}
@@ -1223,7 +1314,8 @@ const key_sequences:array[0..385] of key_sequence=(
        (AnsiChar:0;scan:kbEnd;shift:[essShift];st:#27'[8$'),     {rxvt}
        (AnsiChar:0;scan:kbHome;shift:[essShift];st:#27'[1;2H'),  {xterm}
        (AnsiChar:0;scan:kbHome;shift:[essShift];st:#27'[7$'),    {rxvt}
-
+       (AnsiChar:0;scan:kbShiftIns;shift:[essShift];st:#27'Op'), {rxvt - on numpad}
+       (AnsiChar:0;scan:kbShiftDel;shift:[essShift];st:#27'On'), {rxvt - on numpad}
 
        (AnsiChar:0;scan:KbCtrlUp;shift:[essCtrl,essShift];st:#27'[1;6A'),    {xterm}
        (AnsiChar:0;scan:KbCtrlDown;shift:[essCtrl,essShift];st:#27'[1;6B'),  {xterm}
@@ -1252,11 +1344,28 @@ const key_sequences:array[0..385] of key_sequence=(
        (AnsiChar:0;scan:kbCtrlEnd;shift:[essCtrl];st:#27'[8^'),       {rxvt}
        (AnsiChar:0;scan:kbCtrlHome;shift:[essCtrl];st:#27'[1;5H'),    {xterm}
        (AnsiChar:0;scan:kbCtrlHome;shift:[essCtrl];st:#27'[7^'),      {rxvt}
+       (AnsiChar:0;scan:kbCtrlPgUp;shift:[essCtrl];st:#27'[5^'),      {rxvt}
+       (AnsiChar:0;scan:kbCtrlPgDn;shift:[essCtrl];st:#27'[6^'),      {rxvt}
+       (AnsiChar:0;scan:kbCtrlUp;shift:[essCtrl];st:#27'Oa'),         {rxvt}
+       (AnsiChar:0;scan:kbCtrlDown;shift:[essCtrl];st:#27'Ob'),       {rxvt}
+       (AnsiChar:0;scan:kbCtrlLeft;shift:[essCtrl];st:#27'Od'),       {rxvt}
+       (AnsiChar:0;scan:kbCtrlRight;shift:[essCtrl];st:#27'Oc'),      {rxvt}
+       (AnsiChar:0;scan:kbCtrlPgUp;shift:[essCtrl,essShift];st:#27'[5@'),     {rxvt}
+       (AnsiChar:0;scan:kbCtrlPgDn;shift:[essCtrl,essShift];st:#27'[6@'),     {rxvt}
+       (AnsiChar:0;scan:kbCtrlEnd;shift:[essCtrl,essShift];st:#27'[8@'),      {rxvt}
+       (AnsiChar:0;scan:kbCtrlHome;shift:[essCtrl,essShift];st:#27'[7@'),     {rxvt}
+       (AnsiChar:0;scan:kbCtrlIns;shift:[essCtrl,essShift];st:#27'[2@'),      {rxvt}
+       (AnsiChar:0;scan:kbCtrlDel;shift:[essCtrl,essShift];st:#27'[3@'),      {rxvt}
+
 
        (AnsiChar:0;scan:kbAltUp;shift:[essAlt];st:#27#27'[A'),        {rxvt}
        (AnsiChar:0;scan:kbAltDown;shift:[essAlt];st:#27#27'[B'),      {rxvt}
        (AnsiChar:0;scan:kbAltLeft;shift:[essAlt];st:#27#27'[D'),      {rxvt}
        (AnsiChar:0;scan:kbAltRight;shift:[essAlt];st:#27#27'[C'),     {rxvt}
+       (AnsiChar:0;scan:kbAltUp;shift:[essShift,essAlt];st:#27#27'[a'),        {rxvt}
+       (AnsiChar:0;scan:kbAltDown;shift:[essShift,essAlt];st:#27#27'[b'),      {rxvt}
+       (AnsiChar:0;scan:kbAltLeft;shift:[essShift,essAlt];st:#27#27'[d'),      {rxvt}
+       (AnsiChar:0;scan:kbAltRight;shift:[essShift,essAlt];st:#27#27'[c'),     {rxvt}
 {$ifdef HAIKU}
        (AnsiChar:0;scan:kbAltUp;shift:[essAlt];st:#27#27'OA'),
        (AnsiChar:0;scan:kbAltDown;shift:[essAlt];st:#27#27'OB'),
@@ -1275,6 +1384,18 @@ const key_sequences:array[0..385] of key_sequence=(
        (AnsiChar:0;scan:kbAltHome;shift:[essAlt];st:#27#27'[7~'),     {rxvt}
        (AnsiChar:0;scan:kbAltIns;shift:[essAlt];st:#27#27'[2~'),      {rxvt}
        (AnsiChar:0;scan:kbAltDel;shift:[essAlt];st:#27#27'[3~'),      {rxvt}
+       (AnsiChar:0;scan:kbAltPgUp;shift:[essShift,essAlt];st:#27#27'[5$'),     {rxvt}
+       (AnsiChar:0;scan:kbAltPgDn;shift:[essShift,essAlt];st:#27#27'[6$'),     {rxvt}
+       (AnsiChar:0;scan:kbAltEnd;shift:[essShift,essAlt];st:#27#27'[8$'),      {rxvt}
+       (AnsiChar:0;scan:kbAltHome;shift:[essShift,essAlt];st:#27#27'[7$'),     {rxvt}
+       (AnsiChar:0;scan:kbAltIns;shift:[essShift,essAlt];st:#27#27'[2$'),      {rxvt}
+       (AnsiChar:0;scan:kbAltDel;shift:[essShift,essAlt];st:#27#27'[3$'),      {rxvt}
+       (AnsiChar:0;scan:kbAltPgUp;shift:[essCtrl,essShift,essAlt];st:#27#27'[5@'),     {rxvt}
+       (AnsiChar:0;scan:kbAltPgDn;shift:[essCtrl,essShift,essAlt];st:#27#27'[6@'),     {rxvt}
+       (AnsiChar:0;scan:kbAltEnd;shift:[essCtrl,essShift,essAlt];st:#27#27'[8@'),      {rxvt}
+       (AnsiChar:0;scan:kbAltHome;shift:[essCtrl,essShift,essAlt];st:#27#27'[7@'),     {rxvt}
+       (AnsiChar:0;scan:kbAltIns;shift:[essCtrl,essShift,essAlt];st:#27#27'[2@'),      {rxvt}
+       (AnsiChar:0;scan:kbAltDel;shift:[essCtrl,essShift,essAlt];st:#27#27'[3@'),      {rxvt}
 
        (AnsiChar:0;scan:KbAltUp;shift:[essAlt];st:#27'[1;3A'),        {xterm}
        (AnsiChar:0;scan:KbAltDown;shift:[essAlt];st:#27'[1;3B'),      {xterm}
@@ -1328,6 +1449,49 @@ const key_sequences:array[0..385] of key_sequence=(
        (AnsiChar:0;scan:0;shift:[];st:#27'[?7h')
       );
 
+      {those are rxvt specific, due to conflict can not put in main array }
+const rxvt_key_sequences:array[0..7] of key_sequence=(
+       (AnsiChar:0;scan:kbShiftF3;shift:[essShift];st:#27'[25~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF4;shift:[essShift];st:#27'[26~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF5;shift:[essShift];st:#27'[28~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF6;shift:[essShift];st:#27'[29~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF7;shift:[essShift];st:#27'[31~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF8;shift:[essShift];st:#27'[32~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF9;shift:[essShift];st:#27'[33~'),     {rxvt,pterm}
+       (AnsiChar:0;scan:kbShiftF10;shift:[essShift];st:#27'[34~')     {rxvt,pterm}
+       );
+
+type TTerm = (trNone,trCons,trEterm,trGnome,trKonsole,trRxvt,trScreen,trXterm,trLinux);
+
+function detect_terminal:TTerm;
+const terminals:array[TTerm] of string[7]=('None'#0,'cons','eterm','gnome',
+                                                'konsole','rxvt','screen',
+                                                'xterm','linux');
+var term:string;
+    i,t:TTerm;
+begin
+  detect_terminal:=trNone;
+  t:=trNone;
+  term:=fpgetenv('TERM');
+  for i:=low(terminals) to high(terminals) do
+    if copy(term,1,length(terminals[i]))=terminals[i] then
+      begin
+        t:=i;
+        break;
+      end;
+  if t=trXterm then
+    begin
+      {Rxvt sets TERM=xterm and COLORTERM=rxvt. Gnome does something similar.}
+      term:=fpgetenv('COLORTERM');
+      for i:=low(terminals) to high(terminals) do
+        if copy(term,1,length(terminals[i]))=terminals[i] then
+          begin
+            t:=i;
+            break;
+          end;
+    end;
+  detect_terminal:=t;
+end;
 
 type  TKeyByte = array [0..23] of byte;
       PKeyByte = ^TKeyByte;
@@ -1607,6 +1771,12 @@ begin
   for i:=low(key_sequences) to high(key_sequences) do
     with key_sequences[i] do
       DoAddSequence(st,AnsiChar,scan,shift);
+  if detect_terminal in [trRxvt] then
+  begin  {rxvt specific escape sequences}
+    for i:=low(rxvt_key_sequences) to high(rxvt_key_sequences) do
+    with rxvt_key_sequences[i] do
+      DoAddSequence(st,AnsiChar,scan,shift);
+  end;
   sunKeySquences;
 end;
 
@@ -1935,6 +2105,88 @@ begin
   end;
 end;
 
+function RemoveShiftState(AShiftState:TEnhancedShiftState; toRemoveState,aState,toTestState:TEnhancedShiftStateElement):TEnhancedShiftState;
+{ remove state toRemoveState and                                  }
+{ remove state aState if AShiftState does not contain toTestState }
+begin
+  AShiftState:=AShiftState-[toRemoveState];
+  if not (toTestState in AShiftState) then
+    AShiftState:=AShiftState-[aState];
+  RemoveShiftState:=AShiftState;
+end;
+
+var LastShiftState, CurrentShiftState : TEnhancedShiftState;
+
+function GetLastShiftState : byte;
+{ get fake shift state or current shift state for kitty keys }
+var State : byte;
+begin
+  State:=0;
+  if isKittyKeys then
+  begin
+    LastShiftState:=CurrentShiftState;
+    if essLeftShift in LastShiftState then
+      inc(state,kbLeftShift);
+    if essRightShift in LastShiftState then
+      inc(state,kbRightShift);
+    if (essShift in LastShiftState) and (not ((essRightShift in LastShiftState) or (essLeftShift in LastShiftState))) then
+      inc(state,kbShift); {this for super rare case when shift state key press was not recived (maybe that is impossible)}
+  end else
+  if essShift in LastShiftState then
+    inc(state,kbShift);
+  if essCtrl in LastShiftState then
+    inc(state,kbCtrl);
+  if essAlt in LastShiftState then
+    inc(state,kbAlt);
+  GetLastShiftState:=State;
+end;
+
+procedure UpdateCurrentShiftState(nKey:longint; kbDown:byte);
+begin
+  {current shift state changes}
+  if kbDown <3 then
+  begin {state key down}
+    case nKey of
+      kShiftLeft  : CurrentShiftState:=CurrentShiftState +[essShift,essLeftShift];
+      kShiftRight : CurrentShiftState:=CurrentShiftState +[essShift,essRightShift];
+      kCtrlLeft   : CurrentShiftState:=CurrentShiftState +[essCtrl,essLeftCtrl];
+      kCtrlRight  : CurrentShiftState:=CurrentShiftState +[essCtrl,essRightCtrl];
+      kAltRight   : CurrentShiftState:=CurrentShiftState +[essAlt,essRightAlt];
+      kAltLeft    : CurrentShiftState:=CurrentShiftState +[essAlt,essLeftAlt];
+      kAltGr      : CurrentShiftState:=CurrentShiftState +[essAltGr];
+    end;
+  end else
+  begin {state key up}
+    case nKey of
+      kShiftLeft  : CurrentShiftState:=RemoveShiftState(CurrentShiftState,essLeftShift,essShift,essRightShift);
+      kShiftRight : CurrentShiftState:=RemoveShiftState(CurrentShiftState,essRightShift,essShift,essLeftShift);
+      kCtrlLeft   : CurrentShiftState:=RemoveShiftState(CurrentShiftState,essLeftCtrl,essCtrl,essRightCtrl);
+      kCtrlRight  : CurrentShiftState:=RemoveShiftState(CurrentShiftState,essRightCtrl,essCtrl,essLeftCtrl);
+      kAltRight   : CurrentShiftState:=RemoveShiftState(CurrentShiftState,essRightAlt,essAlt,essLeftAlt);
+      kAltLeft    : CurrentShiftState:=RemoveShiftState(CurrentShiftState,essLeftAlt,essAlt,essRightAlt);
+      kAltGr      : CurrentShiftState:=CurrentShiftState -[essAltGr];
+    end;
+  end;
+end;
+
+procedure UpdateShiftStateWithModifier(modifier:longint);
+{ Sanity double check. In case if there is no generated shift state key release (shortcut key intercepted by OS or terminal). }
+{ Make sure on key press there is correct current shift state }
+begin
+  { Shift states}
+  if modifier =  0 then modifier:=1;
+  modifier:=modifier-1;
+  if (modifier and 1)>0 then
+  begin if not (essShift in CurrentShiftState) then CurrentShiftState:=CurrentShiftState+[essShift];
+  end else if (essShift in CurrentShiftState) then CurrentShiftState:=CurrentShiftState-[essLeftShift,essShift,essRightShift];
+  if (modifier and 2)>0 then
+  begin  if not (essAlt in CurrentShiftState) then CurrentShiftState:=CurrentShiftState+[essAlt];
+  end else if (essAlt in CurrentShiftState) then CurrentShiftState:=CurrentShiftState-[essLeftAlt,essAlt,essRightAlt];
+  if (modifier and 4)>0 then
+  begin if not (essCtrl in CurrentShiftState) then CurrentShiftState:=CurrentShiftState+[essCtrl];
+  end else if (essCtrl in CurrentShiftState) then CurrentShiftState:=CurrentShiftState-[essRightCtrl,essCtrl,essLeftCtrl];
+end;
+
 
 function ReadKey:TEnhancedKeyEvent;
 const
@@ -1997,13 +2249,9 @@ var
          modifier:=((enh[3]-1)and 7)+1;
          kbDown:=enh[4];
 
-         unicodeCodePoint:=0;
-         if kbDown <3 then
-         begin
-           unicodeCodePoint:=enh[6];
-           if unicodeCodePoint < 0 then
-              unicodeCodePoint:=enh[0];
-         end;
+         unicodeCodePoint:=enh[6];
+         if unicodeCodePoint < 0 then
+            unicodeCodePoint:=enh[0];
          enh[5]:=modifier;
 
          escStr:='';
@@ -2062,6 +2310,7 @@ var
                NPT:=nil;
          end;
 
+         UpdateShiftStateWithModifier(modifier);
          if kbDown =3 then arrayind:=0; {release keys are ignored}
 
          if not assigned(NPT) and (ch='u') then
@@ -2071,6 +2320,8 @@ var
              {function keys have been pressed}
              arrayind:=0;
              nKey:=unicodeCodePoint-cKeysUnicodePrivateBase;
+             if (nKey >=kShiftLeft) and (nKey<=kAltGr) then
+               UpdateCurrentShiftState(nKey,kbDown);
              if (nKey < 128) and (kbDown <3) then
              begin
                if nKey = 60 then nKey:= kMiddle; {KP_5 -> KP_BEGIN}
@@ -2366,6 +2617,7 @@ end;
 procedure SysInitKeyboard;
 begin
   isKittyKeys:=false;
+  CurrentShiftState:=[];
   PendingEnhancedKeyEvent:=NilEnhancedKeyEvent;
   Utf8KeyboardInputEnabled:={$IFDEF FPC_DOTTEDUNITS}System.Console.{$ENDIF}UnixKVMBase.UTF8Enabled;
   SetRawMode(true);
@@ -2504,6 +2756,7 @@ begin {main}
   if PendingEnhancedKeyEvent<>NilEnhancedKeyEvent then
     begin
       SysGetEnhancedKeyEvent:=PendingEnhancedKeyEvent;
+      LastShiftState:=SysGetEnhancedKeyEvent.ShiftState; {to fake shift state later}
       PendingEnhancedKeyEvent:=NilEnhancedKeyEvent;
       exit;
     end;
@@ -2561,6 +2814,7 @@ begin {main}
             SysGetEnhancedKeyEvent.ShiftState:=SState;
             SysGetEnhancedKeyEvent.VirtualScanCode:=(MyScan shl 8) or Ord(MyChar);
           end;
+        LastShiftState:=SysGetEnhancedKeyEvent.ShiftState; {to fake shift state later}
         exit;
       end
     else if MyChar=#27 then
@@ -2656,6 +2910,7 @@ begin {main}
       SysGetEnhancedKeyEvent.ShiftState:=SState;
       SysGetEnhancedKeyEvent.VirtualScanCode:=(MyScan shl 8) or Ord(MyChar);
     end;
+  LastShiftState:=SysGetEnhancedKeyEvent.ShiftState; {to fake shift state later}
 end;
 
 
@@ -2673,6 +2928,7 @@ begin
     end
   else
     SysPollEnhancedKeyEvent:=NilEnhancedKeyEvent;
+  LastShiftState:=SysPollEnhancedKeyEvent.ShiftState; {to fake shift state later}
 end;
 
 
@@ -2683,7 +2939,7 @@ begin
     SysGetShiftState:=ShiftState
   else
 {$endif}
-    SysGetShiftState:=0;
+    SysGetShiftState:=GetLastShiftState;
 end;
 
 

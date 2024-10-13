@@ -215,10 +215,11 @@
              system_loongarch64_linux,  { 120 }
              system_aarch64_iphonesim,  { 121 }
              system_m68k_human68k,      { 122 }
-             system_arm_ultibo,         { 123 }
-             system_i386_ultibo,        { 124 }
-             system_x86_64_ultibo,      { 125 }
-             system_aarch64_ultibo      { 126 }
+             system_mipsel_ps1,         { 123 }
+             system_arm_ultibo,         { 124 }
+             system_i386_ultibo,        { 125 }
+             system_x86_64_ultibo,      { 126 }
+             system_aarch64_ultibo      { 127 }
        );
 
      type
@@ -344,7 +345,8 @@
              ld_sinclairql,
              ld_ultibo,
              ld_wasi,
-             ld_human68k
+             ld_human68k,
+             ld_ps1
        );
 
        tar = (ar_none

@@ -86,6 +86,8 @@ type
   function spilling_create_load(const ref: treference; r: tregister): taicpu;
   function spilling_create_store(r: tregister; const ref: treference): taicpu;
 
+  procedure resolveReadAfterWrite(list: TAsmList);
+
 implementation
 
   uses
@@ -674,6 +676,87 @@ procedure fixup_jmps(list: TAsmList);
      until not again;
     labelpositions.free;
   end;
+
+
+procedure resolveReadAfterWrite(list: TAsmList);
+label skip;
+var 
+    p, pp : tai;
+    l, x : TLinkedListItem;
+    firstReg : tregister;    
+
+begin
+
+  l:= list.first;
+  while assigned(l) do begin
+      
+    p:= tai(l);
+    if p.typ = ait_instruction then begin
+
+      if taicpu(p).opcode in [A_LB, A_LBU, A_LH, A_LHU, A_LW, A_LWU, A_LWL, A_LWR, A_MFC0 {MFC2, LWC2}] then begin
+
+          firstReg:= taicpu(p).oper[0]^.reg;
+
+          x:= l.next;
+          if not assigned(x) then goto skip;
+          
+          pp:= tai(x);
+    
+          while pp.typ <> ait_instruction do begin
+            
+            x:= x.next;
+            if not assigned(x) then goto skip;
+
+            pp:= tai(x);
+          end;
+
+          if pp.typ = ait_instruction then begin
+
+            if (taicpu(p).opcode = A_LWL) and (taicpu(pp).opcode = A_LWR) then goto skip;
+            if (taicpu(p).opcode = A_LWR) and (taicpu(pp).opcode = A_LWL) then goto skip;
+
+            if taicpu(pp).ops > 0 then begin
+
+              case taicpu(pp).ops of
+
+                0 : {nothing to do};
+
+                1 : 
+                    if (taicpu(pp).oper[0]^.typ = top_reg) and (firstReg = taicpu(pp).oper[0]^.reg) then
+                          list.insertAfter(taicpu.op_none(A_NOP), l);
+
+                2 :
+                    if ((taicpu(pp).oper[0]^.typ = top_reg) and (firstReg = taicpu(pp).oper[0]^.reg)) or 
+                       ((taicpu(pp).oper[1]^.typ = top_reg) and (firstReg = taicpu(pp).oper[1]^.reg)) or 
+                       ((taicpu(pp).oper[1]^.typ = top_ref) and (firstReg = taicpu(pp).oper[1]^.ref^.base)) then
+                          list.insertAfter(taicpu.op_none(A_NOP), l);
+
+                3 :
+                    if ((taicpu(pp).oper[0]^.typ = top_reg) and (firstReg = taicpu(pp).oper[0]^.reg)) or 
+                       ((taicpu(pp).oper[1]^.typ = top_reg) and (firstReg = taicpu(pp).oper[1]^.reg)) or
+                       ((taicpu(pp).oper[2]^.typ = top_reg) and (firstReg = taicpu(pp).oper[2]^.reg)) then
+                          list.insertAfter(taicpu.op_none(A_NOP), l);
+                
+                else
+
+                    internalerror(2024092501);
+
+              end;
+
+            end;
+
+          end;
+
+      end;
+
+    end;
+    
+skip:
+    l:= l.next;
+
+  end;
+
+end;
 
 
 begin

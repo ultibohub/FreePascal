@@ -48,6 +48,7 @@ type
 
     function PeepHoleOptPass1Cpu(var p: tai): boolean; override;
     function OptPass1OP(var p: tai): boolean;
+    function OptPass1FOP(var p: tai;mvop: tasmop): boolean;
 
     function OptPass1Add(var p: tai): boolean;
     procedure RemoveInstr(var orig: tai; moveback: boolean=true);
@@ -56,7 +57,8 @@ type
 implementation
 
   uses
-    cutils;
+    cutils,
+    verbose;
 
   function MatchInstruction(const instr: tai; const op: TCommonAsmOps; const AConditions: TAsmConds = []): boolean;
     begin
@@ -211,6 +213,39 @@ implementation
     end;
 
 
+  function TRVCpuAsmOptimizer.OptPass1FOP(var p: tai;mvop: tasmop) : boolean;
+    var
+      hp1 : tai;
+    begin
+      result:=false;
+      { replace
+          <FOp>   %reg3,%reg2,%reg1
+          <mvop>  %reg4,%reg3,%reg3
+          dealloc %reg3
+
+        by
+
+          <FOp>   %reg4,%reg2,%reg1
+        ?
+      }
+      if GetNextInstruction(p,hp1) and
+        MatchInstruction(hp1,mvop) and
+        MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) and
+        MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[2]^) then
+        begin
+          TransferUsedRegs(TmpUsedRegs);
+          UpdateUsedRegs(TmpUsedRegs, tai(p.next));
+          if not(RegUsedAfterInstruction(taicpu(hp1).oper[1]^.reg,hp1,TmpUsedRegs)) then
+            begin
+              taicpu(p).loadoper(0,taicpu(hp1).oper[0]^);
+              DebugMsg('Peephole FOpFsgnj02FOp done',p);
+              RemoveInstruction(hp1);
+              result:=true;
+            end;
+        end;
+    end;
+
+
   procedure TRVCpuAsmOptimizer.RemoveInstr(var orig: tai; moveback: boolean = true);
     var
       n: tai;
@@ -314,6 +349,39 @@ implementation
           taicpu(hp1).oper[1]^.ref^.base:=taicpu(p).oper[1]^.reg;
 
           DebugMsg('Peephole AddiMem2Mem performed', hp1);
+
+          RemoveInstr(p);
+
+          result:=true;
+        end
+      {
+        Changes
+          addi w, z, 0
+          op x, y, w
+          dealloc w
+        To
+          op x, y, z
+      }
+      else if (taicpu(p).ops=3) and
+         (taicpu(p).oper[2]^.typ=top_const) and
+         (taicpu(p).oper[2]^.val=0) and
+         GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
+         MatchInstruction(hp1, [A_SUB,A_ADD,A_SLL,A_SRL,A_SLT,A_AND,A_OR,
+           A_ADDI,A_ANDI,A_ORI,A_SRAI,A_SRLI,A_SLLI,A_XORI
+           {$ifdef riscv64},A_ADDIW,A_SLLIW,A_SRLIW,A_SRAIW,
+           A_ADDW,A_SLLW,A_SRLW,A_SUBW,A_SRAW{$endif}]
+           ) and
+         (taicpu(hp1).ops=3) and
+         (MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[2]^) or MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^)) and
+         (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
+         RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
+        begin
+          if MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[2]^) then
+            taicpu(hp1).loadreg(2,taicpu(p).oper[1]^.reg);
+          if MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) then
+            taicpu(hp1).loadreg(1,taicpu(p).oper[1]^.reg);
+
+          DebugMsg('Peephole Addi0Op2Op performed', hp1);
 
           RemoveInstr(p);
 
@@ -592,6 +660,13 @@ implementation
                       RemoveInstr(p);
                       result:=true;
                     end
+                  else if (taicpu(p).oper[2]^.val=0) then
+                    begin
+                      { this enables further optimizations }
+                      DebugMsg('Peephole S*LI x,y,0 to addi performed', p);
+                      taicpu(p).opcode:=A_ADDI;
+                      result:=true;
+                    end
                   else
                     result:=OptPass1OP(p);
                 end;
@@ -635,6 +710,26 @@ implementation
                       result:=true;
                     end;
                 end;
+              A_FADD_S,
+              A_FSUB_S,
+              A_FMUL_S,
+              A_FDIV_S,
+              A_FSQRT_S,
+              A_FNEG_S,
+              A_FLW,
+              A_FCVT_D_S,
+              A_FMADD_S,A_FMSUB_S,A_FNMSUB_S,A_FNMADD_S:
+                result:=OptPass1FOP(p,A_FSGNJ_S);
+              A_FADD_D,
+              A_FSUB_D,
+              A_FMUL_D,
+              A_FDIV_D,
+              A_FSQRT_D,
+              A_FNEG_D,
+              A_FLD,
+              A_FCVT_S_D,
+              A_FMADD_D,A_FMSUB_D,A_FNMSUB_D,A_FNMADD_D:
+                result:=OptPass1FOP(p,A_FSGNJ_D);
               else
                 ;
             end;
