@@ -908,3 +908,11 @@ begin
 {$include fcl-jsonschema/fpmake.pp}
 end;
 
+procedure add_ptckvm(const ADirectory: string);
+begin
+  with Installer do
+{$include ptckvm/fpmake.pp}
+end;
+
+{$include fcl-fpterm/fpmake.pp}
+

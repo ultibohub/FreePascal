@@ -210,6 +210,10 @@ interface
     }
     procedure node_reset_pass1_write(n: tnode);
 
+    { Returns True if n one of its children has a type that appears in TypeList }
+    function has_node_of_type(n: TNode; TypeList: TNodeTypeSet): Boolean; {$IFDEF USEINLINE}inline;{$ENDIF USEINLINE}
+
+
 implementation
 
     uses
@@ -239,6 +243,7 @@ implementation
               result := foreachnode(procmethod,tnode(tcallnode(n).callinitblock),f,arg) or result;
               result := foreachnode(procmethod,tcallnode(n).methodpointer,f,arg) or result;
               result := foreachnode(procmethod,tcallnode(n).funcretnode,f,arg) or result;
+              result := foreachnode(procmethod,tnode(tcallnode(n).vmt_entry),f,arg) or result;
               result := foreachnode(procmethod,tnode(tcallnode(n).callcleanupblock),f,arg) or result;
             end;
           callparan:
@@ -347,6 +352,7 @@ implementation
               result := foreachnodestatic(procmethod,tnode(tcallnode(n).callinitblock),f,arg) or result;
               result := foreachnodestatic(procmethod,tcallnode(n).methodpointer,f,arg) or result;
               result := foreachnodestatic(procmethod,tcallnode(n).funcretnode,f,arg) or result;
+              result := foreachnodestatic(procmethod,tnode(tcallnode(n).vmt_entry),f,arg) or result;
               result := foreachnodestatic(procmethod,tnode(tcallnode(n).callcleanupblock),f,arg) or result;
             end;
           callparan:
@@ -1759,5 +1765,19 @@ implementation
          foreachnodestatic(n,@_node_reset_pass1_write,nil);
        end;
 
+
+     function node_in_list(var n: tnode; arg: pointer): foreachnoderesult;
+       begin
+         if (n.nodetype in PNodeTypeSet(arg)^) then
+           result := fen_norecurse_true
+         else
+           result := fen_false;
+       end;
+
+
+     function has_node_of_type(n: TNode; TypeList: TNodeTypeSet): Boolean;
+       begin
+         Result := foreachnodestatic(n, @node_in_list, @TypeList);
+       end;
 
 end.

@@ -1872,6 +1872,14 @@ type
             end;
         end;
 
+        procedure MarkSymbolAsUsed(sym: tsym);
+          begin
+           tabstractvarsym(sym).IncRefCount;
+           { do we know an owner? }
+           if Assigned(current_module) and Assigned(current_module.unitmap) and Assigned(sym.owner) then
+             inc(current_module.unitmap[sym.owner.moduleid].refs);
+          end;
+
         function preproc_factor(eval: Boolean):texprvalue;
         var
            hs,countstr,storedpattern: string;
@@ -2050,9 +2058,15 @@ type
                               staticvarsym,
                               localvarsym,
                               paravarsym :
-                                l:=tabstractvarsym(srsym).getsize;
+                                begin
+                                  l:=tabstractvarsym(srsym).getsize;
+                                  MarkSymbolAsUsed(srsym);
+                                end;
                               typesym:
-                                l:=ttypesym(srsym).typedef.size;
+                                begin
+                                  l:=ttypesym(srsym).typedef.size;
+                                  MarkSymbolAsUsed(srsym);
+                                end;
                               else
                                 Message(scan_e_error_in_preproc_expr);
                             end;
@@ -2095,9 +2109,15 @@ type
                               staticvarsym,
                               localvarsym,
                               paravarsym :
-                                hdef:=tabstractvarsym(srsym).vardef;
+                                begin
+                                  hdef:=tabstractvarsym(srsym).vardef;
+                                  MarkSymbolAsUsed(srsym);
+                                end;
                               typesym:
-                                hdef:=ttypesym(srsym).typedef;
+                                begin
+                                  hdef:=ttypesym(srsym).typedef;
+                                  MarkSymbolAsUsed(srsym);
+                                end;
                               else
                                 Message(scan_e_error_in_preproc_expr);
                             end;
@@ -2194,6 +2214,7 @@ type
                               result:=texprvalue.create_bool(false)
                             else
                               result:=texprvalue.create_bool(true);
+                            MarkSymbolAsUsed(srsym);
                           end
                         else
                           result:=texprvalue.create_bool(false);
@@ -2291,7 +2312,7 @@ type
                                       begin
                                         result.free;
                                         result:=texprvalue.create_const(tconstsym(srsym));
-                                        tconstsym(srsym).IncRefCount;
+                                        MarkSymbolAsUsed(tconstsym(srsym));
                                       end;
                                   end;
                                 enumsym:
@@ -2310,11 +2331,11 @@ type
                                       begin
                                         result.free;
                                         result:=texprvalue.create_int(tenumsym(srsym).value);
-                                        tenumsym(srsym).IncRefCount;
+                                        MarkSymbolAsUsed(tenumsym(srsym));
                                       end;
                                   end;
                                 else
-                                  ;
+                                  MarkSymbolAsUsed(tconstsym(srsym));
                               end;
                           end
                         { the id must be belong to the set type }

@@ -1385,10 +1385,16 @@ implementation
                    begin
                      { compilerprocs never capture the address of their
                        parameters }
-                     if not(po_compilerproc in aktcallnode.procdefinition.procoptions) then
-                       make_not_regable(left,[ra_addr_regable,ra_addr_taken])
-                     else
+                     if (po_compilerproc in aktcallnode.procdefinition.procoptions) or
+                     { if we handled already the proc. body and it is not inlined,
+                       we can propagate the information if the address of a parameter is taken or not }
+                     ((aktcallnode.procdefinition.typ=procdef) and
+                      not(po_inline in tprocdef(aktcallnode.procdefinition).procoptions) and
+                      (tprocdef(aktcallnode.procdefinition).is_implemented) and
+                      not(parasym.addr_taken)) then
                        make_not_regable(left,[ra_addr_regable])
+                     else
+                       make_not_regable(left,[ra_addr_regable,ra_addr_taken]);
                    end
                  else
                   case parasym.varspez of
@@ -1400,10 +1406,16 @@ implementation
                         set_varstate(left,vs_readwritten,[]);
                         { compilerprocs never capture the address of their
                           parameters }
-                        if not(po_compilerproc in aktcallnode.procdefinition.procoptions) then
-                          make_not_regable(left,[ra_addr_regable,ra_addr_taken])
-                        else
+                        if (po_compilerproc in aktcallnode.procdefinition.procoptions) or
+                        { if we handled already the proc. body and it is not inlined,
+                          we can propagate the information if the address of a parameter is taken or not }
+                        ((aktcallnode.procdefinition.typ=procdef) and
+                         not(po_inline in tprocdef(aktcallnode.procdefinition).procoptions) and
+                         (tprocdef(aktcallnode.procdefinition).is_implemented) and
+                         not(parasym.addr_taken)) then
                           make_not_regable(left,[ra_addr_regable])
+                        else
+                          make_not_regable(left,[ra_addr_regable,ra_addr_taken]);
                       end;
                     vs_var,
                     vs_constref:
@@ -1411,10 +1423,16 @@ implementation
                         set_varstate(left,vs_readwritten,[vsf_must_be_valid,vsf_use_hints]);
                         { compilerprocs never capture the address of their
                           parameters }
-                        if not(po_compilerproc in aktcallnode.procdefinition.procoptions) then
-                          make_not_regable(left,[ra_addr_regable,ra_addr_taken])
-                        else
+                        if (po_compilerproc in aktcallnode.procdefinition.procoptions) or
+                        { if we handled already the proc. body and it is not inlined,
+                          we can propagate the information if the address of a parameter is taken or not }
+                        ((aktcallnode.procdefinition.typ=procdef) and
+                         not(po_inline in tprocdef(aktcallnode.procdefinition).procoptions) and
+                         (tprocdef(aktcallnode.procdefinition).is_implemented) and
+                         not(parasym.addr_taken)) then
                           make_not_regable(left,[ra_addr_regable])
+                        else
+                          make_not_regable(left,[ra_addr_regable,ra_addr_taken]);
                       end;
                     else
                       set_varstate(left,vs_read,[vsf_must_be_valid]);
@@ -1935,6 +1953,33 @@ implementation
             WriteLn(T, PrintNodeIndention, '</funcretnode>');
           end;
 
+        if assigned(vmt_entry) then
+          begin
+            WriteLn(T, PrintNodeIndention, '<vmt_entry>');
+            PrintNodeIndent;
+            XMLPrintNode(T, vmt_entry);
+            PrintNodeUnindent;
+            WriteLn(T, PrintNodeIndention, '</vmt_entry>');
+          end;
+
+        if assigned(call_self_node) then
+          begin
+            WriteLn(T, PrintNodeIndention, '<call_self_node>');
+            PrintNodeIndent;
+            XMLPrintNode(T, call_self_node);
+            PrintNodeUnindent;
+            WriteLn(T, PrintNodeIndention, '</call_self_node>');
+          end;
+
+        if assigned(call_vmt_node) then
+          begin
+            WriteLn(T, PrintNodeIndention, '<call_vmt_node>');
+            PrintNodeIndent;
+            XMLPrintNode(T, call_vmt_node);
+            PrintNodeUnindent;
+            WriteLn(T, PrintNodeIndention, '</call_vmt_node>');
+          end;
+
         if assigned(callinitblock) then
           begin
             WriteLn(T, PrintNodeIndention, '<callinitblock>');
@@ -1983,6 +2028,24 @@ implementation
           begin
             writeln(t,printnodeindention,'funcretnode =');
             printnode(t,funcretnode);
+          end;
+
+        if assigned(vmt_entry) then
+          begin
+            writeln(t,printnodeindention,'vmt_entry =');
+            printnode(t,vmt_entry);
+          end;
+
+        if assigned(call_self_node) then
+          begin
+            writeln(t,printnodeindention,'call_self_node =');
+            printnode(t,call_self_node);
+          end;
+
+        if assigned(call_vmt_node) then
+          begin
+            writeln(t,printnodeindention,'call_vmt_node =');
+            printnode(t,call_vmt_node);
           end;
 
         if assigned(callinitblock) then
@@ -3368,7 +3431,7 @@ implementation
            end;
 
         { if the result is the same as the self parameter (in case of objects),
-          we can't optimise. We have to check this explicitly becaise
+          we can't optimise. We have to check this explicitly because
           hidden parameters such as self have not yet been inserted at this
           point
         }
