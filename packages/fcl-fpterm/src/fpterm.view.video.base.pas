@@ -31,14 +31,14 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.View.Video.Base;
+unit FpTerm.View.Video.Base;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  System.Terminal.Base, System.Terminal.View;
+  FpTerm.Base, FpTerm.View;
 
 type
 
@@ -52,7 +52,7 @@ type
     function GetWidth: Integer; override;
     procedure SetCell(Y, X: Integer; AValue: TCell); override;
   public
-    constructor Create; override;
+    constructor Create;
     destructor Destroy; override;
 
     procedure UpdateScreen; override;

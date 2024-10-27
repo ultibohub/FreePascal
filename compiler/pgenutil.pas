@@ -878,7 +878,7 @@ uses
           target_param,
           caller_param : ttypesym;
         begin
-          { the target and the caller must the same generic def 
+          { the target and the caller must the same generic def
             with the same set of generic parameters }
           if target_def.genericdef<>caller_def.genericdef then
             internalerror(2021020909);
@@ -904,15 +904,15 @@ uses
             end;
         end;
 
-      { specialize arrays by using element types but arrays may be multi-dimensional 
+      { specialize arrays by using element types but arrays may be multi-dimensional
         so we need to examine the caller/target pairs recursively in order to
         verify the dimensionality is equal }
       function handle_arrays(owner:tprocdef;target_def,caller_def:tarraydef;out target_element,caller_element:tdef):boolean;
         begin
-          { the target and the caller are both arrays and the target is a 
+          { the target and the caller are both arrays and the target is a
             specialization so we can recurse into the targets element def }
-          if is_array_literal(target_def.elementdef) and 
-            is_array_literal(caller_def.elementdef) and 
+          if is_array_literal(target_def.elementdef) and
+            is_array_literal(caller_def.elementdef) and
             target_def.is_specialization then
             result:=handle_arrays(owner,tarraydef(target_def.elementdef),tarraydef(caller_def.elementdef),target_element,caller_element)
           else
@@ -1128,7 +1128,7 @@ uses
               exit;
             end;
 
-          { check to make sure the generic parameters are all used 
+          { check to make sure the generic parameters are all used
             at least once in the  caller parameters. }
           count:=0;
           for i:=0 to genericdef.genericparas.count-1 do
@@ -1157,7 +1157,7 @@ uses
               target_def:=tparavarsym(paras[i]).vardef;
               target_key:='';
 
-              { strings are compatible with "array of T" so we 
+              { strings are compatible with "array of T" so we
                 need to use the element type for specialization }
               if is_stringlike(caller_def) and
                 is_array_literal(target_def) and
@@ -1167,10 +1167,10 @@ uses
                   target_key:=generic_param_hash(target_def);
                   caller_def:=chartype_for_stringlike(caller_def);
                 end
-              { non-uniform array constructors (i.e. array of const) are not compatible 
+              { non-uniform array constructors (i.e. array of const) are not compatible
                 with normal arrays like "array of T" so we reject them }
               else if is_array_literal(target_def) and
-                (caller_def.typ=arraydef) and 
+                (caller_def.typ=arraydef) and
                 (ado_IsConstructor in tarraydef(caller_def).arrayoptions) and
                 (ado_IsArrayOfConst in tarraydef(caller_def).arrayoptions) then
                 begin
@@ -1186,15 +1186,15 @@ uses
                   target_key:=generic_param_hash(target_def);
                 end
               { handle generic procvars }
-              else if (caller_def.typ=procvardef) and 
-                (target_def.typ=procvardef) and 
+              else if (caller_def.typ=procvardef) and
+                (target_def.typ=procvardef) and
                 tprocvardef(target_def).is_specialization and
                 handle_procvars(genericparams,callerparams,target_def,caller_def) then
                 begin
                   continue;
                 end
-              { handle specialized objects by taking the base class as the type to specialize }    
-              else if is_class_or_object(caller_def) and 
+              { handle specialized objects by taking the base class as the type to specialize }
+              else if is_class_or_object(caller_def) and
                 is_class_or_object(target_def) and
                 genericdef.is_generic_param(target_def) then
                 begin
@@ -1227,11 +1227,7 @@ uses
                   sym:=create_unnamed_typesym(caller_def);
                   { add the unnamed sym to the list but only it was allocated manually }
                   if sym.owner=caller_def.owner then
-                    begin
-                      if not assigned(unnamed_syms) then
-                        unnamed_syms:=tfplist.create;
-                      unnamed_syms.add(sym);
-                    end;
+                    TFPList.AddOnDemand(unnamed_syms,sym);
                   genericparams.add(target_key,sym);
                 end
               else
@@ -1267,11 +1263,7 @@ uses
                   result.insert(0,sym);
                   { add the unnamed sym to the list but only if it was allocated manually }
                   if sym.owner=paradef.owner then
-                    begin
-                      if not assigned(unnamed_syms) then
-                        unnamed_syms:=tfplist.create;
-                      unnamed_syms.add(sym);
-                    end;
+                    TFPList.AddOnDemand(unnamed_syms,sym);
                 end
               else
                 result.insert(0,paradef.typesym);
@@ -1333,12 +1325,7 @@ uses
                 else
                   begin
                     { the specialization was not chosen so clean up any unnamed syms }
-                    if pd_unnamed_syms<>nil then
-                      begin
-                        for k:=0 to pd_unnamed_syms.count-1 do
-                          tsym(pd_unnamed_syms[k]).free;
-                        pd_unnamed_syms.free;
-                      end;
+                    TFPList.FreeAndNilObjects(pd_unnamed_syms);
                   end;
               end;
           end;

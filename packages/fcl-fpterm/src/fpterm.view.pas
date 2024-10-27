@@ -30,14 +30,14 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.View;
+unit FpTerm.View;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  System.Terminal.Base;
+  FpTerm.Base;
 
 type
 
@@ -53,8 +53,6 @@ type
     function GetWidth: Integer; virtual; abstract;
     procedure SetCell(Y, X: Integer; AValue: TCell); virtual; abstract;
   public
-    constructor Create; virtual;
-
     procedure UpdateScreen; virtual; abstract;
     procedure IdleLoop; virtual; abstract;
     procedure HideCursor; virtual; abstract;
@@ -85,12 +83,6 @@ type
   end;
 
 implementation
-
-{ TTerminalView }
-
-constructor TTerminalView.Create;
-begin
-end;
 
 end.
 

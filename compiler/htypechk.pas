@@ -69,27 +69,33 @@ interface
          wrongparanr : byte;
       end;
 
-      tcallcandidates = class
+      tcallcandidatesflag =
+      (
+        cc_ignorevisibility,cc_allowdefaultparas,cc_objcidcall,cc_explicitunit,cc_searchhelpers,cc_anoninherited
+      );
+      tcallcandidatesflags = set of tcallcandidatesflag;
+
+      tcallcandidates = object
       private
         FProcsym     : tprocsym;
         FProcsymtable : tsymtable;
         FOperator    : ttoken;
         FCandidateProcs    : pcandidate;
-        FIgnoredCandidateProcs: tfpobjectlist;
+        FIgnoredCandidateProcs : tfplist;
         FProcCnt    : integer;
         FParaNode   : tnode;
         FParaLength : smallint;
         FAllowVariant : boolean;
         FParaAnonSyms : tfplist;
-        procedure collect_overloads_in_struct(structdef:tabstractrecorddef;ProcdefOverloadList:TFPObjectList;searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
-        procedure collect_overloads_in_units(ProcdefOverloadList:TFPObjectList; objcidcall,explicitunit: boolean;spezcontext:tspecializationcontext);
-        procedure create_candidate_list(ignorevisibility,allowdefaultparas,objcidcall,explicitunit,searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
-        procedure calc_distance(st_root:tsymtable;objcidcall: boolean);
-        function  proc_add(st:tsymtable;pd:tprocdef;objcidcall: boolean):pcandidate;
+        procedure collect_overloads_in_struct(structdef:tabstractrecorddef;ProcdefOverloadList:TFPObjectList;flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
+        procedure collect_overloads_in_units(ProcdefOverloadList:TFPObjectList; flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
+        procedure create_candidate_list(flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
+        procedure calc_distance(st_root:tsymtable;flags:tcallcandidatesflags);
+        function  proc_add(st:tsymtable;pd:tprocdef):pcandidate;
       public
-        constructor create(sym:tprocsym;st:TSymtable;ppn:tnode;ignorevisibility,allowdefaultparas,objcidcall,explicitunit,searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
-        constructor create_operator(op:ttoken;ppn:tnode);
-        destructor destroy;override;
+        constructor init(sym:tprocsym;st:TSymtable;ppn:tnode;flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
+        constructor init_operator(op:ttoken;ppn:tnode);
+        destructor done;
         procedure list(all:boolean);
 {$ifdef EXTDEBUG}
         procedure dump_info(lvl:longint);
@@ -804,12 +810,12 @@ implementation
             ppn:=ccallparanode.create(tunarynode(t).left.getcopy,nil);
             ppn.get_paratype;
           end;
-        candidates:=tcallcandidates.create_operator(optoken,ppn);
+        candidates.init_operator(optoken,ppn);
 
         { stop when there are no operators found }
         if candidates.count=0 then
           begin
-            candidates.free;
+            candidates.done;
             ppn.free;
             if not (ocf_check_only in ocf) then
               begin
@@ -830,7 +836,7 @@ implementation
         { exit when no overloads are found }
         if cand_cnt=0 then
           begin
-            candidates.free;
+            candidates.done;
             ppn.free;
             if not (ocf_check_only in ocf) then
               begin
@@ -852,7 +858,7 @@ implementation
             { we'll just use the first candidate to make the
               call }
           end;
-        candidates.free;
+        candidates.done;
 
         if ocf_check_only in ocf then
           begin
@@ -889,13 +895,13 @@ implementation
             { generate parameter nodes }
             ppn:=ccallparanode.create(tbinarynode(t).right.getcopy,ccallparanode.create(tbinarynode(t).left.getcopy,nil));
             ppn.get_paratype;
-            candidates:=tcallcandidates.create_operator(optoken,ppn);
+            candidates.init_operator(optoken,ppn);
 
             { for commutative operators we can swap arguments and try again }
             if (candidates.count=0) and
                not(optoken in non_commutative_op_tokens) then
               begin
-                candidates.free;
+                candidates.done;
                 reverseparameters(ppn);
                 { reverse compare operators }
                 case optoken of
@@ -910,7 +916,7 @@ implementation
                   else
                     ;
                 end;
-                candidates:=tcallcandidates.create_operator(optoken,ppn);
+                candidates.init_operator(optoken,ppn);
               end;
 
             { stop when there are no operators found }
@@ -918,7 +924,7 @@ implementation
             if (result=0) and generror then
               begin
                 CGMessage(parser_e_operator_not_overloaded);
-                candidates.free;
+                candidates.done;
                 ppn.free;
                 ppn:=nil;
                 exit;
@@ -939,7 +945,7 @@ implementation
             if (result=0) and generror then
               begin
                 CGMessage3(parser_e_operator_not_overloaded_3,ld.GetTypeName,arraytokeninfo[optoken].str,rd.GetTypeName);
-                candidates.free;
+                candidates.done;
                 ppn.free;
                 ppn:=nil;
                 exit;
@@ -957,7 +963,7 @@ implementation
                 { we'll just use the first candidate to make the
                   call }
               end;
-            candidates.free;
+            candidates.done;
           end;
 
       begin
@@ -2194,7 +2200,7 @@ implementation
                            TCallCandidates
 ****************************************************************************}
 
-    constructor tcallcandidates.create(sym:tprocsym;st:TSymtable;ppn:tnode;ignorevisibility,allowdefaultparas,objcidcall,explicitunit,searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
+    constructor tcallcandidates.init(sym:tprocsym;st:TSymtable;ppn:tnode;flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
       begin
         if not assigned(sym) then
           internalerror(200411015);
@@ -2202,23 +2208,21 @@ implementation
         FProcsym:=sym;
         FProcsymtable:=st;
         FParanode:=ppn;
-        FIgnoredCandidateProcs:=tfpobjectlist.create(false);
-        create_candidate_list(ignorevisibility,allowdefaultparas,objcidcall,explicitunit,searchhelpers,anoninherited,spezcontext);
+        create_candidate_list(flags,spezcontext);
       end;
 
 
-    constructor tcallcandidates.create_operator(op:ttoken;ppn:tnode);
+    constructor tcallcandidates.init_operator(op:ttoken;ppn:tnode);
       begin
         FOperator:=op;
         FProcsym:=nil;
         FProcsymtable:=nil;
         FParanode:=ppn;
-        FIgnoredCandidateProcs:=tfpobjectlist.create(false);
-        create_candidate_list(false,false,false,false,false,false,nil);
+        create_candidate_list([],nil);
       end;
 
 
-    destructor tcallcandidates.destroy;
+    destructor tcallcandidates.done;
       var
         hpnext,
         hp : pcandidate;
@@ -2229,12 +2233,7 @@ implementation
         FIgnoredCandidateProcs.free;
         { free any symbols for anonymous parameter types that we're used for
           specialization when no specialization was picked }
-        if assigned(FParaAnonSyms) then
-          begin
-            for i := 0 to FParaAnonSyms.count-1 do
-              tsym(FParaAnonSyms[i]).free;
-            FParaAnonSyms.free;
-          end;
+        TFPList.FreeAndNilObjects(FParaAnonSyms);
         hp:=FCandidateProcs;
         while assigned(hp) do
          begin
@@ -2260,7 +2259,7 @@ implementation
       end;
 
 
-    procedure tcallcandidates.collect_overloads_in_struct(structdef:tabstractrecorddef;ProcdefOverloadList:TFPObjectList;searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
+    procedure tcallcandidates.collect_overloads_in_struct(structdef:tabstractrecorddef;ProcdefOverloadList:TFPObjectList;flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
 
       var
         changedhierarchy : boolean;
@@ -2284,7 +2283,7 @@ implementation
                 continue;
               if (po_ignore_for_overload_resolution in pd.procoptions) then
                 begin
-                  FIgnoredCandidateProcs.add(pd);
+                  TFPList.AddOnDemand(FIgnoredCandidateProcs,pd);
                   continue;
                 end;
               { in case of anonymous inherited, only match procdefs identical
@@ -2292,7 +2291,7 @@ implementation
                 anything compatible to the parameters -- except in case of
                 the presence of a messagestr/int, in which case those have to
                 match exactly }
-              if anoninherited then
+              if cc_anoninherited in flags then
                 if po_msgint in current_procinfo.procdef.procoptions then
                   begin
                     if not(po_msgint in pd.procoptions) or
@@ -2373,7 +2372,7 @@ implementation
                    (tobjectdef(structdef).objecttype in objecttypes_with_helpers)
                  )
                )
-               and searchhelpers then
+               and (cc_searchhelpers in flags) then
              begin
                if m_multi_helpers in current_settings.modeswitches then
                  begin
@@ -2448,7 +2447,7 @@ implementation
       end;
 
 
-    procedure tcallcandidates.collect_overloads_in_units(ProcdefOverloadList:TFPObjectList; objcidcall,explicitunit: boolean;spezcontext:tspecializationcontext);
+    procedure tcallcandidates.collect_overloads_in_units(ProcdefOverloadList:TFPObjectList; flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
       var
         j          : integer;
         pd         : tprocdef;
@@ -2464,7 +2463,7 @@ implementation
           the list can change in every situation }
         if FOperator=NOTOKEN then
           begin
-            if not objcidcall then
+            if not (cc_objcidcall in flags) then
               hashedid.id:=FProcsym.name
             else
               hashedid.id:=class_helper_prefix+FProcsym.name;
@@ -2486,7 +2485,7 @@ implementation
               specified explicitly, stop searching after its symtable(s) have
               been checked (can be both the static and the global symtable
               in case it's the current unit itself) }
-            if explicitunit and
+            if (cc_explicitunit in flags) and
                (FProcsymtable.symtabletype in [globalsymtable,staticsymtable]) and
                (srsymtable.moduleid<>FProcsymtable.moduleid) then
               break;
@@ -2517,7 +2516,7 @@ implementation
                           continue;
                         if (po_ignore_for_overload_resolution in pd.procoptions) then
                           begin
-                            FIgnoredCandidateProcs.add(pd);
+                            TFPList.AddOnDemand(FIgnoredCandidateProcs,pd);
                             continue;
                           end;
                         { Store first procsym found }
@@ -2532,7 +2531,7 @@ implementation
                       except for Objective-C methods called via id }
                     if foundanything and
                        not hasoverload and
-                       not objcidcall then
+                       not (cc_objcidcall in flags) then
                       break;
                   end;
               end;
@@ -2541,7 +2540,7 @@ implementation
       end;
 
 
-    procedure tcallcandidates.create_candidate_list(ignorevisibility,allowdefaultparas,objcidcall,explicitunit,searchhelpers,anoninherited:boolean;spezcontext:tspecializationcontext);
+    procedure tcallcandidates.create_candidate_list(flags:tcallcandidatesflags;spezcontext:tspecializationcontext);
       var
         j     : integer;
         pd    : tprocdef;
@@ -2558,10 +2557,10 @@ implementation
 
         { Find all available overloads for this procsym }
         ProcdefOverloadList:=TFPObjectList.Create(false);
-        if not objcidcall and
+        if not (cc_objcidcall in flags) and
            (FOperator=NOTOKEN) and
            (FProcsym.owner.symtabletype in [objectsymtable,recordsymtable]) then
-          collect_overloads_in_struct(tabstractrecorddef(FProcsym.owner.defowner),ProcdefOverloadList,searchhelpers,anoninherited,spezcontext)
+          collect_overloads_in_struct(tabstractrecorddef(FProcsym.owner.defowner),ProcdefOverloadList,flags,spezcontext)
         else
         if (FOperator<>NOTOKEN) then
           begin
@@ -2572,13 +2571,13 @@ implementation
               begin
                 if (pt.resultdef.typ=recorddef) and
                     (sto_has_operator in tabstractrecorddef(pt.resultdef).symtable.tableoptions) then
-                  collect_overloads_in_struct(tabstractrecorddef(pt.resultdef),ProcdefOverloadList,searchhelpers,anoninherited,spezcontext);
+                  collect_overloads_in_struct(tabstractrecorddef(pt.resultdef),ProcdefOverloadList,flags,spezcontext);
                 pt:=tcallparanode(pt.right);
               end;
-            collect_overloads_in_units(ProcdefOverloadList,objcidcall,explicitunit,spezcontext);
+            collect_overloads_in_units(ProcdefOverloadList,flags,spezcontext);
           end
         else
-          collect_overloads_in_units(ProcdefOverloadList,objcidcall,explicitunit,spezcontext);
+          collect_overloads_in_units(ProcdefOverloadList,flags,spezcontext);
 
         { determine length of parameter list.
           for operators also enable the variant-operators if
@@ -2626,23 +2625,23 @@ implementation
 {$ifdef DISABLE_FAST_OVERLOAD_PATCH}
             if (FParalength>=pd.minparacount) and
 {$else}
-            if (pd.seenmarker<>pointer(self)) and (FParalength>=pd.minparacount) and
+            if (pd.seenmarker<>pointer(@self)) and (FParalength>=pd.minparacount) and
 {$endif}
                (
                 (
-                 allowdefaultparas and
+                 (cc_allowdefaultparas in flags) and
                  (
                   (FParalength<=pd.maxparacount) or
                   (po_varargs in pd.procoptions)
                  )
                 ) or
                 (
-                 not allowdefaultparas and
+                 not (cc_allowdefaultparas in flags) and
                  (FParalength=pd.maxparacount)
                 )
                ) and
                (
-                ignorevisibility or
+                (cc_ignorevisibility in flags) or
                 (
                   pd.is_specialization and not assigned(pd.owner) and
                   (
@@ -2682,10 +2681,10 @@ implementation
 {$endif}
                 if not found then
                   begin
-                    proc_add(st,pd,objcidcall);
+                    proc_add(st,pd);
                     added:=true;
 {$ifndef DISABLE_FAST_OVERLOAD_PATCH}
-                    pd.seenmarker:=self;
+                    pd.seenmarker:=pointer(@self);
 {$endif}
                   end;
               end;
@@ -2709,13 +2708,13 @@ implementation
         end;
 {$endif}
 
-        calc_distance(st,objcidcall);
+        calc_distance(st,flags);
 
         ProcdefOverloadList.Free;
       end;
 
 
-    procedure tcallcandidates.calc_distance(st_root: tsymtable; objcidcall: boolean);
+    procedure tcallcandidates.calc_distance(st_root: tsymtable; flags:tcallcandidatesflags);
       var
         pd:tprocdef;
         candidate:pcandidate;
@@ -2724,7 +2723,7 @@ implementation
         { Give a small penalty for overloaded methods not defined in the
           current class/unit }
         st:=nil;
-        if objcidcall or
+        if (cc_objcidcall in flags) or
            not assigned(st_root) or
            not assigned(st_root.defowner) or
            (st_root.defowner.typ<>objectdef) then
@@ -2781,7 +2780,7 @@ implementation
            want to give the methods of that particular objcclass precedence
            over other methods, so instead check against the symtable in
            which this objcclass is defined }
-        if objcidcall then
+        if cc_objcidcall in flags then
           st:=st.defowner.owner;
         while assigned(candidate) do
           begin
@@ -2795,7 +2794,7 @@ implementation
       end;
 
 
-    function tcallcandidates.proc_add(st:tsymtable;pd:tprocdef;objcidcall: boolean):pcandidate;
+    function tcallcandidates.proc_add(st:tsymtable;pd:tprocdef):pcandidate;
       var
         defaultparacnt : integer;
       begin
@@ -3636,7 +3635,7 @@ implementation
           parameters (so the overload choosing was not influenced by their
           presence, but now that we've decided which overloaded version to call,
           make sure we call the version closest in terms of visibility }
-        if cntpd=1 then
+        if (cntpd=1) and assigned(FIgnoredCandidateProcs) then
           begin
             for res:=0 to FIgnoredCandidateProcs.count-1 do
               begin
@@ -3864,7 +3863,7 @@ implementation
           parameters (so the overload choosing was not influenced by their
           presence, but now that we've decided which overloaded version to call,
           make sure we call the version closest in terms of visibility }
-        if cntpd=1 then
+        if (cntpd=1) and assigned(FIgnoredCandidateProcs) then
           begin
             for res:=0 to FIgnoredCandidateProcs.count-1 do
               begin

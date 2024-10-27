@@ -28,14 +28,14 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.Controller;
+unit FpTerm.Controller;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  System.Terminal.Base, System.Terminal.Model, System.Terminal.Logger;
+  FpTerm.Base, FpTerm.Model, FpTerm.Logger;
 
 type
   TTerminalStateMachineState = (
@@ -1791,7 +1791,7 @@ begin
   begin
     if Pos(':', SGRAttr) <> 0 then
     begin
-      ExtParas := SGRAttr.Split(':');
+      ExtParas := SGRAttr.Split(String(':'));
       ExtPara1 := StrToIntDef(ExtParas[0], 0);
       case ExtPara1 of
         38,

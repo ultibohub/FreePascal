@@ -30,14 +30,14 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.PointingDeviceInput.Mouse;
+unit FpTerm.PointingDeviceInput.Mouse;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  System.Terminal.Base, System.Terminal.PointingDeviceInput;
+  FpTerm.Base, FpTerm.PointingDeviceInput;
 
 type
 
@@ -47,7 +47,7 @@ type
   protected
     function IsEventAvailable: Boolean; override;
   public
-    constructor Create; override;
+    constructor Create;
     destructor Destroy; override;
 
     procedure GetEvent(out Event: TPointingDeviceEvent); override;

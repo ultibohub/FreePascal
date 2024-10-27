@@ -28,7 +28,7 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.PseudoTerminal.Unix;
+unit FpTerm.PseudoTerminal.Unix;
 
 {$mode objfpc}{$H+}
 
@@ -50,7 +50,7 @@ type
     FChildPid: TPid;
     FFdSlave, FFdMaster: cint;
   public
-    constructor Create(const progname: string; argv, envp: PPChar; Width, Height: Integer);
+    constructor Create(const progname: ansistring; argv, envp: PPAnsiChar; Width, Height: Integer);
     procedure Resize(NewWidth, NewHeight: Integer);
 
     property FdMaster: cint read FFdMaster;
@@ -68,8 +68,8 @@ uses
 
 { TUnixPseudoTerminal }
 
-constructor TUnixPseudoTerminal.Create(const progname: string; argv,
-  envp: PPChar; Width, Height: Integer);
+constructor TUnixPseudoTerminal.Create(const progname: ansistring; argv,
+  envp: PPansiChar; Width, Height: Integer);
 var
   ws: TWinSize;
 begin

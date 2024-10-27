@@ -1,6 +1,6 @@
 { This file is part of fpterm - a terminal emulator, written in Free Pascal
 
-  This unit defines a keyboard device for the terminal.
+  Implements a terminal on top of the keyboard, video and mouse units.
 
   Copyright (C) 2024 Nikolay Nikolov <nickysn@users.sourceforge.net>
 
@@ -30,35 +30,60 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.KeyboardInput;
+unit FpTerm.KVM;
 
 {$mode objfpc}{$H+}
 
 interface
 
 uses
-  System.Terminal.Base;
+  FpTerm,
+  FpTerm.View,
+  FpTerm.KeyboardInput,
+  FpTerm.PointingDeviceInput;
 
 type
 
-  { TTerminalKeyboardInput }
+  { TKVMTerminal }
 
-  TTerminalKeyboardInput = class
-  protected
-    function IsEventAvailable: Boolean; virtual; abstract;
+  TKVMTerminal = class(TTerminal)
+  private
+    FView: TTerminalView;
+    FKeyboard: TTerminalKeyboardInput;
+    FPointingDevice: TTerminalPointingDeviceInput;
   public
-    constructor Create; virtual;
-
-    procedure GetEvent(out Event: TKeyEvent); virtual; abstract;
-    property EventAvailable: Boolean read IsEventAvailable;
+    constructor Create;
+    destructor Destroy; override;
   end;
 
 implementation
 
-{ TTerminalKeyboardInput }
+uses
+{$IFDEF FPC_DOTTEDUNITS}
+  System.SysUtils,
+{$ELSE FPC_DOTTEDUNITS}
+  SysUtils,
+{$ENDIF FPC_DOTTEDUNITS}
+  FpTerm.View.Video,
+  FpTerm.KeyboardInput.Keyboard,
+  FpTerm.PointingDeviceInput.Mouse;
 
-constructor TTerminalKeyboardInput.Create;
+{ TKVMTerminal }
+
+constructor TKVMTerminal.Create;
 begin
+  FView := TTerminalView_Video.Create;
+  FKeyboard := TTerminalKeyboardInput_Keyboard.Create;
+  FPointingDevice := TTerminalPointingDeviceInput_Mouse.Create;
+  inherited Create(FView, FKeyboard, FPointingDevice);
+end;
+
+destructor TKVMTerminal.Destroy;
+begin
+  inherited Destroy;
+  FreeAndNil(FPointingDevice);
+  FreeAndNil(FKeyboard);
+  FreeAndNil(FView);
 end;
 
 end.

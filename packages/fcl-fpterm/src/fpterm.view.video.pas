@@ -30,7 +30,7 @@
   Inc., 51 Franklin Street - Fifth Floor, Boston, MA 02110-1335, USA.
 }
 
-unit System.Terminal.View.Video;
+unit FpTerm.View.Video;
 
 {$mode objfpc}{$H+}
 
@@ -41,7 +41,7 @@ unit System.Terminal.View.Video;
 interface
 
 uses
-  System.Terminal.View.Video.Base
+  FpTerm.View.Video.Base
 {$ifdef HAS_TERMIO}
   {$IFDEF FPC_DOTTEDUNITS}
     , UnixApi.TermIO
@@ -61,7 +61,7 @@ type
 {$endif HAS_TERMIO}
   public
 {$ifdef HAS_TERMIO}
-    constructor Create; override;
+    constructor Create;
 {$endif HAS_TERMIO}
     function CheckPendingResize(out NewWidth, NewHeight: Integer): Boolean; override;
   end;
