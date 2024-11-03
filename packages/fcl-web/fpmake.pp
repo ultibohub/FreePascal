@@ -22,6 +22,8 @@ Const
 Var
   T : TTarget;
   P : TPackage;
+  lOSes : TOSes;
+  
 begin
   With Installer do
     begin
@@ -251,6 +253,7 @@ begin
       AddUnit('httpdefs');
       AddUnit('custcgi');
       end;
+      
     T:=P.Targets.AddUnit('fphttpserver.pp');
     T.ResourceStrings:=true;
     T.OSes:=SocketsOSes;
@@ -258,6 +261,7 @@ begin
         begin
           AddUnit('httpdefs');
         end;
+        
     T:=P.Targets.AddUnit('fphttpclient.pp');
     T.OSes:=SocketsOSes;
     T.ResourceStrings:=true;
@@ -561,7 +565,23 @@ begin
       AddUnit('fpfcmstrings');
       AddUnit('fpfcmtypes');
       end;
-      
+    T:=P.Targets.AddUnit('fpsimpleserver.pp');
+    T.OSes:=SocketsOSes;
+    With T.Dependencies do
+      begin
+      AddUnit('httpdefs');
+      AddUnit('httproute');
+      AddUnit('fpwebfile');
+      AddUnit('fpwebproxy');
+      AddUnit('webutil');
+      AddUnit('fpdebugcapturesvc');
+      AddUnit('custhttpapp');
+      lOSes := LibMicroHttpdOSes;
+      if Defaults.CPU=jvm then
+        lOSes := lOSes - [java,android];
+      AddUnit('custmicrohttpapp',lOSes);
+      end;
+        
 end;
     
 {$ifndef ALLPACKAGES}

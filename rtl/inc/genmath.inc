@@ -1758,19 +1758,28 @@ end;
 
 {$ifndef FPC_SYSTEM_HAS_FRAC}
 {$push}
+{$ifndef VER3_2}
 { if we have to check manually fpu exceptions, then force the result assignment statement here to
   throw one }
 {$CHECKFPUEXCEPTIONS+}
 { turn off fastmath as it converts (d-d)/zero into 0 and thus not raising an exception }
 {$OPTIMIZATION NOFASTMATH}
+{$endif VER3_2}
 function fpc_frac_real(d : ValReal) : ValReal;compilerproc;
+{$ifndef VER3_2}
   const
     zero: ValReal = 0.0;
+{$endif VER3_2}
   begin
     { Nan or +/-Inf }
     if (float64high(d) and $7ff00000)=$7ff00000 then
       { return NaN }
+{$ifdef VER3_2}
+      { fix bootstrapping with 3.2 on arm-linux }
+      result := (d-d)/0.0
+{$else VER3_2}
       result := zero/zero
+{$endif VER3_2}
     else
       result := d - Int(d);
   end;

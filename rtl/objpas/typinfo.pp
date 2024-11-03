@@ -1092,6 +1092,16 @@ unit TypInfo;
       PPropListEx = ^TPropListEx;
       TPropListEx = array[0..{$ifdef cpu16}(32768 div sizeof(PPropInfoEx))-2{$else}65535{$endif}] of PPropInfoEx;
 
+      TPropParams =
+      {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
+      packed
+      {$ENDIF FPC_REQUIRES_PROPER_ALIGNMENT}
+      record
+        Count: LongInt;
+        Params: array[0..0] of TVmtMethodParam;
+      end;
+      PPropParams = ^TPropParams;
+
 {$PACKRECORDS 1}
       TPropInfo = packed record
       private
@@ -1113,6 +1123,8 @@ unit TypInfo;
         //     4..5 StoredProc
         //     6 : true, constant index property
         PropProcs : Byte;
+
+        PropParams : PPropParams;
 
         {$ifdef PROVIDE_ATTR_TABLE}
         AttributeTable : PAttributeTable;
@@ -2054,7 +2066,7 @@ begin
         begin
         // When passing nil, we just need the count
         if Assigned(PropList) then
-          PropList^[Result]:=TD^.Prop[i];
+          PropList^[Result]:=TP;
         Inc(Result);
         end;
       end;
@@ -2070,7 +2082,7 @@ Function GetRecordPropInfosEx(TypeInfo: PTypeInfo; PropList: PPropListEx; Visibi
 
 Var
   TD : PPropDataEx;
-  TP : PPropListEx;
+  TP : PPropInfoEx;
   Offset,I,Count : Longint;
 
 begin
@@ -2078,17 +2090,17 @@ begin
   // Clear list
   TD:=PRecordData(GetTypeData(TypeInfo))^.ExRTTITable;
   Count:=TD^.PropCount;
-  // Now point TP to first propinfo record.
-  Inc(Pointer(TP),SizeOF(Word));
-  tp:=aligntoptr(tp);
   For I:=0 to Count-1 do
-    if ([]=Visibilities) or (PropList^[Result]^.Visibility in Visibilities) then
+  begin           
+    TP:=TD^.Prop[I];
+    if ([]=Visibilities) or (TP^.Visibility in Visibilities) then
       begin
       // When passing nil, we just need the count
       if Assigned(PropList) then
-        PropList^[Result]:=TD^.Prop[i];
+        PropList^[Result]:=TP;
       Inc(Result);
       end;
+  end;
 end;
 
 

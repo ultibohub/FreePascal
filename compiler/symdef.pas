@@ -443,7 +443,7 @@ interface
          constructor create(aintf: tobjectdef);virtual;
          constructor create_deref(intfd,getterd:tderef);virtual;
          destructor  destroy; override;
-         function  getcopy:TImplementedInterface;
+         function getcopy:TImplementedInterface;
          procedure buildderef;
          procedure deref;
          procedure AddMapping(const origname, newname: string);
@@ -1974,12 +1974,8 @@ implementation
 
 
     destructor tgenericconstraintdata.destroy;
-      var
-        i : longint;
       begin
-        for i:=0 to interfacesderef.count-1 do
-          dispose(pderef(interfacesderef[i]));
-        interfacesderef.free;
+        TFPList.FreeAndNilDisposing(interfacesderef,typeinfo(tderef));
         interfaces.free;
         inherited destroy;
       end;
@@ -2103,8 +2099,6 @@ implementation
 
 
     destructor tstoreddef.destroy;
-      var
-        i : longint;
       begin
         { Direct calls are not allowed, use symtable.deletedef() }
         if assigned(owner) then
@@ -2116,10 +2110,7 @@ implementation
           end;
         rtti_attribute_list.free;
         genericparas.free;
-        if assigned(genericparaderefs) then
-          for i:=0 to genericparaderefs.count-1 do
-            dispose(pderef(genericparaderefs[i]));
-        genericparaderefs.free;
+        TFPList.FreeAndNilDisposing(genericparaderefs,typeinfo(tderef));
         genconstraintdata.free;
 {$ifndef symansistr}
         stringdispose(_fullownerhierarchyname);
@@ -6798,19 +6789,11 @@ implementation
 
 
     procedure tprocdef.freeimplprocdefinfo;
-      var
-        i : longint;
       begin
         if assigned(implprocdefinfo) then
           begin
             stringdispose(implprocdefinfo^.resultname);
-            if assigned(implprocdefinfo^.capturedsyms) then
-              begin
-                for i:=0 to implprocdefinfo^.capturedsyms.count-1 do
-                  dispose(pcapturedsyminfo(implprocdefinfo^.capturedsyms[i]));
-              end;
-            implprocdefinfo^.capturedsyms.free;
-            implprocdefinfo^.capturedsyms:=nil;
+            TFPList.FreeAndNilDisposing(implprocdefinfo^.capturedsyms,typeinfo(tcapturedsyminfo));
             freemem(implprocdefinfo);
             implprocdefinfo:=nil;
           end;
@@ -9143,18 +9126,41 @@ implementation
 
 
     function TImplementedInterface.getcopy:TImplementedInterface;
+      var
+        i : longint;
       begin
         Result:=TImplementedInterface.Create(nil);
         { 1) the procdefs list will be freed once for each copy
           2) since the procdefs list owns its elements, those will also be freed for each copy
+             Nope: procdefs are owned by their symtable, so no copy necessary
           3) idem for the name mappings
         }
-        { warning: this is completely wrong on so many levels...
-        Move(pointer(self)^,pointer(result)^,InstanceSize);
-        We need to make clean copies of the different fields
-        this is not implemented yet, and thus we generate an internal
-        error instead PM 2011-06-14 }
-        internalerror(2011061401);
+        result.fIOffset:=fIOffset;
+        result.IntfDef:=IntfDef;
+        result.IntfDefDeref.reset;
+        result.IType:=IType;
+        result.VtblImplIntf:=VtblImplIntf;
+        if assigned(NameMappings) then
+          begin
+            result.NameMappings:=TFPHashList.create;
+            for i:=0 to NameMappings.Count-1 do
+              Result.NameMappings.Add(NameMappings.NameOfIndex(i),
+                                      stringdup(pshortstring(NameMappings.Items[i])^));
+          end;
+        if assigned(ProcDefs) then
+          begin
+            result.ProcDefs:=TFPObjectList.create(false);
+            { Note: this is probably wrong, because those procdefs are owned by
+              the old objectdef from which we copy, what would be the correct way
+              of doing this is to lookup the equivalent copy in the new owner
+              and reference this instead... But this is complicated so let's try
+              it this way until it blows up ok? }
+            for i:=0 to ProcDefs.Count-1 do
+              Result.ProcDefs.add(tprocdef(procdefs[i]).getcopy);
+          end;
+        result.ImplementsGetter:=ImplementsGetter;
+        result.ImplementsGetterDeref.reset;
+        result.ImplementsField:=ImplementsField;
       end;
 
 {****************************************************************************
