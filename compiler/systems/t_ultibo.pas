@@ -2,7 +2,7 @@
     This unit implements support import,export,link routines
     for the Ultibo target
 
-    Copyright (c) 2023 by Garry Wood
+    Copyright (c) 2024 by Garry Wood
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -560,6 +560,13 @@ begin
          Add('        _erodata = .;');
          Add('    } > ROM');
 
+         Add('    .ARM.exidx :');
+         Add('    {');
+         Add('        __exidx_start = .;');
+         Add('        *(.ARM.exidx*)');
+         Add('        __exidx_end = .;');
+         Add('    } > ROM');
+
          Add('    .eh_frame :');
          Add('    {');
          Add('        *(.eh_frame, .eh_frame.*)');
@@ -719,6 +726,13 @@ begin
          Add('        *(.rodata, .rodata.*)');
          Add('        *(.comment)');
          Add('        _erodata = .;');
+         Add('    } > ROM');
+
+         Add('    .ARM.exidx :');
+         Add('    {');
+         Add('        __exidx_start = .;');
+         Add('        *(.ARM.exidx*)');
+         Add('        __exidx_end = .;');
          Add('    } > ROM');
 
          Add('    .eh_frame :');
