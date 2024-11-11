@@ -33,10 +33,10 @@ Const
   PNG_LIBPNG_VER_STRING='1.2.12';
 {$else windows}
   {$ifdef ultibo}
-    LibPng = 'png'; // Library name
+    LibPng = 'png16'; // Library name
     { matching lib version for libpng, needed for initialization }
-    PNG_LIBPNG_VER_STRING='1.6.34';
-    {$linklib png}
+    PNG_LIBPNG_VER_STRING='1.6.44';
+    {$linklib png16}
   {$else ultibo}
     LibPng = 'png'; // Library name
     { matching lib version for libpng, needed for initialization }

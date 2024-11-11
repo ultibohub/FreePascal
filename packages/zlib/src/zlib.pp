@@ -75,8 +75,8 @@ const
 
 const
   {$ifdef ultibo}
-  ZLIB_VERSION = '1.2.11';
-  ZLIB_VERNUM = $1211;
+  ZLIB_VERSION = '1.3.1';
+  ZLIB_VERNUM = $1310;
   {$else}
   ZLIB_VERSION = '1.2.3';
   ZLIB_VERNUM = $1230;

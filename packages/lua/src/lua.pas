@@ -70,13 +70,13 @@ type
 const
   {$IFDEF ULTIBO}
   LUA_VERSION_MAJOR = '5';
-  LUA_VERSION_MINOR = '3';
-  LUA_VERSION_NUM = 503;
-  LUA_VERSION_RELEASE = '4';
+  LUA_VERSION_MINOR = '4';
+  LUA_VERSION_NUM = 504;
+  LUA_VERSION_RELEASE = '7';
   
   LUA_VERSION = 'Lua ' + LUA_VERSION_MAJOR + '.' + LUA_VERSION_MINOR;
   LUA_RELEASE = LUA_VERSION + '.' + LUA_VERSION_RELEASE;
-  LUA_COPYRIGHT = LUA_RELEASE + '  Copyright (C) 1994-2017 Lua.org, PUC-Rio';
+  LUA_COPYRIGHT = LUA_RELEASE + '  Copyright (C) 1994-2024 Lua.org, PUC-Rio';
   LUA_AUTHORS = 'R. Ierusalimschy, L. H. de Figueiredo, W. Celes';
   {$ELSE}
   LUA_VERSION = 'Lua 5.1';
