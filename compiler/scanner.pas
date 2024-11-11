@@ -2590,6 +2590,9 @@ type
              if is_keyword(hs) then
                Message(scan_e_keyword_cant_be_a_macro);
 
+             current_scanner.gettokenpos;
+             mac.fileinfo:=current_tokenpos;
+
              macropos:=0;
              { parse macro, brackets are counted so it's possible
                to have a $ifdef etc. in the macro }

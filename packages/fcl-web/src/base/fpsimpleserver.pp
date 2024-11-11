@@ -54,27 +54,19 @@ uses
   webutil;
 {$ENDIF}
 Const
-  ServerVersion = '1.1';
+  fpSimpleServerVersion = '1.1';
 
 Type
 
   { TFPSimpleServerApplication }
 {$IFDEF USEMICROHTTP}
-  TParentApp = TCustomMicroHTTPApplication;
+  TSimpleServerParentApp = TCustomMicroHTTPApplication;
 {$ELSE}
-  TParentApp = TCustomHTTPApplication;
+  TSimpleServerParentApp = TCustomHTTPApplication;
 {$ENDIF}
 
-{$IFDEF VER3_2}
-  { TMySimpleFileModule }
-  TMySimpleFileModule = class(TFPCustomFileModule)
-  Public
-    Constructor CreateNew(AOwner: TComponent; CreateMode: Integer); override;
-    Procedure SendFile(const AFileName: String; AResponse: TResponse); override;
-  end;
-{$ENDIF}
 
-  TFPSimpleServerApplication = Class(TParentApp)
+  TFPSimpleServerApplication = Class(TSimpleServerParentApp)
   private
     FProxyDefs : TStrings;
     FLocations : TStrings;
@@ -203,14 +195,22 @@ Const
 
 
 {$IFDEF VER3_2}
-{ TMySimpleFileModule }
+Type
+  { TCoiAwareSimpleFileModule }
+  TCoiAwareSimpleFileModule = class(TFPCustomFileModule)
+  Public
+    Constructor CreateNew(AOwner: TComponent; CreateMode: Integer); override;
+    Procedure SendFile(const AFileName: String; AResponse: TResponse); override;
+  end;
 
-constructor TMySimpleFileModule.CreateNew(AOwner: TComponent; CreateMode: Integer);
+{ TCoiAwareSimpleFileModule }
+
+constructor TCoiAwareSimpleFileModule.CreateNew(AOwner: TComponent; CreateMode: Integer);
 begin
   inherited CreateNew(AOwner, CreateMode);
 end;
 
-procedure TMySimpleFileModule.SendFile(const AFileName: String; AResponse: TResponse);
+procedure TCoiAwareSimpleFileModule.SendFile(const AFileName: String; AResponse: TResponse);
 begin
   AResponse.SetCustomHeader('Cross-Origin-Embedder-Policy','require-corp');
   AResponse.SetCustomHeader('Cross-Origin-Opener-Policy','same-origin');
@@ -502,7 +502,7 @@ end;
 
 procedure TFPSimpleServerApplication.WriteOptions;
 begin
-  Writeln('Version : ',ServerVersion);
+  Writeln('Version : ',fpSimpleServerVersion);
   Writeln('Where options is one or more of : ');
   Writeln('-A --api=path,secret  Activate location API on path, using secret as accepted bearer token.');
   Writeln('-a --max-age=age      Set max-age expiry header on returned file requests.');
@@ -632,7 +632,7 @@ begin
   if HasOption('V','version') then
     begin
     Terminate;
-    Writeln(ServerVersion);
+    Writeln(fpSimpleServerVersion);
     Exit;
     end;
   if HasOption('c','config') then
@@ -704,7 +704,7 @@ begin
   if FCrossOriginIsolation then
     begin
     {$IFDEF VER3_2_2}
-    DefaultFileModuleClass:=TMySimpleFileModule;
+    DefaultFileModuleClass:=TCoiAwareSimpleFileModule;
     {$ELSE}
     TFPCustomFileModule.OnPrepareResponse:=@ApplyCoi;
     {$ENDIF}

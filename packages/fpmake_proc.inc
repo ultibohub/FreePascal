@@ -64,7 +64,11 @@ begin
 {$include cocoaint/fpmake.pp}
 end;
 
+procedure add_dblib(const ADirectory: string);
+begin
+  with Installer do
 {$include dblib/fpmake.pp}
+end;
 
 procedure add_dbus(const ADirectory: string);
 begin
@@ -906,6 +910,12 @@ procedure add_fcl_jsonschema(const ADirectory: string);
 begin
   with Installer do
 {$include fcl-jsonschema/fpmake.pp}
+end;
+
+procedure add_fcl_openapi(const ADirectory: string);
+begin
+  with Installer do
+{$include fcl-openapi/fpmake.pp}
 end;
 
 procedure add_ptckvm(const ADirectory: string);

@@ -1889,6 +1889,7 @@ implementation
         hitem: tlinkedlistitem;
         seh_proc: tai_seh_directive;
         templist: TAsmList;
+        genloadframeforexcept,
         suppress_endprologue: boolean;
         ref: treference;
         totalstackframesize: longint;
@@ -1905,6 +1906,7 @@ implementation
           SEH directives in assembler body. In this case, .seh_endprologue
           is expected to be one of those directives, and not generated here. }
         suppress_endprologue:=(pi_has_unwind_info in current_procinfo.flags);
+        genloadframeforexcept:=false;
 
         if not nostackframe then
           begin
@@ -1934,7 +1936,12 @@ implementation
                   end
                 else
                   begin
-                    gen_load_frame_for_exceptfilter(list);
+                    { do this after the prologue is done for aarch64-win64 as
+                      there is no SEH directive for setting FP to a register }
+                    if target_info.system<>system_aarch64_win64 then
+                      gen_load_frame_for_exceptfilter(list)
+                    else
+                      genloadframeforexcept:=true;
                     localsize:=current_procinfo.maxpushedparasize;
                   end;
               end;
@@ -1994,7 +2001,11 @@ implementation
           end;
 
         if not (pi_has_unwind_info in current_procinfo.flags) then
-          exit;
+          begin
+            if genloadframeforexcept then
+              gen_load_frame_for_exceptfilter(list);
+            exit;
+          end;
 
         { Generate unwind data for aarch64-win64 }
         seh_proc:=cai_seh_directive.create_name(ash_proc,current_procinfo.procdef.mangledname);
@@ -2015,6 +2026,9 @@ implementation
         else
           list.concatlist(templist);
         templist.free;
+
+        if genloadframeforexcept then
+          gen_load_frame_for_exceptfilter(list);
       end;
 
 
@@ -2149,11 +2163,24 @@ implementation
                   handle_reg_imm12_reg(list,A_ADD,OS_ADDR,NR_SP,current_procinfo.final_localsize,NR_SP,NR_IP0,false,true);
                 load_regs(list,R_MMREGISTER,RS_D8,RS_D15,R_SUBMMD);
                 load_regs(list,R_INTREGISTER,RS_X19,RS_X28,R_SUBWHOLE);
+                { on Windows also restore SP even if the add should be enough
+                  to have matching exit sequence to the entry sequence }
+                if target_info.system=system_aarch64_win64 then
+                  a_load_reg_reg(list,OS_ADDR,OS_ADDR,NR_FP,NR_SP);
               end
             else if current_procinfo.final_localsize<>0 then
               begin
                 { restore stack pointer }
-                if pi_no_framepointer_needed in current_procinfo.flags then
+                { Note: for Windows we need to restore the stack using an ADD
+                        and to set FP back to SP }
+                if target_info.system=system_aarch64_win64 then
+                  begin
+                    handle_reg_imm12_reg(list,A_ADD,OS_ADDR,current_procinfo.framepointer,current_procinfo.final_localsize,
+                      current_procinfo.framepointer,NR_IP0,false,true);
+                    if not (pi_no_framepointer_needed in current_procinfo.flags) then
+                      a_load_reg_reg(list,OS_ADDR,OS_ADDR,NR_FP,NR_SP);
+                  end
+                else if pi_no_framepointer_needed in current_procinfo.flags  then
                   handle_reg_imm12_reg(list,A_ADD,OS_ADDR,current_procinfo.framepointer,current_procinfo.final_localsize,
                     current_procinfo.framepointer,NR_IP0,false,true)
                 else

@@ -114,7 +114,7 @@ const
 var
   MaxStack: SizeInt;
 begin
-  MaxStack:=SizeInt(PtrUInt($80200000)-PtrUInt(@bss_end))-MinHeap;
+  MaxStack:=SizeInt(PtrUInt($801FFFF0)-PtrUInt(@bss_end))-MinHeap;
   if stklen<MaxStack then
     result:= stklen
   else
@@ -128,9 +128,18 @@ begin
 end;
 
 
+function alignvalue(x, a : dword): dword;
+var r : dword;
+begin
+  r:= x mod a;
+  if r <> 0 then begin
+    result:= x + (a - r);
+  end else result:= x;
+end;
+
 begin
   StackLength:=CheckInitialStkLen(stklen);
-  StackBottom:=Pointer(PtrUInt($80200000)-PtrUInt(StackLength));
+  StackBottom:=Pointer(PtrUInt($801FFFF0)-PtrUInt(StackLength));
 
   { Debug printing via writeln (visible in emulator logs) is possible, so
     pretend to be a console application. }
@@ -139,7 +148,7 @@ begin
   IsLibrary := FALSE;
 
   { Setup heap }
-  _InitHeap(pdword(@bss_end),PtrUInt(StackBottom)-PtrUInt(@bss_end));
+  _InitHeap(pdword(@bss_end),alignvalue(PtrUInt(StackBottom)-PtrUInt(@bss_end), 4));
   InitHeap;
 
   { Init exceptions }

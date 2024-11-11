@@ -370,6 +370,10 @@ implementation
           if ([m_objfpc,m_delphi] * current_settings.modeswitches)<>[] then
             if is_systemunit_unicode then
               Include(current_settings.modeswitches,m_default_unicodestring);
+
+        { default the extended RTTI options to that of TObject }
+        if assigned(class_tobject) then
+          current_module.rtti_directive.options:=class_tobject.rtti.options;
       end;
 
 
@@ -2627,6 +2631,10 @@ type
         if (target_cpu=tsystemcpu.cpu_wasm32) then
           add_synthetic_interface_classes_for_st(curr.localsymtable,true,true);
 
+        { generate construction functions for all attributes in the program }
+        { before write_vmts that asume attributes for methods is ready }
+        generate_attr_constrs(curr.used_rtti_attrs);
+
         { Generate VMTs }
         if Errorcount=0 then
           write_vmts(curr.localsymtable,false);
@@ -2634,9 +2642,6 @@ type
         { add implementations for synthetic method declarations added by
           the compiler }
         add_synthetic_method_implementations(curr.localsymtable);
-
-        { generate construction functions for all attributes in the program }
-        generate_attr_constrs(curr.used_rtti_attrs);
 
         { should we force unit initialization? }
         force_init_final:=tstaticsymtable(curr.localsymtable).needs_init_final;

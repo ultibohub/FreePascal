@@ -1087,6 +1087,15 @@ implementation
         attr_element_count,fldCount : Integer;
         method_def : tprocdef;
 
+      procedure check_unbound_attributes;
+        begin
+          if assigned(rtti_attrs_def) and (rtti_attrs_def.get_attribute_count>0) then
+            Message1(parser_e_unbound_attribute,trtti_attribute(rtti_attrs_def.rtti_attributes[0]).typesym.prettyname);
+          rtti_attrs_def.free;
+          rtti_attrs_def:=nil;
+        end;
+
+
       procedure parse_const;
         begin
           if not(current_objectdef.objecttype in [odt_class,odt_object,odt_helper,odt_javaclass,odt_interfacejava]) then
@@ -1129,6 +1138,10 @@ implementation
           if not((token in [_FUNCTION,_PROCEDURE,_PROPERTY,_VAR,_DESTRUCTOR,_THREADVAR]) or (token=_CONSTRUCTOR)) then
             Message(parser_e_procedure_or_function_expected);
 
+          { class properties currently can't have attributes }
+          if not(token in [_FUNCTION,_PROCEDURE]) then
+            check_unbound_attributes;
+
           { Java interfaces can contain final class vars }
           if is_interface(current_structdef) or
              (is_javainterface(current_structdef) and
@@ -1166,15 +1179,6 @@ implementation
         end;
 
 
-      procedure check_unbound_attributes;
-        begin
-          if assigned(rtti_attrs_def) and (rtti_attrs_def.get_attribute_count>0) then
-            Message1(parser_e_unbound_attribute,trtti_attribute(rtti_attrs_def.rtti_attributes[0]).typesym.prettyname);
-          rtti_attrs_def.free;
-          rtti_attrs_def:=nil;
-        end;
-
-
       begin
         { empty class declaration ? }
         if (current_objectdef.objecttype in [odt_class,odt_objcclass,odt_javaclass]) and
@@ -1205,9 +1209,16 @@ implementation
                   Message(parser_e_type_var_const_only_in_records_and_classes);
                 consume(_TYPE);
                 object_member_blocktype:=bt_type;
-                { expect at least one type declaration }
-                if token<>_ID then
-                  consume(_ID);
+
+                if (token=_LECKKLAMMER) and (m_prefixed_attributes in current_settings.modeswitches) then
+                begin
+                  check_unbound_attributes;
+                  types_dec(true,hadgeneric, rtti_attrs_def);
+                end
+                else
+                  // expect at least one type declaration
+                  if token<>_ID then
+                    consume(_ID);
               end;
             _VAR :
               begin
@@ -1432,12 +1443,7 @@ implementation
                 is_classdef:=false;
               end;
             _CLASS:
-              begin
-                { class properties currently can't have attributes, so it's safe
-                  to check for unbound attributes here }
-                check_unbound_attributes;
                 parse_class;
-              end;
             _PROCEDURE,
             _FUNCTION,
             _CONSTRUCTOR,
