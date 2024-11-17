@@ -22,7 +22,7 @@ unit WEditor;
 interface
 {tes}
 uses
-  Dos,Objects,Drivers,Views,Dialogs,Menus,
+  Dos,Objects,Drivers,Views,Dialogs,Menus,Stddlg,
   FVConsts,
   WUtils,WViews;
 
@@ -95,6 +95,7 @@ const
       efNoIndent            = $00010000;
       efKeepLineAttr        = $00020000;
       efOverwriteBlocks     = $00040000;
+      efShowIndent          = $00080000;
       efStoreContent        = $80000000;
 
       attrAsm       = 1;
@@ -251,6 +252,17 @@ type
       function At(Index: sw_Integer): PFold;
     end;
 
+    PEditorBookMark = ^TEditorBookMark;
+    TEditorBookMark = packed record  {we save bookmarks in *.dsk file, so packed record it is}
+      Valid  : Boolean;
+      Pos    : TPoint;
+    end;
+
+    PEditorBookMarkCollection = ^TEditorBookMarkCollection;
+    TEditorBookMarkCollection = object(TCollection)
+      function At(Index: sw_Integer): PEditorBookMark;
+    end;
+
     TEditorLineInfo = object(TObject)
       Editor: PCustomCodeEditor;
 {$if sizeof(sw_astring)>8}
@@ -269,11 +281,17 @@ type
       BeginCommentDepth,EndCommentDepth : sw_integer;
       BeginNestedComments,EndNestedComments : byte;
       Fold: PFold;
+      BookMarks: PEditorBookMarkCollection;
       constructor Init(AEditor: PCustomCodeEditor);
       destructor  Done; virtual;
       function    GetFormat: sw_astring;
       procedure   SetFormat(const AFormat: sw_astring);
       procedure   SetFold(AFold: PFold);
+      procedure   InsertMark(Mark:PEditorBookMark); virtual;
+      procedure   DeleteMark(Mark:PEditorBookMark); virtual;
+      function    MarkCount:Sw_integer; virtual;
+      function    GetMark(Index:Sw_integer):PEditorBookMark; virtual;
+      procedure   AdjustMark(APosX,Adjustment:Sw_integer); virtual;
       { Syntax information is now generated separately for each editor instance.
         This is not neccessary for a one-language IDE, but this unit contains
         a _generic_ editor object, which should be (and is) as flexible as
@@ -297,6 +315,11 @@ type
    {a}procedure   SetFlags(AFlags: longint); virtual;
       function    IsFlagSet(AFlag: longint): boolean; {$ifdef USEINLINE}inline;{$endif}
       procedure   SetFlagState(AFlag: longint; ASet: boolean);
+      procedure   InsertMark(Editor: PCustomCodeEditor; Mark: PEditorBookMark); virtual;
+      procedure   DeleteMark(Editor: PCustomCodeEditor; Mark: PEditorBookMark); virtual;
+      function    MarkCount(Editor: PCustomCodeEditor):Sw_integer; virtual;
+      function    GetMark(Editor: PCustomCodeEditor; Index: Sw_integer):PEditorBookMark; virtual;
+      procedure   AdjustMark(Editor: PCustomCodeEditor; APosX,Adjustment: Sw_integer); virtual;
       destructor  Done; virtual;
     public { internal use only! }
    {a}procedure AddEditorInfo(Index: sw_integer; AEditor: PCustomCodeEditor); virtual;
@@ -348,11 +371,6 @@ type
     TSpecSymbolClass =
       (ssCommentPrefix,ssCommentSingleLinePrefix,ssCommentSuffix,ssStringPrefix,ssStringSuffix,
        ssDirectivePrefix{,ssDirectiveSuffix},ssAsmPrefix,ssAsmSuffix);
-
-    TEditorBookMark = record
-      Valid  : boolean;
-      Pos    : TPoint;
-    end;
 
     TCompleteState = (csInactive,csOffering,csDenied);
 
@@ -568,9 +586,13 @@ type
    {a}function    SaveAreaToStream(Stream: PStream; StartP,EndP: TPoint): boolean;virtual;
       function    LoadFromFile(const AFileName: string): boolean; virtual;
       function    SaveToFile(const AFileName: string): boolean; virtual;
+      function    GetBookmark(MarkIdx: sw_integer):TEditorBookMark; virtual;
+      procedure   SetBookmark(MarkIdx: sw_integer; ABookmark: TEditorBookMark); virtual;
+      function    FindMarkLineNr(MarkIdx: sw_integer):sw_integer; virtual;
+      procedure   AdjustBookMark(X, NewX, Y, NewY: sw_integer); virtual;
     public
       function    InsertFrom(Editor: PCustomCodeEditor): Boolean; virtual;
-   {a}function    InsertText(const S: string): Boolean; virtual;
+   {a}function    InsertText(const S: sw_astring): Boolean; virtual;
     public
       procedure   FlagsChanged(OldFlags: longint); virtual;
    {a}procedure   BindingsChanged; virtual;
@@ -718,6 +740,7 @@ type
       procedure PrintBlock; virtual;
       procedure ExpandCodeTemplate; virtual;
       procedure AddChar(C: AnsiChar); virtual;
+      procedure PasteText(P:PAnsiChar; ASize:sw_integer); virtual;
 {$ifdef WinClipSupported}
       function  ClipCopyWin: Boolean; virtual;
       function  ClipPasteWin: Boolean; virtual;
@@ -748,6 +771,18 @@ type
     end;
 
     PSearchHelperDialog = ^TSearchHelperDialog;
+
+    PFPFileInputLine = ^TFPFileInputLine;
+    TFPFileInputLine = object(TFileInputLine)
+      constructor Init(var Bounds: TRect; AMaxLen: Sw_Integer);
+      procedure HandleEvent(var Event: TEvent); virtual;
+    end;
+
+    PFPFileDialog = ^TFPFileDialog;
+    TFPFileDialog = object(TFileDialog)
+      constructor Init(AWildCard: TWildStr; const ATitle,
+        InputName: String; AOptions: Word; HistoryId: Byte);
+    end;
 
 const
      { used for ShiftDel and ShiftIns to avoid
@@ -801,7 +836,7 @@ procedure RegisterWEditor;
 implementation
 
 uses
-  Strings,Video,MsgBox,App,StdDlg,Validate,
+  Strings,Video,MsgBox,App,Validate,
 {$ifdef WinClipSupported}
   WinClip,
 {$endif WinClipSupported}
@@ -1379,6 +1414,41 @@ begin
     SetFlags(N);
 end;
 
+procedure TCustomLine.InsertMark(Editor: PCustomCodeEditor; Mark: PEditorBookMark);
+var LI : PEditorLineInfo;
+begin
+  LI:=GetEditorInfo(@Editor);
+  if Assigned(LI) then LI^.InsertMark(Mark);
+end;
+
+procedure TCustomLine.DeleteMark(Editor: PCustomCodeEditor; Mark: PEditorBookMark);
+var LI : PEditorLineInfo;
+begin
+  LI:=GetEditorInfo(@Editor);
+  if Assigned(LI) then LI^.DeleteMark(Mark);
+end;
+
+function  TCustomLine.MarkCount(Editor: PCustomCodeEditor):Sw_integer;
+var LI : PEditorLineInfo;
+begin
+  LI:=GetEditorInfo(@Editor);
+  if Assigned(LI) then MarkCount:=LI^.MarkCount else MarkCount:=0;
+end;
+
+function  TCustomLine.GetMark(Editor: PCustomCodeEditor; Index: Sw_integer):PEditorBookMark;
+var LI : PEditorLineInfo;
+begin
+  LI:=GetEditorInfo(@Editor);
+  if Assigned(LI) then GetMark:=LI^.GetMark(Index) else GetMark:=nil;
+end;
+
+procedure TCustomLine.AdjustMark(Editor: PCustomCodeEditor; APosX,Adjustment: Sw_integer);
+var LI : PEditorLineInfo;
+begin
+  LI:=GetEditorInfo(@Editor);
+  if Assigned(LI) then LI^.AdjustMark(APosX,Adjustment);
+end;
+
 procedure TCustomLine.AddEditorInfo(Index: sw_integer; AEditor: PCustomCodeEditor);
 begin
   { Abstract }
@@ -1395,6 +1465,11 @@ begin
 end;
 
 function TLineCollection.At(Index: sw_Integer): PCustomLine;
+begin
+  At:=inherited At(Index);
+end;
+
+function TEditorBookMarkCollection.At(Index: sw_Integer): PEditorBookMark;
 begin
   At:=inherited At(Index);
 end;
@@ -1555,6 +1630,48 @@ begin
     Fold^.AddLineReference(@Self);
 end;
 
+procedure TEditorLineInfo.InsertMark(Mark:PEditorBookMark);
+begin
+  if not assigned(BookMarks) then
+    New(BookMarks, Init(2,2));
+  BookMarks^.Insert(Mark);
+end;
+
+procedure TEditorLineInfo.DeleteMark(Mark:PEditorBookMark);
+begin
+  if assigned(BookMarks) then BookMarks^.Delete(Mark);
+end;
+
+function TEditorLineInfo.MarkCount:Sw_integer;
+begin
+  if assigned(BookMarks) then
+    MarkCount:=BookMarks^.Count
+  else MarkCount:=0;
+end;
+
+function TEditorLineInfo.GetMark(Index:Sw_integer):PEditorBookMark;
+begin
+  if assigned(BookMarks) then
+    GetMark:=BookMarks^.at(Index)
+  else GetMark:=nil;
+end;
+
+procedure TEditorLineInfo.AdjustMark(APosX,Adjustment:Sw_integer);
+var Index : sw_integer;
+    Mark:PEditorBookMark;
+begin
+  if not assigned(BookMarks) then exit;
+  for Index:=1 to BookMarks^.Count do
+  begin
+    Mark:=BookMarks^.at(Index-1);
+    if Mark^.Pos.X >=APosX then
+       Mark^.Pos.X:=Mark^.Pos.X+Adjustment
+    else
+      if (Adjustment < 0) and (Mark^.Pos.X>(APosX+Adjustment)) then
+        Mark^.Pos.X:=APosX+Adjustment;
+  end;
+end;
+
 destructor TEditorLineInfo.Done;
 begin
 {$if sizeof(sw_astring)>8}
@@ -1565,6 +1682,12 @@ begin
   Format:='';
 {$endif}
   SetFold(nil);
+  if assigned(BookMarks) then
+  begin
+    BookMarks^.DeleteAll;
+    Dispose(BookMarks,Done);
+    BookMarks:=nil;
+  end;
   inherited Done;
 end;
 
@@ -3074,10 +3197,37 @@ begin
   SaveToFile:=OK;
 end;
 
+procedure TCustomCodeEditor.AdjustBookMark(X, NewX, Y, NewY: sw_integer);
+var P : PEditorBookMark;
+    Count,Index : sw_integer;
+    Line,NewLine : PCustomLine;
+begin
+  if NewY=Y then
+    GetLine(Y)^.AdjustMark(@Self,X,NewX-X)
+  else
+  begin
+    Line:=GetLine(Y);
+    Count:=Line^.MarkCount(@Self);
+    if Count > 0 then
+    begin
+      NewLine:=GetLine(NewY);
+      for Index:=Count-1 downto 0 do
+      begin
+        P:=Line^.GetMark(@Self,Index);
+        if P^.Pos.X>=X then
+        begin
+          P^.Pos.X:=Max(0,P^.Pos.X+(NewX-X));
+          Line^.DeleteMark(@Self,P);
+          NewLine^.InsertMark(@Self,P);
+        end;
+      end;
+    end;
+  end;
+end;
 
 function TCustomCodeEditor.InsertFrom(Editor: PCustomCodeEditor): Boolean;
 var OK: boolean;
-    CP,RX,RSX,LineDelta,LineCount: Sw_integer;
+    CP,CI,RX,RSX,LineDelta,LineCount: Sw_integer;
     StartPos,DestPos,BPos,EPos: TPoint;
     LineStartX,LineEndX: Sw_integer;
     TabSize,CharIdxStart,CharIdxEnd: Sw_integer;
@@ -3101,6 +3251,8 @@ begin
   begin
     if not (Clipboard=@Self) and IsFlagSet(efOverwriteBlocks) and InSelectionArea then
       DelSelect; {delete selection before paste}
+    CI:=LinePosToCharIdx(CurPos.Y,CurPos.X);
+    CurPos.X:=CharIdxToLinePos(CurPos.Y,CI); {tab space adjustment}
     StartPos:=CurPos; DestPos:=CurPos;
     EPos:=CurPos;
     VerticalBlock:=Editor^.IsFlagSet(efVerticalBlocks);
@@ -3226,13 +3378,15 @@ begin
   InsertFrom:=OK;
 end;
 
-function TCustomCodeEditor.InsertText(const S: string): Boolean;
-var I: sw_integer;
+function TCustomCodeEditor.InsertText(const S: sw_astring): Boolean;
+var I,CI: sw_integer;
     OldPos: TPoint;
     HoldUndo : boolean;
     WasAutoBrackets : boolean;
 begin
   Lock;
+  CI:=LinePosToCharIdx(CurPos.Y,CurPos.X);
+  CurPos.X:=CharIdxToLinePos(CurPos.Y,CI); {tab space adjustment}
   OldPos:=CurPos;
   HoldUndo:=GetStoreUndo;
   WasAutoBrackets:=GetAutoBrackets;
@@ -3743,6 +3897,7 @@ begin
           cmCut         : ClipCut;
           cmCopy        : ClipCopy;
           cmPaste       : ClipPaste;
+          cmPasteText   : PasteText(Event.InfoPtr,Event.Id);
 
           cmSelectAll   : SelectAll(true);
           cmUnselect    : SelectAll(false);
@@ -3912,7 +4067,7 @@ begin
     Color:=(Color and $F0) or $F;
   CombineColors:=Color;
 end;
-var
+var ShowIndent:boolean;
     FoldPrefix,FoldSuffix: string;
 {    SkipLine: boolean;}
 {    FoldStartLine: sw_integer;}
@@ -3948,6 +4103,7 @@ begin
   HighlightColColor:=GetColor(11);
   HighlightRowColor:=GetColor(12);
   ErrorMessageColor:=GetColor(16);
+  ShowIndent:=IsFlagSet(efShowIndent) and IsFlagSet(efSyntaxHighlight);
 {$ifdef TEST_PARTIAL_SYNTAX}
   If (not GetSyntaxCompleted) and (GetLastSyntaxedLine<Delta.Y+Size.Y) then
     UpdateAttrsRange(GetLastSyntaxedLine,Delta.Y+Size.Y,AttrAll);
@@ -3988,6 +4144,14 @@ begin
           FillChar(FreeFormat,SizeOf(FreeFormat),1);
           MoveChar(B,' ',Color,Size.X);
           GetDisplayTextFormat(AY,LineText,Format);
+          if ShowIndent and (length(Format)=length(LineText)) then
+            for X:=1 to length(LineText) do
+            begin
+              if LineText[X] <> ' ' then break;
+              if (X>1 ) and (X and 1 = 1) then
+                if ord(Format[X]) in [coWhiteSpaceColor,coTabColor] then
+                  LineText[X]:=#179; { | show line indent }
+            end;
 
           MaxX:=Min(Delta.X+1+Size.X,MaxLineLength);
           for X:=(MaxX-Size.X) to MaxX+1 do
@@ -4527,9 +4691,73 @@ begin
   SetCurPtr(SelEnd.X,SelEnd.Y);
 end;
 
-procedure TCustomCodeEditor.JumpMark(MarkIdx: integer);
+function TCustomCodeEditor.GetBookmark(MarkIdx: sw_integer):TEditorBookMark;
+var LineNr : sw_integer;
 begin
-  DontConsiderShiftState:=true;
+  GetBookmark.Valid:=false;
+  if not (MarkIdx in [0..9]) then exit;
+  with Bookmarks[MarkIdx] do
+    if Valid=true then
+    begin
+      LineNr:=FindMarkLineNr(MarkIdx);
+      if LineNr>=0 then
+        Pos.Y:=LineNr
+      else
+        Valid:=false;
+    end;
+  GetBookmark:=Bookmarks[MarkIdx];
+end;
+
+procedure TCustomCodeEditor.SetBookmark(MarkIdx: sw_integer; ABookmark: TEditorBookMark);
+var Line : PCustomLine;
+begin
+  if not (MarkIdx in [0..9]) then exit;
+  Bookmarks[MarkIdx]:=ABookmark;
+  if ABookmark.Valid then
+  begin
+    {invalid Pos.Y will lead to crash check it beforehand }
+    if (ABookmark.Pos.X<0) or (ABookmark.Pos.X>MaxLineLength)
+       or (ABookmark.Pos.Y<0) or (ABookmark.Pos.Y>=GetLineCount) then
+    begin
+      Bookmarks[MarkIdx].Valid:=false;
+      exit;
+    end;
+    Line:=GetLine(ABookmark.Pos.Y);
+    if Assigned(Line) then
+      Line^.InsertMark(@Self,@Bookmarks[MarkIdx])
+    else
+      Bookmarks[MarkIdx].Valid:=false; {this should not be ever reached, but safty first}
+  end;
+end;
+
+function TCustomCodeEditor.FindMarkLineNr(MarkIdx: sw_integer):sw_integer;
+var Count, CurLineNr, CurMarkNr : sw_integer;
+    Line : PCustomLine;
+    LI : PEditorLineInfo;
+begin
+  Count:=GetLineCount;
+  FindMarkLineNr:=-1;
+  if Count>1 then
+    for CurLineNr:=0 to Count-1 do
+    begin
+      Line:=GetLine(CurLineNr);
+      if Assigned(Line) then LI:=Line^.GetEditorInfo(@Self) else LI:=nil;
+      if Assigned(LI) then
+        if Assigned(LI^.BookMarks) then
+        begin
+          CurMarkNr := LI^.BookMarks^.IndexOf(@Bookmarks[MarkIdx]);
+          if CurMarkNr>=0 then
+          begin
+            FindMarkLineNr:=CurLineNr;
+            break;
+          end;
+        end;
+    end;
+end;
+
+procedure TCustomCodeEditor.JumpMark(MarkIdx: integer);
+var LineNr : sw_integer;
+begin
   if (MarkIdx<Low(Bookmarks)) or (MarkIdx>High(Bookmarks)) then
     begin ErrorBox(FormatStrInt(msg_invalidmarkindex,MarkIdx),nil); Exit; end;
 
@@ -4537,17 +4765,38 @@ begin
   if Valid=false then
     InformationBox(FormatStrInt(msg_marknotset,MarkIdx),nil)
   else
-    SetCurPtr(Pos.X,Pos.Y);
-  DontConsiderShiftState:=false;
+    begin
+      DontConsiderShiftState:=true;
+      LineNr:=FindMarkLineNr(MarkIdx); {Find current marked line}
+      if LineNr>=0 then
+        SetCurPtr(Pos.X,LineNr)
+      else
+        InformationBox(FormatStrInt(msg_marknotset,MarkIdx),nil);
+      DontConsiderShiftState:=false;
+    end;
 end;
 
 procedure TCustomCodeEditor.DefineMark(MarkIdx: integer);
+var Line : PCustomLine;
+    LI : PEditorLineInfo;
+    LineNr : sw_integer;
 begin
   if (MarkIdx<Low(Bookmarks)) or (MarkIdx>High(Bookmarks)) then
     begin
       ErrorBox(FormatStrInt(msg_invalidmarkindex,MarkIdx),nil);
       Exit;
     end;
+  if Bookmarks[MarkIdx].Valid then
+  begin
+    LineNr:=FindMarkLineNr(MarkIdx); {find current marked line}
+    if LineNr>=0 then
+    begin
+      Line:=GetLine(LineNr);
+      Line^.DeleteMark(@Self,@Bookmarks[MarkIdx]);
+    end;
+  end;
+  Line:=GetLine(CurPos.Y);
+  Line^.InsertMark(@Self,@Bookmarks[MarkIdx]);
   with Bookmarks[MarkIdx] do
    begin
      Pos:=CurPos;
@@ -4953,6 +5202,7 @@ begin
 (*    if PointOfs(SelStart)<>PointOfs(SelEnd) then { !!! check it - it's buggy !!! }
       begin SelEnd.Y:=CurPos.Y+1; SelEnd.X:=length(GetLineText(CurPos.Y+1))-SelBack; end;*)
     UpdateAttrs(CurPos.Y,attrAll);
+    AdjustBookMark(CurPos.X,Ind,CurPos.Y,CurPos.Y+1);
     SetCurPtr(Ind,CurPos.Y+1);
     NewEI:=NewL^.GetEditorInfo(@Self);
     if Assigned(EI) and Assigned(NewEI) then
@@ -4977,6 +5227,7 @@ begin
       LimitsChanged;
       SetStoreUndo(HoldUndo);
       UpdateAttrs(CurPos.Y,attrAll);
+      AdjustBookMark(CurPos.X,Ind,CurPos.Y,CurPos.Y+1);
       SetCurPtr(Ind,CurPos.Y+1);
       { obsolete IndentStr is taken care of by the Flags PM }
       Addaction(eaInsertLine,SCP,CurPos,''{IndentStr},GetFlags);
@@ -4986,6 +5237,7 @@ begin
     begin
       UpdateAttrs(CurPos.Y,attrAll);
       SetStoreUndo(HoldUndo);
+      AdjustBookMark(CurPos.X,Ind,CurPos.Y,CurPos.Y+1);
       SetCurPtr(Ind,CurPos.Y+1);
       AddAction(eaMoveCursor,SCP,CurPos,'',GetFlags);
       SetStoreUndo(false);
@@ -5023,6 +5275,7 @@ begin
      if CurPos.Y>0 then
       begin
         CI:=Length(GetDisplayText(CurPos.Y-1));
+        AdjustBookMark(0,CI,CurPos.Y,CurPos.Y-1);
         S:=GetLineText(CurPos.Y-1);
         SetLineText(CurPos.Y-1,S+GetLineText(CurPos.Y));
         SC1.X:=Length(S);SC1.Y:=CurPOS.Y-1;
@@ -5040,8 +5293,9 @@ begin
      CP:=CurPos.X-1;
      S:=GetLineText(CurPos.Y);
      CI:=LinePosToCharIdx(CurPos.Y,CP);
-     if (s[ci]=TAB) {and (CharIdxToLinePos(Curpos.y,ci)=cp)} then
-      CP:=CharIdxToLinePos(CurPos.Y,CI);
+     if (ci>0) and (ci<=length(S)) then
+       if (s[ci]=TAB) {and (CharIdxToLinePos(Curpos.y,ci)=cp)} then
+         CP:=CharIdxToLinePos(CurPos.Y,CI);
      if IsFlagSet(efBackspaceUnindents) then
       begin
         S:=GetDisplayText(CurPos.Y);
@@ -5095,6 +5349,7 @@ begin
      if CurPos.Y<GetLineCount-1 then
       begin
         SetLineText(CurPos.Y,S+CharStr(' ',CurPOS.X-Length(S))+GetLineText(CurPos.Y+1));
+        AdjustBookMark(0,CurPos.X,CurPos.Y+1,CurPos.Y);
         SDX:=CurPos.X;
         SetStoreUndo(HoldUndo);
         SCP.X:=0;SCP.Y:=CurPos.Y+1;
@@ -5899,6 +6154,7 @@ begin
       exit;
     end;
 {$endif}
+  SP.X:=CharIdxToLinePos(CurPos.Y,CI); {actual changes are going to be here (tab space adjustment)}
   if (CI>0) and (S[CI]=TAB) and not IsFlagSet(efUseTabCharacters) then
     begin
       if CI=1 then
@@ -5947,17 +6203,16 @@ begin
   UnLock;
 end;
 
-{$ifdef WinClipSupported}
-
 const
    linelimit = 200;
 
-function TCustomCodeEditor.ClipPasteWin: Boolean;
+procedure TCustomCodeEditor.PasteText(P:PAnsiChar; ASize:sw_integer);
 var
     StorePos : TPoint;
     first : boolean;
+    IsNewLine: boolean;
 
-procedure InsertStringWrap(const s: string; var i : Longint);
+procedure InsertStringWrap(const s: sw_astring; var i : Longint);
 var
     BPos,EPos: TPoint;
 begin
@@ -5965,7 +6220,8 @@ begin
     begin
       { we need to cut the line in two
       if not at end of line PM }
-      InsertNewLine;
+      if IsNewLine then
+        InsertNewLine;
       SetCurPtr(StorePos.X,StorePos.Y);
       InsertText(s);
       first:=false;
@@ -5973,35 +6229,30 @@ begin
   else
     begin
       Inc(i);
-      InsertLine(i,s);
-      BPos.X:=0;BPos.Y:=i;
-      EPOS.X:=Length(s);EPos.Y:=i;
-      AddAction(eaInsertLine,BPos,EPos,GetDisplayText(i),GetFlags);
+      if IsNewLine then
+      begin
+        InsertLine(i,s);
+        BPos.X:=0;BPos.Y:=i;
+        EPOS.X:=Length(s);EPos.Y:=i;
+        AddAction(eaInsertLine,BPos,EPos,GetDisplayText(i),GetFlags);
+      end else
+      begin
+        SetCurPtr(0,i);
+        InsertText(s);
+      end;
     end;
 end;
 
 var
-    OK: boolean;
     l,i,len,len10 : longint;
-    p,p10,p2,p13 : PAnsiChar;
-    s : string;
+    p10,p2,p13 : PAnsiChar;
+    s : sw_astring;
 begin
   Lock;
-  OK:=WinClipboardSupported;
-  if OK then
-    begin
-
-      first:=true;
-      StorePos:=CurPos;
-      i:=CurPos.Y;
-      l:=GetTextWinClipboardSize;
-      if l=0 then
-        OK:=false
-      else
-        OK:=GetTextWinClipBoardData(p,l);
-      if OK then
-        begin
-          if l>500 then
+  first:=true;
+  StorePos:=CurPos;
+  i:=CurPos.Y;
+          if ASize>500 then
             PushInfo(msg_readingwinclipboard);
           AddGroupedAction(eaPasteWin);
           if not (Clipboard=@Self) and IsFlagSet(efOverwriteBlocks) and InSelectionArea then
@@ -6013,10 +6264,16 @@ begin
           repeat
             p13:=strpos(p2,#13);
             p10:=strpos(p2,#10);
+{$if sizeof(sw_astring)>8  only if ShortString lines}
             if len> linelimit then
               len:=linelimit;
+{$endif}
+            if not assigned(p10) and assigned(p13) then
+              p10:=p13;
+            IsNewLine:=false;
             if assigned(p10) then
               begin
+               IsNewLine:=true;
                len10:=p10-p2;
                if len10<len then
                  begin
@@ -6044,11 +6301,34 @@ begin
           UpdateAttrs(StorePos.Y,attrAll);
           CloseGroupedAction(eaPasteWin);
           Update;
-          if l>500 then
+          if ASize>500 then
             PopInfo;
+          DrawView;
+  UnLock;
+end;
+
+{$ifdef WinClipSupported}
+
+function TCustomCodeEditor.ClipPasteWin: Boolean;
+var
+    OK: boolean;
+    l : longint;
+    p : PAnsiChar;
+begin
+  Lock;
+  OK:=WinClipboardSupported;
+  if OK then
+    begin
+      l:=GetTextWinClipboardSize;
+      if l=0 then
+        OK:=false
+      else
+        OK:=GetTextWinClipBoardData(p,l);
+      if OK then
+        begin
+          PasteText(p,l);
           { we must free the allocated memory }
           freemem(p,l);
-          DrawView;
         end;
     end;
   ClipPasteWin:=OK;
@@ -6086,19 +6366,35 @@ begin
   else
     str_end:=LinePosToCharIdx(i,SelEnd.X)-1;
   s:=copy(s,str_begin,str_end-str_begin+1);
+{$if sizeof(sw_astring)>8}
   strpcopy(p,s);
+{$else}
+  s:=s+#0;
+  Move(S[1],P^,Length(S));
+{$endif}
   p2:=strend(p);
   inc(i);
   while i<SelEnd.Y do
     begin
-      strpcopy(p2,EOL+GetLineText(i));
+      s:=EOL+GetLineText(i);
+{$if sizeof(sw_astring)>8}
+      strpcopy(p2,s);
+{$else}
+      s:=s+#0;
+      Move(S[1],P2^,Length(S));
+{$endif}
       p2:=strend(p2);
       Inc(i);
     end;
   if SelEnd.Y>SelStart.Y then
     begin
       s:=copy(GetLineText(i),1,LinePosToCharIdx(i,SelEnd.X)-1);
+{$if sizeof(sw_astring)>8}
       strpcopy(p2,EOL+s);
+{$else}
+      s:=EOL+s+#0;
+      Move(S[1],P2^,Length(S));
+{$endif}
     end;
   OK:=WinClipboardSupported;
   if OK then
@@ -7243,6 +7539,14 @@ begin
              inherited HandleEvent(Event);
              ClearEvent(Event);
            end
+         else if ((Event.KeyCode=kbCtrlDel)) then
+           { Cut & discard }
+           begin
+             { now remove the selected part }
+             Event.keyCode:=kbDel;
+             inherited HandleEvent(Event);
+             ClearEvent(Event);
+           end
          else
            Inherited HandleEvent(Event);
        End
@@ -7251,6 +7555,118 @@ begin
   st:=getstr(data);
   Message(Owner,evBroadCast,cmInputLineLen,pointer(Length(st)));
 end;
+
+constructor TFPFileInputLine.Init(var Bounds: TRect; AMaxLen: Sw_Integer);
+begin
+  inherited Init(Bounds, AMaxLen);
+end;
+
+procedure TFPFileInputLine.HandleEvent(var Event: TEvent);
+var s : sw_astring;
+    i : sw_integer;
+    st: string;
+begin
+     If (Event.What=evKeyDown) then
+       begin
+           if ((Event.KeyCode=kbShiftIns) or (Event.KeyCode=paste_key))  and
+                 Assigned(weditor.Clipboard) and (weditor.Clipboard^.ValidBlock) then
+           { paste from clipboard }
+           begin
+             i:=Clipboard^.SelStart.Y;
+             s:=Clipboard^.GetDisplayText(i);
+             i:=Clipboard^.SelStart.X;
+             if i>0 then
+              s:=copy(s,i+1,length(s));
+             if (Clipboard^.SelStart.Y=Clipboard^.SelEnd.Y) then
+               begin
+                 i:=Clipboard^.SelEnd.X-i;
+                 s:=copy(s,1,i);
+               end;
+             for i:=1 to length(s) do
+               begin
+                 st:=Data^+s[i];
+                 If not assigned(validator) or
+                    Validator^.IsValidInput(st,False)  then
+                   Begin
+                     Event.What:=evKeyDown;
+                     Event.CharCode:=s[i];
+                     Event.Scancode:=0;
+                     Inherited HandleEvent(Event);
+                   End;
+               end;
+             ClearEvent(Event);
+           end
+         else if ((Event.KeyCode=kbCtrlIns) or (Event.KeyCode=copy_key))  and
+                 Assigned(Clipboard) then
+           { Copy to clipboard }
+           begin
+             s:=GetStr(Data);
+             s:=copy(s,selstart+1,selend-selstart);
+             Clipboard^.SelStart:=Clipboard^.CurPos;
+             Clipboard^.InsertText(s);
+             Clipboard^.SelEnd:=Clipboard^.CurPos;
+             ClearEvent(Event);
+           end
+         else if ((Event.KeyCode=kbShiftDel) or (Event.KeyCode=cut_key))  and
+                 Assigned(Clipboard) then
+           { Cut to clipboard }
+           begin
+             s:=GetStr(Data);
+             s:=copy(s,selstart+1,selend-selstart);
+             Clipboard^.SelStart:=Clipboard^.CurPos;
+             Clipboard^.InsertText(s);
+             Clipboard^.SelEnd:=Clipboard^.CurPos;
+             { now remove the selected part }
+             Event.keyCode:=kbDel;
+             inherited HandleEvent(Event);
+             ClearEvent(Event);
+           end
+         else if ((Event.KeyCode=kbCtrlDel)) then
+           { Cut & discard }
+           begin
+             { now remove the selected part }
+             Event.keyCode:=kbDel;
+             inherited HandleEvent(Event);
+             ClearEvent(Event);
+           end
+         else
+           Inherited HandleEvent(Event);
+       End
+     else
+       Inherited HandleEvent(Event);
+  //st:=getstr(data);
+  //Message(Owner,evBroadCast,cmInputLineLen,pointer(Length(st)));
+end;
+
+constructor TFPFileDialog.Init(AWildCard: TWildStr; const ATitle,
+        InputName: String; AOptions: Word; HistoryId: Byte);
+var R: TRect;
+  DInput  : PFPFileInputLine;
+  Control : PView;
+  History : PHistory;
+  S : String;
+begin
+  inherited init(AWildCard,ATitle,InputName,AOptions,HistoryId);
+  FileName^.getData(S);
+  R.Assign(3, 3, 31, 4);
+  DInput := New(PFPFileInputLine, Init(R, 79{FileNameLen+4}));
+  DInput^.SetData(S);
+  InsertBefore(DInput,FileName); {insert before to preserv order as it was}
+  Delete(FileName);
+  Dispose(FileName,done);
+  DInput^.GrowMode:=gfGrowHiX;
+  FileName:=DInput;
+  FileHistory^.Link:=DInput;
+  {resize}
+  if Desktop^.Size.Y > 26 then
+    GrowTo(Size.X,Desktop^.Size.Y-6);
+  if Desktop^.Size.X > 80 then
+    GrowTo(Min(Desktop^.Size.X-(80-Size.X),102),Size.Y);
+  FileList^.NumCols:= Max((FileList^.Size.X-(FileList^.Size.X div 14)) div 14,2);
+  {set focus on the new input line}
+  DInput^.Focus;
+end;
+
 
 procedure TSearchHelperDialog.HandleEvent(var Event : TEvent);
 begin
@@ -7553,7 +7969,7 @@ begin
             end;
         else begin Title:='???'; DefExt:=''; end;
         end;
-        Re:=Application^.ExecuteDialog(New(PFileDialog, Init(DefExt,
+        Re:=Application^.ExecuteDialog(New(PFPFileDialog, Init(DefExt,
           Title, label_name, fdOkButton, FileId)), @Name);
         case Dialog of
           edSaveAs     :

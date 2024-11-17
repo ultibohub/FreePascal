@@ -3,6 +3,11 @@
 
 {$mode objfpc}
 
+{$ifdef linux}
+uses
+  baseunix;
+{$endif linux}
+
 type
   TForm1 = class
     procedure Button1Click(Sender: TObject);
@@ -17,8 +22,17 @@ end;
 
 var
   Form1 : TForm1;
+{$ifdef linux}
+  limits : TRLimit;
+{$endif linux}
 
 begin
+{$ifdef linux}
+  FpGetRLimit(RLIMIT_STACK, @limits);
+  writeln('Cur: ',limits.rlim_cur);
+  writeln('Max: ',limits.rlim_max);
+  writeln('StackLength: ',StackLength);
+{$endif linux}
   Form1:=TForm1.Create;
   Form1.Button1Click(nil);
 end.

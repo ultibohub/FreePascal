@@ -738,6 +738,10 @@ procedure fpc_addref_array(data,typeinfo: pointer; count: SizeInt); compilerproc
 procedure fpc_decref_array(data,typeinfo: pointer; count: sizeint); compilerproc;
 Function fpc_Copy (Src, Dest, TypeInfo : Pointer) : SizeInt; compilerproc;
 Procedure fpc_Copy_proc (Src, Dest, TypeInfo : Pointer); compilerproc; inline;
+{$ifdef FPC_MANAGED_MOVE}
+Function fpc_Copy_with_move_semantics (Src, Dest, TypeInfo : Pointer) : SizeInt; compilerproc;
+Procedure fpc_Copy_with_move_semantics_proc (Src, Dest, TypeInfo : Pointer); compilerproc; inline;
+{$endif FPC_MANAGED_MOVE}
 {$endif FPC_HAS_FEATURE_RTTI}
 
 

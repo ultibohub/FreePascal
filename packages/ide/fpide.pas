@@ -153,7 +153,9 @@ type
       procedure AddRecentFile(AFileName: string; CurX, CurY: sw_integer);
       function  SearchRecentFile(AFileName: string): integer;
       procedure RemoveRecentFile(Index: integer);
+    public
       procedure CurDirChanged;
+    private
       procedure UpdatePrimaryFile;
       procedure UpdateINIFile;
       procedure UpdateRecentFileList;
@@ -176,13 +178,16 @@ uses
   WinClip,
 {$endif WinClipSupported}
 {$ifdef Unix}
-  fpKeys,
+  fpKeys,FVClip,
 {$endif Unix}
   FpDpAnsi,WConsts,
   Video,Mouse,Keyboard,
   Compiler,Version,
   FVConsts,
   Dos{,Memory},Menus,Dialogs,StdDlg,timeddlg,
+{$Ifdef COLORSEL}
+  ColorSel,
+{$endif}
   Systems,
   WUtils,WHlpView,WViews,WHTMLHlp,WHelp,WConsole,
   FPConst,FPVars,FPUtils,FPIni,FPIntf,FPCompil,FPHelp,
@@ -327,7 +332,7 @@ resourcestring  menu_local_gotosource = '~G~oto source';
                 menu_options_env_desktop = '~D~esktop...';
                 menu_options_env_keybmouse = 'Keyboard & ~m~ouse...';
                 menu_options_env_startup = '~S~tartup...';
-                menu_options_env_colors= '~C~olors';
+                menu_options_env_colors= 'C~o~lors';
                 menu_options_learn_keys= 'Learn ~K~eys';
                 menu_options_open      = '~O~pen...';
                 menu_options_save      = '~S~ave';
@@ -602,6 +607,7 @@ resourcestring  menu_local_gotosource = '~G~oto source';
                 label_editor_persistentblocks = '~P~ersistent blocks';
                 label_editor_overwriteblocks = '~O~verwrite blocks';
                 label_editor_syntaxhighlight = '~S~yntax highlight';
+                label_editor_showlineindents = 'Sho~w~ line indents';
                 label_editor_blockinsertcursor = 'B~l~ock insert cursor';
                 label_editor_verticalblocks = '~V~ertical blocks';
                 label_editor_highlightcolumn = 'Highlight ~c~olumn';
@@ -661,6 +667,7 @@ resourcestring  menu_local_gotosource = '~G~oto source';
                 label_desktop_symbolinfo = '~S~ymbol information';
                 label_desktop_codecompletewords = 'Co~d~eComplete wordlist';
                 label_desktop_codetemplates = 'Code~T~emplates';
+                label_desktop_returntolastdir = '~R~eturn to last directory';
                 label_desktop_preservedacrosssessions = '~P~reserved across sessions';
 
                 {Mouse options dialog.}
@@ -677,6 +684,41 @@ resourcestring  menu_local_gotosource = '~G~oto source';
                 label_mouse_act_evaluate = 'Evaluate';
                 label_mouse_act_addwatch = 'Add watch';
                 label_mouse_act_browsesymbol = 'Browse symbol';
+
+                {Color select dialog.}
+                label_colors_grp_menus        = 'Menu';
+                label_colors_grp_desktop      = 'Desktop';
+                label_colors_grp_dialogs      = 'Dialogs';
+                label_colors_grp_browser      = 'Browser';
+                label_colors_grp_editor       = 'Editor';
+                label_colors_grp_help         = 'Help';
+                label_colors_grp_syntax       = 'Syntax';
+                label_colors_grp_clock        = 'Clock';
+
+                label_colors_clockview        = 'Clock view';
+                label_colors_highlighcolumn   = 'Higlight column';
+                label_colors_highlightrow     = 'Higlight row';
+                label_colors_errormessages    = 'Error message';
+                label_colors_helptext         = 'Text';
+                label_colors_helplinks        = 'Link';
+                label_colors_selectedlink     = 'Selected link';
+                label_colors_html_heading1    = 'Html heading 1';
+                label_colors_html_heading2    = 'Html heading 2';
+                label_colors_html_heading3    = 'Html heading 3';
+                label_colors_html_heading4    = 'Html heading 4';
+                label_colors_html_heading5    = 'Html heading 5';
+                label_colors_html_heading6    = 'Html heading 6';
+                label_colors_whitespace       = 'Whitesapce';
+                label_colors_comments         = 'Comments';
+                label_colors_reservedwords    = 'Reserved words';
+                label_colors_identifiers      = 'Identifiers';
+                label_colors_strings          = 'Strings';
+                label_colors_numbers          = 'Numbers';
+                label_colors_hexnumbers       = 'Hexadecimal numbers';
+                label_colors_assembler        = 'Assembler block';
+                label_colors_symbols          = 'Symbols';
+                label_colors_directives       = 'Directives';
+                label_colors_tabs             = 'Tabs';
 
                 {Open options dialog.}
                 dialog_openoptions = 'Open Options';
@@ -824,7 +866,6 @@ begin
   CompilerMessageWindow^.Hide;
   Desktop^.Insert(CompilerMessageWindow);
   Message(@Self,evBroadcast,cmUpdate,nil);
-  CurDirChanged;
   { heap viewer }
   GetExtent(R); Dec(R.B.X); R.A.X:=R.B.X-9; R.A.Y:=R.B.Y-1;
   New(HeapView, InitKb(R));
@@ -987,8 +1028,8 @@ begin
         NewItem(menu_options_env_codetemplates,'', kbNoKey, cmCodeTemplateOptions, hcCodeTemplateOptions,
         NewItem(menu_options_env_desktop,'', kbNoKey, cmDesktopOptions, hcDesktopOptions,
         NewItem(menu_options_env_keybmouse,'', kbNoKey, cmMouse, hcMouse,
-{        NewItem(menu_options_env_startup,'', kbNoKey, cmStartup, hcStartup,
-        NewItem(menu_options_env_colors,'', kbNoKey, cmColors, hcColors,}
+{        NewItem(menu_options_env_startup,'', kbNoKey, cmStartup, hcStartup,}
+        NewItem(menu_options_env_colors,'', kbNoKey, cmColors, hcColors,
 {$ifdef Unix}
         NewItem(menu_options_learn_keys,'', kbNoKey, cmKeys, hcKeys,
 {$endif Unix}
@@ -996,7 +1037,7 @@ begin
 {$ifdef Unix}
         )
 {$endif Unix}
-        {))}))))))),
+        ){)}))))))),
       NewLine(
       NewItem(menu_options_open,'', kbNoKey, cmOpenINI, hcOpenINI,
       NewItem(menu_options_save,'', kbNoKey, cmSaveINI, hcSaveINI,
@@ -1437,6 +1478,7 @@ begin
     UserScreen^.SaveIDEScreen;
   DoneSysError;
   DoneEvents;
+  {$ifdef unix}DoneClip;{$endif}
   { DoneKeyboard should be called last to
     restore the keyboard correctly PM }
 {$ifndef go32v2}
@@ -1467,6 +1509,7 @@ begin
     ButtonCount:=0;
   oldH:=ScreenHeight;
   oldW:=ScreenWidth;
+  {$ifdef unix}InitClip(@Self);{$endif}
 {$ifndef go32v2}
   initvideo;
 {$endif ndef go32v2}
@@ -1483,7 +1526,7 @@ begin
 {$ifndef Windows}
   if (oldH<>ScreenHeight) or (oldW<>ScreenWidth) then
   begin
-    { acknowledge new screen dimensions } 
+    { acknowledge new screen dimensions }
     { prevents to draw out of boundaries of new video buffer }
     ResizeApplication(ScreenWidth,ScreenHeight);
   end else

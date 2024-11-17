@@ -920,6 +920,36 @@ implementation
 
 
     function tassignmentnode.pass_1 : tnode;
+
+      function tempreturnfromcall:boolean;
+        var
+          node:tnode;
+        begin
+          result:=false;
+          if not is_managed_type(right.resultdef) then
+            exit;
+          node:=right;
+          while assigned(node) do
+            begin
+              case node.nodetype of
+              blockn:
+                node:=tblocknode(node).left;
+              statementn:
+                if assigned(tstatementnode(node).right) then
+                  node:=tstatementnode(node).right
+                else
+                  node:=tstatementnode(node).left;
+              else
+                break;
+              end;
+            end;
+          if not assigned(node) then
+            internalerror(2024111101);
+          if (node.nodetype=calln) and assigned(tcallnode(node).funcretnode) then
+            node:=tcallnode(node).funcretnode;
+          result:=(node.nodetype=temprefn) and (nf_is_funcret in node.flags);
+        end;
+
       var
         hp: tnode;
         oldassignmentnode : tassignmentnode;
@@ -993,7 +1023,10 @@ implementation
                ccallparanode.create(ctypeconvnode.create_internal(
                  caddrnode.create_internal(right),voidpointertype),
                nil)));
-           result:=ccallnode.createintern('fpc_copy_proc',hp);
+           if tempreturnfromcall then
+             result:=ccallnode.createintern('fpc_copy_with_move_semantics_proc',hp)
+           else
+             result:=ccallnode.createintern('fpc_copy_proc',hp);
            firstpass(result);
            left:=nil;
            right:=nil;

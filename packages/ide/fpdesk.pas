@@ -33,6 +33,7 @@ const
      ResSymbols         = 'SYMBOLS';
      ResCodeComplete    = 'CODECOMPLETE';
      ResCodeTemplates   = 'CODETEMPLATES';
+     ResLastDirectory   = 'LASTDIRECTORY';
      ResKeys            = 'KEYS';
 
 procedure InitDesktopFile;
@@ -91,6 +92,8 @@ const
       msg_storingcodecompletewordlist = 'Writing CodeComplete wordlist...';
       msg_readingcodetemplates = 'Reading CodeTemplates...';
       msg_storingcodetemplates = 'Writing CodeTemplates...';
+      msg_readingreturntolastdir = 'Reading Last directory to return...';
+      msg_storingreturntolastdir = 'Writing Last directory to return...';
       msg_readingsymbolinformation = 'Reading symbol information...';
       msg_storingsymbolinformation = 'Storing symbol information...';
       msg_failedtoreplacedesktopfile = 'Failed to replace desktop file.';
@@ -110,6 +113,8 @@ const
       msg_errorstoringvideomode = 'Error storing video mode';
       msg_errorloadingcodetemplates = 'Error loading CodeTemplates';
       msg_errorstoringcodetemplates = 'Error writing CodeTemplates';
+      msg_errorloadingreturntolastdir = 'Error loading Last directory to return';
+      msg_errorstoringreturntolastdir = 'Error writing Last directory to return';
       msg_errorloadingsymbolinformation = 'Error loading symbol information';
       msg_errorstoringsymbolinformation = 'Error storing symbol information';
       msg_errorloadingcodecompletewordlist = 'Error loading CodeComplete wordlist';
@@ -378,7 +383,7 @@ begin
     Begin
       Move(XData[XDataOfs],B,Size);
       Inc(XDataOfs,Size);
-    End;   
+    End;
 end;
 procedure ProcessWindowInfo;
 var W: PWindow;
@@ -391,6 +396,7 @@ var W: PWindow;
     ZZ: byte;
     Z: TRect;
     Len : Byte;
+    BM: TEditorBookMark;
 begin
   XDataOfs:=0;
   Desktop^.Lock;
@@ -422,6 +428,10 @@ begin
           SW^.Editor^.SetSelection(TP,TP2);
           GetData(TP,sizeof(TP)); SW^.Editor^.SetCurPtr(TP.X,TP.Y);
           GetData(TP,sizeof(TP)); SW^.Editor^.ScrollTo(TP.X,TP.Y);
+          for L:=0 to 9 do begin
+            GetData(BM,Sizeof(BM));
+            SW^.Editor^.SetBookmark(L,BM); {restore bookmarks}
+          end;
         end;
       end;
      hcClipboardWindow:
@@ -589,6 +599,7 @@ begin
         begin
           SetLength(Title,WI.TitleLen);
           S^.Read(Title[1],WI.TitleLen);
+          FillChar(XData,SizeOf(XData),0);
           if WI.ExtraDataSize>0 then
           S^.Read(XData,WI.ExtraDataSize);
           ProcessWindowInfo;
@@ -642,6 +653,7 @@ var W: PWindow;
     St: string;
     Ch: AnsiChar;
     TP: TPoint;
+    BM: TEditorBookMark;
     L: longint;
 procedure AddData(const B; Size: word);
 begin
@@ -691,6 +703,9 @@ begin
         TP:=SW^.Editor^.SelEnd; AddData(TP,sizeof(TP));
         TP:=SW^.Editor^.CurPos; AddData(TP,sizeof(TP));
         TP:=SW^.Editor^.Delta; AddData(TP,sizeof(TP));
+        for L:=0 to 9 do begin
+          BM:=SW^.Editor^.GetBookmark(L); AddData(BM,Sizeof(BM)); {save bookmarks}
+        end;
       end;
     hcAsciiTableWindow :
       begin
@@ -845,6 +860,61 @@ begin
   WriteCodeTemplates:=OK;
 end;
 
+function ReadReturnToLastDir(F: PResourceFile): boolean;
+var S: PMemoryStream;
+    OK: boolean;
+    Dir:AnsiString;
+    Size:sw_integer;
+begin
+  PushStatus(msg_readingreturntolastdir);
+  New(S, Init(1024,4096));
+  OK:=F^.ReadResourceEntryToStream(ResLastDirectory,langDefault,S^);
+  S^.Seek(0);
+  if OK then
+  begin
+    S^.Read(Size, sizeof(Size));                        { Read directory size }
+    if Size>0 then
+    begin
+      Setlength(Dir,Size);
+      S^.Read(Dir[1], Size);                           { Read the directory }
+      {$i-}ChDir(Dir);{$i+}
+      IOResult; {eat io result so it does not affect leater operations}
+      GetDir(0,StartUpDir);
+    end;
+  end;
+  Dispose(S, Done);
+  if OK=false then
+    ErrorBox(msg_errorloadingreturntolastdir,nil);
+  PopStatus;
+  ReadReturnToLastDir:=OK;
+end;
+
+function WriteReturnToLastDir(F: PResourceFile): boolean;
+var OK: boolean;
+    S: PMemoryStream;
+    Dir:AnsiString;
+    Size:sw_integer;
+begin
+  PushStatus(msg_storingreturntolastdir);
+  New(S, Init(1024,4096));
+  OK:=true;
+  {$i-}GetDir(0,Dir);{$i+}
+  if IOResult=0 then
+  begin
+    Size:=length(Dir);
+    S^.Write(Size, sizeof(Size));
+    if Size>0 then S^.Write(Dir[1],Size);
+    S^.Seek(0);
+    F^.CreateResource(ResLastDirectory,rcBinary,0);
+    OK:=F^.AddResourceEntryFromStream(ResLastDirectory,langDefault,0,S^,S^.GetSize);
+  end;
+  Dispose(S, Done);
+  if OK=false then
+    ErrorBox(msg_errorstoringreturntolastdir,nil);
+  PopStatus;
+  WriteReturnToLastDir:=OK;
+end;
+
 function ReadFlags(F: PResourceFile): boolean;
 var
   OK: boolean;
@@ -967,6 +1037,8 @@ begin
       OK:=ReadCodeComplete(F) and OK;
     if ((DesktopFileFlags and dfCodeTemplates)<>0) then
       OK:=ReadCodeTemplates(F) and OK;
+    if ((DesktopFileFlags and dfReturnToLastDir)<>0) then
+      OK:=ReadReturnToLastDir(F) and OK;
 {$ifdef Unix}
     OK:=ReadKeys(F) and OK;
 {$endif Unix}
@@ -1012,6 +1084,8 @@ begin
         OK:=OK and WriteCodeComplete(F);
       if ((DesktopFileFlags and dfCodeTemplates)<>0) then
         OK:=OK and WriteCodeTemplates(F);
+      if ((DesktopFileFlags and dfReturnToLastDir)<>0) then
+        OK:=WriteReturnToLastDir(F) and OK;
 {$ifdef Unix}
       OK:=OK and WriteKeys(F);
 {$endif Unix}

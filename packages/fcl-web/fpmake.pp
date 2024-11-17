@@ -13,11 +13,13 @@ Const
   SqldbConnectionOSes = [aix,beos,haiku,linux,freebsd,darwin,iphonesim,ios,netbsd,openbsd,solaris,win32,win64,wince,android,dragonfly];
   SqliteOSes          = [aix,beos,haiku,linux,freebsd,darwin,iphonesim,ios,netbsd,openbsd,solaris,win32,win64,wince,android,dragonfly];
   
-  NoSocketsOSes       = [amiga,aros,morphos,wasi];
+  NoSocketsOSes       = [wasi];
   NoApacheOSes        = [amiga,aros,morphos,wasi,ultibo];
+  NoCGIOSes           = [amiga,aros,morphos,wasi,ultibo];
   
   ApacheOSes          = AllOSes - NoApacheOSes;
   SocketsOSes         = AllOSes - NoSocketsOSes;
+  CGIOSes             = ALLOSes - NoCGIOSes;
   
 Var
   T : TTarget;
@@ -46,7 +48,7 @@ begin
     P.Dependencies.Add('hash');
     P.Dependencies.Add('fcl-registry', AllWindowsOSes);
     P.Dependencies.Add('openssl', AllUnixOSes+AllWindowsOSes);
-    P.Dependencies.Add('fastcgi',SocketsOSes);
+    P.Dependencies.Add('fastcgi',CGIOSes);
 {$ifndef ALLPACKAGES}
     P.Dependencies.Add('httpd20', ApacheOSes);
 {$endif ALLPACKAGES}    
@@ -56,6 +58,10 @@ begin
     // (Temporary) indirect dependencies, not detected by fpcmake:
     P.Dependencies.Add('univint', [MacOSX,iphonesim,ios]);
     P.Dependencies.Add('libmicrohttpd', LibMicroHttpdOSes);
+    
+    P.Dependencies.Add('fcl-jsonschema');
+    P.Dependencies.Add('fcl-openapi');
+    
     P.Author := 'FreePascal development team';
     P.License := 'LGPL with modification, ';
     P.HomepageURL := 'www.freepascal.org';
@@ -71,6 +77,7 @@ begin
     P.SourcePath.Add('src/restbridge');
     P.SourcePath.Add('src/websocket');
     P.SourcePath.Add('src/fcm');
+    P.SourcePath.Add('src/openapi');
     T:=P.Targets.addUnit('fpmimetypes.pp');
 
     T:=P.Targets.AddUnit('httpdefs.pp');
@@ -165,12 +172,12 @@ begin
       end;
     with P.Targets.AddUnit('fpfcgi.pp') do
       begin
-        OSes:=SocketsOSes-[ultibo];
+        OSes:=CGIOSes;
         Dependencies.AddUnit('custfcgi');
       end;
     with P.Targets.AddUnit('custfcgi.pp') do
       begin
-        OSes:=SocketsOSes-[ultibo];
+        OSes:=CGIOSes;
         Dependencies.AddUnit('httpprotocol');
         Dependencies.AddUnit('cgiprotocol');
         Dependencies.AddUnit('custcgi');
@@ -244,14 +251,12 @@ begin
         Dependencies.AddUnit('fphttpserver');
         Dependencies.AddUnit('HTTPDefs');
       end;
-    T:=P.Targets.AddUnit('fcgigate.pp');
-    T.ResourceStrings:=true;
-    T.OSes:=SocketsOSes;
-    
-    With T.Dependencies do
+    with P.Targets.AddUnit('fcgigate.pp') do
       begin
-      AddUnit('httpdefs');
-      AddUnit('custcgi');
+        OSes:=CGIOSes;
+        ResourceStrings:=true;
+        Dependencies.AddUnit('httpdefs');
+        Dependencies.AddUnit('custcgi');
       end;
       
     T:=P.Targets.AddUnit('fphttpserver.pp');
@@ -581,7 +586,14 @@ begin
         lOSes := lOSes - [java,android];
       AddUnit('custmicrohttpapp',lOSes);
       end;
-        
+
+    T:=P.Targets.AddUnit('fpopenapiclient.pp');
+    T.Dependencies.AddUnit('fpwebclient');
+
+    T:=P.Targets.AddUnit('fpopenapimodule.pp');
+    T.Dependencies.AddUnit('httpprotocol');
+    T.Dependencies.AddUnit('httpdefs');
+    T.Dependencies.AddUnit('httproute');
 end;
     
 {$ifndef ALLPACKAGES}

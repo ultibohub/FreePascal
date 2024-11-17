@@ -2612,11 +2612,26 @@ Procedure TValue.CastIntegerToFloat(out aRes : Boolean; out ADest: TValue; aDest
 var
   Tmp : Int64;
   Ti : PtypeInfo;
-
+  DestFloatType: TFloatType;
+  S: Single;
+  D: Double;
+  E: Extended;
+  Co: Comp;
+  Cu: Currency;
 begin
   Tmp:=AsInt64;
-  Ti:=FloatTypeToTypeInfo(GetTypeData(aDestType)^.FloatType);
-  TValue.Make(@Tmp,Ti,aDest);
+  DestFloatType := GetTypeData(aDestType)^.FloatType;
+  Ti:=FloatTypeToTypeInfo(DestFloatType);
+  case DestFloatType of
+    ftSingle:   begin S  := Tmp; TValue.Make(@S, Ti,aDest); end;
+    ftDouble:   begin D  := Tmp; TValue.Make(@D, Ti,aDest); end;
+    ftExtended: begin E  := Tmp; TValue.Make(@E, Ti,aDest); end;
+    ftComp:     begin Co := Tmp; TValue.Make(@Co,Ti,aDest); end;
+    ftCurr:     begin Cu := Tmp; TValue.Make(@Cu,Ti,aDest); end;
+  else
+    aRes := False;
+    Exit;
+  end;
   aRes:=True;
 end;
 
@@ -2756,37 +2771,62 @@ var
   S : Single;
   D : Double;
   E : Extended;
-  Co : Comp;
   Cu : Currency;
-
+  DestFloatType: TFloatType;
 begin
+  if TypeData^.FloatType = ftComp then
+  begin
+    aRes := False;
+    Exit;
+  end;
   // Destination float type
-  ti:=FloatTypeToTypeInfo(GetTypeData(aDestType)^.FloatType);
+  DestFloatType := GetTypeData(aDestType)^.FloatType;
+  if DestFloatType = ftComp then
+  begin
+    aRes := False;
+    Exit;
+  end;
+  ti:=FloatTypeToTypeInfo(DestFloatType);
   case TypeData^.FloatType of
     ftSingle:
       begin
       S:=AsSingle;
-      TValue.Make(@S,Ti,aDest);
+      case DestFloatType of
+        ftSingle:   begin          TValue.Make(@S, Ti,aDest); end;
+        ftDouble:   begin D := S;  TValue.Make(@D, Ti,aDest); end;
+        ftExtended: begin E := S;  TValue.Make(@E, Ti,aDest); end;
+        ftCurr:     begin Cu := S; TValue.Make(@Cu,Ti,aDest); end;
+      end;
       end;
     ftDouble:
       begin
       D:=AsDouble;
-      TValue.Make(@D,Ti,aDest);
+      case DestFloatType of
+        ftSingle:   begin S  := D; TValue.Make(@S, Ti,aDest); end;
+        ftDouble:   begin          TValue.Make(@D, Ti,aDest); end;
+        ftExtended: begin E  := D; TValue.Make(@E, Ti,aDest); end;
+        ftCurr:     begin Cu := D; TValue.Make(@Cu,Ti,aDest); end;
+      end;
       end;
     ftExtended:
       begin
       E:=AsExtended;
-      TValue.Make(@E,Ti,aDest);
+      case DestFloatType of
+        ftSingle:   begin S  := E; TValue.Make(@S, Ti,aDest); end;
+        ftDouble:   begin D  := E; TValue.Make(@D, Ti,aDest); end;
+        ftExtended: begin          TValue.Make(@E, Ti,aDest); end;
+        ftCurr:     begin Cu := E; TValue.Make(@Cu,Ti,aDest); end;
       end;
-    ftComp:
-      begin
-      Co:=FData.FAsComp;
-      TValue.Make(@Co,Ti,aDest);
       end;
     ftCurr:
       begin
       Cu:=AsCurrency;
-      TValue.Make(@Cu,Ti,aDest);
+      case DestFloatType of
+        ftSingle:   begin S  := Cu; TValue.Make(@S, Ti,aDest); end;
+        ftDouble:   begin D  := Cu; TValue.Make(@D, Ti,aDest); end;
+        ftExtended: begin E  := Cu; TValue.Make(@E, Ti,aDest); end;
+        ftCurr:     begin           TValue.Make(@Cu,Ti,aDest); end;
+      end;
       end;
     end;
   aRes:=True;

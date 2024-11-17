@@ -126,6 +126,7 @@ const
      dfSymbolInformation  = $00000020;
      dfCodeCompleteWords  = $00000040;
      dfCodeTemplates      = $00000080;
+     dfReturnToLastDir    = $00000100;
 
      { Auto Save flag constants }
      asEditorFiles        = $00000001; { Editor files }
@@ -489,7 +490,7 @@ const
          { CSourceWindow }
 {167-182}#$17#$1F#$1A#$31#$31#$1E#$71#$1F#$00#$00#$00#$00#$00#$00#$00#$00 + { 1-16}
 {183-198}#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00#$00 + {17-32}
-{199-214}#$1E#$1F#$17#$1F#$1E#$1B#$13#$1A#$1E#$71#$3F#$30#$1C#$13#$1F#$4E + {33-48}
+{199-214}#$1E#$19#$17#$1F#$1E#$1B#$13#$1A#$1E#$71#$3F#$30#$1C#$13#$19#$4E + {33-48}
          { CBrowserWindow }
 {215-226}#$31#$3F#$3A#$31#$31#$31#$71#$1F#$31#$2F#$3E#$3F +
          { CFPClockView }

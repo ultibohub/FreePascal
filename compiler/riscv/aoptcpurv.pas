@@ -622,6 +622,10 @@ implementation
               A_LD,
 {$endif riscv64}
               A_ADD,
+{$ifdef riscv64}
+              A_ADDIW,
+              A_SUBW,
+{$endif riscv64}
               A_DIV,
               A_DIVU,
 {$ifdef riscv64}
@@ -630,10 +634,11 @@ implementation
 {$endif riscv64}
               A_REM,
               A_REMU,
-              {$ifdef riscv64}
+{$ifdef riscv64}
               A_REMW,
               A_REMUW,
-              {$endif riscv64}
+              A_MULW,
+{$endif riscv64}
               A_MUL,
               A_MULH,
               A_MULHSU,
