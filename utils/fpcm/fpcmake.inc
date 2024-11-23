@@ -1383,9 +1383,9 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ifndef CROSSBOOTSTRAP'#010+
   'ifneq ($(BINUTILSPREFIX),)'#010+
   'override FPCOPT+=-XP$(BINUTILSPREFIX)'#010+
+  'ifneq ($(RLINKPATH),)'#010+
+  'override FPCOPT+=-Xr$(RLINK','PATH)'#010+
   'endif'#010+
-  'ifneq ($(BINUTILSPREFIX),)'#010+
-  'override FPCOPT+','=-Xr$(RLINKPATH)'#010+
   'endif'#010+
   'endif'#010+
   #010+
@@ -1395,7 +1395,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'sd'#010+
   '# with BINUTILSPREFIX=i386-)'#010+
   'ifndef CROSSCOMPILE'#010+
-  'ifneq ($(BINUTILS','PREFIX),)'#010+
+  'ifneq ($(BINUTILSPREFI','X),)'#010+
   'override FPCMAKEOPT+=-XP$(BINUTILSPREFIX)'#010+
   'override FPMAKE_BUILD_OPT+=-XP$(BINUTILSPREFIX)'#010+
   'endif'#010+
@@ -1405,7 +1405,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ifdef UNITDIR'#010+
   'override FPCOPT+=$(addprefix -Fu,$(UNITDIR))'#010+
   'endif'#010+
-  'ifdef',' LIBDIR'#010+
+  'ifdef LIBD','IR'#010+
   'override FPCOPT+=$(addprefix -Fl,$(LIBDIR))'#010+
   'endif'#010+
   'ifdef OBJDIR'#010+
@@ -1418,9 +1418,9 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Smartlinking'#010+
   'ifdef LINKSMART'#010+
   'override FPCOPT+=-XX'#010+
-  'end','if'#010+
+  'endif'#010+
   #010+
-  '# Smartlinking creation'#010+
+  '#',' Smartlinking creation'#010+
   'ifdef CREATESMART'#010+
   'override FPCOPT+=-CX'#010+
   'endif'#010+
@@ -1435,7 +1435,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# (strip, optimize and don'#039't load fpc.cfg)'#010+
   'ifdef RELEASE'#010+
   'FPCCPUOPT:=-O2'#010+
-  'overr','ide FPCOPT+=-Ur -Xs $(FPCCPUOPT) -n'#010+
+  'override F','PCOPT+=-Ur -Xs $(FPCCPUOPT) -n'#010+
   'override FPCOPTDEF+=RELEASE'#010+
   'endif'#010+
   #010+
@@ -1451,7 +1451,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '# Verbose settings (warning,note,info)'#010+
   'ifdef VERBOSE'#010+
-  'override FPCO','PT+=-vwni'#010+
+  'override FPCOPT+=-','vwni'#010+
   'endif'#010+
   #010+
   '# Needed compiler options'#010+
@@ -1462,7 +1462,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override FPCOPT+=$(addprefix -Fu,$(COMPILER_UNITDIR))'#010+
   'endif'#010+
   'ifdef COMPILER_LIBRARYDIR'#010+
-  'override FPCOPT+=$(add','prefix -Fl,$(COMPILER_LIBRARYDIR))'#010+
+  'override FPCOPT+=$(addprefi','x -Fl,$(COMPILER_LIBRARYDIR))'#010+
   'endif'#010+
   'ifdef COMPILER_OBJECTDIR'#010+
   'override FPCOPT+=$(addprefix -Fo,$(COMPILER_OBJECTDIR))'#010+
@@ -1471,8 +1471,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override FPCOPT+=$(addprefix -Fi,$(COMPILER_INCLUDEDIR))'#010+
   'endif'#010+
   #010+
-  '# Cross compiler utils',#010+
-  'ifdef CROSSBINDIR'#010+
+  '# Cross compiler utils'#010+
+  'ifde','f CROSSBINDIR'#010+
   'override FPCOPT+=-FD$(CROSSBINDIR)'#010+
   'endif'#010+
   #010+
@@ -1481,8 +1481,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override FPCOPT+=-FE$(COMPILER_TARGETDIR)'#010+
   'ifeq ($(COMPILER_TARGETDIR),.)'#010+
   'override TARGETDIRPREFIX='#010+
-  'e','lse'#010+
-  'override TARGETDIRPREFIX=$(COMPILER_TARGETDIR)/'#010+
+  'else'#010+
+  'o','verride TARGETDIRPREFIX=$(COMPILER_TARGETDIR)/'#010+
   'endif'#010+
   'endif'#010+
   #010+
@@ -1490,7 +1490,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ifdef COMPILER_UNITTARGETDIR'#010+
   'override FPCOPT+=-FU$(COMPILER_UNITTARGETDIR)'#010+
   'ifeq ($(COMPILER_UNITTARGETDIR),.)'#010+
-  'override UNITTARG','ETDIRPREFIX='#010+
+  'override UNITTARGETDIR','PREFIX='#010+
   'else'#010+
   'override UNITTARGETDIRPREFIX=$(COMPILER_UNITTARGETDIR)/'#010+
   'endif'#010+
@@ -1501,19 +1501,19 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'endif'#010+
   #010+
-  'ifdef SYSROOTPA','TH'#010+
-  'override FPCOPT+=-XR$(SYSROOTPATH)'#010+
+  'ifdef SYSROOTPATH'#010+
+  'ov','erride FPCOPT+=-XR$(SYSROOTPATH)'#010+
   'else'#010+
   '# if we are compiling natively on aarch64-darwin and if -/Library/Deve'+
   'loper/CommandLineTools/SDKs/MacOSX.sdk exists,'#010+
   '# add it to the compiler command line'#010+
   'ifeq ($(OS_TARGET),$(OS_SOURCE))'#010+
-  'ifneq ($(','findstring $(OS_TARGET),darwin),)'#010+
+  'ifneq ($(finds','tring $(OS_TARGET),darwin),)'#010+
   '# so far the only tested one'#010+
   'ifneq ($(findstring $(CPU_TARGET),aarch64),)'#010+
   'ifneq ($(wildcard /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk)'+
   ',)'#010+
-  'override FPCOPT+=-XR/Library/Developer/CommandLineTools/SDK','s/MacOSX.'+
+  'override FPCOPT+=-XR/Library/Developer/CommandLineTools/SDKs/Mac','OSX.'+
   'sdk'#010+
   'endif'#010+
   'endif'#010+
@@ -1528,7 +1528,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# create always pic'#039'ed code on x86_64, mips and mipsel'#010+
   '# on unix-like systems'#010+
   'ifneq ($(findstring $(OS_TARGET),dragonfly freebsd openbsd netbsd linu'+
-  'x',' solaris),)'#010+
+  'x sola','ris),)'#010+
   'ifneq ($(findstring $(CPU_TARGET),x86_64 mips mipsel),)'#010+
   'override FPCOPT+=-Cg'#010+
   'endif'#010+
@@ -1542,7 +1542,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '[command_libc]'#010+
   '# Add GCC lib path if asked'#010+
   'ifdef GCCLIBDIR'#010+
-  'overri','de FPCOPT+=-Fl$(GCCLIBDIR)'#010+
+  'override FP','COPT+=-Fl$(GCCLIBDIR)'#010+
   'endif'#010+
   'ifdef OTHERLIBDIR'#010+
   'override FPCOPT+=$(addprefix -Fl,$(OTHERLIBDIR))'#010+
@@ -1555,7 +1555,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override FPCOPT+=$(OPT)'#010+
   'endif'#010+
   #010+
-  '# Override options to com','pile the fpmake-binary with command-line op'+
+  '# Override options to compile ','the fpmake-binary with command-line op'+
   'tions provided in FPMAKEBUILDOPT'#010+
   'ifdef FPMAKEBUILDOPT'#010+
   'override FPMAKE_BUILD_OPT+=$(FPMAKEBUILDOPT)'#010+
@@ -1563,7 +1563,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '# Add defines from FPCOPTDEF to FPCOPT'#010+
   'ifdef FPCOPTDEF'#010+
-  'override FPCOPT+=$(addprefix -d,$(FP','COPTDEF))'#010+
+  'override FPCOPT+=$(addprefix -d,$(FPCOPTD','EF))'#010+
   'endif'#010+
   #010+
   '# Was a config file specified ?'#010+
@@ -1576,8 +1576,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override FPCEXTCMD:=$(FPCOPT)'#010+
   'override FPCOPT:=!FPCEXTCMD'#010+
   'export FPCEXTCMD'#010+
-  'en','dif'#010+
-  #010+
+  'endif'#010+
+  #010,
   'override AFULL_TARGET=$(CPU_TARGET)-$(OS_TARGET)'#010+
   'override AFULL_SOURCE=$(CPU_SOURCE)-$(OS_SOURCE)'#010+
   #010+
@@ -1589,7 +1589,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override FPCOPT+=$(CROSSOPT)'#010+
   'endif'#010+
   #010+
-  '# Compil','er commandline'#010+
+  '# Compiler co','mmandline'#010+
   'override COMPILER:=$(strip $(FPC) $(FPCOPT))'#010+
   #010+
   '# also call ppas if with command option -s'#010+
@@ -1597,8 +1597,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# or if -sh is used'#010+
   'ifneq (,$(findstring -sh ,$(COMPILER)))'#010+
   'UseEXECPPAS=1'#010+
-  'endif'#010,
-  'ifneq (,$(findstring -s ,$(COMPILER)))'#010+
+  'endif'#010+
+  'ifneq',' (,$(findstring -s ,$(COMPILER)))'#010+
   'ifeq ($(FULL_SOURCE),$(FULL_TARGET))'#010+
   'UseEXECPPAS=1'#010+
   'endif'#010+
@@ -1614,8 +1614,9 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   #010+
   #010+
-  '[loaderrules]'#010,
-  '#####################################################################'#010+
+  '[loaderrules]'#010+
+  '#####','###############################################################'+
+  '#'#010+
   '# Loaders'#010+
   '#####################################################################'#010+
   #010+
@@ -1623,7 +1624,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   'ifneq ($(TARGET_LOADERS),)'#010+
   'override ALLTARGET+=fpc_loaders'#010+
-  'override ','CLEANTARGET+=fpc_loaders_clean'#010+
+  'override CLEAN','TARGET+=fpc_loaders_clean'#010+
   'override INSTALLTARGET+=fpc_loaders_install'#010+
   #010+
   'override LOADEROFILES:=$(addsuffix $(OEXT),$(TARGET_LOADERS))'#010+
@@ -1631,7 +1632,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '%$(OEXT): %$(LOADEREXT)'#010+
   'ifdef COMPILER_UNITTARGETDIR'#010+
-  '        $(AS) -o $(COMPILER_UNITTARGETDIR)','/$*$(OEXT) $<'#010+
+  '        $(AS) -o $(COMPILER_UNITTARGETDIR)/$*$(','OEXT) $<'#010+
   'else'#010+
   '        $(AS) -o $*$(OEXT) $<'#010+
   'endif'#010+
@@ -1643,7 +1644,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        -$(DEL) $(addprefix $(COMPILER_UNITTARGETDIR)/,$(LOADEROFILES)'+
   ')'#010+
   'else'#010+
-  '   ','     -$(DEL) $(LOADEROFILES)'#010+
+  '        ','-$(DEL) $(LOADEROFILES)'#010+
   'endif'#010+
   #010+
   'fpc_loaders_install:'#010+
@@ -1652,7 +1653,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        $(INSTALL) $(addprefix $(COMPILER_UNITTARGETDIR)/,$(LOADEROFIL'+
   'ES)) $(INSTALL_UNITDIR)'#010+
   'else'#010+
-  '        $(INSTALL) ','$(LOADEROFILES) $(INSTALL_UNITDIR)'#010+
+  '        $(INSTALL) $(LOA','DEROFILES) $(INSTALL_UNITDIR)'#010+
   'endif'#010+
   #010+
   #010+
@@ -1663,13 +1664,13 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '.PHONY: fpc_units'#010+
   #010+
-  'ifneq ($(TARGET_U','NITS)$(TARGET_IMPLICITUNITS),)'#010+
+  'ifneq ($(TARGET_UNITS)','$(TARGET_IMPLICITUNITS),)'#010+
   'override ALLTARGET+=fpc_units'#010+
   #010+
   'override UNITPPUFILES=$(addsuffix $(PPUEXT),$(TARGET_UNITS))'#010+
   'override IMPLICITUNITPPUFILES=$(addsuffix $(PPUEXT),$(TARGET_IMPLICITU'+
   'NITS))'#010+
-  'override INSTALLPPUFILES+=$(UNITPPUFILES',') $(IMPLICITUNITPPUFILES)'#010+
+  'override INSTALLPPUFILES+=$(UNITPPUFILES) $(I','MPLICITUNITPPUFILES)'#010+
   'override CLEANPPUFILES+=$(UNITPPUFILES) $(IMPLICITUNITPPUFILES)'#010+
   'endif'#010+
   #010+
@@ -1678,27 +1679,28 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '[exerules]'#010+
   '#####################################################################'#010+
-  '# Exes'#010,
-  '#####################################################################'#010+
+  '# Exes'#010+
+  '#####','###############################################################'+
+  '#'#010+
   #010+
   '.PHONY: fpc_exes'#010+
   #010+
   '# Programs are not needed for a cross installation'#010+
   'ifndef CROSSINSTALL'#010+
   'ifneq ($(TARGET_PROGRAMS),)'#010+
-  'override EXEFILES=$(addsuffix $(EXEEXT),$(TARGET_PRO','GRAMS))'#010+
+  'override EXEFILES=$(addsuffix $(EXEEXT),$(TARGET_PROGRAMS','))'#010+
   'override EXEOFILES:=$(addsuffix $(OEXT),$(TARGET_PROGRAMS)) $(addprefi'+
   'x $(STATICLIBPREFIX),$(addsuffix $(STATICLIBEXT),$(TARGET_PROGRAMS))) '+
   '$(addprefix $(IMPORTLIBPREFIX),$(addsuffix $(STATICLIBEXT),$(TARGET_PR'+
   'OGRAMS)))'#010+
-  'override EXE','DBGFILES:=$(addsuffix $(EXEDBGEXT),$(TARGET_PROGRAMS))'#010+
+  'override EXEDBGFI','LES:=$(addsuffix $(EXEDBGEXT),$(TARGET_PROGRAMS))'#010+
   #010+
   'override ALLTARGET+=fpc_exes'#010+
   'override INSTALLEXEFILES+=$(EXEFILES)'#010+
   'override CLEANEXEFILES+=$(EXEFILES) $(EXEOFILES)'#010+
   'override CLEANEXEDBGFILES+=$(EXEDBGFILES)'#010+
   'ifeq ($(OS_TARGET),os2)'#010+
-  'ov','erride CLEANEXEFILES+=$(addsuffix $(AOUTEXT),$(TARGET_PROGRAMS))'#010+
+  'overrid','e CLEANEXEFILES+=$(addsuffix $(AOUTEXT),$(TARGET_PROGRAMS))'#010+
   'endif'#010+
   'ifeq ($(OS_TARGET),emx)'#010+
   'override CLEANEXEFILES+=$(addsuffix $(AOUTEXT),$(TARGET_PROGRAMS))'#010+
@@ -1706,7 +1708,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'endif'#010+
   #010+
-  'fpc_exes: $(COMPILER_TARGETDIR) $(COMPILER_UNITTARGETDIR) $','(EXEFILES'+
+  'fpc_exes: $(COMPILER_TARGETDIR) $(COMPILER_UNITTARGETDIR) $(EXEF','ILES'+
   ')'#010+
   #010+
   #010+
@@ -1716,7 +1718,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '#####################################################################'#010+
   #010+
   'ifdef TARGET_RSTS'#010+
-  'override RSTFILES=$(addsuffix $(RSTEXT','),$(TARGET_RSTS))'#010+
+  'override RSTFILES=$(addsuffix $(RSTEXT),$(T','ARGET_RSTS))'#010+
   #010+
   'override CLEANRSTFILES+=$(RSTFILES)'#010+
   'endif'#010+
@@ -1727,24 +1729,24 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Examples'#010+
   '#####################################################################'#010+
   #010+
-  '.PHONY: fp','c_examples'#010+
+  '.PHONY: fpc_exa','mples'#010+
   #010+
   'ifneq ($(TARGET_EXAMPLES),)'#010+
   'HASEXAMPLES=1'#010+
   'override EXAMPLESOURCEFILES:=$(wildcard $(addsuffix .pp,$(TARGET_EXAMP'+
   'LES)) $(addsuffix .pas,$(TARGET_EXAMPLES)) $(addsuffix .lpr,$(TARGET_E'+
-  'XAMPLES)) $(addsuffix .dpr,$(TARGET_EXAMPLES))',')'#010+
-  'override EXAMPLEFILES:=$(addsuffix $(EXEEXT),$(TARGET_EXAMPLES))'#010+
+  'XAMPLES)) $(addsuffix .dpr,$(TARGET_EXAMPLES)))'#010+
+  'ove','rride EXAMPLEFILES:=$(addsuffix $(EXEEXT),$(TARGET_EXAMPLES))'#010+
   'override EXAMPLEOFILES:=$(addsuffix $(OEXT),$(TARGET_EXAMPLES)) $(addp'+
   'refix $(STATICLIBPREFIX),$(addsuffix $(STATICLIBEXT),$(TARGET_EXAMPLES'+
-  '))) $(addprefix $(IMPORTLIBPREFIX','),$(addsuffix $(STATICLIBEXT),$(TAR'+
+  '))) $(addprefix $(IMPORTLIBPREFIX),$(a','ddsuffix $(STATICLIBEXT),$(TAR'+
   'GET_EXAMPLES)))'#010+
   'override EXAMPLEDBGFILES:=$(addsuffix $(EXEDBGEXT),$(TARGET_EXAMPLES))'+
   #010+
   #010+
   'override CLEANEXEFILES+=$(EXAMPLEFILES) $(EXAMPLEOFILES)'#010+
   'override CLEANEXEDBGFILES+=$(EXAMPLEDBGFILES)'#010+
-  'ifeq ($(OS_TAR','GET),os2)'#010+
+  'ifeq ($(OS_TARGET),','os2)'#010+
   'override CLEANEXEFILES+=$(addsuffix $(AOUTEXT),$(TARGET_EXAMPLES))'#010+
   'endif'#010+
   'ifeq ($(OS_TARGET),emx)'#010+
@@ -1755,14 +1757,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'HASEXAMPLES=1'#010+
   'endif'#010+
   #010+
-  'fp','c_examples: all $(EXAMPLEFILES) $(addsuffix _all,$(TARGET_EXAMPLED'+
+  'fpc_exa','mples: all $(EXAMPLEFILES) $(addsuffix _all,$(TARGET_EXAMPLED'+
   'IRS))'#010+
   #010+
   #010+
   '[compilerules]'#010+
   '#####################################################################'#010+
   '# General compile rules'#010+
-  '#########################################################','###########'+
+  '##############################################################','######'+
   '#'#010+
   #010+
   '.PHONY: fpc_all fpc_smart fpc_debug fpc_release fpc_shared'#010+
@@ -1773,9 +1775,9 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'fpc_all: $(FPCMADE)'#010+
   #010+
   'fpc_smart:'#010+
-  '        $(MAKE) all LINKSMART=1 CREATESMART=1',#010+
+  '        $(MAKE) all LINKSMART=1 CREATESMART=1'#010+
   #010+
-  'fpc_debug:'#010+
+  'fpc','_debug:'#010+
   '        $(MAKE) all DEBUG=1'#010+
   #010+
   'fpc_release:'#010+
@@ -1786,7 +1788,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '.SUFFIXES: $(EXEEXT) $(PPUEXT) $(OEXT) .pas .lpr .dpr .pp .rc .res'#010+
   #010+
-  '$(COMPIL','ER_UNITTARGETDIR):'#010+
+  '$(COMPILER_UN','ITTARGETDIR):'#010+
   '        $(MKDIRTREE) $(COMPILER_UNITTARGETDIR)'#010+
   #010+
   '$(COMPILER_TARGETDIR):'#010+
@@ -1798,7 +1800,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '%$(PPUEXT): %.pas'#010+
   '        $(COMPILER) $<'#010+
-  '    ','    $(EXECPPAS)'#010+
+  '        $','(EXECPPAS)'#010+
   #010+
   '%$(EXEEXT): %.pp'#010+
   '        $(COMPILER) $<'#010+
@@ -1813,8 +1815,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        $(EXECPPAS)'#010+
   #010+
   '%$(EXEEXT): %.dpr'#010+
-  '        $(COMPILER) ','$<'#010+
-  '        $(EXECPPAS)'#010+
+  '        $(COMPILER) $<'#010+
+  '  ','      $(EXECPPAS)'#010+
   #010+
   '%.res: %.rc'#010+
   '        windres -i $< -o $@'#010+
@@ -1822,14 +1824,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Search paths for .ppu, .pp, .pas, .lpr, .dpr'#010+
   'vpath %.pp $(COMPILER_SOURCEDIR) $(COMPILER_INCLUDEDIR)'#010+
   'vpath %.pas $(COMPILER_SOURCEDIR) $(COMPILER_INCLUDEDIR)'#010+
-  'vpath %.lpr $(C','OMPILER_SOURCEDIR) $(COMPILER_INCLUDEDIR)'#010+
+  'vpath %.lpr $(COMPIL','ER_SOURCEDIR) $(COMPILER_INCLUDEDIR)'#010+
   'vpath %.dpr $(COMPILER_SOURCEDIR) $(COMPILER_INCLUDEDIR)'#010+
   'vpath %.inc $(COMPILER_INCLUDEDIR)'#010+
   'vpath %$(OEXT) $(COMPILER_UNITTARGETDIR)'#010+
   'vpath %$(PPUEXT) $(COMPILER_UNITTARGETDIR)'#010+
   #010+
   '[sharedrules]'#010+
-  '#######','#############################################################'+
+  '############','########################################################'+
   '#'#010+
   '# Library'#010+
   '#####################################################################'#010+
@@ -1839,7 +1841,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override INSTALLTARGET+=fpc_shared_install'#010+
   #010+
   'ifndef SHARED_LIBVERSION'#010+
-  'SHARED_','LIBVERSION=$(FPC_VERSION)'#010+
+  'SHARED_LIBVE','RSION=$(FPC_VERSION)'#010+
   'endif'#010+
   #010+
   'ifndef SHARED_LIBNAME'#010+
@@ -1851,7 +1853,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'N)$(SHAREDLIBEXT)'#010+
   'endif'#010+
   #010+
-  '# Default sharedlib units are',' all unit objects'#010+
+  '# Default sharedlib units are all ','unit objects'#010+
   'ifndef SHARED_LIBUNITS'#010+
   'SHARED_LIBUNITS:=$(TARGET_UNITS) $(TARGET_IMPLICITUNITS)'#010+
   'override SHARED_LIBUNITS:=$(filter-out $(INSTALL_BUILDUNIT),$(SHARED_L'+
@@ -1860,14 +1862,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   'fpc_shared:'#010+
   'ifdef HASSHAREDLIB'#010+
-  '        $(MAKE) all CREA','TESHARED=1 LINKSHARED=1 CREATESMART=1'#010+
+  '        $(MAKE) all CREATESHA','RED=1 LINKSHARED=1 CREATESMART=1'#010+
   'ifneq ($(SHARED_BUILD),n)'#010+
   '        $(PPUMOVE) -q $(SHARED_LIBUNITS) -i$(COMPILER_UNITTARGETDIR) -'+
   'o$(SHARED_FULLNAME) -d$(COMPILER_UNITTARGETDIR)'#010+
   'endif'#010+
   'else'#010+
-  '        @$(ECHO) Shared Libraries not supported',#010+
-  'endif'#010+
+  '        @$(ECHO) Shared Libraries not supported'#010+
+  'endi','f'#010+
   #010+
   'fpc_shared_install:'#010+
   'ifneq ($(SHARED_BUILD),n)'#010+
@@ -1876,7 +1878,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        $(INSTALL) $(COMPILER_UNITTARGETDIR)/$(SHARED_FULLNAME) $(INST'+
   'ALL_SHAREDDIR)'#010+
   'endif'#010+
-  'e','ndif'#010+
+  'endif'#010,
   'endif'#010+
   #010+
   '[installrules]'#010+
@@ -1884,9 +1886,9 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Install rules'#010+
   '#####################################################################'#010+
   #010+
-  '.PHONY: fpc_install fpc_sourceinstall fpc_exampleinstall',#010+
+  '.PHONY: fpc_install fpc_sourceinstall fpc_exampleinstall'#010+
   #010+
-  'ifdef INSTALL_UNITS'#010+
+  'ifd','ef INSTALL_UNITS'#010+
   'override INSTALLPPUFILES+=$(addsuffix $(PPUEXT),$(INSTALL_UNITS))'#010+
   'endif'#010+
   #010+
@@ -1896,23 +1898,23 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   #010+
   'ifdef INSTALLPPUFILES'#010+
-  '# A','void getting the same name twice as some install EXE fail'#010+
+  '# Avoid ','getting the same name twice as some install EXE fail'#010+
   '# in this case, happends for instance for OS/2 target'#010+
   'ifneq ($(IMPORTLIBPREFIX)-$(STATICLIBEXT),$(STATICLIBPREFIX)-$(STATICL'+
   'IBEXT))'#010+
-  'override INSTALLPPULINKFILES:=$(subst $(PPUEXT),$(','OEXT),$(INSTALLPPU'+
+  'override INSTALLPPULINKFILES:=$(subst $(PPUEXT),$(OEXT)',',$(INSTALLPPU'+
   'FILES)) $(addprefix $(STATICLIBPREFIX),$(subst $(PPUEXT),$(STATICLIBEX'+
   'T),$(INSTALLPPUFILES))) $(addprefix $(IMPORTLIBPREFIX),$(subst $(PPUEX'+
   'T),$(STATICLIBEXT),$(INSTALLPPUFILES)))'#010+
   'else'#010+
-  'override INSTALLPPULINKFILES:=$(subst',' $(PPUEXT),$(OEXT),$(INSTALLPPU'+
+  'override INSTALLPPULINKFILES:=$(subst $(PP','UEXT),$(OEXT),$(INSTALLPPU'+
   'FILES)) $(addprefix $(STATICLIBPREFIX),$(subst $(PPUEXT),$(STATICLIBEX'+
   'T),$(INSTALLPPUFILES)))'#010+
   'endif'#010+
   #010+
   'ifneq ($(UNITTARGETDIRPREFIX),)'#010+
   'override INSTALLPPUFILES:=$(addprefix $(UNITTARGETDIRPREFIX),$(notdir '+
-  '$(INST','ALLPPUFILES)))'#010+
+  '$(INSTALLPP','UFILES)))'#010+
   'override INSTALLPPULINKFILES:=$(wildcard $(addprefix $(UNITTARGETDIRPR'+
   'EFIX),$(notdir $(INSTALLPPULINKFILES))))'#010+
   'endif'#010+
@@ -1921,7 +1923,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   #010+
   'ifdef INSTALLEXEFILES'#010+
-  'ifneq ($(T','ARGETDIRPREFIX),)'#010+
+  'ifneq ($(TARGET','DIRPREFIX),)'#010+
   'override INSTALLEXEFILES:=$(addprefix $(TARGETDIRPREFIX),$(notdir $(IN'+
   'STALLEXEFILES)))'#010+
   'endif'#010+
@@ -1930,7 +1932,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'fpc_install: all $(INSTALLTARGET)'#010+
   'ifdef INSTALLEXEFILES'#010+
   '        $(MKDIR) $(INSTALL_BINDIR)'#010+
-  '        $(INSTALLEXE) $(INSTALL','EXEFILES) $(INSTALL_BINDIR)'#010+
+  '        $(INSTALLEXE) $(INSTALLEXEFI','LES) $(INSTALL_BINDIR)'#010+
   'endif'#010+
   'ifdef INSTALL_CREATEPACKAGEFPC'#010+
   'ifdef FPCMAKE'#010+
@@ -1938,7 +1940,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'c,'#010+
   '# a safety check is done if Makefile.fpc is available'#010+
   'ifdef PACKAGE_VERSION'#010+
-  'ifneq ($(wil','dcard Makefile.fpc),)'#010+
+  'ifneq ($(wildcard',' Makefile.fpc),)'#010+
   '        $(FPCMAKE) -p -T$(CPU_TARGET)-$(OS_TARGET) Makefile.fpc'#010+
   '        $(MKDIR) $(INSTALL_UNITDIR)'#010+
   '        $(INSTALL) Package.fpc $(INSTALL_UNITDIR)'#010+
@@ -1947,14 +1949,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'endif'#010+
   'ifdef INSTALLPPUFILES'#010+
-  '        $(MKDIR) $(INS','TALL_UNITDIR)'#010+
+  '        $(MKDIR) $(INSTALL_','UNITDIR)'#010+
   '        $(INSTALL) $(INSTALLPPUFILES) $(INSTALL_UNITDIR)'#010+
   'ifneq ($(INSTALLPPULINKFILES),)'#010+
   '        $(INSTALL) $(INSTALLPPULINKFILES) $(INSTALL_UNITDIR)'#010+
   'endif'#010+
   'ifneq ($(wildcard $(LIB_FULLNAME)),)'#010+
-  '        $(MKDIR) $(INSTALL_LIBDIR',')'#010+
-  '        $(INSTALL) $(LIB_FULLNAME) $(INSTALL_LIBDIR)'#010+
+  '        $(MKDIR) $(INSTALL_LIBDIR)'#010+
+  '   ','     $(INSTALL) $(LIB_FULLNAME) $(INSTALL_LIBDIR)'#010+
   'ifdef inUnix'#010+
   '        ln -sf $(LIB_FULLNAME) $(INSTALL_LIBDIR)/$(LIB_NAME)'#010+
   'endif'#010+
@@ -1962,7 +1964,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'ifdef INSTALL_FILES'#010+
   '        $(MKDIR) $(INSTALL_DATADIR)'#010+
-  '        $(INSTALL) $(INSTALL_FILES) $','(INSTALL_DATADIR)'#010+
+  '        $(INSTALL) $(INSTALL_FILES) $(INST','ALL_DATADIR)'#010+
   'endif'#010+
   #010+
   'fpc_sourceinstall: distclean'#010+
@@ -1971,15 +1973,15 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   'fpc_exampleinstall: $(EXAMPLEINSTALLTARGET) $(addsuffix _distclean,$(T'+
   'ARGET_EXAMPLEDIRS))'#010+
-  'ifd','ef HASEXAMPLES'#010+
+  'ifdef HA','SEXAMPLES'#010+
   '        $(MKDIR) $(INSTALL_EXAMPLEDIR)'#010+
   'endif'#010+
   'ifdef EXAMPLESOURCEFILES'#010+
   '        $(COPY) $(EXAMPLESOURCEFILES) $(INSTALL_EXAMPLEDIR)'#010+
   'endif'#010+
   'ifdef TARGET_EXAMPLEDIRS'#010+
-  '        $(COPYTREE) $(addsuffix /*,$(TARGET_EXAMPLEDIRS)) $(INST','ALL_'+
-  'EXAMPLEDIR)'#010+
+  '        $(COPYTREE) $(addsuffix /*,$(TARGET_EXAMPLEDIRS)) $(INSTALL_E',
+  'XAMPLEDIR)'#010+
   'endif'#010+
   #010+
   '[distinstallrules]'#010+
@@ -1989,7 +1991,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '.PHONY: fpc_distinstall'#010+
   #010+
-  'fpc_distinstall: ','install exampleinstall'#010+
+  'fpc_distinstall: insta','ll exampleinstall'#010+
   #010+
   #010+
   '[zipinstallrules]'#010+
@@ -1997,7 +1999,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Zip'#010+
   '#####################################################################'#010+
   #010+
-  '.PHONY: fpc_zipinstall fpc_zipsourceinstall fpc_zi','pexampleinstall'#010+
+  '.PHONY: fpc_zipinstall fpc_zipsourceinstall fpc_zipexam','pleinstall'#010+
   #010+
   '# Temporary path to pack a file, can only use a single deep'#010+
   '# subdir, because the deltree can'#039't see the whole tree to remove'#010+
@@ -2007,9 +2009,9 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'else'#010+
   'PACKDIR=/tmp/fpc-pack'#010+
   'endif'#010+
-  'endif',#010+
+  'endif'#010+
   #010+
-  '# Maybe create default zipname from packagename'#010+
+  '# M','aybe create default zipname from packagename'#010+
   'ifndef ZIPNAME'#010+
   'ifdef DIST_ZIPNAME'#010+
   'ZIPNAME=$(DIST_ZIPNAME)'#010+
@@ -2021,8 +2023,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ifndef FULLZIPNAME'#010+
   'FULLZIPNAME=$(ZIPCROSSPREFIX)$(ZIPPREFIX)$(ZIPNAME)$(ZIPSUFFIX)'#010+
   'endif'#010+
-  #010,
-  '# ZipTarget'#010+
+  #010+
+  '# Zip','Target'#010+
   'ifndef ZIPTARGET'#010+
   'ifdef DIST_ZIPTARGET'#010+
   'ZIPTARGET=DIST_ZIPTARGET'#010+
@@ -2039,7 +2041,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   #010+
   '# Use a wrapper script by default for Os/2'#010+
-  'ifnd','ef inUnix'#010+
+  'ifndef in','Unix'#010+
   'USEZIPWRAPPER=1'#010+
   'endif'#010+
   #010+
@@ -2050,14 +2052,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ZIPWRAPPER=$(subst /,$(PATHSEP),$(DIST_DESTDIR)/fpczip$(SRCBATCHEXT))'#010+
   'else'#010+
   'ZIPPATHSEP=/'#010+
-  'end','if'#010+
+  'endif'#010+
   #010+
-  '# Create commands to create the zip/tar file'#010+
+  '#',' Create commands to create the zip/tar file'#010+
   'ZIPCMD_CDPACK:=cd $(subst /,$(ZIPPATHSEP),$(PACKDIR))'#010+
   'ZIPCMD_CDBASE:=cd $(subst /,$(ZIPPATHSEP),$(BASEDIR))'#010+
   'ifdef USETAR'#010+
   'ZIPDESTFILE:=$(DIST_DESTDIR)/$(FULLZIPNAME)$(TAREXT)'#010+
-  'ZIPCMD_ZIP:=$(TAR','PROG) c$(TAROPT)f $(ZIPDESTFILE) *'#010+
+  'ZIPCMD_ZIP:=$(TARPROG)',' c$(TAROPT)f $(ZIPDESTFILE) *'#010+
   'else'#010+
   'ZIPDESTFILE:=$(DIST_DESTDIR)/$(FULLZIPNAME)$(ZIPEXT)'#010+
   'ZIPCMD_ZIP:=$(subst /,$(ZIPPATHSEP),$(ZIPPROG)) -Dr $(ZIPOPT) $(ZIPDES'+
@@ -2065,13 +2067,13 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   #010+
   'fpc_zipinstall:'#010+
-  '        $(MAKE) $(ZIPTARGET) INSTALL_PREFIX=$','(PACKDIR) ZIPINSTALL=1'#010+
+  '        $(MAKE) $(ZIPTARGET) INSTALL_PREFIX=$(PACK','DIR) ZIPINSTALL=1'#010+
   '        $(MKDIR) $(DIST_DESTDIR)'#010+
   '        $(DEL) $(ZIPDESTFILE)'#010+
   'ifdef USEZIPWRAPPER'#010+
   '# Handle gecho separate as we need to espace \ with \\'#010+
   'ifneq ($(ECHOREDIR),echo)'#010+
-  '        $(ECHOREDIR) -e "$(subst \,\\,$(ZIPCMD_CDPACK','))" > $(ZIPWRAP'+
+  '        $(ECHOREDIR) -e "$(subst \,\\,$(ZIPCMD_CDPACK))" >',' $(ZIPWRAP'+
   'PER)'#010+
   '        $(ECHOREDIR) -e "$(subst \,\\,$(ZIPCMD_ZIP))" >> $(ZIPWRAPPER)'+
   #010+
@@ -2079,7 +2081,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ER)'#010+
   'else'#010+
   '        echo $(ZIPCMD_CDPACK) > $(ZIPWRAPPER)'#010+
-  '        echo $(ZIPCMD_ZI','P) >> $(ZIPWRAPPER)'#010+
+  '        echo $(ZIPCMD_ZIP) >>',' $(ZIPWRAPPER)'#010+
   '        echo $(ZIPCMD_CDBASE) >> $(ZIPWRAPPER)'#010+
   'endif'#010+
   'ifdef inUnix'#010+
@@ -2092,8 +2094,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'endif'#010+
   '        $(DEL) $(ZIPWRAPPER)'#010+
-  'el','se'#010+
-  '        $(ZIPCMD_CDPACK) ; $(ZIPCMD_ZIP) ; $(ZIPCMD_CDBASE)'#010+
+  'else'#010+
+  '  ','      $(ZIPCMD_CDPACK) ; $(ZIPCMD_ZIP) ; $(ZIPCMD_CDBASE)'#010+
   'endif'#010+
   '        $(DELTREE) $(PACKDIR)'#010+
   #010+
@@ -2102,7 +2104,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'SOURCESUFFIX)'#010+
   #010+
   'fpc_zipexampleinstall:'#010+
-  'ifdef HASE','XAMPLES'#010+
+  'ifdef HASEXAMPL','ES'#010+
   '        $(MAKE) fpc_zipinstall ZIPTARGET=exampleinstall ZIPSUFFIX=$(ZI'+
   'PEXAMPLESUFFIX)'#010+
   'endif'#010+
@@ -2112,7 +2114,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   #010+
   '[cleanrules]'#010+
-  '###################################################','#################'+
+  '########################################################','############'+
   '#'#010+
   '# Clean rules'#010+
   '#####################################################################'#010+
@@ -2122,14 +2124,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'ifdef EXEFILES'#010+
   'override CLEANEXEFILES:=$(addprefix $(TARGETDIRPREFIX),$(CLEANEXEFILES'+
   '))'#010+
-  'ov','erride CLEANEXEDBGFILES:=$(addprefix $(TARGETDIRPREFIX),$(CLEANEXE'+
+  'overrid','e CLEANEXEDBGFILES:=$(addprefix $(TARGETDIRPREFIX),$(CLEANEXE'+
   'DBGFILES))'#010+
   'endif'#010+
   #010+
   'ifdef CLEAN_PROGRAMS'#010+
   'override CLEANEXEFILES+=$(addprefix $(TARGETDIRPREFIX),$(addsuffix $(E'+
   'XEEXT), $(CLEAN_PROGRAMS)))'#010+
-  'override CLEANEXEDBGFILES+=$(addprefi','x $(TARGETDIRPREFIX),$(addsuffi'+
+  'override CLEANEXEDBGFILES+=$(addprefix $(T','ARGETDIRPREFIX),$(addsuffi'+
   'x $(EXEDBGEXT), $(CLEAN_PROGRAMS)))'#010+
   'endif'#010+
   #010+
@@ -2138,12 +2140,12 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   #010+
   'ifdef CLEANPPUFILES'#010+
-  'override CLEANPPULINKFILES:=$(subst $(PPUEXT),$(OEXT),$(CLE','ANPPUFILE'+
+  'override CLEANPPULINKFILES:=$(subst $(PPUEXT),$(OEXT),$(CLEANPPU','FILE'+
   'S)) $(addprefix $(STATICLIBPREFIX),$(subst $(PPUEXT),$(STATICLIBEXT),$'+
   '(CLEANPPUFILES))) $(addprefix $(IMPORTLIBPREFIX),$(subst $(PPUEXT),$(S'+
   'TATICLIBEXT),$(CLEANPPUFILES)))'#010+
   'ifdef DEBUGSYMEXT'#010+
-  'override CLEANPPULINKFILES+=$(subst $(PPU','EXT),$(DEBUGSYMEXT),$(CLEAN'+
+  'override CLEANPPULINKFILES+=$(subst $(PPUEXT),','$(DEBUGSYMEXT),$(CLEAN'+
   'PPUFILES))'#010+
   'endif'#010+
   'override CLEANPPUFILES:=$(addprefix $(UNITTARGETDIRPREFIX),$(CLEANPPUF'+
@@ -2152,7 +2154,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'IX),$(CLEANPPULINKFILES)))'#010+
   'endif'#010+
   #010+
-  'fpc_clean: $(CL','EANTARGET)'#010+
+  'fpc_clean: $(CLEANTA','RGET)'#010+
   'ifdef CLEANEXEFILES'#010+
   '        -$(DEL) $(CLEANEXEFILES)'#010+
   'endif'#010+
@@ -2161,7 +2163,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        -$(DELTREE) $(CLEANEXEDBGFILES)'#010+
   'endif'#010+
   'ifdef CLEANPPUFILES'#010+
-  '        -$(DEL',') $(CLEANPPUFILES)'#010+
+  '        -$(DEL) $(C','LEANPPUFILES)'#010+
   'endif'#010+
   'ifneq ($(CLEANPPULINKFILES),)'#010+
   '        -$(DEL) $(CLEANPPULINKFILES)'#010+
@@ -2170,15 +2172,15 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        -$(DEL) $(addprefix $(UNITTARGETDIRPREFIX),$(CLEANRSTFILES))'#010+
   'endif'#010+
   'ifdef CLEAN_FILES'#010+
-  '        -$(DEL) $(CLEAN_FILES',')'#010+
-  'endif'#010+
+  '        -$(DEL) $(CLEAN_FILES)'#010+
+  'end','if'#010+
   'ifdef LIB_NAME'#010+
   '        -$(DEL) $(LIB_NAME) $(LIB_FULLNAME)'#010+
   'endif'#010+
   '        -$(DEL) $(FPCMADE) Package.fpc $(PPAS) script.res link.res $(F'+
   'PCEXTFILE) $(REDIRFILE)'#010+
   '        -$(DEL) *$(ASMEXT) *_ppas$(BATCHEXT) ppas$(BATCHEXT) ppaslink$'+
-  '(BA','TCHEXT)'#010+
+  '(BATCHEX','T)'#010+
   #010+
   'fpc_cleanall: $(CLEANTARGET)'#010+
   'ifdef CLEANEXEFILES'#010+
@@ -2189,7 +2191,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        -$(DEL) $(CLEANPPUFILES)'#010+
   'endif'#010+
   'ifneq ($(CLEANPPULINKFILES),)'#010+
-  '        -$(DEL) $(CLEANPP','ULINKFILES)'#010+
+  '        -$(DEL) $(CLEANPPULINK','FILES)'#010+
   'endif'#010+
   'ifdef CLEANRSTFILES'#010+
   '        -$(DEL) $(addprefix $(UNITTARGETDIRPREFIX),$(CLEANRSTFILES))'#010+
@@ -2200,13 +2202,13 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   '        -$(DELTREE) units'#010+
   '        -$(DELTREE) bin'#010+
-  '        -$(DEL) ','*$(OEXT) *$(PPUEXT) *$(RSTEXT) *$(ASMEXT) *$(STATICL'+
+  '        -$(DEL) *$(OE','XT) *$(PPUEXT) *$(RSTEXT) *$(ASMEXT) *$(STATICL'+
   'IBEXT) *$(SHAREDLIBEXT) *$(PPLEXT)'#010+
   'ifneq ($(PPUEXT),.ppu)'#010+
   '        -$(DEL) *.o *.ppu *.a'#010+
   'endif'#010+
   '        -$(DELTREE) *$(SMARTEXT)'#010+
-  '        -$(DEL) fpcmade.* Package.fpc $(PPAS) script.res link','.res $('+
+  '        -$(DEL) fpcmade.* Package.fpc $(PPAS) script.res link.res ','$('+
   'FPCEXTFILE) $(REDIRFILE)'#010+
   '        -$(DEL) *_ppas$(BATCHEXT) ppas$(BATCHEXT) ppaslink$(BATCHEXT)'#010+
   'ifdef AOUTEXT'#010+
@@ -2216,7 +2218,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        -$(DEL) *$(DEBUGSYMEXT)'#010+
   'endif'#010+
   'ifdef LOCALFPMAKEBIN'#010+
-  '        -$(DE','L) $(LOCALFPMAKEBIN)'#010+
+  '        -$(DEL) $(','LOCALFPMAKEBIN)'#010+
   '        -$(DEL) $(FPMAKEBINOBJ)'#010+
   'endif'#010+
   #010+
@@ -2226,7 +2228,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '[baseinforules]'#010+
   '#####################################################################'#010+
   '# Base info rules'#010+
-  '##################################################','##################'+
+  '#######################################################','#############'+
   '#'#010+
   #010+
   '.PHONY: fpc_baseinfo'#010+
@@ -2237,31 +2239,31 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        @$(ECHO)'#010+
   '        @$(ECHO)  == Package info =='#010+
   '        @$(ECHO)  Package Name..... $(PACKAGE_NAME)'#010+
-  '        @$(ECHO)  Package Version.. $(PACKA','GE_VERSION)'#010+
+  '        @$(ECHO)  Package Version.. $(PACKAGE_VE','RSION)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  == Configuration info =='#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  FPC.......... $(FPC)'#010+
   '        @$(ECHO)  FPC Version.. $(FPC_VERSION)'#010+
   '        @$(ECHO)  Source CPU... $(CPU_SOURCE)'#010+
-  '        @$(ECHO)  T','arget CPU... $(CPU_TARGET)'#010+
+  '        @$(ECHO)  Target',' CPU... $(CPU_TARGET)'#010+
   '        @$(ECHO)  Source OS.... $(OS_SOURCE)'#010+
   '        @$(ECHO)  Target OS.... $(OS_TARGET)'#010+
   '        @$(ECHO)  Full Source.. $(FULL_SOURCE)'#010+
   '        @$(ECHO)  Full Target.. $(FULL_TARGET)'#010+
-  '        @$(ECHO)  SourceSuffi','x. $(SOURCESUFFIX)'#010+
+  '        @$(ECHO)  SourceSuffix. $(','SOURCESUFFIX)'#010+
   '        @$(ECHO)  TargetSuffix. $(TARGETSUFFIX)'#010+
   '        @$(ECHO)  FPC fpmake... $(FPCFPMAKE)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  == Directory info =='#010+
   '        @$(ECHO)'#010+
-  '        @$(ECHO)  Required pkgs... $(REQUIRE_PACKAGES)'#010,
-  '        @$(ECHO)'#010+
+  '        @$(ECHO)  Required pkgs... $(REQUIRE_PACKAGES)'#010+
+  '     ','   @$(ECHO)'#010+
   '        @$(ECHO)  Basedir......... $(BASEDIR)'#010+
   '        @$(ECHO)  FPCDir.......... $(FPCDIR)'#010+
   '        @$(ECHO)  CrossBinDir..... $(CROSSBINDIR)'#010+
   '        @$(ECHO)  UnitsDir........ $(UNITSDIR)'#010+
-  '        @$(ECHO)  PackagesDir..... ','$(PACKAGESDIR)'#010+
+  '        @$(ECHO)  PackagesDir..... $(PAC','KAGESDIR)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  GCC library..... $(GCCLIBDIR)'#010+
   '        @$(ECHO)  Other library... $(OTHERLIBDIR)'#010+
@@ -2269,62 +2271,62 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        @$(ECHO)  == Tools info =='#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  As........ $(AS)'#010+
-  '      ','  @$(ECHO)  Ld........ $(LD)'#010+
+  '        @$(','ECHO)  Ld........ $(LD)'#010+
   '        @$(ECHO)  Ar........ $(AR)'#010+
   '        @$(ECHO)  Rc........ $(RC)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Mv........ $(MVPROG)'#010+
   '        @$(ECHO)  Cp........ $(CPPROG)'#010+
   '        @$(ECHO)  Rm........ $(RMPROG)'#010+
-  '       ',' @$(ECHO)  GInstall.. $(GINSTALL)'#010+
+  '        @$(E','CHO)  GInstall.. $(GINSTALL)'#010+
   '        @$(ECHO)  Echo...... $(ECHO)'#010+
   '        @$(ECHO)  Shell..... $(SHELL)'#010+
   '        @$(ECHO)  Date...... $(DATE)'#010+
   '        @$(ECHO)  FPCMake... $(FPCMAKE)'#010+
   '        @$(ECHO)  PPUMove... $(PPUMOVE)'#010+
-  '        @$(ECH','O)  Zip....... $(ZIPPROG)'#010+
+  '        @$(ECHO)  Z','ip....... $(ZIPPROG)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  == Object info =='#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Target Loaders........ $(TARGET_LOADERS)'#010+
   '        @$(ECHO)  Target Units.......... $(TARGET_UNITS)'#010+
-  '        @$(ECHO)  Target Imp','licit Units. $(TARGET_IMPLICITUNITS)'#010+
+  '        @$(ECHO)  Target Implicit',' Units. $(TARGET_IMPLICITUNITS)'#010+
   '        @$(ECHO)  Target Programs....... $(TARGET_PROGRAMS)'#010+
   '        @$(ECHO)  Target Dirs........... $(TARGET_DIRS)'#010+
   '        @$(ECHO)  Target Examples....... $(TARGET_EXAMPLES)'#010+
-  '        @$(ECHO)  Target Ex','ampleDirs.... $(TARGET_EXAMPLEDIRS)'#010+
+  '        @$(ECHO)  Target Example','Dirs.... $(TARGET_EXAMPLEDIRS)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Clean Units......... $(CLEAN_UNITS)'#010+
   '        @$(ECHO)  Clean Files......... $(CLEAN_FILES)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Install Units....... $(INSTALL_UNITS)'#010+
-  '      ','  @$(ECHO)  Install Files....... $(INSTALL_FILES)'#010+
+  '        @$(','ECHO)  Install Files....... $(INSTALL_FILES)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  == Install info =='#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  DateStr.............. $(DATESTR)'#010+
   '        @$(ECHO)  ZipName.............. $(ZIPNAME)'#010+
-  '        @$(ECHO) ',' ZipPrefix............ $(ZIPPREFIX)'#010+
+  '        @$(ECHO)  ZipP','refix............ $(ZIPPREFIX)'#010+
   '        @$(ECHO)  ZipCrossPrefix....... $(ZIPCROSSPREFIX)'#010+
   '        @$(ECHO)  ZipSuffix............ $(ZIPSUFFIX)'#010+
   '        @$(ECHO)  FullZipName.......... $(FULLZIPNAME)'#010+
-  '        @$(ECHO)  Install FPC Package.','. $(INSTALL_FPCPACKAGE)'#010+
+  '        @$(ECHO)  Install FPC Package.. $(I','NSTALL_FPCPACKAGE)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Install base dir..... $(INSTALL_BASEDIR)'#010+
   '        @$(ECHO)  Install binary dir... $(INSTALL_BINDIR)'#010+
   '        @$(ECHO)  Install library dir.. $(INSTALL_LIBDIR)'#010+
-  '        @$(ECHO)  Instal','l units dir.... $(INSTALL_UNITDIR)'#010+
+  '        @$(ECHO)  Install uni','ts dir.... $(INSTALL_UNITDIR)'#010+
   '        @$(ECHO)  Install source dir... $(INSTALL_SOURCEDIR)'#010+
   '        @$(ECHO)  Install doc dir...... $(INSTALL_DOCDIR)'#010+
   '        @$(ECHO)  Install example dir.. $(INSTALL_EXAMPLEDIR)'#010+
-  '        @$(ECHO)  Instal','l data dir..... $(INSTALL_DATADIR)'#010+
+  '        @$(ECHO)  Install dat','a dir..... $(INSTALL_DATADIR)'#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Dist destination dir. $(DIST_DESTDIR)'#010+
   '        @$(ECHO)  Dist zip name........ $(DIST_ZIPNAME)'#010+
   '        @$(ECHO)'#010+
   #010+
   '[inforules]'#010+
-  '##############################################','######################'+
+  '###################################################','#################'+
   '#'#010+
   '# Info rules'#010+
   '#####################################################################'#010+
@@ -2335,7 +2337,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '[makefilerules]'#010+
   '#####################################################################'#010+
-  '# Re','build Makefile'#010+
+  '# Rebuild',' Makefile'#010+
   '#####################################################################'#010+
   #010+
   '.PHONY: fpc_makefile fpc_makefiles fpc_makefile_sub1 fpc_makefile_sub2'+
@@ -2343,7 +2345,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '        fpc_makefile_dirs'#010+
   #010+
   'fpc_makefile:'#010+
-  '        $(FPCMAKE) -w -T$(OS_TARGET) Mak','efile.fpc'#010+
+  '        $(FPCMAKE) -w -T$(OS_TARGET) Makefile','.fpc'#010+
   #010+
   'fpc_makefile_sub1:'#010+
   'ifdef TARGET_DIRS'#010+
@@ -2352,8 +2354,8 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'ifdef TARGET_EXAMPLEDIRS'#010+
   '        $(FPCMAKE) -w -T$(OS_TARGET) $(addsuffix /Makefile.fpc,$(TARGE'+
-  'T_EXAMPLEDIR','S))'#010+
-  'endif'#010+
+  'T_EXAMPLEDIRS))'#010+
+  'e','ndif'#010+
   #010+
   'fpc_makefile_sub2: $(addsuffix _makefile_dirs,$(TARGET_DIRS) $(TARGET_'+
   'EXAMPLEDIRS))'#010+
@@ -2363,7 +2365,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'fpc_makefiles: fpc_makefile fpc_makefile_dirs'#010+
   #010+
   '[localmakefile]'#010+
-  '#########################','###########################################'+
+  '##############################','######################################'+
   '#'#010+
   '# Local Makefile'#010+
   '#####################################################################'#010+
@@ -2374,7 +2376,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   #010+
   '[userrules]'#010+
-  '##################################','##################################'+
+  '#######################################','#############################'+
   '#'#010+
   '# Users rules'#010+
   '#####################################################################'#010+
@@ -2382,7 +2384,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '[lclrules]'#010+
   '#####################################################################'#010+
   '# LCL Rules'#010+
-  '##########################','##########################################'+
+  '###############################','#####################################'+
   '#'#010+
   #010+
   '# LCL Platform'#010+
@@ -2395,7 +2397,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'endif'#010+
   'export LCL_PLATFORM'#010+
   #010+
-  '# Check if the specified LCLDIR is cor','rect'#010+
+  '# Check if the specified LCLDIR is correct'#010,
   'ifdef LCLDIR'#010+
   'override LCLDIR:=$(subst \,/,$(LCLDIR))'#010+
   'ifeq ($(wildcard $(LCLDIR)/units/$(LCL_PLATFORM)),)'#010+
@@ -2407,7 +2409,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '# Check if the default LCLDIR is correct'#010+
   'ifdef DEFAULT_LCLDIR'#010+
-  'overri','de LCLDIR:=$(subst \,/,$(DEFAULT_LCLDIR))'#010+
+  'override LC','LDIR:=$(subst \,/,$(DEFAULT_LCLDIR))'#010+
   'ifeq ($(wildcard $(LCLDIR)/units/$(LCL_PLATFORM)),)'#010+
   'override LCLDIR=wrong'#010+
   'endif'#010+
@@ -2415,7 +2417,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '# Check for development version'#010+
   'ifeq ($(LCLDIR),wrong)'#010+
-  'override LCLDIR=$(subst /units/$(LCL_PLATFORM),,$(firstw','ord $(wildca'+
+  'override LCLDIR=$(subst /units/$(LCL_PLATFORM),,$(firstword $','(wildca'+
   'rd $(addsuffix /units/$(LCL_PLATFORM),$(BASEDIR)/lcl $(BASEDIR)))))'#010+
   'ifeq ($(LCLDIR),)'#010+
   'override LCLDIR=wrong'#010+
@@ -2424,7 +2426,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   #010+
   '# Check for release version'#010+
   'ifeq ($(LCLDIR),wrong)'#010+
-  'override LCLDIR=$(subst /units/$(LCL_PLATFORM),,$(firstw','ord $(wildca'+
+  'override LCLDIR=$(subst /units/$(LCL_PLATFORM),,$(firstword $','(wildca'+
   'rd $(addsuffix /lib/lazarus/units/$(LCL_PLATFORM),/usr/local /usr))))'#010+
   'ifeq ($(LCLDIR),)'#010+
   'override LCLDIR=wrong'#010+
@@ -2434,14 +2436,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Generate dirs'#010+
   'override LCLUNITDIR:=$(wildcard $(LCLDIR)/units/$(LCL_PLATFORM) $(LCLD'+
   'IR)/units)'#010+
-  'override',' LCLCOMPONENTDIR:=$(wildcard $(LCLDIR)/.. $(LCLDIR)/../compo'+
+  'override LCLC','OMPONENTDIR:=$(wildcard $(LCLDIR)/.. $(LCLDIR)/../compo'+
   'nents $(LCLDIR)/components)'#010+
   'export LCLDIR LCLUNITDIR LCLCOMPONENTDIR'#010+
   #010+
   '# Add LCL dirs to paths'#010+
   'override REQUIRE_PACKAGESDIR+=$(LCLCOMPONENTDIR)'#010+
-  'override COMPILER_UNITDIR+=$(LCLUNITD','IR)'#010+
-  #010+
+  'override COMPILER_UNITDIR+=$(LCLUNITDIR)'#010+
+  #010,
   '[lclinforules]'#010+
   '#####################################################################'#010+
   '# LCL Info rules'#010+
@@ -2451,20 +2453,20 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '.PHONY: lclinfo'#010+
   #010+
   'lclinfo:'#010+
-  '        ','@$(ECHO)  == LCL info =='#010+
+  '        @$(EC','HO)  == LCL info =='#010+
   '        @$(ECHO)'#010+
   '        @$(ECHO)  Platform............. $(LCL_PLATFORM)'#010+
   '        @$(ECHO)  LCLDIR............... $(LCLDIR)'#010+
   '        @$(ECHO)  LCL Unit dir......... $(LCLUNITDIR)'#010+
-  '        @$(ECHO)  LCL Component dir...','. $(LCLCOMPONENTDIR)'#010+
+  '        @$(ECHO)  LCL Component dir.... $(L','CLCOMPONENTDIR)'#010+
   '        @$(ECHO)'#010+
   #010+
   '[fpmakeprerules]'#010+
   '#####################################################################'#010+
   '# fpmake prerules'#010+
   '#####################################################################'#010+
-  'FPMAKEBIN=fpmake$(SRCEXEEX','T)'#010+
-  'FPMAKEBINOBJ=fpmake$(OEXT)'#010+
+  'FPMAKEBIN=fpmake$(SRCEXEEXT)'#010+
+  'FP','MAKEBINOBJ=fpmake$(OEXT)'#010+
   'LOCALFPMAKEBIN=.$(PATHSEP)$(FPMAKEBIN)'#010+
   #010+
   '# Convert the OS_TARGET and CPU_TARGET options to fpmake'#039's --os an'+
@@ -2473,19 +2475,19 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'FPC_TARGETOPT+=--os=$(OS_TARGET)'#010+
   'endif'#010+
   'ifdef CPU_TARGET'#010+
-  'FPC_TARGETOPT','+=--cpu=$(CPU_TARGET)'#010+
+  'FPC_TARGETOPT+=--c','pu=$(CPU_TARGET)'#010+
   'endif'#010+
   #010+
   '# Get the location of the bootstrap-fpmkunit units'#010+
   'PACKAGEDIR_FPMKUNIT:=$(firstword $(subst /Makefile.fpc,,$(strip $(wild'+
   'card $(addsuffix /fpmkunit/Makefile.fpc,$(PACKAGESDIR))))))'#010+
-  'ifneq ($(PACKAGEDIR_FPMKUNIT),',')'#010+
-  'UNITDIR_FPMAKE_FPMKUNIT=$(PACKAGEDIR_FPMKUNIT)/units_bs/$(SOURCESUFFIX'+
-  ')'#010+
+  'ifneq ($(PACKAGEDIR_FPMKUNIT),)'#010+
+  'UNI','TDIR_FPMAKE_FPMKUNIT=$(PACKAGEDIR_FPMKUNIT)/units_bs/$(SOURCESUFF'+
+  'IX)'#010+
   'override COMPILER_FPMAKE_UNITDIR=$(UNITDIR_FPMAKE_FPMKUNIT)'#010+
   'FPMKUNIT_SRC=$(PACKAGEDIR_FPMKUNIT)/src/fpmkunit.pp'#010+
   'FPMKUNIT_PPU=$(UNITDIR_FPMAKE_FPMKUNIT)/fpmkunit.ppu'#010+
-  'e','ndif'#010+
+  'endif'#010,
   #010+
   'ifdef FPMAKE_SKIP_CONFIG'#010+
   'override FPMAKE_BUILD_OPT+=$(FPMAKE_SKIP_CONFIG)'#010+
@@ -2494,7 +2496,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '[fpmakerules]'#010+
   '#####################################################################'#010+
   '# fpmake rules'#010+
-  '######################################################','##############'+
+  '###########################################################','#########'+
   '#'#010+
   '.PHONY: fpc_fpmake fpc_fpmake_clean fpc_fpmake_install fpc_fpmake_exam'+
   'pleinstall'#010+
@@ -2502,7 +2504,7 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '# Do not pass the Makefile'#039's unit and binary target locations. fpm'+
   'ake uses it'#039's own.'#010+
   'override FPCOPT:=$(filter-out -FU%,$(FPCOPT))'#010+
-  'override FP','COPT:=$(filter-out -FE%,$(FPCOPT))'#010+
+  'override FPCOPT:','=$(filter-out -FE%,$(FPCOPT))'#010+
   '# Compose general fpmake-parameters'#010+
   'ifdef FPMAKEOPT'#010+
   'FPMAKE_OPT+=$(FPMAKEOPT)'#010+
@@ -2510,14 +2512,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'FPMAKE_OPT+=--localunitdir=$(FPCDIR)'#010+
   'FPMAKE_OPT+=--globalunitdir=$(FPCDIR)/packages'#010+
   'FPMAKE_OPT+=$(FPC_TARGETOPT)'#010+
-  'FPMAKE_OP','T+=$(addprefix -o ,$(FPCOPT))'#010+
+  'FPMAKE_OPT+=$(','addprefix -o ,$(FPCOPT))'#010+
   'FPMAKE_OPT+=--compiler=$(FPC)'#010+
   'FPMAKE_OPT+=-bu'#010+
   #010+
   'FPMAKE_INSTALL_OPT+=--unitinstalldir=$(INSTALL_UNITDIR)'#010+
   'ifdef UNIXHier'#010+
   'FPMAKE_INSTALL_OPT+=--prefix=$(INSTALL_PREFIX)'#010+
-  'FPMAKE_INSTALL_OPT+=--baseinstalldir=$(INSTAL','L_LIBDIR)/fpc/$(FPC_VER'+
+  'FPMAKE_INSTALL_OPT+=--baseinstalldir=$(INSTALL_LIB','DIR)/fpc/$(FPC_VER'+
   'SION)'#010+
   'else'#010+
   'FPMAKE_INSTALL_OPT+=--prefix=$(INSTALL_BASEDIR)'#010+
@@ -2526,21 +2528,21 @@ const fpcmakeini : array[0..248,1..240] of char=(
   'override ALLTARGET+=fpc_fpmake'#010+
   'override INSTALLTARGET+=fpc_fpmake_install'#010+
   'override EXAMPLEINSTALLTARGET+=fpc_fpmake_exampleinstall'#010+
-  '# If no fpmake exist','s and (dist)clean is called, do not try to build'+
+  '# If no fpmake exists and',' (dist)clean is called, do not try to build'+
   ' fpmake, it will'#010+
   '# most often fail because the dependencies are cleared.'#010+
   '# In case of a clean, simply do nothing'#010+
   'ifneq ($(wildcard $(LOCALFPMAKEBIN)),)'#010+
   'override CLEANTARGET+=fpc_fpmake_clean'#010+
-  'e','ndif'#010+
+  'endif'#010,
   #010+
   '$(FPMKUNIT_PPU): $(FPMKUNIT_SRC)'#010+
   '            $(MAKE) -C $(PACKAGEDIR_FPMKUNIT) bootstrap $(addprefix OP'+
   'T=,$(FPMAKE_BUILD_OPT))'#010+
   #010+
   '$(FPMAKEBIN): fpmake.pp $(FPMKUNIT_PPU)'#010+
-  '        $(FPCFPMAKE) fpmake.pp $(addprefix -Fu,$(COMPILER_FPMAKE_U','NI'+
-  'TDIR)) $(FPMAKE_BUILD_OPT)'#010+
+  '        $(FPCFPMAKE) fpmake.pp $(addprefix -Fu,$(COMPILER_FPMAKE_UNITD'+
+  'I','R)) $(FPMAKE_BUILD_OPT)'#010+
   #010+
   'fpc_fpmake: $(FPMAKEBIN)'#010+
   '            $(LOCALFPMAKEBIN) compile $(FPMAKE_OPT)'#010+
@@ -2549,14 +2551,14 @@ const fpcmakeini : array[0..248,1..240] of char=(
   '            $(LOCALFPMAKEBIN) clean $(FPMAKE_OPT)'#010+
   #010+
   'fpc_fpmake_install: $(FPMAKEBIN)'#010+
-  '            $(LOC','ALFPMAKEBIN) install $(FPMAKE_OPT) $(FPMAKE_INSTALL'+
+  '            $(LOCALFPM','AKEBIN) install $(FPMAKE_OPT) $(FPMAKE_INSTALL'+
   '_OPT)'#010+
   #010+
   '# This is not completely valid. Exampleinstall should only install the'+
   ' examples, while'#010+
   '# fpmake -ie installs everything, including the examples. This also me'+
   'ans that on'#010+
-  '# a distinsta','ll fpmake install wil be called twice.'#010+
+  '# a distinstall fp','make install wil be called twice.'#010+
   'fpc_fpmake_exampleinstall: $(FPMAKEBIN)'#010+
   '            $(LOCALFPMAKEBIN) install -ie $(FPMAKE_OPT) $(FPMAKE_INSTA'+
   'LL_OPT)'#010
