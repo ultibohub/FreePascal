@@ -161,14 +161,25 @@ end;
 {$endif FPC_SYSTEM_HAS_MOVE}
 
 
+{ Darwin uses Clang to assemble. Recent Clang versions (rightly) give an error when you add global labels in
+  the middle of .cfi_startproc / .cfi_endproc pairs, since this means you could jump into it from other code
+  whose CFI state is completely different without the compiler even having the theoretical ability to analyse
+  all code and generate balanced information.
+
+  Since FPC does not attempt it even for local labels, this kind of code is inherently unsafe.
+}
+{$ifndef darwin}
+  {$define can_jump_into_the_middle_of_a_procedure}
+{$endif darwin}
+
 {$if not defined(FPC_SYSTEM_HAS_FILLCHAR)
   or not defined(FPC_SYSTEM_HAS_FILLWORD)
   or not defined(FPC_SYSTEM_HAS_FILLDWORD)
   or not defined(FPC_SYSTEM_HAS_FILLQWORD)}
 
 {$if not defined(FPC_SYSTEM_HAS_FILLCHAR)
-  or not defined(FPC_SYSTEM_HAS_FILLWORD)
-  or not defined(FPC_SYSTEM_HAS_FILLDWORD)}
+   or not defined(FPC_SYSTEM_HAS_FILLWORD)
+   or not defined(FPC_SYSTEM_HAS_FILLDWORD)}
 const
   FillXxxx_RepStosThreshold_ERMS = 1024;
   FillXxxx_RepStosThreshold_NoERMS = 512 * 1024;
@@ -200,13 +211,15 @@ asm
 end;
 {$endif FillChar/Word/DWord required.}
 
+{$ifdef can_jump_into_the_middle_of_a_procedure}
 label
   FillXxxx_MoreThanTwoXMMs;
+{$else can_jump_into_the_middle_of_a_procedure}
+procedure FillXxxx_MoreThanTwoXMMs; forward;
+{$endif can_jump_into_the_middle_of_a_procedure}
 
 procedure FillXxxx_U32Pattern_SSE2_16OrMore; assembler; nostackframe;
 { eax — x, ecx — uint32 pattern, edx — byte count >= 16 (preferably > 16). }
-const
-  NtThreshold = 4 * 1024 * 1024;
 asm
         movd   %ecx, %xmm0
         pshufd $0, %xmm0, %xmm0 { xmm0 = pattern for unaligned writes }
@@ -231,10 +244,17 @@ asm
         movd   %esi, %xmm0
         pshufd $0, %xmm0, %xmm0
         pop    %esi
-
+{$ifdef can_jump_into_the_middle_of_a_procedure}
 { FillChar (to skip the misaligning above) and FillQWord jump here.
   eax — x, edx — byte count > 32, xmm0 = pattern for ALIGNED writes, first and last 16 bytes written. }
 FillXxxx_MoreThanTwoXMMs:
+{$else can_jump_into_the_middle_of_a_procedure}
+        jmp    FillXxxx_MoreThanTwoXMMs
+end;
+
+procedure FillXxxx_MoreThanTwoXMMs; assembler; nostackframe;
+asm
+{$endif can_jump_into_the_middle_of_a_procedure}
         lea    -65(%eax,%edx), %ecx
         and    $-16, %ecx { ecx = “T4” (possibly fictive) = loop bound. }
         mov    %ecx, %edx { Remember T4 to edx. }
@@ -250,7 +270,7 @@ FillXxxx_MoreThanTwoXMMs:
         jle    .LFourAlignedTailWrites { ecx was ≤ 96−48 }
 
         add    $48, %eax { eax = H3. }
-        cmp    $NtThreshold, %ecx
+        cmp    $4 * 1024 * 1024, %ecx { Non-temporal fill threshold. }
         jae    .L64xNT_Body
 
 .balign 16 { no-op }
@@ -330,7 +350,7 @@ end;
 {$endif FillChar/Word/DWord/QWord required.}
 
 
-{$ifndef FPC_SYSTEM_HAS_FILLCHAR}
+{$if not defined(FPC_SYSTEM_HAS_FILLCHAR)}
 {$define FPC_SYSTEM_HAS_FILLCHAR}
 procedure FillChar_3OrLess; assembler; nostackframe;
 { cl — x, edx — byte count, Low(int32) <= edx <= 3. }
@@ -428,7 +448,7 @@ end;
 {$endif FPC_SYSTEM_HAS_FILLCHAR}
 
 
-{$ifndef FPC_SYSTEM_HAS_FILLWORD}
+{$if not defined(FPC_SYSTEM_HAS_FILLWORD)}
 {$define FPC_SYSTEM_HAS_FILLWORD}
 procedure FillWord_3OrLess; assembler; nostackframe;
 asm
@@ -516,7 +536,7 @@ end;
 {$endif FPC_SYSTEM_HAS_FILLWORD}
 
 
-{$ifndef FPC_SYSTEM_HAS_FILLDWORD}
+{$if not defined(FPC_SYSTEM_HAS_FILLDWORD)}
 {$define FPC_SYSTEM_HAS_FILLDWORD}
 procedure FillDWord_4OrLess; assembler; nostackframe;
 asm
@@ -590,7 +610,7 @@ end;
 {$endif FPC_SYSTEM_HAS_FILLDWORD}
 
 
-{$ifndef FPC_SYSTEM_HAS_FILLQWORD}
+{$if not defined(FPC_SYSTEM_HAS_FILLQWORD)}
 {$define FPC_SYSTEM_HAS_FILLQWORD}
 {$ifndef CPUX86_HAS_SSE2}
 procedure FillQWord_Plain(var x;count:SizeInt;value:QWord);assembler;nostackframe;
