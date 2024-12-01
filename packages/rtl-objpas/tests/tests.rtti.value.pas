@@ -53,6 +53,9 @@ Type
 
     procedure TestFromOrdinal;
     Procedure TestTryCastUnicodeString;
+
+    procedure TestMakeManagedRecord;
+    procedure TestMakeStaticArrayOfManagedRecord;
   end;
 
   { TTestValueArray }
@@ -1545,6 +1548,57 @@ begin
   CheckTrue(V.TryCast(TypeInfo(UnicodeString), V2),'Cast OK');
 end;
 
+type
+  TMyManagedRecord = record
+    I: IntPtr;
+    Intf: IUnknown;
+  end;
+  TTestIntfObject = class(TInterfacedObject);
+
+procedure TTestValueSimple.TestMakeManagedRecord;
+  function GetValue: TValue;
+  var
+    R: TMyManagedRecord;
+  begin
+    R.Intf := TTestIntfObject.Create;
+    Result := TValue.{$ifdef fpc}specialize{$endif} From<TMyManagedRecord>(R);
+  end;
+var
+  P: Pointer;
+  R: TMyManagedRecord;
+  V: TValue;
+begin
+  V := GetValue();
+  P := AllocMem(64);
+  R := V.{$ifdef fpc}specialize{$endif} AsType<TMyManagedRecord>;
+  Check((R.Intf as TTestIntfObject).RefCount >= 2, 'RefCount should be >= 2. One ref in in V, and another one is in R');
+  FreeMem(P);
+end;
+
+procedure TTestValueSimple.TestMakeStaticArrayOfManagedRecord;
+type
+  TArrayOfRec = array[0..0] of TMyManagedRecord;
+
+  function GetValue: TValue;
+  var
+    Arr: TArrayOfRec;
+  begin
+    Arr[0].Intf := TTestIntfObject.Create;
+    Result := TValue.{$ifdef fpc}specialize{$endif} From<TArrayOfRec>(Arr);
+  end;
+
+var
+  P: Pointer;
+  Arr: TArrayOfRec;
+  V: TValue;
+begin
+  V := GetValue();
+  P := AllocMem(64);
+  Arr := V.{$ifdef fpc}specialize{$endif} AsType<TArrayOfRec>;
+  Check((Arr[0].Intf as TTestIntfObject).RefCount >= 2, 'RefCount should be >= 2. One ref in in V, and another one is in Arr');
+  FreeMem(P);
+end;
+
 { TTestValueArray }
 
 
@@ -1900,6 +1954,10 @@ begin
 {$endif}
   CheckTrue(Byte(397) = (TValue. specialize From<Integer>(397). specialize Cast<Byte>(). specialize AsType<Byte>), 'Byte(397) = (TValue.From<Integer>(397).Cast<Byte>().AsType<Byte>)');
   CheckTrue(32 = (TValue. specialize From<Byte>(32). specialize Cast<Integer>(). specialize AsType<Integer>), '32 = (TValue.From<Byte>(32).Cast<Integer>().AsType<Integer>)');
+
+  CheckTrue('test_str' = TValue.{$ifdef fpc}specialize{$endif} From<ShortString>('test_str')
+              .{$ifdef fpc}specialize{$endif} Cast<AnsiString>
+              .{$ifdef fpc}specialize{$endif} AsType<AnsiString>, 'TValue.From<shortring>.Cast<AnsiString> failed');
 end;
   
 
@@ -1986,4 +2044,3 @@ initialization
   RegisterTest(TTestValueSimple);
   RegisterTest(TTestValueVariant);
 end.
-

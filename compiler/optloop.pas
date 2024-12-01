@@ -52,6 +52,8 @@ unit optloop;
       procinfo;
 
     function number_unrolls(node : tnode) : cardinal;
+      var
+        nodeCount : cardinal;
       begin
         { calculate how often a loop shall be unrolled.
 
@@ -60,10 +62,22 @@ unit optloop;
 {$ifdef i386}
         { multiply by 2 for CPUs with a long pipeline }
         if current_settings.optimizecputype in [cpu_Pentium4] then
-          number_unrolls:=trunc(round((60+(60*ord(node_count_weighted(node)<15)))/max(node_count_weighted(node),1)))
+          begin
+            { See the common branch below for an explanation. }
+            nodeCount:=node_count_weighted(node,41);
+            number_unrolls:=round((60+(60*ord(nodeCount<15)))/max(nodeCount,1))
+          end
         else
 {$endif i386}
-          number_unrolls:=trunc(round((30+(60*ord(node_count_weighted(node)<15)))/max(node_count_weighted(node),1)));
+          begin
+            { If nodeCount >= 15, numerator will be 30,
+              and the largest number (starting from 15) that makes sense as its denominator
+              (the smallest number that gives number_unrolls = 1) is 21 = trunc(30/1.5+1),
+              so there's no point in counting for more than 21 nodes.
+              "Long pipeline" variant above is the same with numerator=60 and max denominator = 41. }
+            nodeCount:=node_count_weighted(node,21);
+            number_unrolls:=round((30+(60*ord(nodeCount<15)))/max(nodeCount,1));
+          end;
 
         if number_unrolls=0 then
           number_unrolls:=1;
@@ -641,8 +655,6 @@ unit optloop;
           not(lnf_backward in tfornode(n).loopflags) and
           (lnf_dont_mind_loopvar_on_exit in tfornode(n).loopflags) and
           is_constintnode(tfornode(n).right) and
-          { this is not strictly necessary, but we do it for now }
-          is_constnode(tfornode(n).t1) and
           (([cs_check_overflow,cs_check_range]*n.localswitches)=[]) and
           (([cs_check_overflow,cs_check_range]*tfornode(n).left.localswitches)=[]) and
           ((tfornode(n).left.nodetype=loadn) and (tloadnode(tfornode(n).left).symtableentry is tabstractvarsym) and
@@ -671,8 +683,11 @@ unit optloop;
                 writeln('**********************************************************************************');
 {$endif DEBUG_OPTFORLOOP}
                 include(tfornode(n).loopflags,lnf_backward);
-                tfornode(n).right:=caddnode.create_internal(addn,caddnode.create_internal(subn,tfornode(n).t1,tfornode(n).right),
-                  cordconstnode.create(1,tfornode(n).left.resultdef,false));
+                tfornode(n).right:=ctypeconvnode.create_internal(
+                  caddnode.create_internal(addn,caddnode.create_internal(subn,
+                    tfornode(n).t1,tfornode(n).right),
+                    cordconstnode.create(1,tfornode(n).left.resultdef,false)),
+                  tfornode(n).left.resultdef);
                 tfornode(n).t1:=cordconstnode.create(1,tfornode(n).left.resultdef,false);
                 include(tfornode(n).loopflags,lnf_counter_not_used);
                 exclude(n.transientflags,tnf_pass1_done);

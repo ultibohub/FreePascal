@@ -307,7 +307,10 @@ begin
     Addln('');
     Addln('interface');
     Addln('');
-    AddLn('uses types;');
+    if DelphiCode then
+      AddLn('uses System.Types;')
+    else
+      AddLn('uses types;');
     Addln('');
     EnsureSection(csType);
     Addln('');
@@ -742,6 +745,10 @@ begin
   Addln('begin');
   indent;
   Addln('Result := Default(%s);', [aType.PascalName]);
+  Addln('if (aJSON='''') then');
+  indent;
+  Addln('exit;');
+  undent;
   if DelphiCode then
     Addln('lObj := TJSONObject.ParseJSONValue(aJSON,True,True) as TJSONObject;')
   else
