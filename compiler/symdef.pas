@@ -8328,6 +8328,9 @@ implementation
           exit;
         { inherit options and status }
         objectoptions:=objectoptions+(c.objectoptions*inherited_objectoptions);
+        { check if parent is a generic parameter }
+        if sp_generic_para in c.typesym.symoptions then
+         objectoptions:=objectoptions+[oo_inherits_not_specialized];
         { initially has the same number of abstract methods as the parent }
         abstractcnt:=c.abstractcnt;
         { add the data of the anchestor class/object }
@@ -9561,7 +9564,41 @@ implementation
 {$ifdef x86}
 {$define use_vectorfpuimplemented}
         use_vectorfpu:=(is_single(def) and (current_settings.fputype in sse_singlescalar)) or
-          (is_double(def) and (current_settings.fputype in sse_doublescalar));
+          (is_double(def) and (current_settings.fputype in sse_doublescalar)) or
+          { Check vector types }
+          (
+            is_normal_array(def) and
+            (ado_IsVector in tarraydef(def).arrayoptions) and
+            (
+              (
+                is_single(tarraydef(def).elementdef) and
+                (
+                  { SSE or AVX XMM register }
+                  ((tarraydef(def).elecount = 4) and (current_settings.fputype in sse_singlescalar)) or
+                  { AVX YMM register }
+                  ((tarraydef(def).elecount = 8) and (current_settings.fputype in fpu_avx_instructionsets))
+{$ifndef i8086}
+                  or
+                  { AVX512 ZMM register }
+                  ((tarraydef(def).elecount = 16) and (current_settings.fputype in [fpu_avx512f]))
+{$endif not i8086}
+                )
+              ) or
+              (
+                is_double(tarraydef(def).elementdef) and
+                (
+                  { SSE or AVX XMM register }
+                  ((tarraydef(def).elecount = 2) and (current_settings.fputype in sse_doublescalar)) or
+                  { AVX YMM register }
+                  ((tarraydef(def).elecount = 4) and (current_settings.fputype in fpu_avx_instructionsets))
+{$ifndef i8086}
+                  { AVX512 ZMM register }
+                  or ((tarraydef(def).elecount = 8) and (current_settings.fputype in [fpu_avx512f]))
+{$endif not i8086}
+                )
+              )
+            )
+          );
 {$endif x86}
 {$ifdef arm}
 {$define use_vectorfpuimplemented}

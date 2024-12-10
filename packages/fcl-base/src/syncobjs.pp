@@ -879,7 +879,11 @@ begin
   if (FHandle=TEventHandle(0)) then
     RaiseLastOSError;
 {$ELSE}
+{$IFDEF CPUWASM}
+  // Todo
+{$ELSE}
   raise ESyncObjectException.Create(SErrMutexNotSupported);
+{$ENDIF CPUWASM}
 {$ENDIF WINDOWS}  
 {$ENDIF UNIX}
 end;
@@ -906,7 +910,11 @@ begin
   if FHandle=TEventHandle(0) then
     RaiseLastOSError;
 {$ELSE}
+{$IFDEF CPUWASM}
+  // Todo
+{$ELSE}
   raise ESyncObjectException.Create(SErrMutexNotSupported);
+{$ENDIF CPUWASM}  
 {$ENDIF WINDOWS}
 {$ENDIF UNIX}
 end;

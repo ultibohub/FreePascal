@@ -570,6 +570,10 @@ begin
       if (lTmp.I32<Lows[lOrd]) or (lTmp.I32>Highs[lOrd]) then
          raise EConvertError.CreateFmt('Integer not in range %d to %s',[Lows[lOrd],Highs[lOrd]]);
       end;
+    tkInt64 :
+      begin
+      lTmp.I64:=StrToInt64(S);
+      end;
     tkEnumeration:
       begin
       lTmp.I32:=GetEnumValue(aInfo,S);
@@ -1619,7 +1623,13 @@ end;
 
 function TJSONBool.AsTValue(aTypeInfo: PTypeInfo; var aValue: TValue): Boolean;
 begin
-  Result:=inherited AsTValue(aTypeInfo, aValue);
+  if aTypeInfo^.Kind=tkBool then
+    begin
+    TValue.Make(@FValue,aTypeInfo,aValue);
+    Result:=True;
+    end
+  else
+    Result:=inherited AsTValue(aTypeInfo, aValue);
 end;
 
 constructor TJSONBool.Create(aValue: Boolean);
