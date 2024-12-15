@@ -44,6 +44,7 @@ Function Sptr : pointer;assembler;
   end;
 
 
+{$ifdef VER3_2}
 function InterLockedDecrement (var Target: longint) : longint;
   begin
     dec(Target);
@@ -65,19 +66,26 @@ function InterLockedExchange (var Target: longint;Source : longint) : longint;
   end;
 
 
-function InterlockedCompareExchange(var Target: longint; NewValue: longint; Comperand: longint): longint;
-  begin
-    Result:=Target;
-    if Target=Comperand then
-      Target:=NewValue;
-  end;
-
-
 function InterLockedExchangeAdd (var Target: longint;Source : longint) : longint;
   begin
     Result:=Target;
     inc(Target,Source);
   end;
+{$endif}
+
+
+{$ifdef VER3_2}
+function InterlockedCompareExchange(var Target: longint; NewValue: longint; Comperand: longint): longint;
+{$else VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_CMP_XCHG_32}
+function fpc_atomic_cmp_xchg_32 (var Target: longint; NewValue: longint; Comparand: longint) : longint; [public,alias:'FPC_ATOMIC_CMP_XCHG_32'];
+{$endif VER3_2}
+  begin
+    Result:=Target;
+    if Target={$ifdef VER3_2}Comperand{$else}Comparand{$endif} then
+      Target:=NewValue;
+  end;
+
 
 {$define FPC_SYSTEM_HAS_SYSRESETFPU}
 procedure SysResetFPU;{$ifdef SYSTEMINLINE}inline;{$endif}

@@ -418,7 +418,12 @@ asm
 end;
 
 
+{$ifdef VER3_2}
 function InterLockedDecrement (var Target: longint) : longint; assembler;
+{$else VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_DEC_32}
+function fpc_atomic_dec_32 (var Target: longint) : longint; assembler;
+{$endif VER3_2}
 {$ifndef FPC_PIC}nostackframe;{$endif}
 asm
   { usually, we shouldn't lock here so saving the stack frame for these extra intructions is
@@ -464,7 +469,12 @@ asm
   stb %g0,[%g1]
 end;
 
+{$ifdef VER3_2}
 function InterLockedIncrement (var Target: longint) : longint; assembler;
+{$else VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_INC_32}
+function fpc_atomic_inc_32 (var Target: longint) : longint; assembler;
+{$endif VER3_2}
 {$ifndef FPC_PIC}nostackframe;{$endif}
 asm
   { usually, we shouldn't lock here so saving the stack frame for these extra intructions is
@@ -511,7 +521,12 @@ asm
 end;
 
 
+{$ifdef VER3_2}
 function InterLockedExchange (var Target: longint;Source : longint) : longint; assembler;
+{$else VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_XCHG_32}
+function fpc_atomic_xchg_32 (var Target: longint;Source : longint) : longint; assembler;
+{$endif VER3_2}
 {$ifndef FPC_PIC}nostackframe;{$endif}
 asm
   { usually, we shouldn't lock here so saving the stack frame for these extra intructions is
@@ -556,7 +571,12 @@ asm
 end;
 
 
+{$ifdef VER3_2}
 function InterLockedExchangeAdd (var Target: longint;Source : longint) : longint; assembler;
+{$else VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_ADD_32}
+function fpc_atomic_add_32 (var Target: longint;Value : longint) : longint; assembler;
+{$endif VER3_2}
 {$ifndef FPC_PIC}nostackframe;{$endif}
 asm
   { usually, we shouldn't lock here so saving the stack frame for these extra intructions is
@@ -603,7 +623,12 @@ asm
 end;
 
 
+{$ifdef VER3_2}
 function InterlockedCompareExchange(var Target: longint; NewValue: longint; Comperand: longint): longint; assembler;
+{$else VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_XCHG_32}
+function fpc_atomic_xchg_32 (var Target: longint; NewValue: longint; Comparand: longint) : longint; [public,alias:'FPC_ATOMIC_CMP_XCHG_32']; assembler;
+{$endif VER3_2}
 {$ifndef FPC_PIC}nostackframe;{$endif}
 asm
   { usually, we shouldn't lock here so saving the stack frame for these extra intructions is
