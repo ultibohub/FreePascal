@@ -14,7 +14,9 @@ uses
 {$ELSE FPC}
   TestFramework,
 {$ENDIF FPC}
+  types,
   sysutils, typinfo, Rtti,
+  tests.rtti.attrtypes2,
   tests.rtti.invoketypes,
   Tests.Rtti.Util;
 
@@ -56,6 +58,7 @@ type
   { TTestInvoke }
 
   TTestInvoke = class(TTestInvokeBase)
+  private
   published
     procedure TestShortString;
     procedure TestAnsiString;
@@ -69,6 +72,10 @@ type
 
     procedure TestTObject;
     procedure TestCasts;
+    procedure TestClassConstructor;
+    procedure TestInheritedClassConstructor;
+    procedure TestClassProperty;
+    procedure TestIndexedProperty;
   end;
 
   { TTestInvokeIntfMethods }
@@ -288,7 +295,29 @@ type
     Procedure TestInvokeConstructor;
   end;
 
+  { TTestRecordMethodInvoke }
+
+  TTestRecordMethodInvoke = class(TTestInvokeBase)
+  private
+    Fctx: TRttiContext;
+    recType : TRttitype;
+    testRec, testRec2: TTestAttr2Record;
+    tv_rec : TValue;
+  Protected
+    procedure SetUp; override;
+    procedure TearDown; override;
+  Published
+    Procedure TestCreate;
+    procedure TestCreate2;
+    procedure TestCreate3;
+    procedure TestCreate4;
+    procedure TestOffset1;
+    procedure TestOffset2;
+    procedure TestStaticFunc;
+  end;
+
 implementation
+
 
 { ----------------------------------------------------------------------
   Auxiliary methods to test
@@ -1545,6 +1574,62 @@ begin
   finally
     Context.Free;
   end;
+end;
+
+procedure TTestInvoke.TestClassConstructor;
+
+var
+  context: TRttiContext;
+  aclassType: TRttiType;
+  testClass: TTestAttr2Class;
+
+begin
+  context := TRttiContext.Create(False);
+  aclassType := context.GetType(TTestAttr2Class);
+  testClass := aclassType.GetMethod('Create').Invoke(TValue.Empty, [459, 982]).AsObject as TTestAttr2Class;
+  AssertTrue('Created from nothing TTestClass is incorrect', (testClass.fa = 459) and (testClass.fa2 = 982));
+end;
+
+procedure TTestInvoke.TestInheritedClassConstructor;
+
+var
+  context: TRttiContext;
+  aclassType: TRttiType;
+  testClass: TTestAttr2Class;
+
+begin
+  context := TRttiContext.Create(False);
+  aclassType := context.GetType(TTestAttr2Class);
+  testClass := aclassType.GetMethod('Create').Invoke(TInherited2Class, [116, 904]).AsObject as TTestAttr2Class;
+  AssertTrue('TInheritedClass created via an ancestor constructor is incorrect',(testClass is TInherited2Class) and (testClass.fa = 116) and (testClass.fa2 = 904));
+end;
+
+procedure TTestInvoke.TestClassProperty;
+
+var
+  context: TRttiContext;
+  aclassType: TRttiType;
+
+begin
+  context := TRttiContext.Create(False);
+  aclassType := context.GetType(TTestAttr2Class);
+  aclassType.GetProperty('StaticProp').SetValue(nil, 4539);
+  AssertTrue('Class property is set or got incorrectly via methods',aclassType.GetProperty('StaticProp').GetValue(nil).AsInteger = 4539);
+end;
+
+procedure TTestInvoke.TestIndexedProperty;
+
+var
+  context: TRttiContext;
+  aclassType: TRttiType;
+  testClass: TTestAttr2Class;
+begin
+  context := TRttiContext.Create(False);
+  aclassType := context.GetType(TTestAttr2Class);
+  testClass:=TTestAttr2Class.Create(784,328);
+  aclassType.GetIndexedProperty('TestIProp').SetValue(testClass, [653, 796], testClass);
+  testClass := TTestAttr2Class(aclassType.GetIndexedProperty('TestIProp').GetValue(testClass, [384, 170]).AsObject);
+  AssertTrue('The getter of an indexed property for a class is incorrectly called', (testClass.fa = 384) and (testClass.fa2 = 170));
 end;
 
 procedure TTestInvoke.TestTObject;
@@ -2826,6 +2911,99 @@ begin
   CheckEquals('In test',P.DoTest,'Correct result when called as parent class');
 end;
 
+{ TTestRecordMethodInvoke }
+
+procedure TTestRecordMethodInvoke.SetUp;
+begin
+  inherited SetUp;
+  Fctx:=TRttiContext.Create(False);
+  recType:=FCtx.GetType(TypeInfo(TTestAttr2Record));
+  testRec:=Default(TTestAttr2Record);
+  testRec2:=Default(TTestAttr2Record);
+  tv_rec:=Default(TValue);
+end;
+
+procedure TTestRecordMethodInvoke.TearDown;
+begin
+  inherited TearDown;
+end;
+
+procedure TTestRecordMethodInvoke.TestCreate;
+
+begin
+
+  testRec.fa:=60;
+  testRec.fa2:=80;
+  testRec.fa3:=90;
+
+  TValue.Make(@testRec, TypeInfo(TTestAttr2Record), tv_rec);
+  testRec2 := TTestAttr2Record(recType.GetMethods('Create')[0].Invoke(tv_rec, [111, 222]).GetReferenceToRawData^);
+  AssertTrue( 'Original TTestRecord is broken', (testRec.fa = 60) and (testRec.fa2 = 80));
+  AssertTrue( 'New TTestRecord is incorrect', (testRec2.fa = 111) and (testRec2.fa2 = 222));
+end;
+
+procedure TTestRecordMethodInvoke.TestCreate2;
+begin
+  testRec.fa:=60;
+  testRec.fa2:=80;
+  testRec.fa3:=90;
+  recType.GetMethod('Create').Invoke(@testRec, [333, 444]);
+  AssertTrue('Updated TTestRecord is incorrect',(testRec.fa = 333) and (testRec.fa2 = 444) and (testRec.fa3 = 90));
+end;
+
+procedure TTestRecordMethodInvoke.TestCreate3;
+begin
+  testRec.fa:=111;
+  testRec.fa2:=222;
+  TValue.Make(@testRec, TypeInfo(TTestAttr2Record), tv_rec);
+  testRec := TTestAttr2Record(recType.GetMethods('Create')[1].Invoke(TValue.Empty, [tv_rec]).GetReferenceToRawData^);
+  AssertTrue('Created from nothing TTestRecord is incorrect', (testRec.fa = 111) and (testRec.fa2 = 222));
+end;
+
+procedure TTestRecordMethodInvoke.TestCreate4;
+
+begin
+  testRec.fa:=111;
+  testRec.fa2:=222;
+  TValue.Make(@testRec, TypeInfo(TTestAttr2Record), tv_rec);
+  testRec := TTestAttr2Record(recType.GetMethods('Create')[1].Invoke(@testRec, [tv_rec]).GetReferenceToRawData^);
+  // tv_rec was modified by reference by the first constructor
+  AssertTrue( 'Created from nothing TTestRecord is incorrect',(testRec.fa = 111) and (testRec.fa2 = 222));
+end;
+
+procedure TTestRecordMethodInvoke.TestOffset1;
+
+begin
+  testRec.fa:=111;
+  testRec.fa2:=222;
+  AssertTrue('Result of Offset in incorrect (by pointer)',recType.GetMethod('Offset').Invoke(@testRec, [12, 15]).AsInteger = 360);
+  AssertTrue('Offset of original TTestRecord is incorrect (by pointer)',(testRec.fa = 123) and (testRec.fa2 = 237));
+end;
+
+procedure TTestRecordMethodInvoke.TestOffset2;
+
+begin
+  testRec.fa:=111;
+  testRec.fa2:=222;
+  TValue.Make(@testRec, TypeInfo(TTestAttr2Record), tv_rec);
+  AssertTrue('Result of Offset in incorrect (by TValue)',recType.GetMethod('Offset').Invoke(tv_rec, [12, 15]).AsInteger = 360);
+end;
+
+procedure TTestRecordMethodInvoke.TestStaticFunc;
+
+var
+  pnt: TPoint;
+  rect: TRect;
+  tvp, tvr, exp: TValue;
+
+begin
+  pnt := TPoint.Create(45, 89);
+  rect := TRect.Create(19, 28, 37, 26);
+  TValue.Make(@pnt, TypeInfo(TPoint), tvp);
+  TValue.Make(@rect, TypeInfo(TRect), tvr);
+  AssertEquals('Static call with string return is incorrect','experiment_460_45_89_19_28_37_26',recType.GetMethod('StaticFunc').Invoke(TValue.Empty, [460, tvp, tvr]).AsString);
+end;
+
 begin
 {$ifdef fpc}
   RegisterTest(TTestInvoke);
@@ -2839,6 +3017,7 @@ begin
   RegisterTest(TTestInvokeTestProcRecs);
   RegisterTest(TTestInvokeUntyped);
   RegisterTest(TTestInvokeInstanceMethods);
+  RegisterTest(TTestRecordMethodInvoke);
 {$else fpc}
   RegisterTest(TTestInvoke.Suite);
   RegisterTest(TTestInvokeIntfMethods.Suite);
