@@ -62,6 +62,8 @@ uses
     procedure maybe_add_pending_specialization(def:tdef;unnamed_syms:tfplist);
     function determine_generic_def(const name:tidstring):tstoreddef;
 
+    function is_or_belongs_to_current_genericdef(def:tdef):boolean;
+
     procedure specialization_init(genericdef:tdef;var state:tspecializationstate);
     procedure specialization_done(var state:tspecializationstate);
 
@@ -592,6 +594,7 @@ uses
             if validparam then
               begin
                 if tstoreddef(typeparam.resultdef).is_generic and
+                    not is_or_belongs_to_current_genericdef(typeparam.resultdef) and
                     (
                       not parse_generic or
                       not defs_belong_to_same_generic(typeparam.resultdef,current_genericdef)
@@ -1335,7 +1338,7 @@ uses
           begin
             for k:=0 to callerparams.count-1 do
               begin
-                if tsym(callerparams[k]).typ=typesym then
+                if (tsym(callerparams[k]).typ=typesym) and (sp_generic_unnamed_type in ttypesym(callerparams[k]).symoptions) then
                   ttypesym(callerparams[k]).typedef.typesym:=nil;
               end;
           end;
@@ -2722,6 +2725,28 @@ uses
                   (current_module.genericdummysyms.findindexof(name)>=0);
       end;
 
+
+    function is_or_belongs_to_current_genericdef(def:tdef):boolean;
+      var
+        d : tdef;
+        state : pspecializationstate;
+      begin
+        result:=true;
+        if (def=current_genericdef) or
+            defs_belong_to_same_generic(def,current_genericdef) then
+          exit;
+        state:=pspecializationstate(current_module.specializestate);
+        while assigned(state) do
+          begin
+            if (state^.oldcurrent_genericdef=def) or
+                defs_belong_to_same_generic(state^.oldcurrent_genericdef,def) then
+              exit;
+            state:=state^.oldspecializestate;
+          end;
+        result:=false;
+      end;
+
+
     procedure specialization_init(genericdef:tdef;var state: tspecializationstate);
     var
       pu : tused_unit;
@@ -2740,6 +2765,9 @@ uses
       state.oldsymtablestack:=symtablestack;
       state.oldextendeddefs:=current_module.extendeddefs;
       state.oldgenericdummysyms:=current_module.genericdummysyms;
+      state.oldcurrent_genericdef:=current_genericdef;
+      state.oldspecializestate:=pspecializationstate(current_module.specializestate);
+      current_module.specializestate:=@state;
       current_module.extendeddefs:=TFPHashObjectList.create(true);
       current_module.genericdummysyms:=tfphashobjectlist.create(true);
       symtablestack:=tdefawaresymtablestack.create;
@@ -2819,6 +2847,7 @@ uses
       current_module.extendeddefs:=state.oldextendeddefs;
       current_module.genericdummysyms.free;
       current_module.genericdummysyms:=state.oldgenericdummysyms;
+      current_module.specializestate:=state.oldspecializestate;
       symtablestack.free;
       symtablestack:=state.oldsymtablestack;
       { clear the state record to be on the safe side }

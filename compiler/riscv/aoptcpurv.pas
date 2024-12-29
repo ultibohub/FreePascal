@@ -607,7 +607,9 @@ implementation
                       RemoveInstr(p);
 
                       result:=true;
-                    end;
+                    end
+                  else
+                    result:=OptPass1OP(p);
                 end;
               A_SLTIU:
                 begin
@@ -640,6 +642,7 @@ implementation
                       result:=true;
                     end;
                 end;
+              A_LA,
               A_LUI,
               A_LB,
               A_LBU,
@@ -672,8 +675,8 @@ implementation
               A_MULH,
               A_MULHSU,
               A_MULHU,
-              A_XORI,
               A_ORI,
+              A_XORI,
               A_AND,
               A_OR,
               A_XOR,

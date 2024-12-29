@@ -244,7 +244,8 @@ type
     function AsInterface: IInterface;
     function AsPointer : Pointer;
     function AsVariant : Variant;
-    function ToString: String;
+    function ToString: String; overload;
+    function ToString(aSettings: TFormatSettings): String; overload;
     function GetArrayLength: SizeInt;
     function GetArrayElement(AIndex: SizeInt): TValue;
     procedure SetArrayElement(AIndex: SizeInt; constref AValue: TValue);
@@ -1387,7 +1388,7 @@ resourcestring
   SErrInvokeRecCreateSelf     = 'The record constructor can only take an empty value, a record or a pointer: %s';
   SErrInvokeInstCreateSelf    = 'The instance constructor can only accept a class, an instance of a class, or an empty value: %s';
   SErrInvokeArrayArgExpected  = 'Array argument expected for parameter %s of method %s';
-  SErrInvokeArgInvalidType    = 'Invalid type of argument for parameter %s of method %s';
+  SErrInvokeArgInvalidType    = 'Invalid type of argument for parameter %s of method %s: expected %s, but got %s';
   SErrInvokeArgCount          = 'Invalid argument count for method %s; expected %d, but got %d';
   SErrInvokeNoCodeAddr        = 'Failed to determine code address for method: %s';
   SErrInvokeRttiDataError     = 'The RTTI data is inconsistent for method: %s';
@@ -2231,10 +2232,10 @@ end;
 
 function TRttiInstanceMethod.GetParameters(aWithHidden: Boolean): TRttiParameterArray;
 begin
-  if  (Length(FParams[aWithHidden]) > 0) then
-    Exit(FParams[aWithHidden]);
   if FHandle^.ParamCount = 0 then
     Exit(Nil);
+  if  (Length(FParams[aWithHidden]) > 0) then
+    Exit(FParams[aWithHidden]);
   ResolveParams;
   Result := FParams[aWithHidden];
 end;
@@ -4516,6 +4517,13 @@ end;
 
 function TValue.ToString: String;
 
+begin
+ Result:=ToString(TFormatSettings.Invariant);   
+end;
+
+function TValue.ToString(aSettings : TFormatSettings): String;
+
+
   function GetArrayElType(ATypeInfo: PTypeInfo): PTypeInfo;
   begin
     case ATypeInfo^.Kind of
@@ -4541,10 +4549,7 @@ begin
     tkUString : result := AsUnicodeString;
     tkSString,
     tkAString : result := AsAnsiString;
-    tkFloat   : begin
-                Str(AsDouble:12:4,Result);
-                Result:=TrimLeft(Result)
-                end;
+    tkFloat   : result := FloatToStr(asDouble,aSettings);
     tkInteger : result := IntToStr(AsInteger);
     tkQWord   : result := IntToStr(AsUInt64);
     tkInt64   : result := IntToStr(AsInt64);
@@ -5614,7 +5619,7 @@ end;
 
 function TRttiMethod.GetHasExtendedInfo: Boolean;
 begin
-  Result := True;
+  Result := False;
 end;
 
 function TRttiMethod.GetFlags: TFunctionCallFlags;
@@ -6023,7 +6028,7 @@ begin
   for i := 0 to params^.Count - 2 do
   begin
     param := params^.Params[i];
-    Result := Result + param.Name + ': ' + param.ParamType^^.Name + ', ';
+    Result := Result + param.Name + ': ' + param.ParamType^^.Name + '; ';
   end;
   param := params^.Params[params^.Count - 1];
   Result := Result + param.Name + ': ' + param.ParamType^^.Name + ']: ' + PropertyType.Name;
@@ -6542,7 +6547,6 @@ begin
       if TP^.PropParams <> nil then
       begin
         Dec(PropCount);
-        SetLength(FDeclaredProperties, PropCount);
         continue;
       end;
       Prop := TRttiProperty(GRttiPool[FUsePublishedOnly].GetByHandle(TP));
@@ -6557,6 +6561,7 @@ begin
       Inc(J);
     end;
   finally
+    SetLength(FDeclaredProperties, PropCount);
   end;
 end;
 
@@ -6909,6 +6914,7 @@ begin
       Inc(J);
     end;
   finally
+    SetLength(FDeclaredProperties,PropCount);
     if assigned(List) then
       FreeMem(List);
   end;
@@ -7384,7 +7390,12 @@ var
 begin
   case (FPropInfo^.PropProcs shr 2) and 3 of
     ptField:
+      {$ifdef cpu8086}
+      { convert to the correct pointer type }
+      AValue.Cast(FPropInfo^.PropType).ExtractRawData(PPointer(@(FPropInfo^.SetProc))^);
+      {$else}
       AValue.Cast(FPropInfo^.PropType).ExtractRawData(FPropInfo^.SetProc);
+      {$endif}
     ptStatic,
     ptVirtual:
       begin
@@ -7649,7 +7660,7 @@ begin
     parentfields := parent.GetFields;
   end;
 
-  fFields := Concat(parentfields, selffields);
+  fFields := Concat(selffields, parentfields);
 
   Result := fFields;
 end;
@@ -7885,7 +7896,7 @@ begin
     parentmethods := parent.GetMethods;
   end;
 
-  fMethods := Concat(parentmethods, selfmethods);
+  fMethods := Concat(selfmethods, parentmethods);
 
   Result := fMethods;
 end;

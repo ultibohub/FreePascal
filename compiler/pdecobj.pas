@@ -708,9 +708,6 @@ implementation
               end;
             consume(_RKLAMMER);
           end;
-
-        { remove forward flag, is resolved }
-        exclude(current_structdef.objectoptions,oo_is_forward);
       end;
 
     procedure parse_extended_type(helpertype:thelpertype);
@@ -1211,12 +1208,12 @@ implementation
                 object_member_blocktype:=bt_type;
 
                 if (token=_LECKKLAMMER) and (m_prefixed_attributes in current_settings.modeswitches) then
-                begin
-                  check_unbound_attributes;
-                  types_dec(true,hadgeneric, rtti_attrs_def);
-                end
+                  begin
+                    check_unbound_attributes;
+                    types_dec(true,hadgeneric, rtti_attrs_def);
+                  end
                 else
-                  // expect at least one type declaration
+                  { expect at least one type declaration }
                   if token<>_ID then
                     consume(_ID);
               end;
@@ -1531,8 +1528,11 @@ implementation
             current_structdef:=cobjectdef.create(objecttype,n,nil,true);
             tobjectdef(current_structdef).helpertype:=helpertype;
 
-            { include always the forward flag, it'll be removed after the parent class have been
-              added. This is to prevent circular childof loops }
+            { include always the forward flag, it'll be removed once the whole
+              class has been parsed so that it can be used as a parent class
+              of a nested class;
+              Exception: for external classes this will be removed once the
+              parent classes have been parsed }
             include(current_structdef.objectoptions,oo_is_forward);
 
             if (cs_compilesystem in current_settings.moduleswitches) then
@@ -1676,11 +1676,11 @@ implementation
             if not (is_objectpascal_helper(current_objectdef) and
                 (m_delphi in current_settings.modeswitches) and
                 (helpertype=ht_record)) then
-              parse_parent_classes
-            else
-              { remove forward flag, is resolved (this is normally done inside
-                parse_parent_classes) }
-              exclude(current_structdef.objectoptions,oo_is_forward);
+              parse_parent_classes;
+
+            { for external classes we remove the external flag here already }
+            if oo_is_external in current_objectdef.objectoptions then
+              exclude(current_objectdef.objectoptions,oo_is_forward);
 
             { parse extended type for helpers }
             if is_objectpascal_helper(current_structdef) then
@@ -1755,6 +1755,8 @@ implementation
             end;
 
             symtablestack.pop(current_structdef.symtable);
+
+            exclude(current_structdef.objectoptions,oo_is_forward);
           end;
 
         { generate vmt space if needed }

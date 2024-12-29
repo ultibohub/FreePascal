@@ -1714,7 +1714,7 @@ implementation
                         (torddef(tpointerdef(def_to).pointeddef).ordtype=uvoid) then
                        begin
                          doconv:=tc_equal;
-                         eq:=te_convert_l2;
+                         eq:=te_convert_l5;
                        end
                      else if (is_objc_class_or_protocol(def_from) and
                               (def_to=objc_idtype)) or
@@ -1947,8 +1947,9 @@ implementation
                                   else
                                     { for Objective-C, we don't have to do anything special }
                                     doconv:=tc_equal;
-                                  { don't prefer this over objectdef->objectdef }
-                                  eq:=te_convert_l2;
+                                  { don't prefer this over objectdef->objectdef or
+                                    inherited objectdef->objectdef }
+                                  eq:=te_convert_l4;
                                   break;
                                end;
                              hobjdef:=hobjdef.childof;
@@ -2637,9 +2638,12 @@ implementation
                   compatible with the target }
                 if po_anonymous in def1.procoptions then
                   begin
-                    if def1.typ<>procdef then
-                      internalerror(2021052602);
-                    captured:=tprocdef(def1).capturedsyms;
+                    captured:=nil;
+                    if def1.typ=procdef then
+                      captured:=tprocdef(def1).capturedsyms
+                    { def1.typ=procvardef can happen if someone uses procvar := @<anon func> }
+                    else if def1.typ<>procvardef then
+                      internalerror(2021052601);
                     { a function reference can capture anything, but they're
                       rather expensive, so cheaper overloads are preferred }
                     dstisfuncref:=assigned(def2.owner) and
@@ -2656,7 +2660,9 @@ implementation
                         - nested procvar }
                     if not assigned(captured) or (captured.count=0) then
                       begin
-                        if po_methodpointer in def2.procoptions then
+                        if def1.typ=procvardef then
+                          eq:=te_incompatible
+                        else if po_methodpointer in def2.procoptions then
                           eq:=te_convert_l2
                         else if po_delphi_nested_cc in def2.procoptions then
                           eq:=te_convert_l4

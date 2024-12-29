@@ -48,6 +48,9 @@ unit pararv;
 
         function create_varargs_paraloc_info(p: tabstractprocdef; side: tcallercallee; varargspara: tvarargsparalist): longint;override;
 
+        function push_addr_param(varspez: tvarspez; def: tdef; calloption: tproccalloption): boolean;override;
+
+        function create_paraloc_info(p: tabstractprocdef; side: tcallercallee): longint;override;
       protected
         procedure init_values(var curintreg, curfloatreg, curmmreg: tsuperregister; var cur_stack_offset: aword);
       end;
@@ -59,6 +62,7 @@ implementation
     uses
       verbose,
       globals,
+      systems,
       cpuinfo,
       symsym,
       symtable,
@@ -134,7 +138,9 @@ implementation
 
     function trvparamanager.get_volatile_registers_fpu(calloption: tproccalloption): tcpuregisterset;
       begin
-        result:=[RS_F0..RS_F31]-[RS_F8..RS_F9,RS_F18..RS_F27];
+        result:=[RS_F0..RS_F31];
+        if target_info.abi in [abi_riscv_hf,abi_riscv_ilp32f,abi_riscv_ilp32d,abi_riscv_lp64f,abi_riscv_lp64d] then
+          result:=result-[RS_F8..RS_F9,RS_F18..RS_F27];
       end;
 
 
@@ -149,8 +155,12 @@ implementation
     function trvparamanager.get_saved_registers_fpu(calloption : tproccalloption):tcpuregisterarray;
       const
         saved_regs: tcpuregisterarray = (RS_F8,RS_F9,RS_F18,RS_F19,RS_F20,RS_F21,RS_F22,RS_F23,RS_F24,RS_F25,RS_F26,RS_F27);
+        empty_regs: tcpuregisterarray = ();
       begin
-        result:=saved_regs;
+        if target_info.abi in [abi_riscv_hf,abi_riscv_ilp32f,abi_riscv_ilp32d,abi_riscv_lp64f,abi_riscv_lp64d] then
+          result:=saved_regs
+        else
+          result:=empty_regs;
       end;
 
 
@@ -188,6 +198,52 @@ implementation
                reference.offset:=sizeof(pint)*nr;
              end;
           end;
+      end;
+
+
+    function trvparamanager.push_addr_param(varspez:tvarspez;def : tdef;calloption : tproccalloption) : boolean;
+      begin
+        result:=false;
+        { var,out,constref always require address }
+        if varspez in [vs_var,vs_out,vs_constref] then
+          begin
+            result:=true;
+            exit;
+          end;
+        case def.typ of
+          variantdef,
+          formaldef :
+            result:=true;
+          { regular procvars must be passed by value, because you cannot pass
+            the address of a local stack location when calling e.g.
+            pthread_create with the address of a function (first of all it
+            expects the address of the function to execute and not the address
+            of a memory location containing that address, and secondly if you
+            first store the address on the stack and then pass the address of
+            this stack location, then this stack location may no longer be
+            valid when the newly started thread accesses it.
+
+            However, for "procedure of object" we must use the same calling
+            convention as for "8 byte record" due to the need for
+            interchangeability with the TMethod record type.
+          }
+          procvardef,
+          recorddef:
+            result := not(def.size in [0..sizeof(aint)*2]) or (varspez = vs_const);
+          arraydef:
+            result:=(tarraydef(def).highrange>=tarraydef(def).lowrange) or
+                             is_open_array(def) or
+                             is_array_of_const(def) or
+                             is_array_constructor(def);
+          objectdef :
+            result:=is_object(def);
+          setdef :
+            result:=not is_smallset(def);
+          stringdef :
+            result:=tstringdef(def).stringtype in [st_shortstring,st_longstring];
+          else
+            ;
+        end;
       end;
 
 
@@ -251,6 +307,19 @@ implementation
         else
           internalerror(2019021912);
         create_funcretloc_info(p,side);
+      end;
+
+
+    function trvparamanager.create_paraloc_info(p: tabstractprocdef; side: tcallercallee): longint;
+      var
+        cur_stack_offset: aword;
+        curintreg, curfloatreg, curmmreg : tsuperregister;
+      begin
+        init_values(curintreg, curfloatreg, curmmreg, cur_stack_offset);
+
+        result := create_paraloc_info_intern(p, side, p.paras, curintreg, curfloatreg, curmmreg, cur_stack_offset, false);
+
+        create_funcretloc_info(p, side);
       end;
 
 

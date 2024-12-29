@@ -45,7 +45,8 @@ uses
   nrvinl,
   nrv64mat,
   nrv64cnv,
-  nrv64ld
+  nrv64ld,
+  nrvutil
 {$else not llvm}
   llvmnode
 {$endif not llvm}

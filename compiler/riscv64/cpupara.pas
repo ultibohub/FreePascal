@@ -34,10 +34,7 @@ unit cpupara;
 
     type
       tcpuparamanager = class(trvparamanager)
-        function push_addr_param(varspez: tvarspez; def: tdef; calloption: tproccalloption): boolean; override;
         function ret_in_param(def: tdef; pd: tabstractprocdef): boolean; override;
-
-        function create_paraloc_info(p: tabstractprocdef; side: tcallercallee): longint; override;
       private
         function parseparaloc(p: tparavarsym; const s: string): boolean; override;
       end;
@@ -50,39 +47,6 @@ implementation
       defutil,symtable,symcpu,
       procinfo, cpupi;
 
-    function tcpuparamanager.push_addr_param(varspez: tvarspez; def: tdef; calloption: tproccalloption): boolean;
-      begin
-        result := false;
-        { var,out,constref always require address }
-        if varspez in [vs_var, vs_out, vs_constref] then
-        begin
-          result := true;
-          exit;
-        end;
-        case def.typ of
-          variantdef,
-          formaldef:
-            result := true;
-          procvardef,
-          recorddef:
-            result := not(def.size in [0..sizeof(aint)*2]) or (varspez = vs_const);
-          arraydef:
-            result := (tarraydef(def).highrange >= tarraydef(def).lowrange) or
-              is_open_array(def) or
-              is_array_of_const(def) or
-              is_array_constructor(def);
-          objectdef:
-            result := is_object(def);
-          setdef:
-            result := not is_smallset(def);
-          stringdef:
-            result := tstringdef(def).stringtype in [st_shortstring, st_longstring];
-          else
-            ;
-        end;
-      end;
-
-
     function tcpuparamanager.ret_in_param(def: tdef; pd: tabstractprocdef): boolean;
       begin
         if handle_common_ret_in_param(def,pd,result) then
@@ -90,19 +54,6 @@ implementation
 
         { general rule: passed in registers -> returned in registers }
         result:=push_addr_param(vs_value,def,pd.proccalloption);
-      end;
-
-
-    function tcpuparamanager.create_paraloc_info(p: tabstractprocdef; side: tcallercallee): longint;
-      var
-        cur_stack_offset: aword;
-        curintreg, curfloatreg, curmmreg : tsuperregister;
-      begin
-        init_values(curintreg, curfloatreg, curmmreg, cur_stack_offset);
-
-        result := create_paraloc_info_intern(p, side, p.paras, curintreg, curfloatreg, curmmreg, cur_stack_offset, false);
-
-        create_funcretloc_info(p, side);
       end;
 
 

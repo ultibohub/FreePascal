@@ -34,10 +34,13 @@ const
   inline_specialization_block_types = [bt_type,bt_var_type,bt_const_type,bt_body,bt_except];
 
 type
+  pspecializationstate = ^tspecializationstate;
   tspecializationstate = record
-    oldsymtablestack   : tsymtablestack;
-    oldextendeddefs    : tfphashobjectlist;
-    oldgenericdummysyms: tfphashobjectlist;
+    oldsymtablestack      : tsymtablestack;
+    oldextendeddefs       : tfphashobjectlist;
+    oldgenericdummysyms   : tfphashobjectlist;
+    oldspecializestate    : pspecializationstate;
+    oldcurrent_genericdef : tdef;
   end;
 
   tspecializationcontext=class
