@@ -90,10 +90,13 @@ interface
          tokenbuf : tdynamicarray;
          tokenbuf_needs_swapping : boolean;
          next     : treplaystack;
+         pending  : tpendingstate;
+         verbosity : longint;
          constructor Create(atoken: ttoken;aidtoken:ttoken;
            const aorgpattern,apattern:string;const acstringpattern:ansistring;
            apatternw:pcompilerwidestring;asettings:tsettings;
-           atokenbuf:tdynamicarray;change_endian:boolean;anext:treplaystack);
+           atokenbuf:tdynamicarray;change_endian:boolean;const apending:tpendingstate;
+           averbosity:longint;anext:treplaystack);
          destructor destroy;override;
        end;
 
@@ -2972,7 +2975,8 @@ type
     constructor treplaystack.Create(atoken:ttoken;aidtoken:ttoken;
       const aorgpattern,apattern:string;const acstringpattern:ansistring;
       apatternw:pcompilerwidestring;asettings:tsettings;
-      atokenbuf:tdynamicarray;change_endian:boolean;anext:treplaystack);
+      atokenbuf:tdynamicarray;change_endian:boolean;const apending:tpendingstate;
+      averbosity:longint;anext:treplaystack);
       begin
         token:=atoken;
         idtoken:=aidtoken;
@@ -2986,6 +2990,8 @@ type
             move(apatternw^.data^,patternw^.data^,apatternw^.len*sizeof(tcompilerwidechar));
           end;
         settings:=asettings;
+        pending:=apending;
+        verbosity:=averbosity;
         tokenbuf:=atokenbuf;
         tokenbuf_needs_swapping:=change_endian;
         next:=anext;
@@ -3447,10 +3453,10 @@ type
               >0: round to this size }
             setalloc:=tokenreadshortint;
             packenum:=tokenreadshortint;
-
             packrecords:=tokenreadshortint;
             maxfpuregisters:=tokenreadshortint;
 
+            verbosity:=tokenreadlongint;
 
             cputype:=tcputype(tokenreadenum(sizeof(tcputype)));
             optimizecputype:=tcputype(tokenreadenum(sizeof(tcputype)));
@@ -3534,6 +3540,7 @@ type
             tokenwriteshortint(packenum);
             tokenwriteshortint(packrecords);
             tokenwriteshortint(maxfpuregisters);
+            tokenwritelongint(verbosity);
 
             tokenwriteenum(cputype,sizeof(tcputype));
             tokenwriteenum(optimizecputype,sizeof(tcputype));
@@ -3578,6 +3585,8 @@ type
         if not assigned(recordtokenbuf) then
           internalerror(200511176);
         t:=_GENERICSPECIALTOKEN;
+        { ensure that all fields of settings are up to date }
+        current_settings.verbosity:=status.verbosity;
         { settings changed? }
         { last field pmessage is handled separately below in
           ST_LOADMESSAGES }
@@ -3710,7 +3719,8 @@ type
 
         { save current scanner state }
         replaystack:=treplaystack.create(token,idtoken,orgpattern,pattern,
-          cstringpattern,patternw,current_settings,replaytokenbuf,change_endian_for_replay,replaystack);
+          cstringpattern,patternw,current_settings,replaytokenbuf,change_endian_for_replay,
+          pendingstate,status.verbosity,replaystack);
 {$ifdef check_inputpointer_limits}
         if assigned(hidden_inputpointer) then
           dec_inputpointer;
@@ -3720,6 +3730,10 @@ type
 {$endif check_inputpointer_limits}
         { install buffer }
         replaytokenbuf:=buf;
+
+        { ensure that existing message state records won't be freed }
+        current_settings.pmessage:=nil;
+        pendingstate:=default(tpendingstate);
 
         { Initialize value of change_endian_for_replay variable }
         change_endian_for_replay:=change_endian;
@@ -3751,6 +3765,8 @@ type
         specialtoken : tspecialgenerictoken;
         i : byte;
         pmsg,prevmsg : pmessagestaterecord;
+        msgset : thashset;
+        msgfound : boolean;
       begin
         if not assigned(replaytokenbuf) then
           internalerror(200511177);
@@ -3768,6 +3784,12 @@ type
             change_endian_for_replay:=replaystack.tokenbuf_needs_swapping;
             { restore compiler settings }
             current_settings:=replaystack.settings;
+            pendingstate:=replaystack.pending;
+            if assigned(pendingstate.nextmessagerecord) then
+              FreeLocalVerbosity(pendingstate.nextmessagerecord);
+            recordpendingverbosityfullswitch(replaystack.verbosity);
+            pendingstate.nextmessagerecord:=current_settings.pmessage;
+            current_settings.pmessage:=nil;
             popreplaystack;
 {$ifdef check_inputpointer_limits}
             if assigned(hidden_inputpointer) then
@@ -3850,24 +3872,40 @@ type
                         replaytokenbuf.read(current_settings,copy_size);
                         }
                         tokenreadsettings(current_settings,copy_size);
+                        recordpendingverbosityfullswitch(current_settings.verbosity);
                       end;
                     ST_LOADMESSAGES:
                       begin
-                        current_settings.pmessage:=nil;
+                        { free current and pending messages }
+                        FreeLocalVerbosity(current_settings.pmessage);
+                        FreeLocalVerbosity(pendingstate.nextmessagerecord);
+                        { the message settings are stored from newest to oldest
+                          change for the whole stack, so we only want to apply
+                          the newest changes for each message type }
                         mesgnb:=tokenreadsizeint;
+                        msgset:=thashset.create(min(mesgnb,10),false,false);
                         prevmsg:=nil;
+                        pmsg:=nil;
                         for i:=1 to mesgnb do
                           begin
-                            new(pmsg);
-                            if i=1 then
-                              current_settings.pmessage:=pmsg
-                            else
-                              prevmsg^.next:=pmsg;
+                            if not assigned(pmsg) then
+                              new(pmsg);
                             pmsg^.value:=tokenreadlongint;
                             pmsg^.state:=tmsgstate(tokenreadlongint);
                             pmsg^.next:=nil;
+                            msgfound:=false;
+                            if assigned(msgset.findoradd(@pmsg^.value,sizeof(pmsg^.value),msgfound)) and msgfound then
+                              continue;
+                            if i=1 then
+                              pendingstate.nextmessagerecord:=pmsg
+                            else
+                              prevmsg^.next:=pmsg;
                             prevmsg:=pmsg;
+                            pmsg:=nil;
                           end;
+                        if assigned(pmsg) then
+                          dispose(pmsg);
+                        msgset.free;
                       end;
                     ST_LINE:
                       begin

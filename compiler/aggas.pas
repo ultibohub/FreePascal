@@ -560,6 +560,11 @@ implementation
              if (atype in [sec_stub]) then
                writer.AsmWrite('.section ');
            end;
+         system_powerpc_macosclassic:
+           begin
+             if atype<>sec_toc then
+               writer.AsmWrite('.csect ');
+           end;
          system_wasm32_wasi,
          system_wasm32_embedded:
            begin
@@ -1298,11 +1303,12 @@ implementation
                        end;
                       ch:=tai_string(hp).str[i-1];
                       case ch of
-                                #0, {This can't be done by range, because a bug in FPC}
-                           #1..#31,
-                        #128..#255 : s:='\'+tostr(ord(ch) shr 6)+tostr((ord(ch) and 63) shr 3)+tostr(ord(ch) and 7);
-                               '"' : s:='\"';
-                               '\' : s:='\\';
+                        #0, {This can't be done by range, because a bug in FPC}
+                        #1..#31,
+                        '"',#128..#255:
+                          s:='\'+tostr(ord(ch) shr 6)+tostr((ord(ch) and 63) shr 3)+tostr(ord(ch) and 7);
+                        '\':
+                          s:='\\';
                       else
                         s:=ch;
                       end;
@@ -1636,15 +1642,15 @@ implementation
                { as of today, vasm does not support the eabi directives }
                if target_asm.id<>as_arm_vasm then
                  begin
-                   case tai_eabi_attribute(hp).eattr_typ of
+                   case tai_attribute(hp).eattr_typ of
                      eattrtype_dword:
-                       writer.AsmWrite(#9'.eabi_attribute '+tostr(tai_eabi_attribute(hp).tag)+','+tostr(tai_eabi_attribute(hp).value));
+                       writer.AsmWrite(#9'.eabi_attribute '+tostr(tai_attribute(hp).tag)+','+tostr(tai_attribute(hp).value));
                      eattrtype_ntbs:
                        begin
-                         if assigned(tai_eabi_attribute(hp).valuestr) then
-                           writer.AsmWrite(#9'.eabi_attribute '+tostr(tai_eabi_attribute(hp).tag)+',"'+tai_eabi_attribute(hp).valuestr^+'"')
+                         if assigned(tai_attribute(hp).valuestr) then
+                           writer.AsmWrite(#9'.eabi_attribute '+tostr(tai_attribute(hp).tag)+',"'+tai_attribute(hp).valuestr^+'"')
                          else
-                           writer.AsmWrite(#9'.eabi_attribute '+tostr(tai_eabi_attribute(hp).tag)+',""');
+                           writer.AsmWrite(#9'.eabi_attribute '+tostr(tai_attribute(hp).tag)+',""');
                        end
                      else
                        Internalerror(2019100601);
@@ -1653,6 +1659,23 @@ implementation
                  end;
              end;
 
+           ait_attribute:
+             begin
+               case tai_attribute(hp).eattr_typ of
+                 eattrtype_dword:
+                   writer.AsmWrite(#9'.attribute '+tostr(tai_attribute(hp).tag)+','+tostr(tai_attribute(hp).value));
+                 eattrtype_ntbs:
+                   begin
+                     if assigned(tai_attribute(hp).valuestr) then
+                       writer.AsmWrite(#9'.attribute '+tostr(tai_attribute(hp).tag)+',"'+tai_attribute(hp).valuestr^+'"')
+                     else
+                       writer.AsmWrite(#9'.attribute '+tostr(tai_attribute(hp).tag)+',""');
+                   end
+                 else
+                   Internalerror(2024123001);
+               end;
+               writer.AsmLn;
+             end;
 {$ifdef WASM}
            ait_local:
              WriteWasmLocalDirective(tai_local(hp));

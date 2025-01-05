@@ -432,7 +432,6 @@ type
     Destructor Destroy; override;
     Procedure FreeChildren(Prepare: boolean); override;
     function ElementTypeName: TPasTreeString; override;
-
   end;
 
 
@@ -463,6 +462,7 @@ type
   { TPasUnitModule }
 
   TPasUnitModule = Class(TPasModule)
+  public
     function ElementTypeName: TPasTreeString; override;
   end;
 
@@ -767,8 +767,19 @@ type
 
   TPasMembersType = class(TPasGenericType)
   public
+    type
+      TRTTIVisibilitySection = (vcPrivate,vcProtected,vcPublic,vcPublished);
+      TRTTIVisibilitySections = set of TRTTIVisibilitySection;
+      TRTTIVisibility = record
+        Explicit: boolean; // inherit or explicit
+        Fields: TRTTIVisibilitySections;
+        Methods: TRTTIVisibilitySections;
+        Properties: TRTTIVisibilitySections;
+      end;
+  public
     PackMode: TPackMode;
     Members: TFPList;
+    RTTIVisibility: TRTTIVisibility;
     Constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
     Destructor Destroy; override;
     procedure FreeChildren(Prepare: boolean); override;
@@ -854,6 +865,18 @@ type
 
   TArgumentAccess = (argDefault, argConst, argVar, argOut, argConstRef);
 
+  { TPasAttributes }
+
+  TPasAttributes = class(TPasElement)
+  public
+    procedure FreeChildren(Prepare: boolean); override;
+    procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
+      const Arg: Pointer); override;
+    procedure AddCall(Expr: TPasExpr);
+  public
+    Calls: TPasExprArray;
+  end;
+
   { TPasArgument }
 
   TPasArgument = class(TPasElement)
@@ -866,6 +889,7 @@ type
       const Arg: Pointer); override;
   public
     Access: TArgumentAccess;
+    Attributes: TPasAttributes;
     ArgType: TPasType; // can be nil, when Access<>argDefault
     ValueExpr: TPasExpr; // the default value
     Function Value : TPasTreeString;
@@ -1052,18 +1076,6 @@ type
     Function ResolvedType : TPasType;
     Function IndexValue : TPasTreeString;
     Function DefaultValue : TPasTreeString;
-  end;
-
-  { TPasAttributes }
-
-  TPasAttributes = class(TPasElement)
-  public
-    procedure FreeChildren(Prepare: boolean); override;
-    procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
-      const Arg: Pointer); override;
-    procedure AddCall(Expr: TPasExpr);
-  public
-    Calls: TPasExprArray;
   end;
 
   TProcType = (ptProcedure, ptFunction,
@@ -1859,6 +1871,8 @@ procedure FreePasExprArray(Parent: TPasElement; var A: TPasExprArray; Prepare: b
 function GenericTemplateTypesAsString(List: TFPList): TPasTreeString;
 
 function dbgs(const s: TProcTypeModifiers): TPasTreeString; overload;
+function dbgs(const v: TPasMembersType.TRTTIVisibilitySection): TPasTreeString; overload;
+function dbgs(const Sections: TPasMembersType.TRTTIVisibilitySections): TPasTreeString; overload;
 function WritePasElTree(Expr: TPasExpr; FollowPrefix: TPasTreeString = ''): TPasTreeString;
 function GetPasElementDesc(El: TPasElement): TPasTreeString;
 
@@ -1930,6 +1944,24 @@ begin
     begin
     if Result<>'' then Result:=Result+',';
     Result:=Result+ProcTypeModifiers[m];
+    end;
+  Result:='['+Result+']';
+end;
+
+function dbgs(const v: TPasMembersType.TRTTIVisibilitySection): TPasTreeString;
+begin
+  str(v,Result);
+end;
+
+function dbgs(const Sections: TPasMembersType.TRTTIVisibilitySections): TPasTreeString;
+var
+  s: TPasMembersType.TRTTIVisibilitySection;
+begin
+  Result:='';
+  for s in Sections do
+    begin
+    if Result<>'' then Result:=Result+',';
+    Result:=Result+dbgs(s);
     end;
   Result:='['+Result+']';
 end;
@@ -3615,7 +3647,8 @@ end;
 
 procedure TPasArgument.FreeChildren(Prepare: boolean);
 begin
-  ArgType:=TPasTypeRef(FreeChild(ArgType,Prepare));
+  Attributes:=TPasAttributes(FreeChild(Attributes,Prepare));
+  ArgType:=TPasType(FreeChild(ArgType,Prepare));
   ValueExpr:=TPasExpr(FreeChild(ValueExpr,Prepare));
   inherited FreeChildren(Prepare);
 end;
@@ -3641,14 +3674,17 @@ begin
     Result:=SafeName
   else
     Result:='';
+  If Full and Assigned(Attributes) and (Attributes.Parent=Self) then
+    Result:=Attributes.GetDeclaration(full)+' '+Result;
 end;
 
 procedure TPasArgument.ForEachCall(const aMethodCall: TOnForEachPasElement;
   const Arg: Pointer);
 begin
+  ForEachChildCall(aMethodCall,Arg,Attributes,true);
   inherited ForEachCall(aMethodCall, Arg);
   ForEachChildCall(aMethodCall,Arg,ArgType,true);
-  ForEachChildCall(aMethodCall,Arg,ValueExpr,false);
+  ForEachChildCall(aMethodCall,Arg,ValueExpr,true);
 end;
 
 function TPasArgument.Value: TPasTreeString;

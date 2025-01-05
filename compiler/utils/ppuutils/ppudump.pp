@@ -2624,6 +2624,7 @@ const
        writeln(['Pack enums ',new_settings.packenum]);
        writeln(['Pack records ',new_settings.packrecords]);
        writeln(['Max FPU registers ',new_settings.maxfpuregisters]);
+       writeln('Verbosity '+hexstr(new_settings.verbosity,8));
 
        writeln(['CPU type ',new_settings.cputype]);
        writeln(['CPU optimize type ',new_settings.optimizecputype]);

@@ -918,6 +918,12 @@ begin
 {$include fcl-openapi/fpmake.pp}
 end;
 
+procedure add_fcl_yaml(const ADirectory: string);
+begin
+  with Installer do
+{$include fcl-yaml/fpmake.pp}
+end;
+
 procedure add_ptckvm(const ADirectory: string);
 begin
   with Installer do
@@ -926,3 +932,8 @@ end;
 
 {$include fcl-fpterm/fpmake.pp}
 
+procedure add_libjack(const ADirectory: string);
+begin
+  with Installer do
+{$include libjack/fpmake.pp}
+end;

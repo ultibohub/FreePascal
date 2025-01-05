@@ -1264,8 +1264,7 @@ unit scandir;
           recordpendingpackrecords(switchesstatestack[switchesstatestackpos].packrecords);
           recordpendingsetalloc(switchesstatestack[switchesstatestackpos].setalloc);
           pendingstate.nextmessagerecord:=switchesstatestack[switchesstatestackpos].pmessage;
-          { Reset verbosity and forget previous pmeesage }
-          RestoreLocalVerbosity(nil);
+          { flushpendingswitchesstate will reset the message state }
           current_settings.pmessage:=nil;
           { Do not activate these changes yet, as otherwise
             you get a problem if you put a $pop just right after
@@ -1779,7 +1778,7 @@ unit scandir;
         had_info : boolean;
       begin
         had_info:=(status.verbosity and V_Info)<>0;
-        { this message should allways appear !! }
+        { this message should always appear !! }
         status.verbosity:=status.verbosity or V_Info;
         Message(scan_i_press_enter);
         readln;

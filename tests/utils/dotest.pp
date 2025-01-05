@@ -737,7 +737,7 @@ begin
 end;
 
 
-function CheckForMessages(const OutName:string;Msgs:array of longint;var Found:array of boolean):boolean;
+function CheckForMessages(const OutName:string;const Msgs:array of longint;var Found:array of boolean):boolean;
 var
   t : text;
   s,id : string;
@@ -764,7 +764,7 @@ begin
         begin
           str(Msgs[i],id);
           id:='('+id+')';
-          if copy(s,1,length(id))=id then
+          if startsstr(id,s) or (pos(': '+id,s)>0) then
             begin
               if not Found[i] then
                 inc(fnd);
