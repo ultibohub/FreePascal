@@ -32,7 +32,7 @@ unit itcpugas;
       gas_op2str: array[tasmop] of string[14] = ('<none>',
         'nop','call','la','lla','lga','li','mv','not','neg','negw',
         'sext.b','sext.h','zext.b','zext.h','seqz','sneg','sltz','sgtz',
-        'fmv.s','fabs.s','fneg.s','fmv.d','fabs.d','fneg.d',
+        'fmv.s','fabs.s','fneg.s','fmv.d','fabs.d','fneg.d','fneg.q',
         'beqz','bnez','blez','bgez','bltz','bgtz','gt','ble',
         'bgtu','bleu','j','jr','ret','tail',
         'lui','auipc','jal','jalr',
@@ -119,9 +119,10 @@ unit itcpugas;
         'fadd.s','fsub.s','fmul.s','fdiv.s',
         'fsqrt.s','fsgnj.s','fsgnjn.s','fsgnjx.s',
         'fmin.s','fmax.s',
-        'fmv.x.s','feq.s','flt.s','fle.s','fclass.s',
+        'fmv.x.s','fmv.x.w',
+        'feq.s','flt.s','fle.s','fclass.s',
         'fcvt.w.s','fcvt.wu.s','fcvt.s.w','fcvt.s.wu',
-        'fmv.s.x',
+        'fmv.s.x','fmv.w.x',
         'frcsr','frrm','frflags','fscsr','fsrm',
         'fsflags','fsrmi','fsflagsi',
 
@@ -146,6 +147,10 @@ unit itcpugas;
         'fcvt.l.d','fcvt.lu.d','fmv.x.d',
         'fcvt.d.l','fcvt.d.lu','fmv.d.x',
 {$endif RISCV64}
+
+        { q-extension }
+        'flq','fsq',
+        'fmax.q','fmax.q',
 
         { Machine mode }
         'mret','hret','sret','uret',

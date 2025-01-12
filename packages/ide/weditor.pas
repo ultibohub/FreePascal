@@ -2081,11 +2081,11 @@ begin
       exit;
     end; *)
   if S='' then
-    CP:=0
+    CP:=X+1
   else
     begin
      CP:=0; RX:=0;
-     while (RX<=X) and (CP<=length(S)) do
+     while (RX<=X) {and (CP<=length(S))} do
       begin
         Inc(CP);
         if (CP<=length(S)) and
@@ -3583,10 +3583,10 @@ end;
 
 procedure TCustomCodeEditor.ScrollTo(X, Y: sw_Integer);
 begin
-  inherited ScrollTo(X,Y);
-  if (HScrollBar=nil) or (VScrollBar=nil) then
-     begin Delta.X:=X; Delta.Y:=Y; end;
-  DrawView;
+   inherited ScrollTo(X,Y);
+   if (HScrollBar=nil) then Delta.X:=Max(X,0);
+   if (VScrollBar=nil) then Delta.Y:=Max(Min(Y,GetLineCount-1),0);
+   if (HScrollBar=nil) or (VScrollBar=nil) then DrawView;
 end;
 
 function TCustomCodeEditor.IsModal: boolean;
@@ -3748,7 +3748,7 @@ begin
            LocalMenu(P);
            ClearEvent(Event);
          end else
-       if Event.Buttons=mbLeftButton then
+       if (Event.Buttons=mbLeftButton) and not(Event.Double or Event.Triple) then
         begin
           GetMousePos(P);
           StartP:=P;
@@ -3762,6 +3762,17 @@ begin
             DrawView;
           until not MouseEvent(Event, evMouseMove+evMouseAuto);
           DrawView;
+          ClearEvent(Event);
+        end else
+      if (Event.Buttons=mbLeftButton) and (Event.Double) then
+        begin
+          SelectWord;
+          ClearEvent(Event);
+        end else
+      if (Event.Buttons=mbLeftButton) and (Event.Triple) then
+        begin
+          SelectLine;
+          ClearEvent(Event);
         end;
     evKeyDown :
       begin
@@ -4053,7 +4064,11 @@ var SelectColor,
     Color: word;
     ColorTab: array[coFirstColor..coLastColor] of word;
     ErrorLine: integer;
+{$if MaxViewWidth < 256}
     ErrorMsg: string[MaxViewWidth];
+{$else}
+    ErrorMsg: string[255];
+{$endif}
 function CombineColors(Orig,Modifier: byte): byte;
 var Color: byte;
 begin
@@ -4142,7 +4157,7 @@ begin
         begin
           Color:=ColorTab[coTextColor];
           FillChar(FreeFormat,SizeOf(FreeFormat),1);
-          MoveChar(B,' ',Color,Size.X);
+          { MoveChar(B,' ',Color,Size.X); redundant, following for loop covers it all }
           GetDisplayTextFormat(AY,LineText,Format);
           if ShowIndent and (length(Format)=length(LineText)) then
             for X:=1 to length(LineText) do
@@ -4221,7 +4236,8 @@ begin
                 FreeFormat[X]:=false;
               end;
 
-            if (0<=LSX+X-1-Delta.X) and (LSX+X-1-Delta.X<MaxViewWidth) then
+            { redundant check, for loop condition is taking care of coorect range
+            if (0<=LSX+X-1-Delta.X) and (LSX+X-1-Delta.X<MaxViewWidth) then  }
               MoveChar(B[LSX+X-1-Delta.X],C,Color,1);
           end; { for X:=1 to ... }
           if IsFlagSet(efFolds) then
@@ -7663,6 +7679,8 @@ begin
   if Desktop^.Size.X > 80 then
     GrowTo(Min(Desktop^.Size.X-(80-Size.X),102),Size.Y);
   FileList^.NumCols:= Max((FileList^.Size.X-(FileList^.Size.X div 14)) div 14,2);
+  { Adjust scrollbar step and page step }
+  FileList^.SetRange(FileList^.Range); {set again for scrollbar min max values}
   {set focus on the new input line}
   DInput^.Focus;
 end;

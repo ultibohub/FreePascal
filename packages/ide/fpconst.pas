@@ -67,11 +67,17 @@ const
 {$ifndef USE_SPECIAL_BASENAME}
      FPBaseName = 'fp';
 {$endif not USE_SPECIAL_BASENAME}
-     ININame              = FPBaseName+'.ini';
-     DirInfoName          = FPBaseName+'.dir';
-     SwitchesName         = FPBaseName+'.cfg';
-     DesktopName          = FPBaseName+'.dsk';
-     BrowserName          = FPBaseName+'.brw';
+     INIExt               = '.ini';
+     DirInfoExt           = '.dir';
+     SwitchesExt          = '.cfg';
+     DesktopExt           = '.dsk';
+     BrowserExt           = '.brw';
+
+     ININame              = FPBaseName+INIExt;
+     DirInfoName          = FPBaseName+DirInfoExt;
+     SwitchesName         = FPBaseName+SwitchesExt;
+     DesktopName          = FPBaseName+DesktopExt;
+     BrowserName          = FPBaseName+BrowserExt;
      BackgroundName       = 'fp.ans';
      ReadmeName           = 'readme.ide';
 
@@ -298,6 +304,7 @@ const
      cmSymGotoSource     = 2701;
      cmSymTrackSource    = 2702;
      cmSymOptions        = 2703;
+     cmSymSaveAs         = 2704;
 
      { Help constants }
      hcSourceWindow      = 8000;
@@ -422,6 +429,7 @@ const
      hcSymGotoSource     = hcShift+cmSymGotoSource;
      hcSymTrackSource    = hcShift+cmSymTrackSource;
      hcSymOptions        = hcShift+cmSymOptions;
+     hcSymSaveAs         = hcShift+cmSymSaveAs;
      hcGotoCursor        = hcShift+cmGotoCursor;
      hcNewBreakpoint     = hcShift+cmNewBreakpoint;
      hcEditBreakpoint    = hcShift+cmEditBreakpoint;

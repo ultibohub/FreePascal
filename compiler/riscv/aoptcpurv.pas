@@ -37,7 +37,6 @@ uses
   aasmtai, aasmcpu;
 
 type
-
   TRVCpuAsmOptimizer = class(TAsmOptimizer)
     function InstructionLoadsFromReg(const reg: TRegister; const hp: tai): boolean; override;
     function RegLoadedWithNewValue(reg: tregister; hp: tai): boolean; override;
@@ -49,8 +48,10 @@ type
     function PeepHoleOptPass1Cpu(var p: tai): boolean; override;
     function OptPass1OP(var p: tai): boolean;
     function OptPass1FOP(var p: tai;mvop: tasmop): boolean;
+    function OptPass1FSGNJ(var p: tai;mvop: tasmop): boolean;
 
     function OptPass1Add(var p: tai): boolean;
+    function OptPass1Sub(var p: tai): boolean;
     procedure RemoveInstr(var orig: tai; moveback: boolean=true);
   end;
 
@@ -246,6 +247,51 @@ implementation
     end;
 
 
+  function TRVCpuAsmOptimizer.OptPass1FSGNJ(var p: tai; mvop: tasmop): boolean;
+    var
+      hp1 : tai;
+    begin
+      result:=false;
+      { replace
+          <mvop>  %reg1,%reg2,%reg2
+          <FOp>   %reg3,%reg1,%reg1
+          dealloc %reg2
+
+        by
+
+          <FOp>   %reg3,%reg2,%reg2
+        ?
+      }
+      if GetNextInstruction(p,hp1) and (hp1.typ=ait_instruction) and
+        (((mvop=A_FSGNJ_S) and (taicpu(hp1).opcode in [A_FADD_S,A_FSUB_S,A_FMUL_S,A_FDIV_S,A_FSQRT_S,
+              A_FNEG_S,A_FMADD_S,A_FMSUB_S,A_FNMSUB_S,A_FNMADD_S,A_FMIN_S,A_FMAX_S,A_FCVT_D_S,
+              A_FEQ_S])) or
+         ((mvop=A_FSGNJ_D) and (taicpu(hp1).opcode in [A_FADD_D,A_FSUB_D,A_FMUL_D,A_FDIV_D,A_FSQRT_D,
+              A_FNEG_D,A_FMADD_D,A_FMSUB_D,A_FNMSUB_D,A_FNMADD_D,A_FMIN_D,A_FMAX_D,A_FCVT_S_D,
+              A_FEQ_D]))) and
+        (MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) or
+        ((taicpu(hp1).ops>=3) and MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[2]^)) or
+        ((taicpu(hp1).ops>=4) and MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[3]^))) and
+        RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
+        begin
+          if MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) then
+            taicpu(hp1).loadreg(1,taicpu(p).oper[1]^.reg);
+          if (taicpu(hp1).ops>=3) and MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[2]^) then
+            taicpu(hp1).loadreg(2,taicpu(p).oper[1]^.reg);
+          if (taicpu(hp1).ops>=4) and MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[3]^) then
+            taicpu(hp1).loadreg(3,taicpu(p).oper[1]^.reg);
+
+          AllocRegBetween(taicpu(p).oper[1]^.reg,p,hp1,UsedRegs);
+
+          DebugMsg('Peephole FMVFOp2FOp performed', hp1);
+
+          RemoveInstr(p);
+
+          result:=true;
+        end
+    end;
+
+
   procedure TRVCpuAsmOptimizer.RemoveInstr(var orig: tai; moveback: boolean = true);
     var
       n: tai;
@@ -421,6 +467,44 @@ implementation
     end;
 
 
+  function TRVCpuAsmOptimizer.OptPass1Sub(var p: tai): boolean;
+    var
+      hp1: tai;
+    begin
+      result:=false;
+      {
+        Turn
+          sub x,y,z
+          bgeu X0,x,...
+          dealloc x
+        Into
+          bne y,x,...
+      }
+      if (taicpu(p).ops=3) and
+         GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
+         MatchInstruction(hp1,A_Bxx,[C_GEU,C_EQ]) and
+         (taicpu(hp1).ops=3) and
+         MatchOperand(taicpu(hp1).oper[0]^,NR_X0) and
+         MatchOperand(taicpu(hp1).oper[1]^,taicpu(p).oper[0]^) and
+         (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
+         (not RegModifiedBetween(taicpu(p).oper[2]^.reg, p,hp1)) and
+         RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
+        begin
+          taicpu(hp1).loadreg(0,taicpu(p).oper[1]^.reg);
+          taicpu(hp1).loadreg(1,taicpu(p).oper[2]^.reg);
+          taicpu(hp1).condition:=C_EQ;
+
+          DebugMsg('Peephole SubBxx2Beq performed', hp1);
+
+          RemoveInstr(p);
+
+          result:=true;
+        end
+      else
+        result:=OptPass1OP(p);
+    end;
+
+
   function TRVCpuAsmOptimizer.PeepHoleOptPass1Cpu(var p: tai): boolean;
     var
       hp1: tai;
@@ -433,38 +517,7 @@ implementation
               A_ADDI:
                 result:=OptPass1Add(p);
               A_SUB:
-                begin
-                  {
-                    Turn
-                      sub x,y,z
-                      bgeu X0,x,...
-                      dealloc x
-                    Into
-                      bne y,x,...
-                  }
-                  if (taicpu(p).ops=3) and
-                     GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
-                     MatchInstruction(hp1,A_Bxx,[C_GEU,C_EQ]) and
-                     (taicpu(hp1).ops=3) and
-                     MatchOperand(taicpu(hp1).oper[0]^,NR_X0) and
-                     MatchOperand(taicpu(hp1).oper[1]^,taicpu(p).oper[0]^) and
-                     (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
-                     (not RegModifiedBetween(taicpu(p).oper[2]^.reg, p,hp1)) and
-                     RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
-                    begin
-                      taicpu(hp1).loadreg(0,taicpu(p).oper[1]^.reg);
-                      taicpu(hp1).loadreg(1,taicpu(p).oper[2]^.reg);
-                      taicpu(hp1).condition:=C_EQ;
-
-                      DebugMsg('Peephole SubBxx2Beq performed', hp1);
-
-                      RemoveInstr(p);
-
-                      result:=true;
-                    end
-                  else
-                    result:=OptPass1OP(p);
-                end;
+                result:=OptPass1Sub(p);
               A_ANDI:
                 begin
                   {
@@ -765,7 +818,8 @@ implementation
               A_FNEG_S,
               A_FLW,
               A_FCVT_D_S,
-              A_FMADD_S,A_FMSUB_S,A_FNMSUB_S,A_FNMADD_S:
+              A_FMADD_S,A_FMSUB_S,A_FNMSUB_S,A_FNMADD_S,
+              A_FMIN_S,A_FMAX_S:
                 result:=OptPass1FOP(p,A_FSGNJ_S);
               A_FADD_D,
               A_FSUB_D,
@@ -775,8 +829,12 @@ implementation
               A_FNEG_D,
               A_FLD,
               A_FCVT_S_D,
-              A_FMADD_D,A_FMSUB_D,A_FNMSUB_D,A_FNMADD_D:
+              A_FMADD_D,A_FMSUB_D,A_FNMSUB_D,A_FNMADD_D,
+              A_FMIN_D,A_FMAX_D:
                 result:=OptPass1FOP(p,A_FSGNJ_D);
+              A_FSGNJ_S,
+              A_FSGNJ_D:
+                result:=OptPass1FSGNJ(p,taicpu(p).opcode);
               else
                 ;
             end;

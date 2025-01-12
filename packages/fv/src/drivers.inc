@@ -343,6 +343,7 @@ TYPE
         evMouse: (
           Buttons: Byte;                              { Mouse buttons }
           Double: Boolean;                            { Double click state }
+          Triple: Boolean;                            { Triple click state }
           Where: TPoint);                             { Mouse position }
         evKeyDown: (
         { ** KEY EVENT ** }
@@ -722,8 +723,8 @@ CONST
 VAR
    MouseIntFlag: Byte;                                { Mouse in int flag }
    MouseButtons: Byte;                                { Mouse button state }
-   ScreenWidth : Byte;                                { Screen text width }
-   ScreenHeight: Byte;                                { Screen text height }
+   ScreenWidth : Sw_Word;                             { Screen text width }
+   ScreenHeight: Sw_Word;                             { Screen text height }
    ScreenMode  : TVideoMode;                         { Screen mode }
    MouseWhere  : TPoint;                              { Mouse position }
 
@@ -756,11 +757,6 @@ CONST EventQSize = 16;                                { Default int bufsize }
 {                DOS/DPMI/WIN/NT/OS2 NEW EVENT QUEUE MAX SIZE               }
 {---------------------------------------------------------------------------}
 CONST QueueMax = 64;                                  { Max new queue size }
-
-{---------------------------------------------------------------------------}
-{   MAX WIEW WIDTH to avoid TDrawBuffer overrun in views unit               }
-{---------------------------------------------------------------------------}
-CONST MaxViewWidth = 255;                                  { Max view width }
 
 {***************************************************************************}
 {                          PRIVATE INTERNAL TYPES                           }
@@ -1419,19 +1415,30 @@ begin
      MouseWhere.X:=e.x;
      MouseWhere.Y:=e.y;
      Event.Double:=false;
+     Event.Triple:=false;
      case e.Action of
        MouseActionMove :
          Event.What:=evMouseMove;
        MouseActionDown :
          begin
            Event.What:=evMouseDown;
-           if (DownButtons=e.Buttons) and (LastWhere.X=MouseWhere.X) and (LastWhere.Y=MouseWhere.Y) and
+           if (DownButtons=e.Buttons) and (DownWhere.X=MouseWhere.X) and (DownWhere.Y=MouseWhere.Y) and
               (GetDosTicks-DownTicks<=DoubleDelay) then
+           begin
              Event.Double:=true;
+             if LastDouble and ((e.Buttons and( mbScrollUp or mbScrollDown)) = 0) then
+             begin              {only "normal" buttons can produce triple click}
+               Event.Double:=false;
+               Event.Triple:=true;
+             end;
+           end;
+           LastDouble:=Event.Double;
            DownButtons:=e.Buttons;
            DownWhere.X:=MouseWhere.x;
            DownWhere.Y:=MouseWhere.y;
            DownTicks:=GetDosTicks;
+           if Event.Triple then
+             dec(DownTicks,DoubleDelay); {after triple click can follow only single click}
            AutoTicks:=GetDosTicks;
            if AutoTicks=0 then
              AutoTicks:=1;
@@ -1614,9 +1621,6 @@ begin
       {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetVideoMode(StoreScreenMode);
       GetVideoMode(ScreenMode);
     end;
-
-  if ScreenWidth > MaxViewWidth then
-    ScreenWidth := MaxViewWidth;
   ScreenWidth:={$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ScreenWidth;
   ScreenHeight:={$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}ScreenHeight;
   VideoInitialized:=true;

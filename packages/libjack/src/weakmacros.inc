@@ -36,7 +36,16 @@
 {$macro on}
 {$define JACK_OPTIONAL_WEAK_EXPORT := external libjack}
 {$define JACK_OPTIONAL_WEAK_DEPRECATED_EXPORT := external libjack; deprecated}
-{$define JACK_WEAK_EXPORT := weakexternal libjack}
+
+{$define JACK_NET_OPTIONAL_WEAK_EXPORT := external libjacknet}
+{$define JACK_NET_OPTIONAL_WEAK_DEPRECATED_EXPORT := external libjacknet; deprecated}
+
+{$if defined(haiku) or defined(aix) or defined(win32) or defined(win64)}
+  // target does not support weakexternal
+  {$define JACK_WEAK_EXPORT := external libjack}
+{$else}
+  {$define JACK_WEAK_EXPORT := weakexternal libjack}
+{$endif}
 
 (*#ifdef __APPLE__
 #define WEAK_ATTRIBUTE weak_import

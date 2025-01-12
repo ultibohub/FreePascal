@@ -26,10 +26,12 @@ unit nrvcon;
 interface
 
     uses
-      ncgcon,cpubase;
+      node,ncgcon,cpubase;
 
     type
       trvrealconstnode = class(tcgrealconstnode)
+        function pass_1 : tnode;override;
+
         procedure pass_generate_code;override;
       end;
 
@@ -38,92 +40,56 @@ implementation
 
     uses
       verbose,
-      globtype,globals,
-      cpuinfo,
-      aasmbase,aasmtai,aasmdata,symdef,
+      globals,
+      aasmcpu,aasmdata,
       defutil,
-      cgbase,cgutils,
-      procinfo,
+      cpuinfo,
+      cgbase,cgobj,cgutils,
       ncon;
 
 {*****************************************************************************
                            TARMREALCONSTNODE
 *****************************************************************************}
 
-    procedure trvrealconstnode.pass_generate_code;
-      { I suppose the parser/pass_1 must make sure the generated real  }
-      { constants are actually supported by the target processor? (JM) }
-      const
-        floattype2ait:array[tfloattype] of tairealconsttype=
-          (aitrealconst_s32bit,aitrealconst_s64bit,aitrealconst_s80bit,aitrealconst_s80bit,aitrealconst_s64comp,aitrealconst_s64comp,aitrealconst_s128bit);
-      var
-         lastlabel : tasmlabel;
-         realait : tairealconsttype;
-
+    function trvrealconstnode.pass_1 : tnode;
       begin
-        location_reset_ref(location,LOC_CREFERENCE,def_cgsize(resultdef),4);
-        lastlabel:=nil;
-        realait:=floattype2ait[tfloatdef(resultdef).floattype];
-        { const already used ? }
-        if not assigned(lab_real) then
+        result:=nil;
+        if is_number_float(value_real) and (value_real=0.0) and (get_real_sign(value_real)=1) and
+          (
+            ((CPURV_HAS_F in cpu_capabilities[current_settings.cputype]) and is_single(resultdef))
+{$ifdef RISCV64}
+            or ((CPURV_HAS_D in cpu_capabilities[current_settings.cputype]) and is_double(resultdef))
+{$endif RISCV64}
+          ) then
+           expectloc:=LOC_FPUREGISTER
+         else
+           expectloc:=LOC_CREFERENCE;
+      end;
+
+
+    procedure trvrealconstnode.pass_generate_code;
+      begin
+        if is_number_float(value_real) and (value_real=0.0) and (get_real_sign(value_real)=1) and
+          (
+            ((CPURV_HAS_F in cpu_capabilities[current_settings.cputype]) and is_single(resultdef))
+{$ifdef RISCV64}
+            or ((CPURV_HAS_D in cpu_capabilities[current_settings.cputype]) and is_double(resultdef))
+{$endif RISCV64}
+          ) then
           begin
-            current_asmdata.getjumplabel(lastlabel);
-            lab_real:=lastlabel;
-            current_procinfo.aktlocaldata.concat(Tai_label.Create(lastlabel));
-            location.reference.symboldata:=current_procinfo.aktlocaldata.last;
-            case realait of
-              aitrealconst_s32bit :
-                begin
-                  current_procinfo.aktlocaldata.concat(tai_realconst.create_s32real(ts32real(value_real)));
-                  { range checking? }
-                  if floating_point_range_check_error and
-                    (tai_realconst(current_procinfo.aktlocaldata.last).value.s32val=MathInf.Value) then
-                    Message(parser_e_range_check_error);
-                end;
-
-              aitrealconst_s64bit :
-                begin
-                  current_procinfo.aktlocaldata.concat(tai_realconst.create_s64real(ts64real(value_real)));
-
-                  { range checking? }
-                  if floating_point_range_check_error and
-                    (tai_realconst(current_procinfo.aktlocaldata.last).value.s64val=MathInf.Value) then
-                    Message(parser_e_range_check_error);
-               end;
-
-              aitrealconst_s80bit :
-                begin
-                  current_procinfo.aktlocaldata.concat(tai_realconst.create_s80real(value_real,tfloatdef(resultdef).size));
-
-                  { range checking? }
-                  if floating_point_range_check_error and
-                    (tai_realconst(current_procinfo.aktlocaldata.last).value.s80val=MathInf.Value) then
-                    Message(parser_e_range_check_error);
-                end;
-{$ifdef cpufloat128}
-              aitrealconst_s128bit :
-                begin
-                  current_procinfo.aktlocaldata.concat(tai_realconst.create_s128real(value_real));
-
-                  { range checking? }
-                  if floating_point_range_check_error and
-                    (tai_realconst(current_procinfo.aktlocaldata.last).value.s128val=MathInf.Value) then
-                    Message(parser_e_range_check_error);
-                end;
-{$endif cpufloat128}
-
-              { the round is necessary for native compilers where comp isn't a float }
-              aitrealconst_s64comp :
-                if (value_real>9223372036854775807.0) or (value_real<-9223372036854775808.0) then
-                  message(parser_e_range_check_error)
-                else
-                  current_procinfo.aktlocaldata.concat(tai_realconst.create_s64compreal(round(value_real)));
+            location_reset(location,LOC_FPUREGISTER,def_cgsize(resultdef));
+            location.register:=cg.getfpuregister(current_asmdata.CurrAsmList,location.size);
+            if is_single(resultdef) then
+              current_asmdata.CurrAsmList.concat(Taicpu.op_reg_reg(A_FMV_W_X,location.register,NR_X0))
+{$ifdef RISCV64}
+            else if is_double(resultdef) then
+              current_asmdata.CurrAsmList.concat(Taicpu.op_reg_reg(A_FMV_D_X,location.register,NR_X0))
+{$endif RISCV64}
             else
-              internalerror(2005092401);
-            end;
-          end;
-        location.reference.symbol:=lab_real;
-        location.reference.refaddr:=addr_pcrel;
+              Internalerror(2025011103);
+          end
+        else
+          inherited pass_generate_code;
       end;
 
 begin

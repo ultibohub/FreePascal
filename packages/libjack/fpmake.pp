@@ -24,7 +24,7 @@ begin
     P.Email := '';
     P.Description := 'Headers for the JACK Audio Connection Kit library';
     P.NeedLibC:= true;  // true for headers that indirectly link to libc?
-    P.OSes := AllUnixOSes-[qnx];
+    P.OSes := AllUnixOSes+[win32,win64]-[qnx];
     P.SourcePath.Add('src');
     P.IncludePath.Add('src');
 
@@ -55,7 +55,7 @@ begin
     with T.Dependencies do
       begin
         AddInclude('session.inc');
-        AddInclude('session.inc');
+        AddInclude('weakmacros.inc');
         AddUnit('jack');
       end;
 
@@ -67,6 +67,59 @@ begin
         AddUnit('jack');
       end;
 
+    T:=P.Targets.AddUnit('jackstatistics.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('statistics.inc');
+        AddUnit('jack');
+      end;
+
+    T:=P.Targets.AddUnit('jacknet.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('net.inc');
+        AddInclude('systemdeps.inc');
+        AddInclude('weakmacros.inc');
+        AddUnit('jack');
+      end;
+
+    T:=P.Targets.AddUnit('jackmidiport.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('midiport.inc');
+        AddInclude('weakmacros.inc');
+        AddUnit('jack');
+      end;
+
+    T:=P.Targets.AddUnit('jackmetadata.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('metadata.inc');
+        AddUnit('jack');
+      end;
+
+    T:=P.Targets.AddUnit('jackjslist.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('jslist.inc');
+      end;
+
+    T:=P.Targets.AddUnit('jackintclient.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('intclient.inc');
+        AddUnit('jack');
+      end;
+
+    T:=P.Targets.AddUnit('jackcontrol.pp');
+    with T.Dependencies do
+      begin
+        AddInclude('control.inc');
+        AddInclude('systemdeps.inc');
+        AddUnit('jack');
+        AddUnit('jackjslist');
+      end;
+
     P.ExamplePath.Add('examples');
     P.Targets.AddExampleProgram('simple_client.pp');
     P.Targets.AddExampleProgram('simple_session_client.pp');
@@ -74,6 +127,9 @@ begin
     P.Targets.AddExampleProgram('transport_client.pp');
     P.Targets.AddExampleProgram('impulse_grabber.pp');
     P.Targets.AddExampleProgram('showtime.pp');
+    P.Targets.AddExampleProgram('midisine.pp');
+    P.Targets.AddExampleProgram('midiseq.pp');
+    P.Targets.AddExampleProgram('metro.pp');
 
     P.NamespaceMap:='namespaces.lst';
 

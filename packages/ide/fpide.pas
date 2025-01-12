@@ -625,6 +625,7 @@ resourcestring  menu_local_gotosource = '~G~oto source';
                 {Browser options dialog.}
                 dialog_browseroptions = 'Browser Options';
                 dialog_localbrowseroptions = 'Local Browser Options';
+                label_browser_units = '~U~nits';
                 label_browser_labels = '~L~abels';
                 label_browser_constants = '~C~onstants';
                 label_browser_types = '~T~ypes';
@@ -1497,7 +1498,7 @@ end;
 
 
 procedure TIDEApp.ShowIDEScreen;
-var oldH,oldW : byte;
+var oldH,oldW : Sw_Word;
 begin
   if Assigned(UserScreen) then
     UserScreen^.SaveConsoleScreen;
@@ -1709,7 +1710,7 @@ end;
 
 procedure TIDEApp.UpdateINIFile;
 begin
-  SetMenuItemParam(SearchMenuItem(MenuBar^.Menu,cmSaveINI),SmartPath(IniFileName));
+  SetMenuItemParam(SearchMenuItem(MenuBar^.Menu,cmSaveINI),SmartPath(IniFilePath));
 end;
 
 procedure TIDEApp.UpdateRecentFileList;

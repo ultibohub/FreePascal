@@ -34,6 +34,29 @@ const
       btUnitInfo    = 4;
       btBreakWatch  = 7;
 
+      {Symbol Flags}
+      bfUnits            = $00000001;
+      bfLabels           = $00000002;
+      bfConstants        = $00000004;
+      bfTypes            = $00000008;
+      bfVariables        = $00000010;
+      bfProcedures       = $00000020;
+      bfInherited        = $00000040;
+      {Display Flags}
+      bfQualifiedSymbols = $40000000;
+      bfSortAlways       = $80000000;
+
+const
+      DefaultSymbolFlags : longint = bfUnits or
+         bfLabels or bfConstants or bfTypes or bfVariables or bfProcedures;
+      DefaultDispayFlags : longint = (bfQualifiedSymbols) shr 30;
+      { Note: default browser flags will be created with formula:
+        BrowserFlags:=DefaultDispayFlags shl 30 or DefaultSymbolFlags;
+      }
+      DefaultBrowserSub  : longint = 0;
+      DefaultBrowserPane : longint = 0;
+
+
 type
     PBrowserWindow = ^TBrowserWindow;
 
@@ -57,8 +80,24 @@ type
       end;
 
 
+    PFilteredSym = ^TFilteredSym;
+    TFilteredSym = Object(TObject)
+        constructor Init(AItemSym:Sw_Integer;ASym : PSymbol);
+        function GetText:String;
+        destructor Done;virtual;
+      private
+        Sym:PSymbol;
+        ItemSym : Sw_Integer;
+      end;
+
+    PFilteredSymCollection=^TFilteredSymCollection;
+    TFilteredSymCollection = Object(TCollection)
+      function  At(Index: sw_Integer): PFilteredSym;
+      end;
+
+
     PSymbolView = ^TSymbolView;
-    TSymbolView = object(TLocalMenuListBox)
+    TSymbolView = object(THSListBox)
       constructor  Init(var Bounds: TRect; AHScrollBar, AVScrollBar: PScrollBar);
       destructor   Done;virtual;
       procedure    HandleEvent(var Event: TEvent); virtual;
@@ -84,6 +123,7 @@ type
       constructor Init(var Bounds: TRect; ASymbols: PSymbolCollection; AHScrollBar, AVScrollBar: PScrollBar);
       destructor  Done; virtual;
       procedure   SetGDBCol;
+      procedure   FilterSymbols(AFilter:boolean);
       function    GetText(Item,MaxLen: Sw_Integer): String; virtual;
       procedure   HandleEvent(var Event: TEvent); virtual;
       procedure   Draw; virtual;
@@ -91,6 +131,7 @@ type
       function    GotoItem(Item: sw_integer): boolean; virtual;
       function    TrackItem(Item: sw_integer; AutoTrack: boolean): boolean; virtual;
     private
+      FilteredSym: PFilteredSymCollection;
       Symbols: PSymbolCollection;
       SymbolsValue : PGDBValueCollection;
       LookupStr: string;
@@ -126,9 +167,9 @@ type
       function    GetPalette: PPalette; virtual;
     end;
 
-    PSymbolInheritanceView = ^TSymbolInheritanceView;
+        PSymbolInheritanceView = ^TSymbolInheritanceView;
 {$ifdef HASOUTLINE}
-    TSymbolInheritanceView = object(TOutlineViewer)
+    TSymbolInheritanceView = object(TLocalMenuOutlineViewer)
 {$else notHASOUTLINE}
     TSymbolInheritanceView = object(TLocalMenuListBox)
 {$endif HASOUTLINE}
@@ -153,6 +194,9 @@ type
       procedure    Selected(I: sw_Integer); virtual;
       procedure    HandleEvent(var Event: TEvent); virtual;
       function     GetPalette: PPalette; virtual;
+      function     GetLocalMenu: PMenu; virtual;
+      function     SaveToFile(const AFileName: string): boolean; virtual;
+      function     SaveAs: Boolean; virtual;
     private
       Root         : PObjectSymbol;
       MyBW         : PBrowserWindow;
@@ -198,8 +242,11 @@ type
       procedure   SelectTab(BrowserTab: Sw_integer); virtual;
       function    GetPalette: PPalette; virtual;
       function    Disassemble : boolean;
+      function    GetFlags: longint; virtual;
+      procedure   SetFlags(AFlags: longint); virtual;
       destructor  Done;virtual;
     private
+      BrowserFlags  : Longint;
       PageTab       : PBrowserTab;
       ST            : PStaticText;
       Sym           : PSymbol;
@@ -236,12 +283,12 @@ const
 
 implementation
 
-uses App,Strings,
+uses App,Strings,Stddlg,
      FVConsts,
 {$ifdef BROWSERCOL}
      symconst,
 {$endif BROWSERCOL}
-     WUtils,WEditor,
+     WUtils,WEditor,WConsts,
      FPConst,FPUtils,FPVars,{$ifndef FPDEBUG}FPDebug{$endif},FPIDE;
 
 {$ifdef USERESSTRINGS}
@@ -263,6 +310,7 @@ const
                 menu_symlocal_browse = '~B~rowse';
                 menu_symlocal_gotosource = '~G~oto source';
                 menu_symlocal_tracksource = '~T~rack source';
+                menu_symlocal_saveas = 'Save ~a~s';
                 menu_symlocal_options = '~O~ptions...';
 
                 { Symbol browser meminfo page }
@@ -578,14 +626,43 @@ function  TGDBValueCollection.At(Index: sw_Integer): PGDBValue;
 begin
   At:= Inherited At(Index);
 end;
+
+{****************************************************************************
+                               TFilteredSym
+****************************************************************************}
+constructor TFilteredSym.Init(AItemSym:Sw_Integer;ASym : PSymbol);
+begin
+   inherited Init;
+   ItemSym:=AItemSym;
+   Sym:=ASym;
+end;
+
+function TFilteredSym.GetText:String;
+begin
+   GetText:=Sym^.GetText;
+end;
+
+destructor TFilteredSym.Done;
+begin
+   inherited Done;
+end;
+
+{****************************************************************************
+                               TFilteredSymCollection
+****************************************************************************}
+function TFilteredSymCollection.At(Index: sw_Integer): PFilteredSym;
+begin
+  At:= Inherited At(Index);
+end;
+
 {****************************************************************************
                                TSymbolView
 ****************************************************************************}
 
 constructor TSymbolView.Init(var Bounds: TRect; AHScrollBar, AVScrollBar: PScrollBar);
 begin
-  inherited Init(Bounds,1,AVScrollBar);
-  HScrollBar:=AHScrollBar;
+  inherited Init(Bounds,1,AHScrollBar,AVScrollBar);
+  {HScrollBar:=AHScrollBar;}
   MyBW:=nil;
   if assigned(HScrollBar) then
     begin
@@ -608,7 +685,8 @@ end;
 
 procedure TSymbolView.OptionsDlg;
 begin
-  { Abstract }
+  if MyBW<> nil then
+    Message(@IDEApp, evCommand, cmBrowserOptions, MyBW);   { Send message }
 end;
 
 destructor TSymbolView.Done;
@@ -671,7 +749,7 @@ begin
       end;
     evMouseDown :
       begin
-        if Event.double then
+        if ((Event.buttons and (mbScrollUp or mbScrollDown))=0) and Event.double then
           begin
             Browse;
             ClearEvent(Event);
@@ -687,6 +765,8 @@ begin
             GotoSource;
           cmSymTrackSource :
             TrackSource;
+          cmSymSaveAs,cmSaveAs :
+            SaveAs;
           cmSymOptions :
             OptionsDlg;
         else DontClear:=true;
@@ -719,8 +799,9 @@ begin
     NewItem(menu_symlocal_gotosource,'',kbNoKey,cmSymGotoSource,hcSymGotoSource,
     NewItem(menu_symlocal_tracksource,'',kbNoKey,cmSymTrackSource,hcSymTrackSource,
     NewLine(
+    NewItem(menu_symlocal_saveas,'',kbNoKey,cmSymSaveAs,hcSymSaveAs,
     NewItem(menu_symlocal_options,'',kbNoKey,cmSymOptions,hcSymOptions,
-    nil))))));
+    nil)))))));
 end;
 
 function TSymbolView.GotoItem(Item: sw_integer): boolean;
@@ -822,9 +903,11 @@ constructor TSymbolScopeView.Init(var Bounds: TRect; ASymbols: PSymbolCollection
 begin
   inherited Init(Bounds,AHScrollBar, AVScrollBar);
   Symbols:=ASymbols;
-  NewList(ASymbols);
   New(SymbolsValue,Init(50,50));
-  SetRange(Symbols^.Count);
+  New(FilteredSym,Init(50,50));
+  FilterSymbols(false); {select all}
+  NewList(FilteredSym);
+  SetRange(FilteredSym^.Count);
 end;
 
 destructor TSymbolScopeView.Done;
@@ -839,6 +922,11 @@ begin
     begin
       Dispose(SymbolsValue,Done);
       SymbolsValue:=nil;
+    end;
+  if Assigned(FilteredSym) then
+    begin
+      Dispose(FilteredSym,Done);
+      FilteredSym:=nil;
     end;
   Inherited Done;
 end;
@@ -878,18 +966,54 @@ begin
 end;
 
 procedure TSymbolScopeView.LookUp(S: string);
-var Idx,Slength: Sw_integer;
+var LookUpS : String;
+
+  function GetFilteredLookUpIdx(Item:Sw_Integer):Sw_Integer;
+  var I, Count : Sw_Integer;
+      F : PFilteredSym;
+      UpS,LeftS : String;
+  begin
+    GetFilteredLookUpIdx:=-1;
+    Count:=FilteredSym^.Count;
+    if Count > 0 then
+      for I:=0 to Count-1 do
+      begin
+         F:=FilteredSym^.At(I);
+         if F^.ItemSym = Item then   {perfect match}
+         begin
+           GetFilteredLookUpIdx:=I;
+           break;
+         end;
+         if F^.ItemSym > Item then  { test next item if perfect match is missing}
+         begin
+           LeftS:=UpcaseStr(F^.Sym^.GetName);
+           UpS:=UpcaseStr(LookUpS);
+           if copy(LeftS,1,length(UpS))=UpS then  {perfect match}
+             GetFilteredLookUpIdx:=I;
+           break; {all you get is one second chance, it wont be any better from here}
+         end;
+      end;
+  end;
+
+var Idx,Slength,I: Sw_integer;
     NS: string;
 begin
   NS:=LookUpStr;
   Slength:=Length(S);
+  LookUpS:=S;
   if (Symbols=nil) or (S='') then NS:='' else
     begin
       S:=Symbols^.LookUp(S,Idx);
       if Idx<>-1 then
         begin
-          NS:=S;
-          FocusItem(Idx);
+          { Have found, but get filtered list index first
+            Some entries might be missing if need then look up agin }
+          Idx:=GetFilteredLookUpIdx(Idx);
+          if Idx<>-1 then
+          begin
+            NS:=S;
+            FocusItem(Idx);
+          end;
         end;
     end;
   LookUpStr:=Copy(NS,1,Slength);
@@ -900,11 +1024,13 @@ end;
 function TSymbolScopeView.GotoItem(Item: sw_integer): boolean;
 var S: PSymbol;
     OK: boolean;
+    F : PFilteredSym;
 begin
   OK:=Range>0;
   if OK then
   begin
-    S:=List^.At(Item);
+    F:=List^.At(Item);
+    S:=F^.Sym;
     OK:=(S^.References<>nil) and (S^.References^.Count>0);
     if OK then
       OK:=GotoReference(S^.References^.At(0));
@@ -915,11 +1041,13 @@ end;
 function TSymbolScopeView.TrackItem(Item: sw_integer; AutoTrack: boolean): boolean;
 var S: PSymbol;
     OK: boolean;
+    F: PFilteredSym;
 begin
   OK:=Range>0;
   if OK then
   begin
-    S:=List^.At(Item);
+    F:=List^.At(Item);
+    S:=F^.Sym;
     OK:=(S^.References<>nil) and (S^.References^.Count>0);
     if OK then
       OK:=TrackReference(S^.References^.At(0),AutoTrack);
@@ -941,11 +1069,52 @@ begin
     end;
 end;
 
+procedure TSymbolScopeView.FilterSymbols(AFilter:boolean);
+var S : PSymbol;
+    I : sw_integer;
+    Flags : Longint;
+    bUni, bLab, bcon, btyp, bvar, bprc, binh: boolean;
+begin
+  Flags:=0;
+  if assigned(MyBW) then
+    Flags:=MyBW^.GetFlags;
+  bUni:=(Flags and bfUnits)<>0;
+  bLab:=(Flags and bfLabels)<>0;
+  bCon:=(Flags and bfConstants)<>0;
+  bTyp:=(Flags and bfTypes)<>0;
+  bVar:=(Flags and bfVariables)<>0;
+  bPrc:=(Flags and bfProcedures)<>0;
+  bInh:=(Flags and bfInherited)<>0;
+  FilteredSym^.FreeAll;
+  if Symbols^.Count = 0 then exit;
+  For i:=0 to Symbols^.Count-1 do
+    begin
+      S:=Symbols^.At(I);
+      if AFilter then begin
+        {----------  only selected ones  ----------}
+        case S^.typ of
+          labelsym: if not bLab then continue;
+          namespacesym,staticvarsym,localvarsym,paravarsym,
+          fieldvarsym,absolutevarsym,programparasym: if not bVar then continue;
+          procsym,propertysym,syssym : if not bPrc then continue;
+          typesym : if not bTyp then continue;
+          constsym,enumsym : if not bCon then continue;
+          unitsym : if not bUni then continue;
+          errorsym,macrosym,undefinedsym: ;  {accepted anyway}
+        end;
+      end;
+      FilteredSym^.Insert(New(PFilteredSym,Init(I,S)));
+    end;
+end;
+
 function TSymbolScopeView.GetText(Item,MaxLen: Sw_Integer): String;
 var S1: string;
     S : PSymbol;
     SG : PGDBValue;
+    F : PFilteredSym;
 begin
+  F:=FilteredSym^.At(Item);
+  Item:=F^.ItemSym;
   S:=Symbols^.At(Item);
   if Assigned(SymbolsValue) and (SymbolsValue^.Count>Item) then
     SG:=SymbolsValue^.At(Item)
@@ -1217,6 +1386,7 @@ begin
         if DontClear=false then ClearEvent(Event);
       end;
     evMouseDown :
+      if ((Event.buttons and (mbScrollUp or mbScrollDown))=0) then
       begin
 {$ifndef HASOUTLINE}
         MakeLocal(Event.Where,P);
@@ -1228,6 +1398,18 @@ begin
             ClearEvent(Event);
           end;
       end;
+    evCommand :
+      begin
+        DontClear:=false;
+        case Event.Command of
+          cmSymBrowse :
+            Message(@Self,evKeyDown,kbEnter,nil);
+          cmSymSaveAs,cmSaveAs :
+            SaveAs;
+        else DontClear:=true;
+        end;
+        if DontClear=false then ClearEvent(Event);
+      end;
   end;
   inherited HandleEvent(Event);
 end;
@@ -1236,6 +1418,89 @@ function TSymbolInheritanceView.GetPalette: PPalette;
 const P: string[length(CBrowserOutline)] = CBrowserOutline;
 begin
   GetPalette:=@P;
+end;
+
+function TSymbolInheritanceView.GetLocalMenu: PMenu;
+begin
+    GetLocalMenu:=NewMenu(
+    NewItem(menu_symlocal_browse,'',kbNoKey,cmSymBrowse,hcSymBrowse,
+    NewLine(
+    NewItem(menu_symlocal_saveas,'',kbNoKey,cmSymSaveAs,hcSymSaveAs,
+    nil))));
+end;
+
+function TSymbolInheritanceView.SaveToFile(const AFileName: string): boolean;
+var OK: boolean;
+    S: PBufStream;
+    st : string;
+    P : PObjectSymbol;
+
+    procedure WriteSymbolTree(P:PObjectSymbol;Depth:Sw_Integer);
+    var
+      Q : PObjectSymbol;
+      Nc,Des,Count : integer;
+      Space : String;
+    begin
+      if not assigned(P) then
+         exit;
+      Des:=0;
+      Count:=GetNumChildren{Exposed}(P);
+      if Count=0 then exit;
+      SetLength(Space,Depth*2);
+      for nc:=1 to Length(Space) do Space[nc]:=' ';
+      While Count>Des do
+        begin
+          if not ok then exit;
+          Q:=P^.GetDescendant(Des);
+          st:=GetText(Q);
+          S^.Write(Space[1],Length(Space));
+          if not OK then exit;
+          S^.Write(St[1],length(St));
+          OK:=(S^.Status=stOK);
+          if not OK then exit;
+          S^.Write(EOL[1],length(EOL));
+          OK:=(S^.Status=stOK);
+          if not OK then exit;
+          if Ok then
+            WriteSymbolTree(Q,Depth+1);
+          Inc(Des);
+        end;
+    end;
+
+begin
+  New(S, Init(AFileName,stCreate,4096));
+  OK:=Assigned(S) and (S^.Status=stOK);
+  if OK then
+    begin
+      P:=Root;
+      st:=GetText(P);
+      S^.Write(St[1],length(St));
+      OK:=(S^.Status=stOK);
+      if OK then
+      begin
+        S^.Write(EOL[1],length(EOL));
+        OK:=(S^.Status=stOK);
+        if OK then
+          WriteSymbolTree(P,1);
+      end;
+    end;
+  if Assigned(S) then Dispose(S, Done);
+  SaveToFile:=OK;
+end;
+
+function TSymbolInheritanceView.SaveAs: Boolean;
+var
+  DefExt,Title,Filename : string;
+  Re : word;
+begin
+  SaveAs := False;
+  Filename:='list.txt';
+  DefExt:='*.txt';
+  Title:='Save content';
+  Re:=Application^.ExecuteDialog(New(PFPFileDialog, Init(DefExt,
+          Title, label_name, fdOkButton, FileId)), @FileName);
+  if Re <> cmCancel then
+    SaveAs := SaveToFile(FileName);
 end;
 
 {$ifdef HASOUTLINE}
@@ -1472,7 +1737,7 @@ begin
 end;
 begin
   NormColor:=GetColor(1); SelColor:=GetColor(2);
-  MoveChar(B,'Ä',SelColor,Size.X);
+  MoveChar(B,#196{-},SelColor,Size.X);
   CurX:=0; Count:=0;
   for I:=0 to GetItemCount-1 do
     if (Flags and (1 shl I))<>0 then
@@ -1480,13 +1745,13 @@ begin
       Inc(Count);
       if Current=I then C:=SelColor
                    else C:=NormColor;
-      if Count=1 then MoveChar(B[CurX],'´',SelColor,1)
-                 else MoveChar(B[CurX],'³',SelColor,1);
+      if Count=1 then MoveChar(B[CurX],#180,SelColor,1)
+                 else MoveChar(B[CurX],#179,SelColor,1);
       MoveCStr(B[CurX+1],' '+Names(I)+' ',C);
       Inc(CurX,4);
     end;
   if Count>0 then
-    MoveChar(B[CurX],'Ã',SelColor,1);
+    MoveChar(B[CurX],#195,SelColor,1);
   WriteLine(0,0,Size.X,Size.Y,B);
 end;
 
@@ -1510,7 +1775,8 @@ end;
 begin
   case Event.What of
     evMouseDown :
-      if MouseInView(Event.Where) then
+      if MouseInView(Event.Where)
+        and ((Event.buttons and (mbScrollUp or mbScrollDown))=0) then
         begin
           repeat
             MakeLocal(Event.Where,P);
@@ -1594,6 +1860,7 @@ begin
   HelpCtx:=hcBrowserWindow;
   Sym:=ASym;
   Prefix:=NewStr(APrefix);
+  BrowserFlags:=DefaultDispayFlags shl 30 or DefaultSymbolFlags;
 
   GetExtent(R); R.Grow(-1,-1); R.B.Y:=R.A.Y+1;
 {$ifndef NODEBUG}
@@ -1624,6 +1891,8 @@ begin
       Insert(ScopeView);
       ScopeView^.MyBW:=@Self;
       ScopeView^.SetGDBCol;
+      ScopeView^.FilterSymbols(true);
+      ScopeView^.SetRange(ScopeView^.FilteredSym^.Count);
     end;
   if assigned(AReferences) and (AReferences^.Count>0) then
     begin
@@ -1690,7 +1959,7 @@ begin
       if Assigned(UsedUnits) then
       begin
         Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R2.A.Y+1;
-        New(CST, Init(R2,'´ Used units Ã'+CharStr('Ä',255),ColorIndex(12),false));
+        New(CST, Init(R2,#180' Used units '#195+CharStr(#196,255),ColorIndex(12),false));
         CST^.GrowMode:=gfGrowHiX;
         UnitInfo^.Insert(CST);
 
@@ -1710,7 +1979,7 @@ begin
       if Assigned(DependentUnits) then
       begin
         Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R2.A.Y+1;
-        New(CST, Init(R2,'´ Dependent units Ã'+CharStr('Ä',255),ColorIndex(12),false));
+        New(CST, Init(R2,#180' Dependent units '#195+CharStr(#196,255),ColorIndex(12),false));
         CST^.GrowMode:=gfGrowLoY+gfGrowHiX+gfGrowHiY;
         UnitInfo^.Insert(CST);
 
@@ -1743,8 +2012,9 @@ begin
   PageTab^.GrowMode:=gfGrowHiX;
   Insert(PageTab);
 
-  if assigned(ScopeView) then
-   SelectTab(btScope)
+  if assigned(ScopeView) {Scope assinged and chosen to be selected by default}
+    and ((DefaultBrowserPane=0) or not assigned(ReferenceView)) then
+    SelectTab(btScope)
   else if assigned(ReferenceView) then
     SelectTab(btReferences)
   else if assigned(MemInfoView) then
@@ -1805,7 +2075,7 @@ begin
             S:=nil;
             if (Event.InfoPtr=ScopeView) then
               begin
-                S:=ScopeView^.Symbols^.At(ScopeView^.Focused);
+                S:=ScopeView^.FilteredSym^.At(ScopeView^.Focused)^.Sym;
                 MakeGlobal(ScopeView^.Origin,P);
                 Desktop^.MakeLocal(P,P); Inc(P.Y,ScopeView^.Focused-ScopeView^.TopItem);
                 Inc(P.Y);
@@ -1838,6 +2108,7 @@ begin
                    ScopeView^.GetText(ScopeView^.Focused,255),
                    S,@self,
                    Symbols,S^.References,Anc,S^.MemInfo);
+                ClearEvent(Event);
               end;
             end;
       end;
@@ -1904,11 +2175,29 @@ begin
 {$endif NODEBUG}
 end;
 
-procedure TBrowserWindow.SetState(AState: Word; Enable: Boolean);
-{var OldState: word;}
+function TBrowserWindow.GetFlags: longint;
 begin
-{  OldState:=State;}
+  GetFlags:=BrowserFlags;
+end;
+
+procedure TBrowserWindow.SetFlags(AFlags: longint);
+begin
+  BrowserFlags:=AFlags;
+  if assigned(ScopeView) then
+  begin
+    ScopeView^.FilterSymbols(true);
+    ScopeView^.SetRange(ScopeView^.FilteredSym^.Count);
+    ScopeView^.DrawView;
+  end;
+end;
+
+procedure TBrowserWindow.SetState(AState: Word; Enable: Boolean);
+var OldState: word;
+begin
+  OldState:=State;
   inherited SetState(AState,Enable);
+  if ((AState and sfActive)<>0) and (((OldState xor State) and sfActive)<>0) then
+    SetCmdState([cmSaveAs],Enable);
 {  if ((State xor OldState) and sfActive)<>0 then
     if GetState(sfActive)=false then
       Message(Desktop,evBroadcast,cmClearLineHighlights,nil);}

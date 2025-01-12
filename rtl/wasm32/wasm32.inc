@@ -145,6 +145,19 @@ function fpc_atomic_cmp_xchg_32 (var Target: longint; NewValue: longint; Compara
 {$endif FPC_WASM_THREADS}
   end;
 
+{$ifndef VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_CMP_XCHG_64}
+function fpc_atomic_cmp_xchg_64 (var Target: Int64; NewValue: Int64; Comparand: Int64) : Int64; [public,alias:'FPC_ATOMIC_CMP_XCHG_64'];
+  begin
+{$ifdef FPC_WASM_THREADS}
+    Result:=Int64(fpc_wasm32_i64_atomic_rmw_cmpxchg_u(@Target,QWord(Comparand}),LongWord(NewValue)));
+{$else FPC_WASM_THREADS}
+    Result:=Target;
+    if Target=Comparand then
+      Target:=NewValue;
+{$endif FPC_WASM_THREADS}
+  end;
+{$endif VER3_2}
 
 {$ifdef VER3_2}
 function InterLockedExchangeAdd (var Target: longint;Source : longint) : longint;
@@ -245,3 +258,17 @@ function fpc_atomic_add_16 (var Target: smallint;Value : smallint) : smallint;
     inc(Target,{$ifdef VER3_2}Source{$else}Value{$endif});
 {$endif FPC_WASM_THREADS}
   end;
+
+{$ifndef VER3_2}
+{$define FPC_SYSTEM_HAS_ATOMIC_CMP_XCHG_8}
+function fpc_atomic_cmp_xchg_8 (var Target : shortint; NewValue : shortint; Comparand : shortint) : shortint;
+  begin
+{$ifdef FPC_WASM_THREADS}
+    Result:=ShortInt(fpc_wasm32_i32_atomic_rmw8_cmpxchg_u(@Target, Byte(Comparand), Byte(NewValue)));
+{$else FPC_WASM_THREADS}
+    Result:=Target;
+    if Target=Comparand then
+      Target:=NewValue;
+{$endif FPC_WASM_THREADS}
+  end;
+{$endif VER3_2}

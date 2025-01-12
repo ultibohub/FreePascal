@@ -39,7 +39,7 @@ uses
 {$ifdef USE_EXTERNAL_COMPILER}
    fpintf, { superseeds version_string of version unit }
 {$endif USE_EXTERNAL_COMPILER}
-  WConsts,WUtils,WINI,WViews,WEditor,WCEdit,
+  WConsts,WUtils,WINI,WViews,WEditor,WCEdit,FPSymbol,
   {$ifndef NODEBUG}FPDebug,{$endif}FPConst,FPVars,
   FPIntf,FPTools,FPSwitch,fpchash;
 
@@ -82,6 +82,7 @@ const
   secColors      = 'Colors';
   secHelp        = 'Help';
   secEditor      = 'Editor';
+  secBrowser     = 'Browser';
   secBreakpoint  = 'Breakpoints';
   secWatches     = 'Watches';
   secHighlight   = 'Highlight';
@@ -123,6 +124,10 @@ const
   ieDefaultIndentSize = 'DefaultIndentSize';
   ieDefaultEditorFlags='DefaultFlags';
   ieDefaultSaveExt   = 'DefaultSaveExt';
+  ieBrowserSymbols   = 'SymbolFlags';
+  ieBrowserDisplay   = 'DisplayFlags';
+  ieBrowserSub       = 'SubBrowsing';
+  ieBrowserPane      = 'PreferrdPane';
   ieOpenExts         = 'OpenExts';
   ieHighlightExts    = 'Exts';
   ieTabsPattern      = 'NeedsTabs';
@@ -204,10 +209,11 @@ end;
 procedure InitINIFile;
 var S: string;
 begin
+  IniFilePath:=INIFileName;
   S:=LocateFile(INIFileName);
   if S<>'' then
-    IniFileName:=S;
-  IniFileName:=FExpand(IniFileName);
+    IniFilePath:=S;
+  IniFilePath:=FExpand(IniFilePath);
 end;
 
 procedure CheckINIFile;
@@ -215,42 +221,42 @@ var IniDir,CurDir: DirStr;
     INI: PINIFile;
 const Btns : array[1..2] of string = (btn_config_copyexisting,btn_config_createnew);
 begin
-  IniDir:=DirOf(IniFileName); CurDir:=GetCurDir;
+  IniDir:=DirOf(IniFilePath); CurDir:=GetCurDir;
   if CompareText(IniDir,CurDir)<>0 then
-   if not ExistsFile(CurDir+DirInfoName) then
+   if not ExistsFile(CurDir+DirInfoFileName) then
      if ConfirmBox(FormatStrStr(msg_doyouwanttocreatelocalconfigfile,IniDir),nil,false)=cmYes then
        begin
-         if (not ExistsFile(IniFileName)) or
+         if (not ExistsFile(IniFilePath )) or
             (ChoiceBox(msg_configcopyexistingorcreatenew,nil,
               Btns,false)=cmUserBtn2) then
            begin
              { create new config here }
-             IniFileName:=CurDir+IniName;
-             SwitchesPath:=CurDir+SwitchesName;
+             IniFilePath:=CurDir+IniFileName;
+             SwitchesPath:=CurDir+SwitchesFileName;
            end
          else
            begin
              { copy config here }
-             if CopyFile(IniFileName,CurDir+IniName)=false then
-               ErrorBox(FormatStrStr(msg_errorwritingfile,CurDir+IniName),nil)
+             if CopyFile(IniFilePath,CurDir+IniFileName)=false then
+               ErrorBox(FormatStrStr(msg_errorwritingfile,CurDir+IniFileName),nil)
              else
-               IniFileName:=CurDir+IniName;
+                 IniFilePath:=CurDir+IniFileName;
              { copy also SwitchesPath to current dir, but only if
                1) SwitchesPath exists
                2) SwitchesPath is different from CurDir+SwitchesName }
              if ExistsFile(SwitchesPath) and
-                not SameFileName(SwitchesPath,CurDir+SwitchesName) then
+                not SameFileName(SwitchesPath,CurDir+SwitchesFileName) then
                begin
-                 if CopyFile(SwitchesPath,CurDir+SwitchesName)=false then
-                   ErrorBox(FormatStrStr(msg_errorwritingfile,CurDir+SwitchesName),nil)
+                 if CopyFile(SwitchesPath,CurDir+SwitchesFileName)=false then
+                   ErrorBox(FormatStrStr(msg_errorwritingfile,CurDir+SwitchesFileName),nil)
                  else
-                   SwitchesPath:=CurDir+SwitchesName;
+                   SwitchesPath:=CurDir+SwitchesFileName;
                end;
            end;
        end
      else
        begin
-         New(INI, Init(CurDir+DirInfoName));
+         New(INI, Init(CurDir+DirInfoFileName));
          INI^.SetEntry(MainSectionName,'Comment','Do NOT delete this file!!!');
          if INI^.Update=false then
            ErrorBox(FormatStrStr(msg_errorwritingfile,INI^.GetFileName),nil);
@@ -404,10 +410,10 @@ var INIFile: PINIFile;
     W: word;
     crcv:cardinal;
 begin
-  OK:=ExistsFile(IniFileName);
+  OK:=ExistsFile(IniFilePath);
   if OK then
  begin
-  New(INIFile, Init(IniFileName));
+  New(INIFile, Init(IniFilePath));
   { Files }
   OpenExts:=INIFile^.GetEntry(secFiles,ieOpenExts,OpenExts);
   RecentFileCount:=High(RecentFiles);
@@ -477,6 +483,11 @@ begin
   DefaultIndentSize:=INIFile^.GetIntEntry(secEditor,ieDefaultIndentSize,DefaultIndentSize);
   DefaultCodeEditorFlags:=INIFile^.GetIntEntry(secEditor,ieDefaultEditorFlags,DefaultCodeEditorFlags);
   DefaultSaveExt:=INIFile^.GetEntry(secEditor,ieDefaultSaveExt,DefaultSaveExt);
+  { Browser }
+  DefaultSymbolFlags:=INIFile^.GetIntEntry(secBrowser,ieBrowserSymbols,DefaultSymbolFlags);
+  DefaultDispayFlags:=INIFile^.GetIntEntry(secBrowser,ieBrowserDisplay,DefaultDispayFlags);
+  DefaultBrowserSub:=INIFile^.GetIntEntry(secBrowser,ieBrowserSub,DefaultBrowserSub);
+  DefaultBrowserPane:=INIFile^.GetIntEntry(secBrowser,ieBrowserPane,DefaultBrowserPane);
   { Highlight }
   HighlightExts:=INIFile^.GetEntry(secHighlight,ieHighlightExts,HighlightExts);
   TabsPattern:=INIFile^.GetEntry(secHighlight,ieTabsPattern,TabsPattern);
@@ -597,10 +608,10 @@ var INIFile: PINIFile;
     OK: boolean;
 begin
 {$ifdef Unix}
-  if not FromSaveAs and (DirOf(IniFileName)=DirOf(SystemIDEDir)) then
+  if not FromSaveAs and (DirOf(IniFilePath)=DirOf(SystemIDEDir)) then
     begin
-      IniFileName:=FExpand('~/.fp/'+IniName);
-      If not ExistsDir(DirOf(IniFileName)) then
+      IniFilePath:=FExpand('~/.fp/'+IniFileName);
+      If not ExistsDir(DirOf(IniFilePath)) then
         MkDir(FExpand('~/.fp'));
    end;
 {$endif Unix}
@@ -608,12 +619,12 @@ begin
   if not FromSaveAs and (DirOf(IniFileName)=DirOf(SystemIDEDir)) and
     (GetEnv('APPDATA')<>'') then
     begin
-      IniFileName:=FExpand(GetEnv('APPDATA')+'/fp/'+IniName);
-      If not ExistsDir(DirOf(IniFileName)) then
+      IniFilePath:=FExpand(GetEnv('APPDATA')+'/fp/'+IniFileName);
+      If not ExistsDir(DirOf(IniFilePath)) then
         MkDir(FExpand(GetEnv('APPDATA')+'/fp'));
    end;
 {$endif WINDOWS}
-  New(INIFile, Init(IniFileName));
+  New(INIFile, Init(IniFilePath));
   { Files }
   { avoid keeping old files }
   INIFile^.DeleteSection(secFiles);
@@ -697,6 +708,11 @@ begin
   INIFile^.SetIntEntry(secEditor,ieDefaultIndentSize,DefaultIndentSize);
   INIFile^.SetIntEntry(secEditor,ieDefaultEditorFlags,DefaultCodeEditorFlags);
   INIFile^.SetEntry(secEditor,ieDefaultSaveExt,DefaultSaveExt);
+  { Browser }
+  INIFile^.SetIntEntry(secBrowser,ieBrowserSymbols,DefaultSymbolFlags);
+  INIFile^.SetIntEntry(secBrowser,ieBrowserDisplay,DefaultDispayFlags);
+  INIFile^.SetIntEntry(secBrowser,ieBrowserSub,DefaultBrowserSub);
+  INIFile^.SetIntEntry(secBrowser,ieBrowserPane,DefaultBrowserPane);
   { Highlight }
   INIFile^.SetEntry(secHighlight,ieHighlightExts,EscapeIniText(HighlightExts));
   INIFile^.SetEntry(secHighlight,ieTabsPattern,EscapeIniText(TabsPattern));

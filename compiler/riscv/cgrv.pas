@@ -127,6 +127,7 @@ unit cgrv;
       var
         href: treference;
         l: TAsmLabel;
+        ai: taicpu;
       begin
         if not(weak) then
           reference_reset_symbol(href,current_asmdata.RefAsmSymbol(s,AT_FUNCTION),0,0,[])
@@ -149,7 +150,9 @@ unit cgrv;
 
             reference_reset_symbol(href,l,0,0,[]);
             href.refaddr:=addr_pcrel_lo12;
-            list.concat(taicpu.op_reg_reg_ref(A_JALR,NR_RETURN_ADDRESS_REG,NR_RETURN_ADDRESS_REG,href));
+            ai:=taicpu.op_reg_reg_ref(A_JALR,NR_RETURN_ADDRESS_REG,NR_RETURN_ADDRESS_REG,href);
+            ai.is_jmp:=true;
+            list.concat(ai);
           end;
 
         { not assigned while generating external wrappers }
@@ -865,21 +868,34 @@ unit cgrv;
         l: TAsmLabel;
       begin
         href:=ref;
-        fixref(list,href);      
 
-        if href.refaddr=addr_pcrel then
+        { can we use the fl* rd,symbol,rd pseudoinstruction? }
+        if (assigned(href.symbol) or (href.offset<>0)) then
           begin
-            tmpreg:=getintregister(list,OS_ADDR);
-            a_loadaddr_ref_reg(list,href,tmpreg);
-            reference_reset_base(href,tmpreg,0,ctempposinvalid,0,ref.volatility);
-          end;
+            if (href.base<>NR_NO) or (href.index<>NR_NO) then
+              fixref(list,href)
+            else
+              href.refaddr:=addr_full;
+          end
+        else
+          fixref(list,href);
 
         if fromsize=OS_F32 then
           op:=A_FLW
+        else if fromsize=OS_F64 then
+          op:=A_FLD
+        else if fromsize=OS_F128 then
+          op:=A_FLQ
         else
-          op:=A_FLD;
+          Internalerror(2025011101);
 
-        list.concat(taicpu.op_reg_ref(op,reg,href));
+        if href.refaddr in [addr_pcrel,addr_full] then
+          begin
+            tmpreg:=getintregister(list,OS_ADDR);
+            list.concat(taicpu.op_reg_ref_reg(op,reg,href,tmpreg));
+          end
+        else
+          list.concat(taicpu.op_reg_ref(op,reg,href));
 
         if fromsize<>tosize then
           a_loadfpu_reg_reg(list,fromsize,tosize,reg,reg);

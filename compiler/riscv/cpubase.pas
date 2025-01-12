@@ -40,9 +40,10 @@ uses
         { Pseudo instructions }
         A_NOP,A_CALL,A_LA,A_LLA,A_LGA,A_LI,A_MV,A_NOT,A_NEG,A_NEGW,
         A_SEXT_B,A_SEXT_H,A_ZEXT_B,A_ZEXT_H,A_SEQZ,A_SNEG,A_SLTZ,A_SGTZ,
-        A_FMV_S,A_FABS_S,A_FNEG_S,A_FMV_D,A_FABS_D,A_FNEG_D,
+        A_FMV_S,A_FABS_S,A_FNEG_S,A_FMV_D,A_FABS_D,A_FNEG_D,A_FNEG_Q,
         A_BEQZ,A_BNEZ,A_BLEZ,A_BGEZ,A_BLTZ,A_BGTZ,A_BGT,A_BLE,
         A_BGTU,A_BLEU,A_J,A_JR,A_RET,A_TAIL,
+
         { normal opcodes }
         A_LUI,A_AUIPC,A_JAL,A_JALR,
         A_Bxx,A_LB,A_LH,A_LW,A_LBU,A_LHU,
@@ -128,9 +129,10 @@ uses
         A_FADD_S,A_FSUB_S,A_FMUL_S,A_FDIV_S,
         A_FSQRT_S,A_FSGNJ_S,A_FSGNJN_S,A_FSGNJX_S,
         A_FMIN_S,A_FMAX_S,
-        A_FMV_X_S,A_FEQ_S,A_FLT_S,A_FLE_S,A_FCLASS_S,
+        A_FMV_X_S,A_FMV_X_W,
+        A_FEQ_S,A_FLT_S,A_FLE_S,A_FCLASS_S,
         A_FCVT_W_S,A_FCVT_WU_S,A_FCVT_S_W,A_FCVT_S_WU,
-        A_FMV_S_X,
+        A_FMV_S_X,A_FMV_W_X,
         A_FRCSR,A_FRRM,A_FRFLAGS,A_FSCSR,A_FSRM,
         A_FSFLAGS,A_FSRMI,A_FSFLAGSI,
 
@@ -155,6 +157,16 @@ uses
         A_FCVT_L_D,A_FCVT_LU_D,A_FMV_X_D,
         A_FCVT_D_L,A_FCVT_D_LU,A_FMV_D_X,
 {$endif RISCV64}
+
+        { Q-extension }
+        A_FLQ,A_FSQ,
+//        A_FMADD_D,A_FMSUB_D,A_FNMSUB_D,A_FNMADD_D,
+//        A_FADD_D,A_FSUB_D,A_FMUL_D,A_FDIV_D,
+//        A_FSQRT_D,A_FSGNJ_D,A_FSGNJN_D,A_FSGNJX_D,
+        A_FMIN_Q,A_FMAX_Q,
+//        A_FEQ_D,A_FLT_D,A_FLE_D,A_FCLASS_D,
+//        A_FCVT_D_S,A_FCVT_S_D,
+//        A_FCVT_W_D,A_FCVT_WU_D,A_FCVT_D_W,A_FCVT_D_WU,
 
         { Machine mode }
         A_MRET,A_HRET,A_SRET,A_URET,

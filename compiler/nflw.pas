@@ -304,9 +304,9 @@ implementation
     {$ifdef i8086}
       cpuinfo,
     {$endif i8086}
-    {$if defined(xtensa) or defined(i386)}
+    {$if defined(xtensa) or defined(i386) or defined(riscv)}
       cpuinfo,
-    {$endif defined(xtensa) or defined(i386)}
+    {$endif defined(xtensa) or defined(i386) or defined(riscv)}
       cgbase,procinfo
       ;
 
@@ -1570,14 +1570,19 @@ implementation
         include(flags,nf_internal);
       end;
 
+{$ifndef llvm}
+  {$if defined(i386) or defined(x86_64) or defined(xtensa) or defined(aarch64) or defined(riscv)}
+    {$define HAS_MINMAX_INTRINSICS}
+  {$endif defined(i386) or defined(x86_64) or defined(xtensa) or defined(aarch64) or defined(riscv)}
+{$endif llvm}
 
     function tifnode.internalsimplify(warn: boolean) : tnode;
-{$if defined(i386) or defined(x86_64) or defined(xtensa) or defined(aarch64)}
+{$if defined(HAS_MINMAX_INTRINSICS)}
       var
         thenstmnt, elsestmnt: tnode;
         in_nr: tinlinenumber;
         paratype: tdef;
-{$endif defined(i386) or defined(x86_64) or defined(xtensa) or defined(aarch64)}
+{$endif defined(HAS_MINMAX_INTRINSICS)}
       begin
         result:=nil;
         { optimize constant expressions }
@@ -1604,8 +1609,7 @@ implementation
                     CGMessagePos(right.fileinfo,cg_w_unreachable_code);
                end;
           end;
-{$ifndef llvm}
-{$if defined(i386) or defined(x86_64) or defined(xtensa) or defined(aarch64)}
+{$if defined(HAS_MINMAX_INTRINSICS)}
         { use min/max intrinsic?
           convert (with <op> being <, >, >=, <=
           if a <op> b then
@@ -1650,6 +1654,15 @@ implementation
           (is_single(tassignmentnode(thenstmnt).left.resultdef) or is_double(tassignmentnode(thenstmnt).left.resultdef) or
            is_32bitint(tassignmentnode(thenstmnt).left.resultdef) or is_64bitint(tassignmentnode(thenstmnt).left.resultdef)) and
 {$endif defined(aarch64)}
+{$if defined(riscv)}
+          { RiscV fmin/fmax/fminm/fmaxm uses the IEEE semantics (2008 or 201x) of min/max regarding NaN (using either
+            always the NaN or non-NaN operand instead of the second one in case on is NaN), so
+            we can use them only when fast math is on }
+          ((cs_opt_fastmath in current_settings.optimizerswitches) and
+           ((is_single(tassignmentnode(thenstmnt).left.resultdef) and (CPURV_HAS_F in cpu_capabilities[current_settings.cputype])) or
+            (is_double(tassignmentnode(thenstmnt).left.resultdef) and (CPURV_HAS_D in cpu_capabilities[current_settings.cputype])) or
+            (is_quad(tassignmentnode(thenstmnt).left.resultdef) and (CPURV_HAS_Q in cpu_capabilities[current_settings.cputype])))) and
+{$endif defined(riscv)}
           (
           { the right size of the assignment in the then clause must either }
 
@@ -1733,8 +1746,7 @@ implementation
                 );
             node_reset_pass1_write(Result);
           end;
-{$endif defined(i386) or defined(x86_64) or defined(xtensa) or defined(aarch64)}
-{$endif llvm}
+{$endif defined(HAS_MINMAX_INTRINSICS)}
       end;
 
 
