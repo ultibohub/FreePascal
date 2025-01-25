@@ -3248,3 +3248,5 @@ makefiles: fpc_makefiles
 ifneq ($(wildcard fpcmake.loc),)
 include fpcmake.loc
 endif
+testsuite$(SRCEXEEXT): testsuite.pp  tscgiapp.pp  tsconsts.pas  tsgraph.pas  tshistory.pas  tshtml.pas  tssql.pas
+	$(COMPILER) $<

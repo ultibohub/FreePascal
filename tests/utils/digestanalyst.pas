@@ -5,7 +5,7 @@ unit digestanalyst;
 interface
 
 uses
-  Classes, SysUtils, teststr, testu, tresults, dbtests;
+  Classes, SysUtils, tsstring, tsutils, tstypes, tsdb;
 
 Type
   // Program configuration
@@ -37,7 +37,7 @@ Type
     // Get the execute log for a given test
     function GetExecuteLog(Line, FN: String): String;
     // Get the IDs from all config parameters: OS, Log,
-    function GetIDs(const aConfig: TDigestConfig; var aData: TTestRunData): Boolean;
+    function GetIDs(var aData: TTestRunData): Boolean;
     // Check that all IDS needed for a test run are <>-1
     function CheckIDs(var aData: TTestRunData): Boolean;
     // process a log file.
@@ -73,7 +73,7 @@ end;
 
 procedure TDBDigestAnalyzer.Verbose(aLevel: TVerboseLevel; const aMsg: string);
 begin
-  testu.Verbose(aLevel,FPrefix+aMsg);
+  tsutils.Verbose(aLevel,FPrefix+aMsg);
 end;
 
 function TDBDigestAnalyzer.CheckIDs(var aData : TTestRunData): Boolean;
@@ -101,14 +101,15 @@ begin
     begin
     LongLogFile:=TStringList.Create;
     LongLogFile.LoadFromFile(aData.longlogfile);
+    UseLongLog:=LongLogFile.Count>0;
     end;
-  if not GetIDS(aConfig,aData) then
+  if not GetIDS(aData) then
     exit;
   ProcessFile(aData.logfile,aData);
   UpdateTestRun(aData);
 end;
 
-function TDBDigestAnalyzer.GetIDs(const aConfig : TDigestConfig; var aData : TTestRunData): Boolean;
+function TDBDigestAnalyzer.GetIDs(var aData : TTestRunData): Boolean;
 
 
 begin
@@ -167,30 +168,6 @@ begin
       end;
     end;
 end;
-
-(*
-
-ConfigAddStrings : Array [TConfigAddOpt] of string = (
-  'compilerdate',
-  'compilerfullversion',
-  'svncompilerrevision',
-  'svntestsrevision',
-  'svnrtlrevision',
-  'svnpackagesrevision'
- );
-
-ConfigAddCols : Array [TConfigAddOpt] of string = (
-  'TU_COMPILERDATE',
-  'TU_COMPILERFULLVERSION',
-  'TU_SVNCOMPILERREVISION',
-  'TU_SVNTESTSREVISION',
-  'TU_SVNRTLREVISION',
-  'TU_SVNPACKAGESREVISION'
- );
-
-*)
-
-
 
 const
    SeparationLine = '>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>';
@@ -356,15 +333,15 @@ begin
         If not AnalyseLine(line,TS) then
           begin
           Inc(UnknownLines);
-          Verbose(V_Warning,'Unknown line: "'+line+'"');
+          Verbose(V_Warning,'Unknown line: "'+fullline+'"');
           end
         else
           begin
-          Verbose(V_NORMAL,'Analysing result for test '+Line);
+          Verbose(V_NORMAL,'Analysing result for test '+fullLine);
           lResult.TestID:=FDB.RequireTestID(line);
           if lResult.TestID=-1 then
             begin
-            Verbose(V_Warning,'No test ID: "'+line+'", skipping');
+            Verbose(V_Warning,'No test ID: "'+fullline+'", skipping');
             Continue;
             end;
           If ExpectRun[TS] then
