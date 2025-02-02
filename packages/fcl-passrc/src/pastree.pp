@@ -541,7 +541,7 @@ type
 
   TPasType = class(TPasElement)
   Protected
-    Function FixTypeDecl(aDecl: TPasTreeString) : TPasTreeString;
+    Function FixTypeDecl(aDecl: TPasTreeString) : TPasTreeString; virtual;
   public
     Function SafeName : TPasTreeString; override;
     function ElementTypeName: TPasTreeString; override;
@@ -551,6 +551,8 @@ type
   { TPasAliasType }
 
   TPasAliasType = class(TPasType)
+  protected
+    Function FixTypeDecl(aDecl: TPasTreeString) : TPasTreeString; override;
   public
     procedure FreeChildren(Prepare: boolean); override;
     function ElementTypeName: TPasTreeString; override;
@@ -792,7 +794,7 @@ type
   public
     PackMode: TPackMode;
     Members: TFPList;
-    RTTIVisibility: TRTTIVisibility;
+    RTTIVisibility: TRTTIVisibility; // set by $RTTI directive
     Constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
     Destructor Destroy; override;
     procedure FreeChildren(Prepare: boolean); override;
@@ -846,6 +848,8 @@ type
   { TPasClassType }
 
   TPasClassType = class(TPasMembersType)
+  protected
+    procedure GetMembers(S: TStrings); virtual;
   public
     constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
     destructor Destroy; override;
@@ -869,6 +873,7 @@ type
     ExternalName : TPasTreeString;
     InterfaceType: TPasClassInterfaceType;
     Function IsObjCClass : Boolean;
+    function GetDeclaration(full: boolean): TPasTreeString; override;
     Function FindMember(MemberClass : TPTreeElement; Const MemberName : TPasTreeString) : TPasElement;
     Function FindMemberInAncestors(MemberClass : TPTreeElement; Const MemberName : TPasTreeString) : TPasElement;
     Function InterfaceGUID : TPasTreeString;
@@ -997,6 +1002,7 @@ type
     LengthExpr : TPasTreeString;
     CodePageExpr : TPasTreeString;
     function ElementTypeName: TPasTreeString; override;
+    function GetDeclaration(full: Boolean): TPasTreeString; override;
   end;
 
   { TPasTypeRef  - not used by TPasParser }
@@ -1068,7 +1074,8 @@ type
     destructor Destroy; override;
     procedure FreeChildren(Prepare: boolean); override;
     function ElementTypeName: TPasTreeString; override;
-    function GetDeclaration(full : boolean) : TPasTreeString; override;
+    function GetDeclaration(full : boolean) : TPasTreeString; override; overload;
+    function GetDeclaration(full: boolean; WithAccessor: Boolean): TPasTreeString; overload;
     procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
       const Arg: Pointer); override;
   public
@@ -1932,12 +1939,14 @@ begin
   for i:=0 to List.Count-1 do
     begin
     if i>0 then
-      Result:=Result+',';
+      if length(T.Constraints)>0 then
+        Result:=Result+';'
+      else
+        Result:=Result+',';
     T:=TPasGenericTemplateType(List[i]);
     Result:=Result+T.Name;
     if length(T.Constraints)>0 then
       begin
-      Result:=Result+':';
       for j:=0 to length(T.Constraints)-1 do
         begin
         if j>0 then
@@ -2143,7 +2152,7 @@ begin
       begin
       if i>0 then
         Result:=Result+',';
-      Result:=Result+Constraints[i].GetDeclaration(false);
+      Result:=Result+Constraints[i].GetDeclaration(True);
       end;
     end;
 end;
@@ -2309,6 +2318,7 @@ function TInlineSpecializeExpr.GetDeclaration(full: Boolean): TPasTreeString;
 var
   i: Integer;
   aParam: TPasElement;
+  lTmp : String;
 begin
   Result:='specialize '+NameExpr.GetDeclaration(false)+'<';
   for i:=0 to Params.Count-1 do
@@ -2319,7 +2329,11 @@ begin
     if aParam is TPasMembersType then
       Result:=Result+aParam.FullName
     else
-      Result:=Result+aParam.GetDeclaration(false);
+      begin
+      lTmp:=aParam.GetDeclaration(aParam is TPasUnresolvedTypeRef);
+      lTmp[1]:=UpCase(lTmp[1]);
+      Result:=Result+lTmp;
+      end;
     end;
   Result:=Result+'>';
   if full then ;
@@ -2380,6 +2394,7 @@ function TPasSpecializeType.GetDeclaration(full: boolean): TPasTreeString;
 var
   i: Integer;
   aParam: TPasElement;
+  lTmp : String;
 begin
   Result:='specialize '+DestType.Name+'<';
   for i:=0 to Params.Count-1 do
@@ -2390,8 +2405,13 @@ begin
     if aParam is TPasMembersType then
       Result:=Result+aParam.FullName
     else
-      Result:=Result+aParam.GetDeclaration(false);
+      begin
+      lTmp:=aParam.GetDeclaration(aParam is TPasUnresolvedTypeRef);
+      lTmp[1]:=Upcase(lTmp[1]);
+      Result:=Result+lTmp;
+      end;
     end;
+  Result:=Result+'>';
   If Full and (Name<>'') then
     begin
     Result:=Name+' = '+Result;
@@ -3004,6 +3024,18 @@ function TPasConstructorImpl.ElementTypeName: TPasTreeString; begin Result := SP
 function TPasDestructorImpl.ElementTypeName: TPasTreeString; begin Result := SPasTreeDestructorImpl end;
 function TPasStringType.ElementTypeName: TPasTreeString; begin Result:=SPasStringType;end;
 
+function TPasStringType.GetDeclaration(full: Boolean): TPasTreeString;
+begin
+  Result:='string';
+  if full then
+    begin
+    if LengthExpr<>'' then
+       Result:=Result+'['+LengthExpr+']';
+    if CodePageExpr<>'' then
+       Result:=Result+'('+CodePageExpr+')';
+    end;
+end;
+
 
 { All other stuff: }
 
@@ -3348,6 +3380,19 @@ begin
   inherited FreeChildren(Prepare);
 end;
 
+function TPasAliasType.FixTypeDecl(aDecl: TPasTreeString): TPasTreeString;
+
+var
+  PasType : TPasType;
+begin
+  Result:=aDecl;
+  PasType:=TPasTypeAliasType(Self).DestType;
+  Result:='type '+PasType.GetDeclaration(PasType is TPasUnresolvedTypeRef);
+  if (Name<>'') then
+    Result:=SafeName+' = '+Result;
+  ProcessHints(false,Result);
+end;
+
 procedure TPasAliasType.FreeChildren(Prepare: boolean);
 begin
   SubType:=TPasType(FreeChild(SubType,Prepare));
@@ -3550,6 +3595,83 @@ begin
     if El=aType then
       Interfaces[i]:=nil;
     end;
+end;
+
+procedure TPasClassType.GetMembers(S: TStrings);
+
+Var
+  T : TStringList;
+  temp : TPasTreeString;
+  I,J : integer;
+  E : TPasElement;
+  CV : TPasMemberVisibility ;
+
+begin
+  T:=TStringList.Create;
+  try
+  CV:=visDefault;
+  For I:=0 to Members.Count-1 do
+    begin
+    E:=TPasElement(Members[i]);
+    if E.Visibility<>CV then
+      begin
+      CV:=E.Visibility;
+      if CV<>visDefault then
+        S.Add(VisibilityNames[CV]);
+      end;
+    Temp:=E.GetDeclaration(True);
+    If E is TPasProperty then
+      Temp:='property '+Temp;
+    If Pos(LineEnding,Temp)>0 then
+      begin
+      T.Text:=Temp;
+      For J:=0 to T.Count-1 do
+        if J=T.Count-1 then
+          S.Add('  '+T[J]+';')
+        else
+          S.Add('  '+T[J])
+      end
+    else
+      S.Add('  '+Temp+';');
+    end;
+  finally
+    T.Free;
+  end;
+end;
+
+
+function TPasClassType.GetDeclaration(full: boolean): TPasTreeString;
+
+Var
+  S : TStringList;
+  temp : TPasTreeString;
+
+begin
+  S:=TStringList.Create;
+  Try
+    Temp:='class';
+    if IsAbstract then
+      Temp:=Temp+' abstract';
+    if IsSealed then
+      Temp:=Temp+' sealed';
+    if Assigned(AncestorType) then
+      Temp:=Temp+'('+AncestorType.Name+')';
+    If Full and (Name<>'') then
+      begin
+      if GenericTemplateTypes.Count>0 then
+        Temp:=SafeName+GenericTemplateTypesAsString(GenericTemplateTypes)+' = '+Temp
+      else
+        Temp:=SafeName+' = '+Temp;
+      end;
+    S.Add(Temp);
+    GetMembers(S);
+    S.Add('end');
+    Result:=S.Text;
+    if Full then
+      ProcessHints(False, Result);
+  finally
+    S.free;
+  end;
 end;
 
 function TPasClassType.ElementTypeName: TPasTreeString;
@@ -4379,7 +4501,10 @@ end;
 
 function TPasAliasType.GetDeclaration(full: Boolean): TPasTreeString;
 begin
-  Result:=DestType.SafeName;
+  if DestType is TPasStringType then
+    Result:=DestType.GetDeclaration(True)
+  else
+    Result:=DestType.SafeName;
   If Full then
     Result:=FixTypeDecl(Result);
 end;
@@ -4436,6 +4561,8 @@ begin
 end;
 
 function TPasArrayType.GetDeclaration (full : boolean) : TPasTreeString;
+var
+  i : Integer;
 begin
   Result:='Array';
   if Full then
@@ -4446,12 +4573,23 @@ begin
       Result:=SafeName+' = '+Result;
     end;
   If (IndexRange<>'') then
-    Result:=Result+'['+IndexRange+']';
+    Result:=Result+'['+IndexRange+']'
+  else if Length(Ranges)>0 then
+    begin
+      Result:=Result+'[';
+      for i:=0 to Length(Ranges)-1 do
+        begin
+          if i>0 then
+            Result:=Result+',';
+          Result:=Result+Ranges[i].GetDeclaration(True);
+        end;
+      Result:=Result+']';
+    end;
   Result:=Result+' of ';
   If IsPacked then
     Result := 'packed '+Result;      // 12/04/04 Dave - Added
   If Assigned(Eltype) then
-    Result:=Result+ElType.SafeName
+    Result:=Result+ElType.GetDeclaration(ElType is TPasUnresolvedTypeRef)
   else
     Result:=Result+'const';
 end;
@@ -4553,7 +4691,7 @@ begin
     end
   else
     begin
-    Result:='Set of '+EnumType.SafeName;
+    Result:='Set of '+EnumType.GetDeclaration(True);
     If Full then
       Result:=SafeName+' = '+Result;
     end;
@@ -4850,8 +4988,10 @@ Const
 begin
   If Assigned(VarType) then
     begin
-    If VarType.Name='' then
-      Result:=VarType.GetDeclaration(False)
+    // Todo: need something better than this.
+    If (VarType.Name='')
+       or ((VarType is TPasAliasType) and (TPasAliasType(VarType).DestType is TPasStringType)) then
+      Result:=VarType.GetDeclaration(Full)
     else
       Result:=VarType.SafeName;
     Result:=Result+Modifiers;
@@ -4895,6 +5035,12 @@ end;
 
 function TPasProperty.GetDeclaration (full : boolean) : TPasTreeString;
 
+begin
+  Result:=GetDeclaration(Full,False);
+end;
+
+function TPasProperty.GetDeclaration (full : boolean; WithAccessor : Boolean) : TPasTreeString;
+
 Var
   S : TPasTreeString;
   I : Integer;
@@ -4927,6 +5073,13 @@ begin
   If Full then
     begin
     Result:=SafeName+S+': '+Result;
+    if WithAccessor then
+      begin
+      if Assigned(ReadAccessor) then
+         Result:=Result+' read '+ReadAccessor.GetDeclaration(True);
+      if Assigned(WriteAccessor) then
+         Result:=Result+' write '+WriteAccessor.GetDeclaration(True);
+      end;
     If (ImplementsName<>'') then
        Result:=Result+' implements '+EscapeKeyWord(ImplementsName);
     end;   
@@ -5192,19 +5345,22 @@ begin
         T:=T+' '+SafeName;
       S.Add(T);
       end;
-    ProcType.GetArguments(S);
-    If (ProcType is TPasFunctionType)
-        and Assigned(TPasFunctionType(Proctype).ResultEl) then
-      With TPasFunctionType(ProcType).ResultEl.ResultType do
-        begin
-        T:=' : ';
-        If (Name<>'') then
-          T:=T+SafeName
-        else
-          T:=T+GetDeclaration(False);
-        S.Add(T);
-        end;
-    GetModifiers(S);
+    if Assigned(ProcType) then
+      begin
+      ProcType.GetArguments(S);
+      If (ProcType is TPasFunctionType)
+          and Assigned(TPasFunctionType(Proctype).ResultEl) then
+        With TPasFunctionType(ProcType).ResultEl.ResultType do
+          begin
+          T:=' : ';
+          If (Name<>'') then
+            T:=T+SafeName
+          else
+            T:=T+GetDeclaration(False);
+          S.Add(T);
+          end;
+      GetModifiers(S); // needs proctype
+      end;
     Result:=IndentStrings(S,Length(S[0]));
   finally
     S.Free;

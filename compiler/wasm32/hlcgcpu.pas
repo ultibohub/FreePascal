@@ -245,6 +245,10 @@ uses
       procedure resizestackfpuval(list: TAsmList; fromsize, tosize: tcgsize);
     end;
 
+{$ifdef extdebug}
+     function ref2string(const ref : treference) : string;
+{$endif extdebug}
+
 implementation
 
   uses
@@ -295,6 +299,50 @@ implementation
       a_i64_rotl,  {OP_ROL,  rotate left              }
       a_i64_rotr   {OP_ROR   rotate right             }
     );
+
+{$ifdef extdebug}
+     function ref2string(const ref : treference) : string;
+       const
+         tr: treference = (
+           offset: 0;
+           symbol: nil;
+           relsymbol: nil;
+           temppos: (val: 0);
+           base: NR_NO;
+           index: NR_NO;
+           refaddr: default(trefaddr);
+           scalefactor: 0;
+           volatility: [vol_read, vol_write];
+           alignment: 0;
+         );
+
+         function AsmSymbolName(sym: tasmsymbol): string;
+           begin
+             if assigned(sym) then
+               result := sym.name
+             else
+               result := 'nil';
+           end;
+
+         function Volatility2String(vs: tvolatilityset): string;
+           var
+             v: tvolatility;
+           begin
+             result := '[';
+             for v in tvolatility do
+               if v in vs then
+                 WriteStr(result, result, ',', v);
+             if length(result) > 1 then
+               delete(result, 2, 1);
+             result := result + ']';
+           end;
+
+       begin
+         WriteStr(result, '(offset: ', ref.offset, '; symbol: ', AsmSymbolName(ref.symbol), '; relsymbol: ', AsmSymbolName(ref.relsymbol), '; temppos: (val: ', ref.temppos.val,
+           '); base: ', std_regname(ref.base), '; index: ', std_regname(ref.index), '; refaddr: ', ref.refaddr, '; scalefactor: ', ref.scalefactor, '; volatility: ',
+           Volatility2String(ref.volatility), '; alignment: ', ref.alignment, ')');
+       end;
+{$endif extdebug}
 
   function thlcgwasm.is_methodptr_like_type(d:tdef): boolean;
     var
@@ -758,7 +806,10 @@ implementation
     begin
       tmpref:=ref;
       if tmpref.base<>NR_EVAL_STACK_BASE then
-        a_load_ref_stack(list,size,tmpref,prepare_stack_for_ref(list,tmpref,false));
+        begin
+          g_load_check_simple(list,tmpref,1024);
+          a_load_ref_stack(list,size,tmpref,prepare_stack_for_ref(list,tmpref,false));
+        end;
       regtyp:=def2regtyp(size);
       case regtyp of
         R_EXTERNREFREGISTER,
@@ -819,7 +870,10 @@ implementation
       tmpref:=ref;
       a_load_reg_stack(list,size,reg);
       if tmpref.base<>NR_EVAL_STACK_BASE then
-        a_load_ref_stack(list,size,tmpref,prepare_stack_for_ref(list,tmpref,false))
+        begin
+          g_load_check_simple(list,tmpref,1024);
+          a_load_ref_stack(list,size,tmpref,prepare_stack_for_ref(list,tmpref,false));
+        end
       else
         cmp_op:=swap_opcmp(cmp_op);
       a_cmp_stack_stack(list,size,cmp_op);
@@ -831,7 +885,10 @@ implementation
     begin
       tmpref:=ref;
       if tmpref.base<>NR_EVAL_STACK_BASE then
-        a_load_ref_stack(list,size,ref,prepare_stack_for_ref(list,tmpref,false));
+        begin
+          g_load_check_simple(list,tmpref,1024);
+          a_load_ref_stack(list,size,ref,prepare_stack_for_ref(list,tmpref,false));
+        end;
       a_load_reg_stack(list,size,reg);
       a_cmp_stack_stack(list,size,cmp_op);
     end;
@@ -1319,12 +1376,15 @@ implementation
         end
       else
         begin
-          { static field -> nothing to do here, except for validity check }
-          {if not assigned(ref.symbol) or
-             (ref.offset<>0) then
-          begin
-            internalerror(2010120525);
-          end;}
+          { no symbol, no index, just fixed address, e.g. var a: longint absolute 5; }
+          list.Concat(taicpu.op_const(a_i32_const,0));
+          incstack(list,1);
+          if dup then
+            begin
+              list.Concat(taicpu.op_const(a_i32_const,0));
+              incstack(list,1);
+            end;
+          result:=1;
         end;
     end;
 

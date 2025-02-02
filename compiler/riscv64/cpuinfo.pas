@@ -127,6 +127,7 @@ Const
       (CPURV_HAS_MUL,
        CPURV_HAS_ATOMIC,
        CPURV_HAS_COMPACT,
+       CPURV_HAS_16REGISTERS,
        CPURV_HAS_ZBA,
        CPURV_HAS_ZBB,
        CPURV_HAS_ZBC,
@@ -143,7 +144,8 @@ Const
        CPURV_HAS_ZDINX,
        CPURV_HAS_ZHINX,
        CPURV_HAS_ZHINXMIN,
-       CPURV_HAS_ZICOND
+       CPURV_HAS_ZICOND,
+       CPURV_HAS_ZMMUL
       );
 
  const

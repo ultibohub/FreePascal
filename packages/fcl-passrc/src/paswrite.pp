@@ -73,6 +73,7 @@ type
     procedure SetForwardClasses(AValue: TStrings);
     procedure SetIndentSize(AValue: Integer);
     function CheckUnitAlias(const AUnitName : String) : String;
+    procedure WriteImplWithDo(aWith: TPasImplWithDo);
   protected
     procedure DisableHintsWarnings;
     procedure PrepareDeclSectionInStruct(const ADeclSection: string);
@@ -872,7 +873,8 @@ procedure TPasWriter.WriteRecordType(AType: TPasRecordType);
 
 Var
   Temp : String;
-
+  i : Integer;
+  
 begin
   Temp:='record';
   If aType.IsPacked then
@@ -891,6 +893,18 @@ begin
   IncIndent;
   IncDeclSectionLevel;
   WriteMembers(AType.Members,visPublic);
+  if AType.Variants<>nil then
+      begin
+      temp:='case ';
+      if (AType.VariantEl is TPasVariable) then
+        temp:=Temp+AType.VariantEl.Name+' : '+TPasVariable(AType.VariantEl).VarType.Name
+      else if (AType.VariantEl<>Nil) then
+        temp:=temp+AType.VariantEl.Name;
+      temp:=temp+' of';
+      AddLn(Temp);
+      For I:=0 to AType.Variants.Count-1 do
+        AddLn(TPasVariant(AType.Variants[i]).GetDeclaration(True));
+      end;
   DecDeclSectionLevel;
   DecIndent;
   Add('end');
@@ -934,15 +948,7 @@ begin
     IsImpl:=FInImplementation;
   if FInImplementation and not forcebody and (Assigned(AProc.LibraryExpr) or Assigned(AProc.LibrarySymbolName)) and HasOption(woSkipPrivateExternals)  then
     Exit;
-  Add(AProc.TypeName + ' ' + NamePrefix+AProc.SafeName);
-  if Assigned(AProc.ProcType) and (AProc.ProcType.Args.Count > 0) then
-    AddProcArgs(AProc.ProcType.Args) ;
-  if Assigned(AProc.ProcType) and
-    (AProc.ProcType.ClassType = TPasFunctionType) then
-  begin
-    Add(': ');
-    WriteType(TPasFunctionType(AProc.ProcType).ResultEl.ResultType,False);
-  end;
+  Add(AProc.GetDeclaration(True));
   Add(';');
   // delphi compatible order for example: procedure foo; reintroduce; overload; static;
   if not IsImpl and AProc.IsReintroduced then
@@ -1234,6 +1240,8 @@ begin
     WriteImplSimple(TPasImplSimple(aElement))
   else if AElement.InheritsFrom(TPasImplExceptOn) then
     WriteImplExceptOn(TPasImplExceptOn(aElement))
+  else if AElement.InheritsFrom(TPasImplWithDo) then
+      WriteImplWithDo(TPasImplWithDo(aElement))
   else
     raise EPasWriter.CreateFmt('Writing not yet implemented for %s implementation elements',[AElement.ClassName]);
 end;
@@ -1241,6 +1249,35 @@ end;
 procedure TPasWriter.WriteImplCommand(ACommand: TPasImplCommand);
 begin
   Add(ACommand.Command);
+end;
+
+procedure TPasWriter.WriteImplWithDo(aWith: TPasImplWithDo);
+var
+  ind : integer;
+  Expr : string;
+begin
+  With aWith do
+    begin
+    for ind:=0 to Expressions.Count-1 do
+      begin
+        Expr:=Expr+GetExpr(TPasExpr(Expressions[ind]));
+        if ind<Expressions.Count-1 then
+          Expr:=Expr+',';
+      end;
+    Add('With %s do',[Expr]);
+    if assigned(Body) then
+      begin
+        AddLn;
+        IncIndent;
+        WriteImplElement(Body, True);
+        DecIndent;
+        if (Body.InheritsFrom(TPasImplBlock)) and
+           (Body.InheritsFrom(TPasImplCommands)) then
+          AddLn(';');
+      end
+    else
+      AddLn(';');
+    end;
 end;
 
 procedure TPasWriter.WriteImplCommands(ACommands: TPasImplCommands);
