@@ -1520,6 +1520,12 @@ Implementation
               Result:=OptPass1Shift(p);
             A_AND:
               Result:=OptPass1And(p);
+            A_LSRV,
+            A_RORV,
+            A_ASRV,
+            A_LSLV,
+            A_UDIV,
+            A_SDIV,
             A_NEG,
             A_CSEL,
             A_ADD,

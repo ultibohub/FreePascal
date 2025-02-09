@@ -2385,6 +2385,7 @@ type
       pfStoredFunction = 12; // stored function, function name is in Stored
       pfHasIndex = 16; { if getter is function, append Index as last param
                          if setter is function, append Index as second last param }
+      pfClassProperty = 32;  // class property
     type
       TMethodKind = (
         mkProcedure,      // 0  default
@@ -13421,8 +13422,10 @@ var
   St: TJSStatementList;
   ImplProc, DeclProc: TPasProcedure;
   ImplTry: TPasImplTry;
-  ResultIsRead: Boolean;
+  ResultIsRead, IsCOMIntf: Boolean;
   ResultEl: TPasResultElement;
+  TypeEl: TPasType;
+  Call: TJSCallExpression;
 begin
   {$IFDEF VerbosePas2JS}
   writeln('TPasToJSConverter.ConvertBuiltIn_Exit ',GetObjName(El));
@@ -13433,16 +13436,30 @@ begin
   // ParentEl can be nil, when exit is in program begin block
   ImplProc:=TPasProcedure(ParentEl);
   ResultVarName:='';
+  ResultEl:=nil;
+  IsCOMIntf:=false;
   if ImplProc<>nil then
     begin
     ImplProcScope:=ImplProc.CustomData as TPas2JSProcedureScope;
-    if ImplProc.ProcType is TPasFunctionType then
+    DeclProc:=ImplProcScope.DeclarationProc;
+    if DeclProc=nil then
+      DeclProc:=ImplProc; // Note: references refer to ResultEl of DeclProc
+    if DeclProc.ProcType is TPasFunctionType then
       begin
       ResultVarName:=ImplProcScope.ResultVarName; // ResultVarName needs ImplProc
       if ResultVarName='' then
         ResultVarName:=ResolverResultVar;
+      ResultEl:=TPasFunctionType(DeclProc.ProcType).ResultEl;
+      TypeEl:=AContext.Resolver.ResolveAliasType(ResultEl.ResultType);
+      IsCOMIntf:=(TypeEl is TPasClassType)
+          and (TPasClassType(TypeEl).ObjKind=okInterface)
+          and (TPasClassType(TypeEl).InterfaceType=citCom);
       end;
-    end;
+    end
+  else
+    DeclProc:=nil;
+  FuncContext:=AContext.GetFunctionContext;
+
   Result:=TJSReturnStatement(CreateElement(TJSReturnStatement,El));
   if (El is TParamsExpr) and (length(TParamsExpr(El).Params)>0) then
     begin
@@ -13450,10 +13467,6 @@ begin
     ResultIsRead:=false;
     if (ResultVarName<>'') then
       begin
-      DeclProc:=ImplProcScope.DeclarationProc;
-      if DeclProc=nil then
-        DeclProc:=ImplProc; // Note: references refer to ResultEl of DeclProc
-      ResultEl:=TPasFunctionType(DeclProc.ProcType).ResultEl;
       ParentEl:=El.Parent;
       while (ParentEl<>ImplProc) do
         begin
@@ -13473,7 +13486,24 @@ begin
         end;
       end;
 
-    if ResultIsRead then
+    if IsCOMIntf then
+      begin
+      FuncContext.ResultNeedsIntfRelease:=true;
+      // create "Result = rtl.setIntfL(Result,param); return Result;"
+      Call:=CreateCallExpression(El);
+      Call.Expr:=CreateMemberExpression([GetBIName(pbivnRTL),GetBIName(pbifnIntfSetIntfL)]);
+      Call.AddArg(CreatePrimitiveDotExpr(ResultVarName,El));
+      Call.AddArg(ConvertExpression(TParamsExpr(El).Params[0],AContext));
+      AssignSt:=TJSSimpleAssignStatement(CreateElement(TJSSimpleAssignStatement,El));
+      AssignSt.LHS:=CreatePrimitiveDotExpr(ResultVarName,El);
+      AssignSt.Expr:=Call;
+      TJSReturnStatement(Result).Expr:=CreatePrimitiveDotExpr(ResultVarName,El);
+      St:=TJSStatementList(CreateElement(TJSStatementList,El));
+      St.A:=AssignSt;
+      St.B:=Result;
+      Result:=St;
+      end
+    else if ResultIsRead then
       begin
       // create "Result = param; return Result;"
       AssignSt:=TJSSimpleAssignStatement(CreateElement(TJSSimpleAssignStatement,El));
@@ -13503,7 +13533,6 @@ begin
       ; // in a procedure, "return;" which means "return undefined;"
     end;
 
-  FuncContext:=AContext.GetFunctionContext;
   if (FuncContext<>nil) and FuncContext.ResultNeedsIntfRelease then
     begin
     // add "$ok = true;"
@@ -20153,7 +20182,7 @@ var
   Statements: TJSStatementList;
   VarSt: TJSVariableStatement;
   FuncContext: TFunctionContext;
-  List, GetCurrent, J: TJSElement;
+  List, GetCurrent, J, LHS, RHS: TJSElement;
   Call: TJSCallExpression;
   TrySt: TJSTryFinallyStatement;
   WhileSt: TJSWhileStatement;
@@ -20161,9 +20190,9 @@ var
   GetEnumeratorFunc, MoveNextFunc: TPasFunction;
   CurrentProp: TPasProperty;
   DotContext: TDotContext;
-  ResolvedEl: TPasResolverResult;
-  EnumeratorTypeEl: TPasType;
-  NeedTryFinally, NeedIntfRef: Boolean;
+  ResolvedEl, VarResolved: TPasResolverResult;
+  EnumeratorTypeEl, CurrentPropTypeEl: TPasType;
+  NeedTryFinally, NeedIntfRef, IsCurrentPropCOMIntf: Boolean;
 begin
   aResolver:=AContext.Resolver;
   ForScope:=TPasForLoopScope(El.CustomData);
@@ -20213,6 +20242,10 @@ begin
     RaiseNotSupported(El,AContext,20171225104316);
   if CurrentProp.Parent.ClassType<>TPasClassType then
     RaiseNotSupported(El,AContext,20190208154003);
+  CurrentPropTypeEl:=AContext.Resolver.ResolveAliasType(CurrentProp.VarType);
+  IsCurrentPropCOMIntf:=(CurrentPropTypeEl is TPasClassType)
+      and (TPasClassType(CurrentPropTypeEl).ObjKind=okInterface)
+      and (TPasClassType(CurrentPropTypeEl).InterfaceType=citCom);
 
   // get function context
   FuncContext:=AContext.GetFunctionContext;
@@ -20263,19 +20296,41 @@ begin
 
     // read property "Current"
     // Item=$in.GetCurrent();  or Item=$in.FCurrent;
-    AssignSt:=TJSSimpleAssignStatement(CreateElement(TJSSimpleAssignStatement,PosEl));
-    WhileSt.Body:=AssignSt;
-    AssignSt.LHS:=ConvertExpression(El.VariableName,AContext); // beware: might fail
-
-    DotContext:=TDotContext.Create(El.StartExpr,nil,AContext);
+    LHS:=nil;
+    RHS:=nil;
+    DotContext:=nil;
     try
+      LHS:=ConvertExpression(El.VariableName,AContext); // beware: might fail
+
+      DotContext:=TDotContext.Create(El.StartExpr,nil,AContext);
       GetCurrent:=CreatePropertyGet(CurrentProp,nil,DotContext,PosEl); // beware: might fail
       if DotContext.JS<>nil then
         RaiseNotSupported(El,AContext,20180509134302,GetObjName(DotContext.JS));
+      RHS:=CreateDotExpression(PosEl,CreateInName,GetCurrent,true);
+
+      if IsCurrentPropCOMIntf then
+        begin
+        // create "Item = rtl.setIntfL(Item,$in.GetCurrent);"
+        aResolver.ComputeElement(El.VariableName,VarResolved,[]);
+        WhileSt.Body:=CreateAssignComIntfVar(VarResolved,LHS,RHS,AContext,El.VariableName);
+        LHS:=nil;
+        RHS:=nil;
+        end
+      else
+        begin
+        // Item=$in.GetCurrent();  or Item=$in.FCurrent;
+        AssignSt:=TJSSimpleAssignStatement(CreateElement(TJSSimpleAssignStatement,PosEl));
+        WhileSt.Body:=AssignSt;
+        AssignSt.LHS:=LHS;
+        LHS:=nil;
+        AssignSt.Expr:=RHS;
+        RHS:=nil;
+        end;
     finally
       FreeAndNil(DotContext);
+      FreeAndNil(LHS);
+      FreeAndNil(RHS);
     end;
-    AssignSt.Expr:=CreateDotExpression(PosEl,CreateInName,GetCurrent,true);
 
     // add body
     if El.Body<>nil then
@@ -21127,6 +21182,8 @@ begin
           inc(Flags,pfStoredField);
         end;
       end;
+    if Prop.IsClass then
+      inc(Flags,pfClassProperty);
     Call.AddArg(CreateLiteralNumber(Prop,Flags));
 
     // add type
@@ -23872,6 +23929,7 @@ var
         // for v in <variable> do
         if InResolved.BaseType in btAllStrings then
           begin
+          // for v in string do
           InKind:=ikString;
           StartInt:=0;
           end

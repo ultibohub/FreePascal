@@ -5999,8 +5999,9 @@ implementation
     procedure TWasmExeOutput.GenerateCode_InvokeHelper;
       var
         Sec: TObjSection;
+        IndirectFunctionTableMap: array of Integer;
 
-      procedure InvokeFuncType(typidx: Integer);
+      procedure InvokeFuncType(typidx: Integer; islast: Boolean);
         var
           ft: TWasmFuncType;
           i, nextofs: Integer;
@@ -6117,8 +6118,9 @@ implementation
                   internalerror(2025012501);
               end;
             end;
-          { return }
-          Sec.writeUInt8($0F);
+          if not islast then
+            { return }
+            Sec.writeUInt8($0F);
         end;
 
       function FuncIdx2TypeIdx(fi: Integer): Integer;
@@ -6140,14 +6142,92 @@ implementation
             end;
         end;
 
+      procedure WriteBrTable(l,h: Integer; addend: Integer=0);
+        const
+          { max len of br_table instruction }
+          MaxLen=1000;
+        var
+          i, len, m: Integer;
+        begin
+          { local.get 0 }
+          Sec.writeUInt16BE($2000);
+          len:=h-l+1;
+          if len<=MaxLen then
+            begin
+              if l>0 then
+                begin
+                  { i32.const l }
+                  Sec.writeUInt8($41);
+                  WriteSleb(sec,l);
+                  { i32.sub }
+                  Sec.writeUInt8($6B);
+                end;
+              { br_table }
+              Sec.writeUInt8($0E);
+              if h=high(IndirectFunctionTableMap) then
+                begin
+                  WriteUleb(Sec,len);
+                  for i:=l to h do
+                    WriteUleb(Sec,IndirectFunctionTableMap[i]+addend);
+                  WriteUleb(Sec,addend);
+                end
+              else
+                begin
+                  WriteUleb(Sec,len-1);
+                  for i:=l to h do
+                    WriteUleb(Sec,IndirectFunctionTableMap[i]+addend);
+                end;
+            end
+          else
+            begin
+              m:=(l+h) div 2;
+              { i32.const m }
+              Sec.writeUInt8($41);
+              WriteSleb(sec,m);
+              { i32.lt_u }
+              Sec.writeUInt8($49);
+              { if }
+              Sec.writeUInt16BE($0440);
+              WriteBrTable(l,m-1,addend+1);
+              { else }
+              Sec.writeUInt8($05);
+              WriteBrTable(m,h,addend+1);
+              { end }
+              Sec.writeUInt8($0B);
+            end;
+        end;
+
       var
         exesym: TExeSymbol;
         objsym: TObjSymbol;
-        i: Integer;
+        i, j, TypIdx: Integer;
+        InvokableTypeIndices: array of Integer;
       begin
         exesym:=TExeSymbol(ExeSymbolList.Find('fpc_wasm_invoke_helper'));
         if not Assigned(exesym) then
           exit;
+
+        SetLength(IndirectFunctionTableMap, Length(FIndirectFunctionTable));
+        SetLength(InvokableTypeIndices, 1);
+        InvokableTypeIndices[0] := -1;
+        for i:=1 to Length(FIndirectFunctionTable)-1 do
+          begin
+            IndirectFunctionTableMap[i]:=0;
+            TypIdx := FuncIdx2TypeIdx(FIndirectFunctionTable[i].FuncIdx);
+            for j := 1 to Length(InvokableTypeIndices)-1 do
+              if InvokableTypeIndices[j]=TypIdx then
+                begin
+                  IndirectFunctionTableMap[i]:=j;
+                  break;
+                end;
+            if IndirectFunctionTableMap[i]=0 then
+              begin
+                SetLength(InvokableTypeIndices,Length(InvokableTypeIndices)+1);
+                InvokableTypeIndices[High(InvokableTypeIndices)]:=TypIdx;
+                IndirectFunctionTableMap[i]:=High(InvokableTypeIndices);
+              end;
+          end;
+
         objsym:=exesym.ObjSymbol;
         Sec:=objsym.objsection;
         Sec.Size:=0;
@@ -6156,30 +6236,24 @@ implementation
         { locals }
         Sec.writeUInt8($00);
 
-        for i:=1 to Length(FIndirectFunctionTable)-1 do
+        for i:=1 to Length(InvokableTypeIndices)-1 do
           { block }
           Sec.writeUInt16BE($0240);
 
         { block }
         Sec.writeUInt16BE($0240);
-        { local.get 0 }
-        Sec.writeUInt16BE($2000);
-        { br_table <0, 1, 2, 3, 4, 5, 6, ..., High>, 0 }
-        Sec.writeUInt8($0E);
-        WriteUleb(Sec,Length(FIndirectFunctionTable));
-        for i:=0 to Length(FIndirectFunctionTable)-1 do
-          WriteUleb(Sec,i);
-        Sec.writeUInt8($00);
+        { local.get 0 + br_table }
+        WriteBrTable(low(IndirectFunctionTableMap),high(IndirectFunctionTableMap));
         { end }
         Sec.writeUInt8($0B);
         { unreachable }
         Sec.writeUInt8($00);
 
-        for i:=1 to Length(FIndirectFunctionTable)-1 do
+        for i:=1 to Length(InvokableTypeIndices)-1 do
           begin
             { end }
             Sec.writeUInt8($0B);
-            InvokeFuncType(FuncIdx2TypeIdx(FIndirectFunctionTable[i].FuncIdx));
+            InvokeFuncType(InvokableTypeIndices[i],i=(Length(InvokableTypeIndices)-1));
           end;
 
         { end }

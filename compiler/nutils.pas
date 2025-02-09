@@ -214,6 +214,9 @@ interface
     { Returns True if n one of its children has a type that appears in TypeList }
     function has_node_of_type(n: TNode; TypeList: TNodeTypeSet): Boolean; {$IFDEF USEINLINE}inline;{$ENDIF USEINLINE}
 
+    { returns true if n is guranteed not to return an ordinal zero }
+    function node_not_zero(n : tnode) : Boolean;
+
 
 implementation
 
@@ -1725,6 +1728,15 @@ implementation
      function has_node_of_type(n: TNode; TypeList: TNodeTypeSet): Boolean;
        begin
          Result := foreachnodestatic(n, @node_in_list, @TypeList);
+       end;
+
+
+     function node_not_zero(n: tnode): Boolean;
+       begin
+         result:=(is_constintnode(n) and (get_int_value(n)<>0)) or
+           ((n.resultdef.typ=orddef) and ((torddef(n.resultdef).low>0) or (torddef(n.resultdef).high<0))) or
+           ((n.nodetype=typeconvn) and (ttypeconvnode(n).convtype=tc_int_2_int) and (n.resultdef.size>=ttypeconvnode(n).resultdef.size) and node_not_zero(ttypeconvnode(n).left)) or
+           ((n.nodetype=orn) and (node_not_zero(taddnode(n).left) or node_not_zero(taddnode(n).right)));
        end;
 
 end.

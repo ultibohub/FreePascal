@@ -722,6 +722,7 @@ type
     Procedure TestClassInterface_COM_AssignArg;
     Procedure TestClassInterface_COM_FunctionResult;
     Procedure TestClassInterface_COM_InheritedFuncResult;
+    Procedure TestClassInterface_COM_FunctionExit;
     Procedure TestClassInterface_COM_IsAsTypeCasts;
     Procedure TestClassInterface_COM_PassAsArg;
     Procedure TestClassInterface_COM_PassToUntypedParam;
@@ -730,8 +731,9 @@ type
     Procedure TestClassInterface_COM_IntfProperty;
     Procedure TestClassInterface_COM_Delegation;
     Procedure TestClassInterface_COM_With;
-    Procedure TestClassInterface_COM_ForIn;
-    Procedure TestClassInterface_COM_ArrayOfIntf;
+    Procedure TestClassInterface_COM_ForObjectInInterface;
+    Procedure TestClassInterface_COM_ForInterfaceInObject;
+    Procedure TestClassInterface_COM_ArrayOfIntf; // todo
     Procedure TestClassInterface_COM_ArrayOfIntfFail;
     Procedure TestClassInterface_COM_RecordIntfFail;
     Procedure TestClassInterface_COM_UnitInitialization;
@@ -886,6 +888,7 @@ type
     Procedure TestRTTI_Class_Property;
     Procedure TestRTTI_Class_PropertyParams;
     Procedure TestRTTI_Class_PropertyPrivate;
+    Procedure TestRTTI_Class_ClassProperty;
     Procedure TestRTTI_Class_OtherUnit_TypeAlias;
     Procedure TestRTTI_Class_OmitRTTI;
     Procedure TestRTTI_Class_Field_AnonymousArrayOfSelfClass;
@@ -22082,6 +22085,67 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestClassInterface_COM_FunctionExit;
+begin
+  StartProgram(false);
+  Add([
+  '{$interfaces com}',
+  'type',
+  '  IUnknown = interface',
+  '    function _AddRef: longint;',
+  '    function _Release: longint;',
+  '  end;',
+  '  TObject = class(IUnknown)',
+  '    function _AddRef: longint; virtual; abstract;',
+  '    function _Release: longint; virtual; abstract;',
+  '    constructor Create;',
+  '  end;',
+  'constructor TObject.Create;',
+  'begin',
+  'end;',
+  'function GetIntf: IUnknown;',
+  'var Intf: IUnknown;',
+  'begin',
+  '  Intf := TObject.Create;',
+  '  Exit(Intf);',
+  'end;',
+  'begin',
+  '']);
+  ConvertProgram;
+  CheckSource('TestClassInterface_COM_FunctionExit',
+    LinesToStr([ // statements
+    'rtl.createInterface(this, "IUnknown", "{D7ADB0E1-758A-322B-BDDF-21CD521DDFA9}", ["_AddRef", "_Release"], null);',
+    'rtl.createClass(this, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '  this.Create = function () {',
+    '    return this;',
+    '  };',
+    '  rtl.addIntf(this, $mod.IUnknown);',
+    '});',
+    'this.GetIntf = function () {',
+    '  var Result = null;',
+    '  var Intf = null;',
+    '  var $ok = false;',
+    '  try {',
+    '    Intf = rtl.setIntfL(Intf, rtl.queryIntfT($mod.TObject.$create("Create"), $mod.IUnknown), true);',
+    '    $ok = true;',
+    '    Result = rtl.setIntfL(Result, Intf);',
+    '    return Result;',
+    '    $ok = true;',
+    '  } finally {',
+    '    rtl._Release(Intf);',
+    '    if (!$ok) rtl._Release(Result);',
+    '  };',
+    '  return Result;',
+    '};',
+    '']),
+    LinesToStr([ // $mod.$main
+    '']));
+end;
+
 procedure TTestModule.TestClassInterface_COM_IsAsTypeCasts;
 begin
   StartProgram(false);
@@ -22736,7 +22800,7 @@ begin
     '']));
 end;
 
-procedure TTestModule.TestClassInterface_COM_ForIn;
+procedure TTestModule.TestClassInterface_COM_ForObjectInInterface;
 begin
   StartProgram(false);
   Add([
@@ -22761,7 +22825,7 @@ begin
   '  for o in i do o.Id:=3;',
   '']);
   ConvertProgram;
-  CheckSource('TestClassInterface_COM_ForIn',
+  CheckSource('TestClassInterface_COM_ForObjectInInterface',
     LinesToStr([ // statements
     'rtl.createInterface(this, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
     'rtl.createClass(this, "TObject", null, function () {',
@@ -22785,6 +22849,88 @@ begin
     '  }',
     '} finally {',
     '  rtl._Release($in)',
+    '};',
+    '']));
+end;
+
+procedure TTestModule.TestClassInterface_COM_ForInterfaceInObject;
+begin
+  StartProgram(false);
+  Add([
+  '{$interfaces com}',
+  'type',
+  '  IUnknown = interface end;',
+  '  TObject = class',
+  '  end;',
+  '  IWing = interface',
+  '    function Id: longint;',
+  '  end;',
+  '  TEnumerator = class',
+  '    function GetCurrent: IWing; virtual; abstract;',
+  '    function MoveNext: Boolean; virtual; abstract;',
+  '    property Current: IWing read GetCurrent;',
+  '  end;',
+  '  TBird = class',
+  '    function GetEnumerator: TEnumerator; virtual; abstract;',
+  '    procedure Test;',
+  '  end;',
+  'procedure TBird.Test;',
+  'var',
+  '  Wing: IWing;',
+  'begin',
+  '  for Wing in Self do',
+  '    if Wing.Id=1 then ;',
+  'end;',
+  'var',
+  '  Bird: TBird;',
+  '  Wing: IWing;',
+  'begin',
+  '  for Wing in Bird do',
+  '    if Wing.Id=2 then ;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestClassInterface_COM_ForInterfaceInObject',
+    LinesToStr([ // statements
+    'rtl.createInterface(this, "IUnknown", "{B92D5841-758A-322B-B800-000000000000}", [], null);',
+    'rtl.createClass(this, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '});',
+    'rtl.createInterface(this, "IWing", "{8B0D080B-C0F6-396E-AE88-000BDB74730C}", ["Id"], this.IUnknown);',
+    'rtl.createClass(this, "TEnumerator", this.TObject, function () {',
+    '});',
+    'rtl.createClass(this, "TBird", this.TObject, function () {',
+    '  this.Test = function () {',
+    '    var Wing = null;',
+    '    try {',
+    '      var $in = this.GetEnumerator();',
+    '      try {',
+    '        while ($in.MoveNext()) {',
+    '          Wing = rtl.setIntfL(Wing, $in.GetCurrent(), true);',
+    '          if (Wing.Id() === 1) ;',
+    '        }',
+    '      } finally {',
+    '        $in = rtl.freeLoc($in)',
+    '      };',
+    '    } finally {',
+    '      rtl._Release(Wing);',
+    '    };',
+    '  };',
+    '});',
+    'this.Bird = null;',
+    'this.Wing = null;',
+    '']),
+    LinesToStr([ // $mod.$main
+    'var $in = $mod.Bird.GetEnumerator();',
+    'try {',
+    '  while ($in.MoveNext()) {',
+    '    rtl.setIntfP($mod, "Wing", $in.GetCurrent(), true);',
+    '    if ($mod.Wing.Id() === 2) ;',
+    '  }',
+    '} finally {',
+    '  $in = rtl.freeLoc($in)',
     '};',
     '']));
 end;
@@ -32057,6 +32203,64 @@ begin
     '    rtl.word,',
     '    "FWord",',
     '    ""',
+    '  );',
+    '});',
+    '']),
+    LinesToStr([ // $mod.$main
+    '']));
+end;
+
+procedure TTestModule.TestRTTI_Class_ClassProperty;
+begin
+  WithTypeInfo:=true;
+  StartProgram(false);
+  Add('type');
+  Add('{$RTTI explicit properties([vcPrivate,vcProtected,vcPublic,vcPublished])}');
+  Add('  TObject = class');
+  Add('  private');
+  Add('    class var FWord: word;');
+  Add('    class function GetWord: word; virtual; abstract;');
+  Add('    class procedure SetWord(Value: word); virtual; abstract;');
+  Add('    class property PrivateWord: word read FWord write FWord;');
+  Add('  protected');
+  Add('    class property ProtectedWord: word read FWord write SetWord;');
+  Add('  public');
+  Add('    class property PublicWord: word read GetWord;');
+  Add('  end;');
+  Add('begin');
+  ConvertProgram;
+  CheckSource('TestRTTI_Class_ClassProperty',
+    LinesToStr([ // statements
+    'rtl.createClass(this, "TObject", null, function () {',
+    '  this.FWord = 0;',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '  var $r = this.$rtti;',
+    '  $r.addProperty(',
+    '    "PrivateWord",',
+    '    32,',
+    '    rtl.word,',
+    '    "FWord",',
+    '    "FWord",',
+    '    0',
+    '  );',
+    '  $r.addProperty(',
+    '    "ProtectedWord",',
+    '    34,',
+    '    rtl.word,',
+    '    "FWord",',
+    '    "SetWord",',
+    '    1',
+    '  );',
+    '  $r.addProperty(',
+    '    "PublicWord",',
+    '    33,',
+    '    rtl.word,',
+    '    "GetWord",',
+    '    "",',
+    '    2',
     '  );',
     '});',
     '']),

@@ -52,7 +52,7 @@ implementation
       aasmbase,aasmcpu,aasmtai,aasmdata,
       defutil,
       cgbase,cgobj,hlcgobj,pass_2,procinfo,
-      ncon,
+      ncon,nutils,
       cpubase,
       ncgutil,cgcpu,cgutils;
 
@@ -63,7 +63,7 @@ implementation
     function taarch64moddivnode.pass_1: tnode;
       begin
         result:=inherited pass_1;
-        if not assigned(result) then
+        if not assigned(result) and not(node_not_zero(right)) then
           include(current_procinfo.flags,pi_do_call);
       end;
 
@@ -420,11 +420,14 @@ implementation
 
             current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(op,resultreg,numerator,divider));
 
-            current_asmdata.CurrAsmList.concat(taicpu.op_reg_const(A_CMP,divider,0));
-            current_asmdata.getjumplabel(hl);
-            current_asmdata.CurrAsmList.concat(taicpu.op_cond_sym(A_B,C_NE,hl));
-            cg.a_call_name(current_asmdata.CurrAsmList,'FPC_DIVBYZERO',false);
-            cg.a_label(current_asmdata.CurrAsmList,hl);
+            if not(node_not_zero(right)) then
+              begin
+                current_asmdata.CurrAsmList.concat(taicpu.op_reg_const(A_CMP,divider,0));
+                current_asmdata.getjumplabel(hl);
+                current_asmdata.CurrAsmList.concat(taicpu.op_cond_sym(A_B,C_NE,hl));
+                cg.a_call_name(current_asmdata.CurrAsmList,'FPC_DIVBYZERO',false);
+                cg.a_label(current_asmdata.CurrAsmList,hl);
+              end;
           end;
 
         genOverflowCheck;
