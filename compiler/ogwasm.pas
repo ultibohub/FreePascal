@@ -284,6 +284,14 @@ interface
           FuncIdx: Integer;
         end;
 
+        FImportedMemories: array of record
+          ModName: ansistring;
+          Name: ansistring;
+          MemType: TWasmMemoryType;
+        end;
+        FMemories: array of TWasmMemoryType;
+
+        FRelocationPass: Integer;
         FWasmSections: array [TWasmSectionID] of tdynamicarray;
         FWasmCustomSections: array [TWasmCustomSectionType] of tdynamicarray;
         FWasmNameSubsections: array [TWasmNameSubsectionType] of tdynamicarray;
@@ -319,6 +327,10 @@ interface
         procedure GenerateCode_InitSharedMemory;
         procedure GenerateCode_InvokeHelper;
         procedure WriteExeSectionToDynArray(exesec: TExeSection; dynarr: tdynamicarray);
+        procedure WriteMemoryTo(dest: tdynamicarray;const MemType:TWasmMemoryType);
+        function Memory2String(const MemType:TWasmMemoryType):string;
+        procedure WriteMap_TypeSection;
+        procedure WriteMap_IndirectFunctionTable;
       protected
         function writeData:boolean;override;
         procedure DoRelocationFixup(objsec:TObjSection);override;
@@ -4844,24 +4856,22 @@ implementation
       procedure WriteImportSection;
         var
           imports_count,
-          memory_imports: SizeInt;
           i: Integer;
         begin
-          if ts_wasm_threads in current_settings.targetswitches then
-            memory_imports:=1
-          else
-            memory_imports:=0;
-          imports_count:=Length(FFunctionImports)+memory_imports;
+          if assigned(exemap) then
+            exemap.AddHeader('Import section');
+          imports_count:=Length(FImportedMemories)+Length(FFunctionImports);
           WriteUleb(FWasmSections[wsiImport],imports_count);
-          if ts_wasm_threads in current_settings.targetswitches then
-            begin
-              WriteName(FWasmSections[wsiImport],'env');
-              WriteName(FWasmSections[wsiImport],'memory');
-              WriteByte(FWasmSections[wsiImport],$02);  { mem }
-              WriteByte(FWasmSections[wsiImport],$03);  { shared }
-              WriteUleb(FWasmSections[wsiImport],FMinMemoryPages);
-              WriteUleb(FWasmSections[wsiImport],Max(FMinMemoryPages,FMaxMemoryPages));  { max pages }
-            end;
+          for i:=0 to Length(FImportedMemories)-1 do
+            with FImportedMemories[i] do
+              begin
+                WriteName(FWasmSections[wsiImport],ModName);
+                WriteName(FWasmSections[wsiImport],Name);
+                WriteByte(FWasmSections[wsiImport],$02);  { mem }
+                WriteMemoryTo(FWasmSections[wsiImport],MemType);
+                if assigned(exemap) then
+                  exemap.Add('  Memory['+tostr(i)+'] '+Memory2String(MemType)+' <- '+ModName+'.'+Name);
+              end;
           for i:=0 to Length(FFunctionImports)-1 do
             with FFunctionImports[i] do
               begin
@@ -4869,6 +4879,8 @@ implementation
                 WriteName(FWasmSections[wsiImport],Name);
                 WriteByte(FWasmSections[wsiImport],$00);  { func }
                 WriteUleb(FWasmSections[wsiImport],TypeIdx);
+                if assigned(exemap) then
+                  exemap.Add('  Function['+tostr(i)+'] sig='+tostr(TypeIdx)+' <- '+ModName+'.'+Name);
               end;
         end;
 
@@ -5006,7 +5018,10 @@ implementation
           exesec: TExeSection;
           globals_count, i: Integer;
           objsec: TWasmObjSection;
+          mapstr: string='';
         begin
+          if assigned(exemap) then
+            exemap.AddHeader('Global section');
           exesec:=FindExeSection('.wasm_globals');
           if not assigned(exesec) then
             internalerror(2024010112);
@@ -5022,6 +5037,8 @@ implementation
                 WriteByte(FWasmSections[wsiGlobal],1)
               else
                 WriteByte(FWasmSections[wsiGlobal],0);
+              if assigned(exemap) then
+                WriteStr(mapstr,'  Global[',i,'] ',wasm_basic_type_str[objsec.MainFuncSymbol.LinkingData.GlobalType],' mutable=',objsec.MainFuncSymbol.LinkingData.GlobalIsMutable,' <',objsec.MainFuncSymbol.Name,'> - init ');
               { initializer expr }
               with objsec.MainFuncSymbol.LinkingData.GlobalInitializer do
                 case typ of
@@ -5029,27 +5046,37 @@ implementation
                     begin
                       WriteByte(FWasmSections[wsiGlobal],$41);  { i32.const }
                       WriteSleb(FWasmSections[wsiGlobal],init_i32);
+                      if assigned(exemap) then
+                        mapstr:=mapstr+'i32='+tostr(init_i32);
                     end;
                   wbt_i64:
                     begin
                       WriteByte(FWasmSections[wsiGlobal],$42);  { i64.const }
                       WriteSleb(FWasmSections[wsiGlobal],init_i64);
+                      if assigned(exemap) then
+                        mapstr:=mapstr+'i64='+tostr(init_i64);
                     end;
                   wbt_f32:
                     begin
                       WriteByte(FWasmSections[wsiGlobal],$43);  { f32.const }
                       WriteF32LE(FWasmSections[wsiGlobal],init_f32);
+                      if assigned(exemap) then
+                        WriteStr(mapstr,mapstr+'f32=',init_f32);
                     end;
                   wbt_f64:
                     begin
                       WriteByte(FWasmSections[wsiGlobal],$44);  { f64.const }
                       WriteF64LE(FWasmSections[wsiGlobal],init_f64);
+                      if assigned(exemap) then
+                        WriteStr(mapstr,mapstr+'f64=',init_f64);
                     end;
                   wbt_funcref,
                   wbt_externref:
                     begin
                       WriteByte(FWasmSections[wsiGlobal],$D0);  { ref.null }
                       WriteByte(FWasmSections[wsiGlobal],encode_wasm_basic_type(typ));
+                      if assigned(exemap) then
+                        mapstr:=mapstr+'ref.null '+wasm_basic_type_str[typ];
                     end;
                   else
                     internalerror(2024010114);
@@ -5057,6 +5084,8 @@ implementation
               WriteByte(FWasmSections[wsiGlobal],$0B);  { end }
               { add entry for the name section }
               AddToGlobalNameMap(i,objsec.MainFuncSymbol.Name);
+              if assigned(exemap) then
+                exemap.Add(mapstr);
             end;
         end;
 
@@ -5094,6 +5123,8 @@ implementation
           i: Integer;
           objsec: TWasmObjSection;
         begin
+          if assigned(exemap) then
+            exemap.AddHeader('Export section');
           FunctionExportsCount:=0;
           textsec:=FindExeSection('.text');
           if not assigned(textsec) then
@@ -5112,6 +5143,8 @@ implementation
           WriteName(FWasmSections[wsiExport],'memory');
           WriteByte(FWasmSections[wsiExport],$02);  { mem }
           WriteUleb(FWasmSections[wsiExport],0);    { memidx = 0 }
+          if assigned(exemap) then
+            exemap.Add('  Memory[0] -> "memory"');
 
           for i:=0 to textsec.ObjSectionList.Count-1 do
             begin
@@ -5121,6 +5154,8 @@ implementation
                   WriteName(FWasmSections[wsiExport],objsec.MainFuncSymbol.LinkingData.ExportName);
                   WriteByte(FWasmSections[wsiExport],$00);  { func }
                   WriteUleb(FWasmSections[wsiExport],objsec.MainFuncSymbol.LinkingData.ExeFunctionIndex);    { funcidx }
+                  if assigned(exemap) then
+                    exemap.Add('  Function['+tostr(objsec.MainFuncSymbol.LinkingData.ExeFunctionIndex)+'] -> "'+objsec.MainFuncSymbol.LinkingData.ExportName+'"');
                 end;
             end;
         end;
@@ -5182,6 +5217,21 @@ implementation
             end;
         end;
 
+      procedure WriteMemorySection;
+        var
+          i: Integer;
+        begin
+          if assigned(exemap) then
+            exemap.AddHeader('Memory section');
+          WriteUleb(FWasmSections[wsiMemory],Length(FMemories));
+          for i:=low(FMemories) to high(FMemories) do
+            begin
+              WriteMemoryTo(FWasmSections[wsiMemory],FMemories[i]);
+              if assigned(exemap) then
+                exemap.Add('  Memory['+tostr(i+Length(FImportedMemories))+'] '+Memory2String(FMemories[i]));
+            end;
+        end;
+
       var
         cust_sec: TWasmCustomSectionType;
       begin
@@ -5197,7 +5247,36 @@ implementation
         SetThreadVarGlobalsInitValues;
         GenerateCode_InitTls;
         GenerateCode_InitSharedMemory;
-        GenerateCode_InvokeHelper;
+
+        if ts_wasm_threads in current_settings.targetswitches then
+          begin
+            SetLength(FImportedMemories,1);
+            with FImportedMemories[0] do
+              begin
+                ModName:='env';
+                Name:='memory';
+                with MemType do
+                  begin
+                    Flags:=[wmfShared,wmfHasMaximumBound];
+                    MinPages:=FMinMemoryPages;
+                    MaxPages:=Max(FMinMemoryPages,FMaxMemoryPages);
+                  end;
+              end;
+          end
+        else
+          begin
+            SetLength(FMemories,1);
+            with FMemories[0] do
+              begin
+                Flags:=[];
+                MinPages:=FMinMemoryPages;
+                if FMaxMemoryPages>=FMinMemoryPages then
+                  begin
+                    Include(Flags,wmfHasMaximumBound);
+                    MaxPages:=FMaxMemoryPages;
+                  end;
+              end;
+          end;
 
         FFuncTypes.WriteTo(FWasmSections[wsiType]);
         WriteImportSection;
@@ -5206,23 +5285,11 @@ implementation
         WriteTableAndElemSections;
         WriteGlobalSection;
         WriteTagSection;
-        WriteExportSection;
 
-        if not (ts_wasm_threads in current_settings.targetswitches) then
-          begin
-            WriteUleb(FWasmSections[wsiMemory],1);
-            if FMaxMemoryPages>=FMinMemoryPages then
-              begin
-                WriteByte(FWasmSections[wsiMemory],1);
-                WriteUleb(FWasmSections[wsiMemory],FMinMemoryPages);
-                WriteUleb(FWasmSections[wsiMemory],FMaxMemoryPages);
-              end
-            else
-              begin
-                WriteByte(FWasmSections[wsiMemory],0);
-                WriteUleb(FWasmSections[wsiMemory],FMinMemoryPages);
-              end;
-          end;
+        if Length(FMemories)>0 then
+          WriteMemorySection;
+
+        WriteExportSection;
 
         if ts_wasm_threads in current_settings.targetswitches then
           WriteUleb(FWasmSections[wsiStart],FInitSharedMemoryFunctionSym.LinkingData.ExeFunctionIndex);
@@ -5286,8 +5353,11 @@ implementation
                     begin
                       if objsym.LinkingData.ExeFunctionIndex=-1 then
                         internalerror(2024010103);
-                      objsec.Data.seek(objreloc.DataOffset);
-                      WriteUleb5(objsec.Data,objsym.LinkingData.ExeFunctionIndex);
+                      if FRelocationPass=2 then
+                        begin
+                          objsec.Data.seek(objreloc.DataOffset);
+                          WriteUleb5(objsec.Data,objsym.LinkingData.ExeFunctionIndex);
+                        end;
                     end;
                   RELOC_ABSOLUTE:
                     begin
@@ -5297,40 +5367,58 @@ implementation
                             if objreloc.IsFunctionOffsetI32 then
                               begin
                                 { R_WASM_FUNCTION_OFFSET_I32 }
-                                objsec.Data.seek(objreloc.DataOffset);
-                                writeUInt32LE(UInt32(objsym.objsection.MemPos+objreloc.Addend));
+                                if FRelocationPass=2 then
+                                  begin
+                                    objsec.Data.seek(objreloc.DataOffset);
+                                    writeUInt32LE(UInt32(objsym.objsection.MemPos+objreloc.Addend));
+                                  end;
                               end
                             else
                               begin
                                 { R_WASM_TABLE_INDEX_I32 }
                                 if objsym.LinkingData.ExeFunctionIndex=-1 then
                                   internalerror(2024010103);
-                                if objsym.LinkingData.ExeIndirectFunctionTableIndex=-1 then
-                                  objsym.LinkingData.ExeIndirectFunctionTableIndex:=AddOrGetIndirectFunctionTableIndex(objsym.LinkingData.ExeFunctionIndex);
-                                objsec.Data.seek(objreloc.DataOffset);
-                                writeUInt32LE(UInt32(objsym.LinkingData.ExeIndirectFunctionTableIndex));
+                                case FRelocationPass of
+                                  1:
+                                    if objsym.LinkingData.ExeIndirectFunctionTableIndex=-1 then
+                                      objsym.LinkingData.ExeIndirectFunctionTableIndex:=AddOrGetIndirectFunctionTableIndex(objsym.LinkingData.ExeFunctionIndex);
+                                  2:
+                                    begin
+                                      objsec.Data.seek(objreloc.DataOffset);
+                                      writeUInt32LE(UInt32(objsym.LinkingData.ExeIndirectFunctionTableIndex));
+                                    end;
+                                end;
                               end;
                           end;
                         AT_DATA:
                           begin
                             if objreloc.IsFunctionOffsetI32 then
                               internalerror(2024010602);
-                            objsec.Data.seek(objreloc.DataOffset);
-                            writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                            if FRelocationPass=2 then
+                              begin
+                                objsec.Data.seek(objreloc.DataOffset);
+                                writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                              end;
                           end;
                         AT_TLS:
                           begin
                             if objreloc.IsFunctionOffsetI32 then
                               internalerror(2024010602);
-                            objsec.Data.seek(objreloc.DataOffset);
-                            writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos-objsym.objsection.ExeSection.MemPos)+objreloc.Addend));
+                            if FRelocationPass=2 then
+                              begin
+                                objsec.Data.seek(objreloc.DataOffset);
+                                writeUInt32LE(UInt32((objsym.offset+objsym.objsection.MemPos-objsym.objsection.ExeSection.MemPos)+objreloc.Addend));
+                              end;
                           end;
                         AT_WASM_GLOBAL:
                           begin
                             if objreloc.IsFunctionOffsetI32 then
                               internalerror(2024010602);
-                            objsec.Data.seek(objreloc.DataOffset);
-                            writeUInt32LE(UInt32(objsym.offset+objsym.objsection.MemPos));
+                            if FRelocationPass=2 then
+                              begin
+                                objsec.Data.seek(objreloc.DataOffset);
+                                writeUInt32LE(UInt32(objsym.offset+objsym.objsection.MemPos));
+                              end;
                           end;
                         else
                           internalerror(2024010108);
@@ -5340,8 +5428,11 @@ implementation
                     begin
                       if objsym.typ<>AT_DATA then
                         internalerror(2024010109);
-                      objsec.Data.seek(objreloc.DataOffset);
-                      WriteUleb5(objsec.Data,UInt32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                      if FRelocationPass=2 then
+                        begin
+                          objsec.Data.seek(objreloc.DataOffset);
+                          WriteUleb5(objsec.Data,UInt32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                        end;
                     end;
                   RELOC_MEMORY_ADDR_OR_TABLE_INDEX_SLEB:
                     begin
@@ -5350,15 +5441,24 @@ implementation
                           begin
                             if objsym.LinkingData.ExeFunctionIndex=-1 then
                               internalerror(2024010103);
-                            if objsym.LinkingData.ExeIndirectFunctionTableIndex=-1 then
-                              objsym.LinkingData.ExeIndirectFunctionTableIndex:=AddOrGetIndirectFunctionTableIndex(objsym.LinkingData.ExeFunctionIndex);
-                            objsec.Data.seek(objreloc.DataOffset);
-                            WriteSleb5(objsec.Data,Int32(objsym.LinkingData.ExeIndirectFunctionTableIndex));
+                            case FRelocationPass of
+                              1:
+                                if objsym.LinkingData.ExeIndirectFunctionTableIndex=-1 then
+                                  objsym.LinkingData.ExeIndirectFunctionTableIndex:=AddOrGetIndirectFunctionTableIndex(objsym.LinkingData.ExeFunctionIndex);
+                              2:
+                                begin
+                                  objsec.Data.seek(objreloc.DataOffset);
+                                  WriteSleb5(objsec.Data,Int32(objsym.LinkingData.ExeIndirectFunctionTableIndex));
+                                end;
+                            end;
                           end;
                         AT_DATA:
                           begin
-                            objsec.Data.seek(objreloc.DataOffset);
-                            WriteSleb5(objsec.Data,Int32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                            if FRelocationPass=2 then
+                              begin
+                                objsec.Data.seek(objreloc.DataOffset);
+                                WriteSleb5(objsec.Data,Int32((objsym.offset+objsym.objsection.MemPos)+objreloc.Addend));
+                              end;
                           end;
                         else
                           internalerror(2024010110);
@@ -5367,8 +5467,11 @@ implementation
                   RELOC_GLOBAL_INDEX_LEB:
                     if objsym.typ=AT_WASM_GLOBAL then
                       begin
-                        objsec.Data.seek(objreloc.DataOffset);
-                        WriteUleb5(objsec.Data,UInt32(objsym.offset+objsym.objsection.MemPos));
+                        if FRelocationPass=2 then
+                          begin
+                            objsec.Data.seek(objreloc.DataOffset);
+                            WriteUleb5(objsec.Data,UInt32(objsym.offset+objsym.objsection.MemPos));
+                          end;
                       end
                     else if (ts_wasm_threads in current_settings.targetswitches) and
                             (objsym.typ=AT_TLS) then
@@ -5383,8 +5486,11 @@ implementation
                     begin
                       if objsym.typ<>AT_WASM_EXCEPTION_TAG then
                         internalerror(2024010708);
-                      objsec.Data.seek(objreloc.DataOffset);
-                      WriteUleb5(objsec.Data,UInt32(objsym.offset+objsym.objsection.MemPos));
+                      if FRelocationPass=2 then
+                        begin
+                          objsec.Data.seek(objreloc.DataOffset);
+                          WriteUleb5(objsec.Data,UInt32(objsym.offset+objsym.objsection.MemPos));
+                        end;
                     end;
                   else
                     internalerror(2024010109);
@@ -5394,14 +5500,23 @@ implementation
               begin
                 if objreloc.typ<>RELOC_ABSOLUTE then
                   internalerror(2024010601);
-                objsec.Data.seek(objreloc.DataOffset);
-                writeUInt32LE(UInt32((objreloc.objsection.MemPos)+objreloc.Addend));
+                if FRelocationPass=2 then
+                  begin
+                    objsec.Data.seek(objreloc.DataOffset);
+                    writeUInt32LE(UInt32((objreloc.objsection.MemPos)+objreloc.Addend));
+                  end;
               end
             else if objreloc.typ=RELOC_TYPE_INDEX_LEB then
               begin
-                objreloc.ExeTypeIndex:=FFuncTypes.AddOrGetFuncType(objreloc.FuncType);
-                objsec.Data.seek(objreloc.DataOffset);
-                WriteUleb5(objsec.Data,objreloc.ExeTypeIndex);
+                case FRelocationPass of
+                  1:
+                    objreloc.ExeTypeIndex:=FFuncTypes.AddOrGetFuncType(objreloc.FuncType);
+                  2:
+                    begin
+                      objsec.Data.seek(objreloc.DataOffset);
+                      WriteUleb5(objsec.Data,objreloc.ExeTypeIndex);
+                    end;
+                end;
               end
             else
               internalerror(2024010110);
@@ -5478,6 +5593,31 @@ implementation
         PrepareImports;
         PrepareFunctions;
         PrepareTags;
+
+        if Assigned(exemap) then
+          WriteMap_TypeSection;
+
+        { we do an extra preliminary relocation pass, in order to prepare the
+          indices for the Type section and the Table section. This is required
+          by GenerateCode_InvokeHelper. }
+        FRelocationPass:=1;
+        FixupRelocations;
+
+        { in pass 2, we do the actual relocation fixups. No need to call
+          FixupRelocations here, since it'll be called in
+          TInternalLinker.RunLinkScript, after this method finishes. We only
+          set the FRelocationPass variable here, so DoRelocationFixup knows
+          which pass it is. }
+        FRelocationPass:=2;
+
+        { This needs to be done before pass 2 of the relocation fixups, because
+          it'll generate code, thus it'll move the offsets of the functions that
+          follow it in the Code section, and we want our DWARF debug info to
+          contain correct code offsets. }
+        GenerateCode_InvokeHelper;
+
+        if Assigned(exemap) then
+          WriteMap_IndirectFunctionTable;
       end;
 
     procedure TWasmExeOutput.MemPos_ExeSection(const aname: string);
@@ -6289,6 +6429,50 @@ implementation
           end;
         if (dynarr.size-exesecdatapos)<>exesec.Size then
           internalerror(2024010107);
+      end;
+
+    procedure TWasmExeOutput.WriteMemoryTo(dest: tdynamicarray; const MemType: TWasmMemoryType);
+      begin
+        WriteByte(dest,Byte(MemType.Flags));
+        WriteUleb(dest,MemType.MinPages);
+        if wmfHasMaximumBound in MemType.Flags then
+          WriteUleb(dest,MemType.MaxPages);
+        { todo: wmfCustomPageSize }
+      end;
+
+    function TWasmExeOutput.Memory2String(const MemType: TWasmMemoryType): string;
+      begin
+        Result:='index type: ';
+        if wmfMemory64 in MemType.Flags then
+          Result:=Result+'i64'
+        else
+          Result:=Result+'i32';
+        Result:=Result+', pages: initial='+tostr(MemType.MinPages);
+        if wmfHasMaximumBound in MemType.Flags then
+          Result:=Result+' max='+tostr(MemType.MaxPages);
+        if wmfShared in MemType.Flags then
+          Result:=Result+', shared'
+        else
+          Result:=Result+', unshared';
+        { todo: wmfCustomPageSize }
+      end;
+
+    procedure TWasmExeOutput.WriteMap_TypeSection;
+      var
+        i: Integer;
+      begin
+        exemap.AddHeader('Type section');
+        for i:=0 to FFuncTypes.Count-1 do
+          exemap.Add('  Type[' + tostr(i) + '] ' + FFuncTypes.Items[i].ToString);
+      end;
+
+    procedure TWasmExeOutput.WriteMap_IndirectFunctionTable;
+      var
+        i: Integer;
+      begin
+        exemap.AddHeader('Indirect function table');
+        for i:=1 to High(FIndirectFunctionTable) do
+          exemap.Add('  Elem[' + tostr(i) + '] = Function[' + tostr(FIndirectFunctionTable[i].FuncIdx) + ']');
       end;
 
 

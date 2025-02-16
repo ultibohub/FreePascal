@@ -64,12 +64,14 @@ const
   JOBFn_ReleaseStringResult = 'release_stringresult';
   JOBFn_InvokeObjectResult = 'invoke_objectresult';
   JOBFn_CreateObject = 'create_object';
+  JOBFn_CreateObjectAt = 'create_object_at';
   JOBFn_ReleaseObject = 'release_object';
   JOBFn_InvokeJSValueResult = 'invoke_jsvalueresult';
   JOBFn_CallbackHandler = 'JOBCallback';
   JOBFn_SetMemFromArray = 'set_mem_from_object';
   JOBFn_SetArrayFromMem = 'set_object_from_mem';
   JOBFn_DebugObject = 'debug_object';
+  JOBFn_ShareObject = 'share_object';
 
   JOBArgUndefined = 0;
   JOBArgLongint = 1;

@@ -142,6 +142,19 @@ uses
       TWasmResultType = array of TWasmBasicType;
       TWasmLocalsDynArray = array of TWasmBasicType;
 
+      TWasmMemoryFlag = (
+        wmfHasMaximumBound,
+        wmfShared,
+        wmfMemory64,
+        wmfCustomPageSize
+      );
+      TWasmMemoryFlags = set of TWasmMemoryFlag;
+      TWasmMemoryType = record
+        Flags: TWasmMemoryFlags;
+        MinPages, MaxPages: UInt64;
+        PageSize: UInt32;
+      end;
+
       { TWasmFuncType }
 
       PWasmFuncType = ^TWasmFuncType;
@@ -163,6 +176,7 @@ uses
       WasmNumberTypes = [wbt_i32, wbt_i64, wbt_f32, wbt_f64];
       WasmReferenceTypes = [wbt_funcref, wbt_externref];
       WasmVectorTypes = [wbt_v128];
+      wasm_basic_type_str : array [TWasmBasicType] of string = ('unknown','i32','i64','f32','f64','funcref','externref','v128');
 
       {# First value of opcode enumeration }
       firstop = low(tasmop);
@@ -690,8 +704,6 @@ uses
       end;
 
     function TWasmFuncType.ToString: ansistring;
-      const
-        wasm_basic_type_str : array [TWasmBasicType] of string = ('unknown','i32','i64','f32','f64','funcref','externref','v128');
       var
         i: Integer;
       begin
