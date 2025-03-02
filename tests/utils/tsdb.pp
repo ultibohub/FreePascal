@@ -424,7 +424,7 @@ begin
   Case aType of
     mtCPU : lSQL:='SELECT TC_ID FROM TESTCPU order by TC_ID';
     mtOS  : lSQL:='SELECT TO_ID FROM TESTOS order by TO_ID';
-    mtVersion  : lSQL:='SELECT TV_ID FROM TESTVERSION order by TO_ID';
+    mtVersion  : lSQL:='SELECT TV_ID FROM TESTVERSION order by TV_ID';
   end;
   Qry:=CreateQuery(lSQL);
   try
@@ -463,7 +463,8 @@ class function TTestSQL.EscapeSQL(const S: String): String;
 begin
 //  Result:=StringReplace(S,'\','\\',[rfReplaceAll]);
   Result:=StringReplace(S,'''','''''',[rfReplaceAll]);
-  tsutils.Verbose(V_SQL,'EscapeSQL : "'+S+'" -> "'+Result+'"');
+  if (Result<>S) then
+    tsutils.Verbose(V_SQL,'EscapeSQL : "'+S+'" -> "'+Result+'"');
 end;
 
 

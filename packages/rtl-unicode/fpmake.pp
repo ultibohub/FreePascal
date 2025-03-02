@@ -12,8 +12,8 @@ Const
   // in workable state atm.
   // UnixLikes = AllUnixOSes -[QNX];
 
-  CollationOSes = [aix,android,darwin,emx,freebsd,go32v2,linux,netbsd,openbsd,os2,solaris,win32,win64,dragonfly,haiku,freertos,watcom,wasi,ultibo];
-  CPUnits       = [aix,amiga,aros,android,beos,darwin,iphonesim,ios,emx,gba,nds,freebsd,go32v2,haiku,linux,morphos,netbsd,netware,netwlibc,openbsd,os2,solaris,watcom,wii,win32,win64,wince,dragonfly,freertos,wasi,ultibo];
+  CollationOSes = [aix,android,darwin,emx,freebsd,go32v2,linux,netbsd,openbsd,os2,solaris,win32,win64,dragonfly,haiku,freertos,watcom,wasip1,wasip1threads,ultibo];
+  CPUnits       = [aix,amiga,aros,android,beos,darwin,iphonesim,ios,emx,gba,nds,freebsd,go32v2,haiku,linux,morphos,netbsd,netware,netwlibc,openbsd,os2,solaris,watcom,wii,win32,win64,wince,dragonfly,freertos,wasip1,wasip1threads,ultibo];
   utf8bidiOSes  = [netware,netwlibc];
   freebidiOSes  = [netware,netwlibc];
   GraphemeBreakPropertyOSes = AllOSes-[embedded,zxspectrum,msxdos,amstradcpc];

@@ -206,7 +206,7 @@
              system_aarch64_darwin,     { 111 }
              system_z80_amstradcpc,     { 112 }
              system_m68k_sinclairql,    { 113 }
-             system_wasm32_wasi,        { 114 }
+             system_wasm32_wasip1,      { 114 }
              system_aarch64_freebsd,    { 115 }
              system_aarch64_embedded,   { 116 }
              system_mips64_linux,       { 117 }
@@ -216,10 +216,11 @@
              system_aarch64_iphonesim,  { 121 }
              system_m68k_human68k,      { 122 }
              system_mipsel_ps1,         { 123 }
-             system_arm_ultibo,         { 124 }
-             system_i386_ultibo,        { 125 }
-             system_x86_64_ultibo,      { 126 }
-             system_aarch64_ultibo      { 127 }
+             system_wasm32_wasip1threads, { 124 }
+             system_arm_ultibo,         { 125 }
+             system_i386_ultibo,        { 126 }
+             system_x86_64_ultibo,      { 127 }
+             system_aarch64_ultibo      { 128 }
        );
 
      type

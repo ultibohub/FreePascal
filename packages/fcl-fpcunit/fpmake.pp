@@ -38,7 +38,7 @@ begin
     P.IncludePath.Add('src');
 
     T:=P.Targets.AddUnit('digesttestreport.pp');
-    T.OSes := P.OSes - [wasi];
+    T.OSes := P.OSes - [wasip1,wasip1threads];
       with T.Dependencies do
         begin
           AddUnit('fpcunit');

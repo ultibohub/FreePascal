@@ -51,6 +51,8 @@ type
     function OptPass1FSGNJ(var p: tai;mvop: tasmop): boolean;
     function OptPass1SLTx(var p: tai): boolean;
     function OptPass1SLTI(var p: tai): boolean;
+    function OptPass1Andi(var p: tai): boolean;
+    function OptPass1SLTIU(var p: tai): boolean;
 
     function OptPass1Add(var p: tai): boolean;
     function OptPass1Sub(var p: tai): boolean;
@@ -648,6 +650,103 @@ implementation
     end;
 
 
+  function TRVCpuAsmOptimizer.OptPass1Andi(var p: tai): boolean;
+    var
+      hp1: tai;
+    begin
+      result:=false;
+      {
+        Changes
+          andi x, y, #
+          andi z, x, #
+          dealloc x
+        To
+          andi z, y, # and #
+      }
+      if (taicpu(p).ops=3) and
+         (taicpu(p).oper[2]^.typ=top_const) and
+         GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) then
+        begin
+          if MatchInstruction(hp1,A_ANDI) and
+            (taicpu(hp1).ops=3) and
+            MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) and
+            (taicpu(hp1).oper[2]^.typ=top_const) and
+            is_imm12(taicpu(p).oper[2]^.val and taicpu(hp1).oper[2]^.val) and
+            (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
+            RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
+            begin
+              taicpu(hp1).loadreg(1,taicpu(p).oper[1]^.reg);
+              taicpu(hp1).loadconst(2, taicpu(p).oper[2]^.val and taicpu(hp1).oper[2]^.val);
+
+              DebugMsg('Peephole AndiAndi2Andi performed', hp1);
+
+              RemoveInstr(p);
+
+              result:=true;
+            end
+{$ifndef RISCV32}
+          else if MatchInstruction(hp1,A_ADDIW) and
+            (taicpu(hp1).ops=3) and
+            MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) and
+            (taicpu(hp1).oper[2]^.typ=top_const) and
+            (taicpu(hp1).oper[2]^.val=0) and
+             is_imm12(taicpu(p).oper[2]^.val) and
+            (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
+            RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
+            begin
+              taicpu(p).loadreg(0,taicpu(hp1).oper[0]^.reg);
+
+              DebugMsg('Peephole AndiAddwi02Andi performed', hp1);
+
+              RemoveInstr(hp1);
+
+              result:=true;
+             end
+{$endif RISCV32}
+          else
+            result:=OptPass1OP(p);
+        end
+      else
+        result:=OptPass1OP(p);
+    end;
+
+
+  function TRVCpuAsmOptimizer.OptPass1SLTIU(var p: tai): boolean;
+    var
+      hp1: tai;
+    begin
+      result:=false;
+      {
+        Turn
+          sltiu x,y,1
+          beq/ne x,x0,...
+          dealloc x
+        Into
+          bne y,x0,...
+      }
+      if (taicpu(p).ops=3) and
+         (taicpu(p).oper[2]^.typ=top_const) and
+         (taicpu(p).oper[2]^.val=1) and
+         GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
+         MatchInstruction(hp1,A_Bxx,[C_NE,C_EQ]) and
+         (taicpu(hp1).ops=3) and
+         MatchOperand(taicpu(hp1).oper[0]^,taicpu(p).oper[0]^) and
+         MatchOperand(taicpu(hp1).oper[1]^,NR_X0) and
+         (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
+         RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
+        begin
+          taicpu(hp1).loadreg(0,taicpu(p).oper[1]^.reg);
+          taicpu(hp1).condition:=inverse_cond(taicpu(hp1).condition);
+
+          DebugMsg('Peephole Sltiu0B2B performed', hp1);
+
+          RemoveInstr(p);
+
+          result:=true;
+        end;
+    end;
+
+
   function TRVCpuAsmOptimizer.PeepHoleOptPass1Cpu(var p: tai): boolean;
     var
       hp1: tai;
@@ -662,95 +761,12 @@ implementation
               A_SUB:
                 result:=OptPass1Sub(p);
               A_ANDI:
-                begin
-                  {
-                    Changes
-                      andi x, y, #
-                      andi z, x, #
-                      dealloc x
-                    To
-                      andi z, y, # and #
-                  }
-                  if (taicpu(p).ops=3) and
-                     (taicpu(p).oper[2]^.typ=top_const) and
-                     GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) then
-                    begin
-                      if MatchInstruction(hp1,A_ANDI) and
-                        (taicpu(hp1).ops=3) and
-                        MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) and
-                        (taicpu(hp1).oper[2]^.typ=top_const) and
-                        is_imm12(taicpu(p).oper[2]^.val and taicpu(hp1).oper[2]^.val) and
-                        (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
-                        RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
-                        begin
-                          taicpu(hp1).loadreg(1,taicpu(p).oper[1]^.reg);
-                          taicpu(hp1).loadconst(2, taicpu(p).oper[2]^.val and taicpu(hp1).oper[2]^.val);
-
-                          DebugMsg('Peephole AndiAndi2Andi performed', hp1);
-
-                          RemoveInstr(p);
-
-                          result:=true;
-                        end
-{$ifndef RISCV32}
-                      else if MatchInstruction(hp1,A_ADDIW) and
-                        (taicpu(hp1).ops=3) and
-                        MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[1]^) and
-                        (taicpu(hp1).oper[2]^.typ=top_const) and
-                        (taicpu(hp1).oper[2]^.val=0) and
-                         is_imm12(taicpu(p).oper[2]^.val) and
-                        (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
-                        RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
-                        begin
-                          taicpu(p).loadreg(0,taicpu(hp1).oper[0]^.reg);
-
-                          DebugMsg('Peephole AndiAddwi02Andi performed', hp1);
-
-                          RemoveInstr(hp1);
-
-                          result:=true;
-                         end
-{$endif RISCV32}
-                      else
-                        result:=OptPass1OP(p);
-                    end
-                  else
-                    result:=OptPass1OP(p);
-                end;
+                result:=OptPass1Andi(p);
               A_SLT,
               A_SLTU:
                 result:=OptPass1SLTx(p);
               A_SLTIU:
-                begin
-                  {
-                    Turn
-                      sltiu x,y,1
-                      beq/ne x,x0,...
-                      dealloc x
-                    Into
-                      bne y,x0,...
-                  }
-                  if (taicpu(p).ops=3) and
-                     (taicpu(p).oper[2]^.typ=top_const) and
-                     (taicpu(p).oper[2]^.val=1) and
-                     GetNextInstructionUsingReg(p, hp1, taicpu(p).oper[0]^.reg) and
-                     MatchInstruction(hp1,A_Bxx,[C_NE,C_EQ]) and
-                     (taicpu(hp1).ops=3) and
-                     MatchOperand(taicpu(hp1).oper[0]^,taicpu(p).oper[0]^) and
-                     MatchOperand(taicpu(hp1).oper[1]^,NR_X0) and
-                     (not RegModifiedBetween(taicpu(p).oper[1]^.reg, p,hp1)) and
-                     RegEndOfLife(taicpu(p).oper[0]^.reg, taicpu(hp1)) then
-                    begin
-                      taicpu(hp1).loadreg(0,taicpu(p).oper[1]^.reg);
-                      taicpu(hp1).condition:=inverse_cond(taicpu(hp1).condition);
-
-                      DebugMsg('Peephole Sltiu0B2B performed', hp1);
-
-                      RemoveInstr(p);
-
-                      result:=true;
-                    end;
-                end;
+                result:=OptPass1SLTIU(p);
               A_LA,
               A_LUI,
               A_LB,
