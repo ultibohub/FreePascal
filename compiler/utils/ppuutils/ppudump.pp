@@ -251,10 +251,11 @@ const
   { 122 } 'Human68k-m68k',
   { 123 } 'PS1-mipsel',
   { 124 } 'WASIp1threads-WASM32',
-  { 125 } 'Ultibo-arm',
-  { 126 } 'Ultibo-i386',
-  { 127 } 'Ultibo-x86-64',
-  { 128 } 'Ultibo-AArch64'
+  { 125 } 'WASIp2-WASM32',
+  { 126 } 'Ultibo-arm',
+  { 127 } 'Ultibo-i386',
+  { 128 } 'Ultibo-x86-64',
+  { 129 } 'Ultibo-AArch64'
   );
 
 const

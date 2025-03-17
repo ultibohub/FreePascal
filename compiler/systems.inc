@@ -217,10 +217,11 @@
              system_m68k_human68k,      { 122 }
              system_mipsel_ps1,         { 123 }
              system_wasm32_wasip1threads, { 124 }
-             system_arm_ultibo,         { 125 }
-             system_i386_ultibo,        { 126 }
-             system_x86_64_ultibo,      { 127 }
-             system_aarch64_ultibo      { 128 }
+             system_wasm32_wasip2,      { 125 }
+             system_arm_ultibo,         { 126 }
+             system_i386_ultibo,        { 127 }
+             system_x86_64_ultibo,      { 128 }
+             system_aarch64_ultibo      { 129 }
        );
 
      type

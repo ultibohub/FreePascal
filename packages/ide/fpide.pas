@@ -133,6 +133,8 @@ type
       procedure OpenINI;
       procedure SaveINI;
       procedure SaveAsINI;
+      procedure TileVertical;
+      procedure Stepped(aDirection:boolean);
       procedure CloseAll;
       procedure WindowList;
       procedure HelpContents;
@@ -340,7 +342,10 @@ resourcestring  menu_local_gotosource = '~G~oto source';
 
                 menu_window            = '~W~indow';
                 menu_window_tile       = '~T~ile';
+                menu_window_tile_vertical = 'Tile ~v~ertical';
                 menu_window_cascade    = 'C~a~scade';
+                menu_window_stepped    = 'Steppe~d~';
+                menu_window_stepped_reverse = 'Stepp~e~d reverse';
                 menu_window_closeall   = 'Cl~o~se all';
                 menu_window_resize     = '~S~ize/Move';
                 menu_window_zoom       = '~Z~oom';
@@ -1051,6 +1056,7 @@ begin
     NewSubMenu(menu_window, hcWindowMenu, NewMenu(
       NewItem(menu_window_tile,'', kbNoKey, cmTile, hcTile,
       NewItem(menu_window_cascade,'', kbNoKey, cmCascade, hcCascade,
+      NewItem(menu_window_stepped,'', kbNoKey, cmSteppedReverse, hcStepped,
       NewItem(menu_window_closeall,'', kbNoKey, cmCloseAll, hcCloseAll,
       NewLine(
       NewItem(menu_window_resize,menu_key_window_resize, kbCtrlF5, cmResize, hcResize,
@@ -1062,7 +1068,7 @@ begin
       NewLine(
       NewItem(menu_window_list,menu_key_window_list, kbAlt0, cmWindowList, hcWindowList,
       NewItem(menu_window_update,'', kbNoKey, cmUpdate, hcUpdate,
-      nil)))))))))))))),
+      nil))))))))))))))),
     NewSubMenu(menu_help, hcHelpMenu, NewMenu(
       NewItem(menu_help_contents,'', kbNoKey, cmHelpContents, hcHelpContents,
       NewItem(menu_help_index,menu_key_help_helpindex, kbShiftF1, cmHelpIndex, hcHelpIndex,
@@ -1394,6 +1400,9 @@ begin
              cmToolsBase+MaxToolCount
                              : ExecuteTool(Event.Command-cmToolsBase);
            { -- Window menu -- }
+             cmTileVertical  : TileVertical;
+             cmStepped       : Stepped(True);
+             cmSteppedReverse: Stepped(False);
              cmCloseAll      : CloseAll;
              cmWindowList    : WindowList;
              cmUserScreenWindow: DoUserScreenWindow;
@@ -1670,7 +1679,7 @@ procedure TIDEApp.Update;
 begin
   SetCmdState([cmSaveAll],IsThereAnyEditor);
   SetCmdState([cmCloseAll,cmWindowList],IsThereAnyWindow);
-  SetCmdState([cmTile,cmCascade],IsThereAnyVisibleEditorWindow);
+  SetCmdState([cmTile,cmCascade,cmTileVertical,cmStepped,cmSteppedReverse],IsThereAnyVisibleEditorWindow);
   SetCmdState([cmFindProcedure,cmObjects,cmModules,cmGlobals,cmSymbol],IsSymbolInfoAvailable);
 {$ifndef NODEBUG}
   SetCmdState([cmResetDebugger,cmUntilReturn],assigned(debugger) and debugger^.debuggee_started);
