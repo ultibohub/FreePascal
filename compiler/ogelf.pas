@@ -128,14 +128,14 @@ interface
          shoffset: aword;
          shstrndx: longword;
          symtabndx: longword;
-         shstrtab: PChar;
-         strtab: PChar;
+         shstrtab: TAnsiCharDynarray;
+         strtab: TAnsiCharDynarray;
          shstrtablen: longword;
          strtablen: longword;
          symtaboffset: aword;
          syms: longword;
          localsyms: longword;
-         symversions: PWord;
+         symversions: TWordDynArray;
          dynobj: boolean;
          CObjSymbol: TObjSymbolClass;
          verdefs: TFPHashObjectList;
@@ -1166,12 +1166,9 @@ implementation
           FreeMem(FSymTbl);
         if Assigned(FSecTbl) then
           FreeMem(FSecTbl);
-        if Assigned(strtab) then
-          FreeMem(strtab);
-        if Assigned(shstrtab) then
-          FreeMem(shstrtab);
-        if Assigned(symversions) then
-          FreeMem(symversions);
+        strtab:=nil;
+        shstrtab:=nil;
+        symversions:=nil;
         inherited Destroy;
       end;
 
@@ -1593,9 +1590,9 @@ implementation
         if shdrs[shstrndx].sh_type<>SHT_STRTAB then
           InternalError(2012060202);
         shstrtablen:=shdrs[shstrndx].sh_size;
-        GetMem(shstrtab,shstrtablen);
+        SetLength(shstrtab,shstrtablen);
         FReader.seek(shdrs[shstrndx].sh_offset);
-        FReader.read(shstrtab^,shstrtablen);
+        FReader.read(shstrtab[0],shstrtablen);
         FLoaded[shstrndx]:=True;
 
         { Locate the symtable, it is typically at the end so loop backwards.
@@ -1616,9 +1613,9 @@ implementation
             if shdrs[strndx].sh_type<>SHT_STRTAB then
               InternalError(2012062703);
             strtablen:=shdrs[strndx].sh_size;
-            GetMem(strtab,strtablen);
+            setLength(strtab,strtablen);
             FReader.seek(shdrs[strndx].sh_offset);
-            FReader.read(strtab^,strtablen);
+            FReader.read(strtab[0],strtablen);
 
             symtaboffset:=shdrs[i].sh_offset;
             syms:=shdrs[i].sh_size div sizeof(TElfSymbol);
@@ -1662,9 +1659,9 @@ implementation
                         InternalError(2012102004);
                       if shdrs[i].sh_size<>syms*sizeof(word) then
                         InternalError(2012102005);
-                      GetMem(symversions,shdrs[i].sh_size);
+                      SetLength(symversions,shdrs[i].sh_size);
                       FReader.seek(shdrs[i].sh_offset);
-                      FReader.read(symversions^,shdrs[i].sh_size);
+                      FReader.read(symversions[0],shdrs[i].sh_size);
                       if source_info.endian<>target_info.endian then
                         for j:=0 to syms-1 do
                           symversions[j]:=SwapEndian(symversions[j]);
@@ -2908,9 +2905,9 @@ implementation
         ver: TElfVersionDef;
         vn: TElfverneed;
         vna: TElfvernaux;
-        symversions: pword;
+        symversions: TWordDynArray;
       begin
-        symversions:=AllocMem((dynsymlist.count+1)*sizeof(word));
+        SetLength(symversions,(dynsymlist.count+1));
         { Assign version indices }
         idx:=VER_NDX_GLOBAL+1;
         for i:=0 to dynsymlist.count-1 do
@@ -2991,9 +2988,9 @@ implementation
             if source_info.endian<>target_info.endian then
               for i:=0 to dynsymlist.count+1 do
                 symversions[i]:=swapendian(symversions[i]);
-            symversec.write(symversions^,(dynsymlist.count+1)*sizeof(word));
+            symversec.write(symversions[0],(dynsymlist.count+1)*sizeof(word));
           end;
-        FreeMem(symversions);
+        symversions:=nil;
       end;
 
 

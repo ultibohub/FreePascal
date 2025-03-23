@@ -88,7 +88,7 @@ implementation
         pd : pbestreal;
         pg : pguid;
         sp : pchar;
-        pw : pcompilerwidestring;
+        pw : tcompilerwidestring;
         storetokenpos : tfileposinfo;
       begin
         readconstant:=nil;
@@ -112,13 +112,15 @@ implementation
                if is_wide_or_unicode_string(p.resultdef) then
                  begin
                    initwidestring(pw);
-                   copywidestring(pcompilerwidestring(tstringconstnode(p).value_str),pw);
+                   copywidestring(tstringconstnode(p).valuews,pw);
                    hp:=cconstsym.create_wstring(orgname,constwstring,pw);
                  end
                else
                  begin
                    getmem(sp,tstringconstnode(p).len+1);
-                   move(tstringconstnode(p).value_str^,sp^,tstringconstnode(p).len+1);
+                   sp[tstringconstnode(p).len]:=#0;
+                   if tstringconstnode(p).len>0 then
+                     move(tstringconstnode(p).valueas[0],sp^,tstringconstnode(p).len+1);
                    { if a non-default ansistring code page has been specified,
                      keep it }
                    if is_ansistring(p.resultdef) and
@@ -1309,7 +1311,7 @@ implementation
          sym : tsym;
          first,
          isgeneric : boolean;
-         pw : pcompilerwidestring;
+         pw : tcompilerwidestring;
 
       begin
          if target_info.system in systems_managed_vm then
@@ -1339,10 +1341,20 @@ implementation
                         begin
                            if is_constcharnode(p) then
                              begin
-                                getmem(sp,2);
-                                sp[0]:=chr(tordconstnode(p).value.svalue);
-                                sp[1]:=#0;
-                                sym:=cconstsym.create_string(orgname,constresourcestring,sp,1,nil);
+                                if not is_systemunit_unicode then
+                                  begin
+                                  getmem(sp,2);
+                                  sp[0]:=chr(tordconstnode(p).value.svalue);
+                                  sp[1]:=#0;
+                                  sym:=cconstsym.create_string(orgname,constresourcestring,sp,1,nil);
+                                  end
+                                else
+                                  begin
+                                  initwidestring(pw);
+                                  setlengthwidestring(pw,1);
+                                  pw.data[0]:=tordconstnode(p).value.svalue;
+                                  sym:=cconstsym.create_wstring(orgname,constwresourcestring,pw);
+                                  end;
                              end
                            else
                              Message(parser_e_illegal_expression);
@@ -1355,7 +1367,9 @@ implementation
                                if cst_type in [cst_widestring,cst_unicodestring] then
                                  changestringtype(getansistringdef);
                                getmem(sp,len+1);
-                               move(value_str^,sp^,len+1);
+                               sp[len]:=#0;
+                               if len>0 then
+                                 move(valueas[0],sp^,len);
                                sym:=cconstsym.create_string(orgname,constresourcestring,sp,len,nil);
                                end
                              else
@@ -1364,7 +1378,7 @@ implementation
                                if cst_type in [cst_conststring,cst_longstring, cst_shortstring,cst_ansistring] then
                                  changestringtype(cunicodestringtype);
                                initwidestring(pw);
-                               copywidestring(pcompilerwidestring(value_str),pw);
+                               copywidestring(valuews,pw);
                                sym:=cconstsym.create_wstring(orgname,constwresourcestring,pw);
                                end;
                           end;

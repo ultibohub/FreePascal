@@ -42,22 +42,25 @@ unit rgobj;
       aasmtai,aasmdata,aasmsym,aasmcpu,
       cclasses,globtype,cgbase,cgutils;
 
+    const
+      interferenceBitmap2Size = 256;
+
     type
       {
         The interference bitmap contains of 2 layers:
           layer 1 - 256*256 blocks with pointers to layer 2 blocks
           layer 2 - blocks of 32*256 (32 bytes = 256 bits)
       }
-      Tinterferencebitmap2 = array[byte] of set of byte;
-      Pinterferencebitmap2 = ^Tinterferencebitmap2;
-      Tinterferencebitmap1 = array[byte] of Pinterferencebitmap2;
-      pinterferencebitmap1 = ^tinterferencebitmap1;
+
+      Tinterferencebitmap2 = array of set of byte;
+      Tinterferencebitmap1 = array[byte] of Tinterferencebitmap2;
+      tinterferencebitmap1Array = array of tinterferencebitmap1;
 
       Tinterferencebitmap=class
       private
         maxx1,
         maxy1    : byte;
-        fbitmap  : pinterferencebitmap1;
+        fbitmap  : tinterferencebitmap1Array;
         function getbitmap(x,y:tsuperregister):boolean;
         procedure setbitmap(x,y:tsuperregister;b:boolean);
       public
@@ -120,7 +123,8 @@ unit rgobj;
         total_interferences : longint;
         real_reg_interferences: word;
       end;
-      Preginfo=^TReginfo;
+      // Preginfo=^TReginfo;
+      TReginfoArray = Array of TReginfo;
 
       tspillreginfo = record
         { a single register may appear more than once in an instruction,
@@ -138,8 +142,9 @@ unit rgobj;
         spillreginfo: array[0..3] of tspillreginfo;
       end;
 
-      Pspill_temp_list=^Tspill_temp_list;
-      Tspill_temp_list=array[tsuperregister] of Treference;
+//      Pspill_temp_list=^Tspill_temp_list;
+      Tspill_temp_list = array of Treference;
+
 
       { used to store where a register is spilled and what interferences it has at the point of being spilled }
       tspillinfo = record
@@ -226,10 +231,10 @@ unit rgobj;
                                       const spilltemplist:Tspill_temp_list): boolean;virtual;
         procedure insert_regalloc_info_all(list:TAsmList);
         procedure determine_spill_registers(list:TAsmList;headertail:tai); virtual;
-        procedure get_spill_temp(list:TAsmlist;spill_temps: Pspill_temp_list; supreg: tsuperregister);virtual;
+        procedure get_spill_temp(list:TAsmlist;spill_temps: Tspill_temp_list; supreg: tsuperregister);virtual;
       strict protected
         { Highest register allocated until now.}
-        reginfo           : PReginfo;
+        reginfo           : TReginfoArray;
         usable_registers_cnt : word;
       private
         int_live_range_direction: TRADirection;
@@ -367,7 +372,7 @@ unit rgobj;
       begin
         inherited create;
         maxx1:=1;
-        fbitmap:=AllocMem(sizeof(tinterferencebitmap1)*2);
+        SetLength(fbitmap,2);
       end;
 
 
@@ -379,21 +384,21 @@ unit rgobj;
       for i:=0 to maxx1 do
         for j:=0 to maxy1 do
           if assigned(fbitmap[i,j]) then
-            dispose(fbitmap[i,j]);
-      freemem(fbitmap);
+            fbitmap[i,j]:=nil;
+      fbitmap:=nil;
     end;
 
 
     function tinterferencebitmap.getbitmap(x,y:tsuperregister):boolean;
       var
-        page : pinterferencebitmap2;
+        page : TInterferencebitmap2;
       begin
         result:=false;
         if (x shr 8>maxx1) then
           exit;
         page:=fbitmap[x shr 8,y shr 8];
         result:=assigned(page) and
-          ((x and $ff) in page^[y and $ff]);
+          ((x and $ff) in page[y and $ff]);
       end;
 
 
@@ -405,21 +410,19 @@ unit rgobj;
         y1:=y shr 8;
         if x1>maxx1 then
           begin
-            reallocmem(fbitmap,sizeof(tinterferencebitmap1)*(x1+1));
-            fillchar(fbitmap[maxx1+1],sizeof(tinterferencebitmap1)*(x1-maxx1),0);
+            Setlength(fbitmap,x1+1);
             maxx1:=x1;
           end;
         if not assigned(fbitmap[x1,y1]) then
           begin
             if y1>maxy1 then
               maxy1:=y1;
-            new(fbitmap[x1,y1]);
-            fillchar(fbitmap[x1,y1]^,sizeof(tinterferencebitmap2),0);
+            SetLength(fbitmap[x1,y1],interferenceBitmap2Size);
           end;
         if b then
-          include(fbitmap[x1,y1]^[y and $ff],(x and $ff))
+          include(fbitmap[x1,y1][y and $ff],(x and $ff))
         else
-          exclude(fbitmap[x1,y1]^[y and $ff],(x and $ff));
+          exclude(fbitmap[x1,y1][y and $ff],(x and $ff));
       end;
 
 
@@ -454,7 +457,7 @@ unit rgobj;
          moveins_id_counter:=0;
          worklist_moves:=Tlinkedlist.create;
          move_garbage:=TLinkedList.Create;
-         reginfo:=allocmem(first_imaginary*sizeof(treginfo));
+         SetLength(reginfo,first_imaginary);
          for i:=0 to first_imaginary-1 do
            begin
              reginfo[i].degree:=high(tsuperregister);
@@ -512,7 +515,6 @@ unit rgobj;
                   if movelist<>nil then
                     dispose(movelist);
                 end;
-            freemem(reginfo);
             reginfo:=nil;
           end;
       end;
@@ -538,9 +540,7 @@ unit rgobj;
                 if maxreginfoinc<256 then
                   maxreginfoinc:=maxreginfoinc*2;
               end;
-            reallocmem(reginfo,maxreginfo*sizeof(treginfo));
-            { Do we really need it to clear it ? At least for 1.0.x (PFV) }
-            fillchar(reginfo[oldmaxreginfo],(maxreginfo-oldmaxreginfo)*sizeof(treginfo),0);
+            SetLength(reginfo,maxreginfo);
           end;
         reginfo[result].subreg:=subreg;
       end;
@@ -745,7 +745,7 @@ unit rgobj;
       with live_registers do
         if length>0 then
           for i:=0 to length-1 do
-            add_edge(u,get_alias(buf^[i]));
+            add_edge(u,get_alias(buf[i]));
     end;
 
 {$ifdef EXTDEBUG}
@@ -1015,22 +1015,22 @@ unit rgobj;
             for h:=p to length-1 do
               begin
                 i:=h;
-                t:=buf^[i];
-                adjt:=reginfo[buf^[i]].adjlist;
+                t:=buf[i];
+                adjt:=reginfo[buf[i]].adjlist;
                 lent:=0;
                 if adjt<>nil then
                   lent:=adjt^.length;
                 repeat
-                  adji:=reginfo[buf^[i-p]].adjlist;
+                  adji:=reginfo[buf[i-p]].adjlist;
                   leni:=0;
                   if adji<>nil then
                     leni:=adji^.length;
                   if leni>=lent then
                     break;
-                  buf^[i]:=buf^[i-p];
+                  buf[i]:=buf[i-p];
                   dec(i,p)
                 until i<p;
-                buf^[i]:=t;
+                buf[i]:=t;
               end;
             p:=p shr 1;
           until p=0;
@@ -1054,22 +1054,22 @@ unit rgobj;
               for h:=p to length-1 do
                 begin
                   i:=h;
-                  t:=buf^[i];
-                  adjt:=reginfo[buf^[i]].adjlist;
+                  t:=buf[i];
+                  adjt:=reginfo[buf[i]].adjlist;
                   lent:=0;
                   if adjt<>nil then
                     lent:=adjt^.length;
                   repeat
-                    adji:=reginfo[buf^[i-p]].adjlist;
+                    adji:=reginfo[buf[i-p]].adjlist;
                     leni:=0;
                     if adji<>nil then
                       leni:=adji^.length;
                     if leni<=lent then
                       break;
-                    buf^[i]:=buf^[i-p];
+                    buf[i]:=buf[i-p];
                     dec(i,p)
                   until i<p;
-                  buf^[i]:=t;
+                  buf[i]:=t;
                 end;
               p:=p shr 1;
             until p=0;
@@ -1155,7 +1155,7 @@ unit rgobj;
               if adj<>nil then
                 for i:=1 to adj^.length do
                   begin
-                    n:=adj^.buf^[i-1];
+                    n:=adj^.buf[i-1];
                     if reginfo[n].flags*[ri_selected,ri_coalesced]<>[] then
                       enable_moves(n);
                   end;
@@ -1192,7 +1192,7 @@ unit rgobj;
       if adj<>nil then
         for i:=1 to adj^.length do
           begin
-            n:=adj^.buf^[i-1];
+            n:=adj^.buf[i-1];
             if (n>=first_imaginary) and
                (reginfo[n].flags*[ri_selected,ri_coalesced]=[]) then
               decrement_degree(n);
@@ -1246,7 +1246,7 @@ unit rgobj;
           if adj<>nil then
             for i:=1 to adj^.length do
               begin
-                n:=adj^.buf^[i-1];
+                n:=adj^.buf[i-1];
                 if (reginfo[n].flags*[ri_coalesced]=[]) and not ok(n,u) then
                   begin
                     adjacent_ok:=false;
@@ -1272,7 +1272,7 @@ unit rgobj;
           if adj<>nil then
             for i:=1 to adj^.length do
               begin
-                n:=adj^.buf^[i-1];
+                n:=adj^.buf[i-1];
                 if reginfo[n].flags*[ri_coalesced,ri_selected]=[] then
                   begin
                     supregset_include(done,n);
@@ -1285,7 +1285,7 @@ unit rgobj;
       if adj<>nil then
         for i:=1 to adj^.length do
           begin
-            n:=adj^.buf^[i-1];
+            n:=adj^.buf[i-1];
             if (u<first_imaginary) and
                (n>=first_imaginary) and
                not ibitmap[u,n] and
@@ -1407,7 +1407,7 @@ unit rgobj;
       if adj<>nil then
         for i:=1 to adj^.length do
           begin
-            t:=adj^.buf^[i-1];
+            t:=adj^.buf[i-1];
             with reginfo[t] do
               if not(ri_coalesced in flags) then
                 begin
@@ -1638,18 +1638,18 @@ unit rgobj;
           {Safe: This procedure is only called if length<>0}
           { Search for a candidate to be spilled, ignoring nodes with the ri_spill_helper flag set. }
           for i:=0 to length-1 do
-            if not(ri_spill_helper in reginfo[buf^[i]].flags) then
+            if not(ri_spill_helper in reginfo[buf[i]].flags) then
               begin
-                adj:=reginfo[buf^[i]].adjlist;
+                adj:=reginfo[buf[i]].adjlist;
                 if assigned(adj) and
                    (
                     (adj^.length>maxlength) or
-                    ((adj^.length=maxlength) and (reginfo[buf^[i]].weight<minweight))
+                    ((adj^.length=maxlength) and (reginfo[buf[i]].weight<minweight))
                    ) then
                   begin
                     p:=i;
                     maxlength:=adj^.length;
-                    minweight:=reginfo[buf^[i]].weight;
+                    minweight:=reginfo[buf[i]].weight;
                   end;
               end;
 
@@ -1667,20 +1667,20 @@ unit rgobj;
               p:=0;
               for i:=0 to length-1 do
                 begin
-                  adj:=reginfo[buf^[i]].adjlist;
+                  adj:=reginfo[buf[i]].adjlist;
                   if assigned(adj) and
                      (
                       (adj^.length<minlength) or
-                      ((adj^.length=minlength) and (reginfo[buf^[i]].weight<minweight))
+                      ((adj^.length=minlength) and (reginfo[buf[i]].weight<minweight))
                      ) then
                     begin
                       p:=i;
                       minlength:=adj^.length;
-                      minweight:=reginfo[buf^[i]].weight;
+                      minweight:=reginfo[buf[i]].weight;
                     end;
                 end;
             end;
-          n:=buf^[p];
+          n:=buf[p];
           deleteidx(p);
         end;
 {$endif SPILLING_OLD}
@@ -1725,7 +1725,7 @@ unit rgobj;
         if adj<>nil then
           for j:=0 to adj^.length-1 do
             begin
-              a:=get_alias(adj^.buf^[j]);
+              a:=get_alias(adj^.buf[j]);
               if supregset_in(colourednodes,a) and (reginfo[a].colour<=255) then
                 include(adj_colours,reginfo[a].colour);
             end;
@@ -1765,7 +1765,7 @@ unit rgobj;
       spill_loop:=false;
       for i:=selectstack.length downto 1 do
         begin
-          n:=selectstack.buf^[i-1];
+          n:=selectstack.buf[i-1];
           if not colour_register(n) and
             (ri_spill_helper in reginfo[n].flags) then
             begin
@@ -1785,7 +1785,7 @@ unit rgobj;
           { To prevent spilling of helper registers it is needed to assign colours to them first. }
           for i:=selectstack.length downto 1 do
             begin
-              n:=selectstack.buf^[i-1];
+              n:=selectstack.buf[i-1];
               if ri_spill_helper in reginfo[n].flags then
                 if not colour_register(n) then
                   { Can't colour the spill helper register n.
@@ -1796,7 +1796,7 @@ unit rgobj;
           { Assign colours for the rest of the registers }
           for i:=selectstack.length downto 1 do
             begin
-              n:=selectstack.buf^[i-1];
+              n:=selectstack.buf[i-1];
               if not (ri_spill_helper in reginfo[n].flags) then
                 colour_register(n);
             end;
@@ -1805,7 +1805,7 @@ unit rgobj;
       {Finally colour the nodes that were coalesced.}
       for i:=1 to coalescednodes.length do
         begin
-          n:=coalescednodes.buf^[i-1];
+          n:=coalescednodes.buf[i-1];
           k:=get_alias(n);
           reginfo[n].colour:=reginfo[k].colour;
         end;
@@ -1869,7 +1869,7 @@ unit rgobj;
         begin
           for i:=1 to adj^.length do
             begin
-              v:=adj^.buf^[i-1];
+              v:=adj^.buf[i-1];
               {Remove (u,v) and (v,u) from bitmap.}
               ibitmap[u,v]:=false;
               ibitmap[v,u]:=false;
@@ -1990,7 +1990,7 @@ unit rgobj;
       end;
 
 
-    procedure trgobj.get_spill_temp(list: TAsmlist; spill_temps: Pspill_temp_list; supreg: tsuperregister);
+    procedure trgobj.get_spill_temp(list: TAsmlist; spill_temps: Tspill_temp_list; supreg: tsuperregister);
       var
         size: ptrint;
       begin
@@ -2006,7 +2006,7 @@ unit rgobj;
           size:=tcgsize2size[reg_cgsize(newreg(regtype,supreg,reginfo[supreg].subreg))];
         tg.gettemp(list,
                    size,size,
-                   tt_noreuse,spill_temps^[supreg]);
+                   tt_noreuse,spill_temps[supreg]);
       end;
 
 
@@ -2173,8 +2173,8 @@ unit rgobj;
             for i:=0 to live_registers.length-1 do
               begin
                 { Only report for imaginary registers }
-                if live_registers.buf^[i]>=first_imaginary then
-                  Comment(V_Warning,'Register '+std_regname(newreg(regtype,live_registers.buf^[i],defaultsub))+' not released');
+                if live_registers.buf[i]>=first_imaginary then
+                  Comment(V_Warning,'Register '+std_regname(newreg(regtype,live_registers.buf[i],defaultsub))+' not released');
               end;
           end;
 {$endif}
@@ -2415,7 +2415,7 @@ unit rgobj;
         t : tsuperregister;
         p : Tai;
         regs_to_spill_set:Tsuperregisterset;
-        spill_temps : ^Tspill_temp_list;
+        spill_temps : Tspill_temp_list;
         supreg,x,y : tsuperregister;
         templist : TAsmList;
         j : Longint;
@@ -2428,7 +2428,7 @@ unit rgobj;
         sort_spillednodes;
         for i:=first_imaginary to maxreg-1 do
           exclude(reginfo[i].flags,ri_selected);
-        spill_temps:=allocmem(sizeof(treference)*maxreg);
+        SetLength(spill_temps,maxreg);
         supregset_reset(regs_to_spill_set,false,$ffff);
 
 {$ifdef DEBUG_SPILLCOALESCE}
@@ -2444,7 +2444,7 @@ unit rgobj;
           { the node with the highest interferences is the last one }
           for i:=length-1 downto 0 do
             begin
-              t:=buf^[i];
+              t:=buf[i];
 
 {$ifdef DEBUG_SPILLCOALESCE}
               writeln('trgobj.spill_registers: Spilling ',t);
@@ -2463,7 +2463,7 @@ unit rgobj;
 
               getnewspillloc:=not (ri_has_initial_loc in reginfo[t].flags);
               if not getnewspillloc then
-                spill_temps^[t]:=spillinfo[t].spilllocation;
+                spill_temps[t]:=spillinfo[t].spilllocation;
 
               { check if we can "coalesce" spilled nodes. To do so, it is required that they do not
                 interfere but are connected by a move instruction
@@ -2480,7 +2480,7 @@ unit rgobj;
                       (spillinfo[get_alias(y)].spilled) and
                       not(spillinfo[get_alias(y)].interferences[0,t]) then
                       begin
-                        spill_temps^[t]:=spillinfo[get_alias(y)].spilllocation;
+                        spill_temps[t]:=spillinfo[get_alias(y)].spilllocation;
 {$ifdef DEBUG_SPILLCOALESCE}
                         writeln('trgobj.spill_registers: Spill coalesce ',t,' to ',y);
 {$endif DEBUG_SPILLCOALESCE}
@@ -2494,7 +2494,7 @@ unit rgobj;
 {$ifdef DEBUG_SPILLCOALESCE}
                         writeln('trgobj.spill_registers: Spill coalesce ',t,' to ',x);
 {$endif DEBUG_SPILLCOALESCE}
-                        spill_temps^[t]:=spillinfo[get_alias(x)].spilllocation;
+                        spill_temps[t]:=spillinfo[get_alias(x)].spilllocation;
                         getnewspillloc:=false;
                         break;
                       end;
@@ -2504,13 +2504,13 @@ unit rgobj;
                 get_spill_temp(templist,spill_temps,t);
 
 {$ifdef DEBUG_SPILLCOALESCE}
-              writeln('trgobj.spill_registers: Spill temp: ',getsupreg(spill_temps^[t].base),'+',spill_temps^[t].offset);
+              writeln('trgobj.spill_registers: Spill temp: ',getsupreg(spill_temps[t].base),'+',spill_temps[t].offset);
 {$endif DEBUG_SPILLCOALESCE}
 
               { set spilled only as soon as a temp is assigned, else a mov iregX,iregX results in a spill coalesce with itself }
               spillinfo[t].spilled:=true;
 
-              spillinfo[t].spilllocation:=spill_temps^[t];
+              spillinfo[t].spilllocation:=spill_temps[t];
             end;
         list.insertlistafter(headertai,templist);
         templist.free;
@@ -2565,7 +2565,7 @@ unit rgobj;
                   begin
 //                    writeln(gas_op2str[tai_cpu_abstract_sym(p).opcode]);
                     current_filepos:=fileinfo;
-                    if instr_spill_register(list,tai_cpu_abstract_sym(p),regs_to_spill_set,spill_temps^) then
+                    if instr_spill_register(list,tai_cpu_abstract_sym(p),regs_to_spill_set,spill_temps) then
                       spill_registers:=true;
                   end;
               else
@@ -2578,11 +2578,11 @@ unit rgobj;
         with spillednodes do
           for i:=0 to length-1 do
             begin
-              j:=buf^[i];
-              if tg.istemp(spill_temps^[j]) then
-                tg.ungettemp(list,spill_temps^[j]);
+              j:=buf[i];
+              if tg.istemp(spill_temps[j]) then
+                tg.ungettemp(list,spill_temps[j]);
             end;
-        freemem(spill_temps);
+        spill_temps:=nil;
       end;
 
 

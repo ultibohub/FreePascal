@@ -85,7 +85,7 @@ interface
          orgpattern,
          pattern  : string;
          cstringpattern: ansistring;
-         patternw : pcompilerwidestring;
+         patternw : tcompilerwidestring;
          settings : tsettings;
          tokenbuf : tdynamicarray;
          tokenbuf_needs_swapping : boolean;
@@ -94,7 +94,7 @@ interface
          verbosity : longint;
          constructor Create(atoken: ttoken;aidtoken:ttoken;
            const aorgpattern,apattern:string;const acstringpattern:ansistring;
-           apatternw:pcompilerwidestring;asettings:tsettings;
+           apatternw:tcompilerwidestring;asettings:tsettings;
            atokenbuf:tdynamicarray;change_endian:boolean;const apending:tpendingstate;
            averbosity:longint;anext:treplaystack);
          destructor destroy;override;
@@ -270,7 +270,7 @@ interface
 {$ifdef PREPROCWRITE}
        tpreprocfile=class
          f   : text;
-         buf : pointer;
+         buf : TByteDynArray;
          spacefound,
          eolfound : boolean;
          constructor create(const fn:string);
@@ -286,7 +286,7 @@ interface
         orgpattern,
         pattern        : string;
         cstringpattern : ansistring;
-        patternw       : pcompilerwidestring;
+        patternw       : tcompilerwidestring;
 
         { token }
         token,                        { current token being parsed }
@@ -1108,8 +1108,8 @@ type
         constwstring,
         constwresourcestring:
           begin
-            initwidestring(value.valueptr);
-            copywidestring(c.value.valueptr,value.valueptr);
+            initwidestring(value.valuews);
+            copywidestring(c.value.valuews,value.valuews);
           end;
         constreal:
           begin
@@ -1576,7 +1576,7 @@ type
           freemem(value.valueptr,value.len+1);
         constwstring,
         constwresourcestring:
-          donewidestring(pcompilerwidestring(value.valueptr));
+          donewidestring(value.valuews);
         constreal :
           dispose(pbestreal(value.valueptr));
         constset :
@@ -1836,7 +1836,8 @@ type
                   else
                     len:=mac.buflen;
                   hs[0]:=char(len);
-                  move(mac.buftext^,hs[1],len);
+                  if len>0 then
+                    move(mac.buftext[0],hs[1],len);
                   searchstr2store:=upcase(hs);
                   searchstr:=@searchstr2store;
                   mac.is_used:=true;
@@ -2588,6 +2589,7 @@ type
                  current_scanner.readchar;
                  if c <> '=' then
                    exit;
+                 mac.is_c_macro:=true;
                  current_scanner.readchar;
                  current_scanner.skipspace;
                end;
@@ -2625,7 +2627,8 @@ type
              until false;
 
              { copy the text }
-             move(pchar(@macrobuffer[0])^,mac.allocate_buftext(macropos)^,macropos);
+             if macropos>0 then
+               move(pchar(@macrobuffer[0])^,mac.allocate_buftext(macropos)^,macropos);
           end
         else
           begin
@@ -2738,6 +2741,7 @@ type
           begin
              mac.defined:=false;
              mac.is_compiler_var:=false;
+             mac.is_c_macro:=false;
              { delete old definition }
              mac.free_buftext;
           end;
@@ -2920,8 +2924,8 @@ type
         {$pop}
         if ioresult<>0 then
          Comment(V_Fatal,'can''t create file '+fn);
-        getmem(buf,preprocbufsize);
-        settextbuf(f,buf^,preprocbufsize);
+        setlength(buf,preprocbufsize);
+        settextbuf(f,buf[0],preprocbufsize);
       { reset }
         eolfound:=false;
         spacefound:=false;
@@ -2931,7 +2935,7 @@ type
     destructor tpreprocfile.destroy;
       begin
         close(f);
-        freemem(buf,preprocbufsize);
+        buf:=nil;
       end;
 
 
@@ -2974,7 +2978,7 @@ type
 *****************************************************************************}
     constructor treplaystack.Create(atoken:ttoken;aidtoken:ttoken;
       const aorgpattern,apattern:string;const acstringpattern:ansistring;
-      apatternw:pcompilerwidestring;asettings:tsettings;
+      apatternw:tcompilerwidestring;asettings:tsettings;
       atokenbuf:tdynamicarray;change_endian:boolean;const apending:tpendingstate;
       averbosity:longint;anext:treplaystack);
       begin
@@ -2986,8 +2990,7 @@ type
         initwidestring(patternw);
         if assigned(apatternw) then
           begin
-            setlengthwidestring(patternw,apatternw^.len);
-            move(apatternw^.data^,patternw^.data^,apatternw^.len*sizeof(tcompilerwidechar));
+            copywidestring(patternw,apatternw);
           end;
         settings:=asettings;
         pending:=apending;
@@ -3097,11 +3100,11 @@ type
         openinputfile:=inputfile.open;
       { load buffer }
 {$ifdef CHECK_INPUTPOINTER_LIMITS}
-        hidden_inputbuffer:=inputfile.buf;
-        hidden_inputpointer:=inputfile.buf;
+        hidden_inputbuffer:=PAnsiChar(inputfile.buf);
+        hidden_inputpointer:=PAnsiChar(inputfile.buf);
 {$else not CHECK_INPUTPOINTER_LIMITS}
-        inputbuffer:=inputfile.buf;
-        inputpointer:=inputfile.buf;
+        inputbuffer:=PAnsiChar(inputfile.buf);
+        inputpointer:=PAnsiChar(inputfile.buf);
 {$endif CHECK_INPUTPOINTER_LIMITS}
         inputstart:=inputfile.bufstart;
       { line }
@@ -3140,11 +3143,11 @@ type
         tempopeninputfile:=inputfile.tempopen;
       { reload buffer }
 {$ifdef CHECK_INPUTPOINTER_LIMITS}
-        hidden_inputbuffer:=inputfile.buf;
-        hidden_inputpointer:=inputfile.buf;
+        hidden_inputbuffer:=PAnsiChar(inputfile.buf);
+        hidden_inputpointer:=PAnsiChar(inputfile.buf);
 {$else not CHECK_INPUTPOINTER_LIMITS}
-        inputbuffer:=inputfile.buf;
-        inputpointer:=inputfile.buf;
+        inputbuffer:=PAnsiChar(inputfile.buf);
+        inputpointer:=PAnsiChar(inputfile.buf);
 {$endif CHECK_INPUTPOINTER_LIMITS}
         inputstart:=inputfile.bufstart;
       end;
@@ -3187,10 +3190,10 @@ type
     procedure tscannerfile.restoreinputfile;
       begin
 {$ifdef check_inputpointer_limits}
-        hidden_inputbuffer:=inputfile.buf;
+        hidden_inputbuffer:=PAnsiChar(inputfile.buf);
         hidden_inputpointer:=inputfile.saveinputpointer;
 {$else not check_inputpointer_limits}
-        inputbuffer:=inputfile.buf;
+        inputbuffer:=PAnsiChar(inputfile.buf);
         inputpointer:=inputfile.saveinputpointer;
 {$endif check_inputpointer_limits}
         lastlinepos:=inputfile.savelastlinepos;
@@ -3677,9 +3680,9 @@ type
           _CWCHAR,
           _CWSTRING :
             begin
-              tokenwritesizeint(patternw^.len);
-              if patternw^.len>0 then
-                recordtokenbuf.write(patternw^.data^,patternw^.len*sizeof(tcompilerwidechar));
+              tokenwritesizeint(patternw.len);
+              if patternw.len>0 then
+                recordtokenbuf.write(patternw.data[0],patternw.len*sizeof(tcompilerwidechar));
             end;
           _CSTRING:
             begin
@@ -3777,8 +3780,7 @@ type
             idtoken:=replaystack.idtoken;
             pattern:=replaystack.pattern;
             orgpattern:=replaystack.orgpattern;
-            setlengthwidestring(patternw,replaystack.patternw^.len);
-            move(replaystack.patternw^.data^,patternw^.data^,replaystack.patternw^.len*sizeof(tcompilerwidechar));
+            copywidestring(replaystack.patternw,patternw);
             cstringpattern:=replaystack.cstringpattern;
             replaytokenbuf:=replaystack.tokenbuf;
             change_endian_for_replay:=replaystack.tokenbuf_needs_swapping;
@@ -3820,7 +3822,7 @@ type
                 wlen:=tokenreadsizeint;
                 setlengthwidestring(patternw,wlen);
                 if wlen>0 then
-                  replaytokenbuf.read(patternw^.data^,patternw^.len*sizeof(tcompilerwidechar));
+                  replaytokenbuf.read(patternw.data[0],patternw.len*sizeof(tcompilerwidechar));
                 orgpattern:='';
                 pattern:='';
                 cstringpattern:='';
@@ -3980,11 +3982,11 @@ type
               begin
                 readbuf;
 {$ifdef CHECK_INPUTPOINTER_LIMITS}
-                hidden_inputpointer:=buf;
-                hidden_inputbuffer:=buf;
+                hidden_inputpointer:=PAnsiChar(buf);
+                hidden_inputbuffer:=PAnsiChar(buf);
 {$else not CHECK_INPUTPOINTER_LIMITS}
-                inputpointer:=buf;
-                inputbuffer:=buf;
+                inputpointer:=PAnsiChar(buf);
+                inputbuffer:=PAnsiChar(buf);
 {$endif CHECK_INPUTPOINTER_LIMITS}
                 inputstart:=bufstart;
               { first line? }
@@ -4096,11 +4098,11 @@ type
            setmacro(p,len);
          { local buffer }
 {$ifdef CHECK_INPUTPOINTER_LIMITS}
-           hidden_inputbuffer:=buf;
-           hidden_inputpointer:=buf;
+           hidden_inputbuffer:=PAnsiChar(buf);
+           hidden_inputpointer:=PAnsiChar(buf);
 {$else not CHECK_INPUTPOINTER_LIMITS}
-           inputbuffer:=buf;
-           inputpointer:=buf;
+           inputbuffer:=PAnsiChar(buf);
+           inputpointer:=PAnsiChar(buf);
 {$endif CHECK_INPUTPOINTER_LIMITS}
            inputstart:=bufstart;
            ref_index:=fileindex;
@@ -5346,13 +5348,13 @@ type
               if (cs_support_macro in current_settings.moduleswitches) then
                begin
                  mac:=tmacro(search_macro(pattern));
-                 if assigned(mac) and (not mac.is_compiler_var) and (assigned(mac.buftext)) then
+                 if assigned(mac) and (not mac.is_compiler_var) and mac.is_c_macro then
                   begin
                     if (yylexcount<max_macro_nesting) and (macro_nesting_depth<max_macro_nesting) then
                      begin
                        mac.is_used:=true;
                        inc(yylexcount);
-                       substitutemacro(pattern,mac.buftext,mac.buflen,
+                       substitutemacro(pattern,pchar(mac.buftext),mac.buflen,
                          mac.fileinfo.line,mac.fileinfo.fileindex,false);
                        { handle empty macros }
                        if c=#0 then
@@ -5943,7 +5945,7 @@ type
                  { strings with length 1 become const chars }
                  if iswidestring then
                    begin
-                     if patternw^.len=1 then
+                     if patternw.len=1 then
                        token:=_CWCHAR
                      else
                        token:=_CWSTRING;

@@ -412,6 +412,7 @@ interface
          0: (valueord : tconstexprint);
          1: (valueordptr : tconstptruint);
          2: (valueptr : pointer; len : longint);
+         3: (valuews : tcompilerwidestring);
        end;
 
        tconstsym = class(tstoredsym)
@@ -423,7 +424,7 @@ interface
           constructor create_ordptr(const n : TSymStr;t : tconsttyp;v : tconstptruint;def:tdef);virtual;
           constructor create_ptr(const n : TSymStr;t : tconsttyp;v : pointer;def:tdef);virtual;
           constructor create_string(const n : TSymStr;t : tconsttyp;str:pchar;l:longint;def:tdef);virtual;
-          constructor create_wstring(const n : TSymStr;t : tconsttyp;pw:pcompilerwidestring);virtual;
+          constructor create_wstring(const n : TSymStr;t : tconsttyp;pw:tcompilerwidestring);virtual;
           constructor create_undefined(const n : TSymStr;def:tdef);virtual;
           constructor ppuload(ppufile:tcompilerppufile);
           destructor  destroy;override;
@@ -475,11 +476,13 @@ interface
           {True if this is a mac style compiler variable, in which case no macro
            substitutions shall be done.}
           is_compiler_var : boolean;
+          { true if the macro is a C macro, i.e used := }
+          is_c_macro : boolean;
           {Whether the macro was used. NOTE: A use of a macro which was never defined}
           {e. g. an IFDEF which returns false, will not be registered as used,}
           {since there is no place to register its use. }
           is_used : boolean;
-          buftext : pchar;
+          buftext : TAnsiCharDynArray;
           buflen  : longint;
           constructor create(const n : TSymStr);
           constructor ppuload(ppufile:tcompilerppufile);
@@ -2656,12 +2659,12 @@ implementation
       end;
 
 
-    constructor tconstsym.create_wstring(const n : TSymStr;t : tconsttyp;pw:pcompilerwidestring);
+    constructor tconstsym.create_wstring(const n : TSymStr;t : tconsttyp;pw:tcompilerwidestring);
       begin
          inherited create(constsym,n);
          fillchar(value, sizeof(value), #0);
          consttyp:=t;
-         pcompilerwidestring(value.valueptr):=pw;
+         value.valuews:=pw;
          constdef:=carraydef.getreusable(cwidechartype,getlengthwidestring(pw));
          constdefderef.reset;
          value.len:=getlengthwidestring(pw);
@@ -2682,7 +2685,7 @@ implementation
          pd : pbestreal;
          ps : pnormalset;
          pc : pchar;
-         pw : pcompilerwidestring;
+         pw : tcompilerwidestring;
          i  : longint;
 
          procedure do_widestring_const;
@@ -2695,15 +2698,15 @@ implementation
              be byteswapped
            }
 {$if sizeof(tcompilerwidechar) = 2}
-           for i:=0 to pw^.len-1 do
-             pw^.data[i]:=ppufile.getword;
+           for i:=0 to pw.len-1 do
+             pw.data[i]:=ppufile.getword;
 {$elseif sizeof(tcompilerwidechar) = 4}
-           for i:=0 to pw^.len-1 do
-             pw^.data[i]:=cardinal(ppufile.getlongint);
+           for i:=0 to pw.len-1 do
+             pw.data[i]:=cardinal(ppufile.getlongint);
 {$else}
           {$error Unsupported tcompilerwidechar size}
 {$endif}
-           pcompilerwidestring(value.valueptr):=pw;
+           value.valuews:=pw;
          end;
 
       begin
@@ -2783,7 +2786,7 @@ implementation
             freemem(pchar(value.valueptr),value.len+1);
           constwstring,
           constwresourcestring:
-            donewidestring(pcompilerwidestring(value.valueptr));
+            donewidestring(value.valuews);
           constreal :
             dispose(pbestreal(value.valueptr));
           constset :
@@ -2815,7 +2818,7 @@ implementation
           constnil,constord,constreal,constpointer,constset,conststring,constresourcestring,constwresourcestring,constguid:
             constdef:=tdef(constdefderef.resolve);
           constwstring:
-            constdef:=carraydef.getreusable(cwidechartype,getlengthwidestring(pcompilerwidestring(value.valueptr)));
+            constdef:=carraydef.getreusable(cwidechartype,getlengthwidestring(value.valuews));
           else
             internalerror(2015120801);
         end
@@ -2826,9 +2829,13 @@ implementation
 
       procedure do_widestring_const;
 
+      var
+        len : integer;
       begin
-        ppufile.putlongint(getlengthwidestring(pcompilerwidestring(value.valueptr)));
-        ppufile.putdata(pcompilerwidestring(value.valueptr)^.data^,pcompilerwidestring(value.valueptr)^.len*sizeof(tcompilerwidechar));
+        len:=getlengthwidestring(value.valuews);
+        ppufile.putlongint(len);
+        if len>0 then
+          ppufile.putdata(value.valuews.data[0],value.valuews.len*sizeof(tcompilerwidechar));
       end;
 
 
@@ -3111,17 +3118,14 @@ implementation
          defined:=ppufile.getboolean;
          is_compiler_var:=ppufile.getboolean;
          is_used:=false;
-         buflen:= ppufile.getlongint;
-         if buflen > 0 then
-           ppufile.getdata(allocate_buftext(buflen)^, buflen)
-         else
-           buftext:=nil;
+         allocate_buftext(ppufile.getlongint);
+         if buflen>0 then
+           ppufile.getdata(buftext)
       end;
 
     destructor tmacro.destroy;
       begin
-         if assigned(buftext) then
-           freemem(buftext);
+         buftext:=nil;
          inherited destroy;
       end;
 
@@ -3132,29 +3136,23 @@ implementation
          ppufile.putboolean(is_compiler_var);
          ppufile.putlongint(buflen);
          if buflen > 0 then
-           ppufile.putdata(buftext^,buflen);
+           ppufile.putdata(buftext);
          writeentry(ppufile,ibmacrosym);
       end;
 
 
     function tmacro.allocate_buftext(len:longint) : pchar;
       begin
-        result:=getmem(len);
-        if assigned(buftext) then
-          freemem(buftext);
-        buftext:=result;
+        setlength(buftext,len);
         buflen:=len;
+        result:=PAnsiChar(buftext);
       end;
 
 
     procedure tmacro.free_buftext;
       begin
-        if assigned(buftext) then
-          begin
-            freemem(buftext);
-            buftext:=nil;
-            buflen:=0;
-          end;
+        buftext:=nil;
+        buflen:=0;
       end;
 
 
@@ -3166,9 +3164,10 @@ implementation
         p.defined:=defined;
         p.is_used:=is_used;
         p.is_compiler_var:=is_compiler_var;
-        p.buflen:=buflen;
-        if assigned(buftext) then
-          move(buftext^,p.allocate_buftext(buflen)^,buflen);
+        p.is_c_macro:=is_c_macro;
+        p.allocate_buftext(buflen);
+        if buflen>0 then
+          move(buftext[0],p.buftext[0],buflen);
         Result:=p;
       end;
 

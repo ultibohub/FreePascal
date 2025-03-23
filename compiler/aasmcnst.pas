@@ -27,7 +27,7 @@ unit aasmcnst;
 interface
 
 uses
-  cclasses,globtype,constexp,
+  cclasses,globtype,constexp,widestr,
   aasmbase,aasmdata,aasmtai,
   symconst,symbase,symtype,symdef,symsym;
 
@@ -351,7 +351,7 @@ type
      { the datalist parameter specifies where the data for the string constant
        will be emitted (via an internal data builder) }
      function emit_ansistring_const(datalist: TAsmList; data: pchar; len: asizeint; encoding: tstringencoding): tasmlabofs;
-     function emit_unicodestring_const(datalist: TAsmList; data: pointer; encoding: tstringencoding; winlike: boolean):tasmlabofs;
+     function emit_unicodestring_const(datalist: TAsmList; data: tcompilerwidestring; encoding: tstringencoding; winlike: boolean):tasmlabofs;
      { emits a tasmlabofs as returned by emit_*string_const }
      procedure emit_string_offset(const ll: tasmlabofs; const strlength: longint; const st: tstringtype; const winlikewidestring: boolean; const charptrdef: tdef);virtual;
 
@@ -524,7 +524,7 @@ implementation
 
    uses
      cutils,
-     verbose,globals,systems,widestr,
+     verbose,globals,systems,
      fmodule,
      symtable,symutil,defutil;
 
@@ -727,25 +727,30 @@ implementation
      end;
 
    procedure tai_aggregatetypedconst.add_to_string(strtai: tai_string; othertai: tai);
+     var
+       len1,len2,lent : Integer;
+       lother_string : tai_string absolute othertai;
      begin
        case othertai.typ of
          ait_string:
            begin
-             strtai.str:=reallocmem(strtai.str,strtai.len+tai_string(othertai).len+1);
+             // lengths without terminating 0
+             len1:=length(strtai.str)-1;
+             len2:=length(lother_string.str)-1;
+             lent:=len1+len2;
+             SetLength(strtai.str,lent+1);
              { also copy null terminator }
-             move(tai_string(othertai).str[0],strtai.str[strtai.len],tai_string(othertai).len+1);
-             { the null terminator is not part of the string data }
-             strtai.len:=strtai.len+tai_string(othertai).len;
+             move(lother_string.str[0],strtai.str[len1+1],len2+1);
            end;
          ait_const:
            begin
              if tai_const(othertai).size<>1 then
                internalerror(2014070101);
              { it was already len+1 to hold the #0 -> realloc to len+2 }
-             strtai.str:=reallocmem(strtai.str,strtai.len+2);
-             strtai.str[strtai.len]:=ansichar(tai_const(othertai).value);
-             strtai.str[strtai.len+1]:=#0;
-             inc(strtai.len);
+             len1:=length(strtai.str);
+             SetLength(strtai.str,len1+1);
+             strtai.str[len1]:=ansichar(tai_const(othertai).value);
+             strtai.str[len1+1]:=#0;
            end;
          else
            internalerror(2014070102);
@@ -826,6 +831,9 @@ implementation
 
 
    procedure tai_aggregatetypedconst.finish;
+     var
+       lString : tai_string;
+       len : integer;
      begin
        if fisstring then
          begin
@@ -833,9 +841,9 @@ implementation
              data }
            if fvalues.count<>1 then
              internalerror(2014070105);
-           tai_simpletypedconst(fvalues[0]).fdef:=
-             carraydef.getreusable(cansichartype,
-               tai_string(tai_simpletypedconst(fvalues[0]).val).len);
+           lString:=tai_string(tai_simpletypedconst(fvalues[0]).val);
+           len:=length(lString.str)-1;
+           tai_simpletypedconst(fvalues[0]).fdef:=carraydef.getreusable(cansichartype,len);
          end;
      end;
 
@@ -1701,24 +1709,23 @@ implementation
        ansistrrecdef: trecorddef;
        datadef: tdef;
        datatcb: ttai_typedconstbuilder;
+       ts : Tai_string;
      begin
        start_internal_data_builder(datalist,sec_rodata_norel,'',datatcb,startlab);
        result:=datatcb.emit_string_const_common(st_ansistring,len,encoding,startlab);
 
-       getmem(s,len+1);
-       move(data^,s^,len);
-       s[len]:=#0;
        { terminating zero included }
        datadef:=carraydef.getreusable(cansichartype,len+1);
        datatcb.maybe_begin_aggregate(datadef);
-       datatcb.emit_tai(tai_string.create_pchar(s,len+1),datadef);
+       ts:=tai_string.create_pchar(data,len+1); // +1 to include terminating 0
+       datatcb.emit_tai(ts,datadef);
        datatcb.maybe_end_aggregate(datadef);
        ansistrrecdef:=datatcb.end_anonymous_record;
        finish_internal_data_builder(datatcb,startlab,ansistrrecdef,const_align(voidpointertype.alignment));
      end;
 
 
-   function ttai_typedconstbuilder.emit_unicodestring_const(datalist: TAsmList; data: pointer; encoding: tstringencoding; winlike: boolean):tasmlabofs;
+   function ttai_typedconstbuilder.emit_unicodestring_const(datalist: TAsmList; data: tcompilerwidestring; encoding: tstringencoding; winlike: boolean):tasmlabofs;
      var
        i, strlength: longint;
        string_symofs: asizeint;
@@ -1728,7 +1735,7 @@ implementation
        unicodestrrecdef: trecorddef;
      begin
        start_internal_data_builder(datalist,sec_rodata_norel,'',datatcb,startlab);
-       strlength:=getlengthwidestring(pcompilerwidestring(data));
+       strlength:=getlengthwidestring(data);
        if winlike then
          begin
            result.lab:=startlab;
@@ -1760,7 +1767,7 @@ implementation
            datadef:=carraydef.getreusable(cwidechartype,strlength+1);
            datatcb.maybe_begin_aggregate(datadef);
            for i:=0 to strlength-1 do
-             datatcb.emit_tai(Tai_const.Create_16bit(pcompilerwidestring(data)^.data[i]),cwidechartype);
+             datatcb.emit_tai(Tai_const.Create_16bit(data.data[i]),cwidechartype);
            { ending #0 }
            datatcb.emit_tai(Tai_const.Create_16bit(0),cwidechartype);
            datatcb.maybe_end_aggregate(datadef);

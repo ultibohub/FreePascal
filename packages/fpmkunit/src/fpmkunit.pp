@@ -312,10 +312,12 @@ Const
   RsjExt  = '.rsj';
   LibExt  = '.a';
   SharedLibExt = '.so';
+  WasiSharedLibExt = '';
   DyLibExt = '.dylib';
   DLLExt  = '.dll';
   AIXSharedLibExt = '.a';
   ExeExt  = '.exe';
+  WasiExeExt  = '.wasm';
   DbgExt  = '.dbg';
   ZipExt  = '.zip';
   FpmkExt = '.fpm';
@@ -2959,6 +2961,8 @@ function AddProgramExtension(const ExecutableName: string; AOS : TOS): string;
 begin
   if AOS in [Go32v2,Win32,Win64,Wince,OS2,EMX,Watcom] then
     Result:=ExecutableName+ExeExt
+  else if AOS in [wasip1,wasip1threads,wasip2] then
+    Result:=ExecutableName+WasiExeExt
   else
     Result:=ExecutableName;
 end;
@@ -2971,6 +2975,8 @@ begin
     Result:=LibraryName+DyLibExt
   else if aOS = Aix then
     Result:=LibraryName+AIXSharedLibExt
+  else if AOS in [wasip1,wasip1threads,wasip2] then
+    Result:=LibraryName+WasiSharedLibExt
   else
     Result:=LibraryName+SharedLibExt;
 end;

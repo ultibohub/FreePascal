@@ -26,6 +26,7 @@ unit owar;
 interface
 
 uses
+  globtype,
   cclasses,
   owbase;
 
@@ -64,7 +65,7 @@ type
   tarobjectreader=class(tobjectreader)
   private
     ArSymbols : TFPHashObjectList;
-    LFNStrs   : PChar;
+    LFNStrs   : TAnsiCharDynArray;
     LFNSize   : longint;
     CurrMemberPos,
     CurrMemberSize : longint;
@@ -353,8 +354,7 @@ implementation
       begin
         inherited closefile;
         ArSymbols.Free;
-        if assigned(LFNStrs) then
-          FreeMem(LFNStrs);
+        LFNStrs:=nil;
         inherited Destroy;
       end;
 
@@ -462,11 +462,11 @@ implementation
         symsize     : longint;
         arsym       : TArSymbol;
         s           : string;
-        syms,
         currp,
         endp,
-        startp      : pchar;
-        relocs      : plongint;
+        startp      : integer;
+        syms : TAnsiCharDynArray;
+        relocs      : Array of longint;
       begin
         Read(currarhdr,sizeof(currarhdr));
         { Read number of relocs }
@@ -482,23 +482,23 @@ implementation
             exit;
           end;
         { Read relocs }
-        getmem(Relocs,relocsize);
-        Read(relocs^,relocsize);
+        setlength(Relocs,relocsize);
+        Read(relocs[0],relocsize);
         { Read symbols, force terminating #0 to prevent overflow }
-        getmem(syms,symsize+1);
+        setlength(syms,symsize+1);
         syms[symsize]:=#0;
-        Read(syms^,symsize);
+        Read(syms[0],symsize);
         { Parse symbols }
         relocidx:=0;
-        currp:=syms;
-        endp:=syms+symsize;
+        currp:=0;
+        endp:=symsize;
         for relocidx:=0 to nrelocs-1 do
           begin
             startp:=currp;
-            while (currp^<>#0) do
+            while (syms[currp]<>#0) do
               inc(currp);
-            s[0]:=chr(currp-startp);
-            move(startp^,s[1],byte(s[0]));
+            SetLength(s,currp-startp);
+            move(syms[startp],s[1],currp-startp);
             arsym:=TArSymbol.create(ArSymbols,s);
             arsym.MemberPos:=lsb2msb(relocs[relocidx]);
             inc(currp);
@@ -508,15 +508,15 @@ implementation
                 break;
               end;
           end;
-        freemem(relocs);
-        freemem(syms);
+        relocs:=nil;
+        syms:=nil;
         { LFN names }
         Read(currarhdr,sizeof(currarhdr));
         if DecodeMemberName(currarhdr)='/' then
           begin
             lfnsize:=DecodeMemberSize(currarhdr);
-            getmem(lfnstrs,lfnsize);
-            Read(lfnstrs^,lfnsize);
+            setLength(lfnstrs,lfnsize);
+            Read(lfnstrs[0],lfnsize);
           end;
       end;
 

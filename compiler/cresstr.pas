@@ -44,8 +44,8 @@ uses
       TResourceStringItem = class(TLinkedListItem)
         Sym   : TConstSym;
         Name  : String;
-        AValue : PAnsiChar;
-        WValue : pcompilerwidestring; // just a reference, do not free.
+        AValue : TAnsiCharDynArray;
+        WValue : tcompilerwidestring; // just a reference, do not free.
         Len   : Longint; // in bytes, not characters
         hash  : Cardinal;
         isUnicode : Boolean;
@@ -75,7 +75,7 @@ uses
     constructor TResourceStringItem.Create(asym:TConstsym);
 
     var
-      pw : pcompilerwidestring;
+      pw : tcompilerwidestring;
       t : TDef;
 
       begin
@@ -86,14 +86,15 @@ uses
         if IsUnicode then
           begin
           T:=aSym.constdef;
-          WValue:=pcompilerwidestring(asym.value.valueptr);
-          Len:=WValue^.len*sizeOf(tcompilerwidechar);
+          WValue:=asym.value.valuews;
+          Len:=WValue.len*sizeOf(tcompilerwidechar);
           end
         else
           begin
           Len:=asym.value.len;
-          GetMem(AValue,Len);
-          Move(asym.value.valueptr^,AValue^,Len);
+          SetLength(AValue,Len);
+          if len>0 then
+            Move(asym.value.valueptr^,AValue[0],Len);
           end;
         CalcHash;
       end;
@@ -101,8 +102,7 @@ uses
 
     destructor TResourceStringItem.Destroy;
       begin
-        if Assigned(AValue) then
-          FreeMem(AValue);
+        AValue:=nil;
       end;
 
 
@@ -119,9 +119,9 @@ uses
         if IsUnicode then
           begin
           // Need to calculate hash on UTF8 encoded string, GNU gettext.
-          llen:=UnicodeToUtf8(nil,0,PUnicodeChar(wValue^.data),wValue^.len);
+          llen:=UnicodeToUtf8(nil,0,PUnicodeChar(wValue.data),wValue.len);
           getmem(pc,llen);
-          UnicodeToUtf8(PC,llen,PUnicodeChar(wValue^.data),len);
+          UnicodeToUtf8(PC,llen,wValue.asconstpunicodechar,len);
           P:=PByte(pc);
           llen:=llen-1; // Take of terminating #0
           end
@@ -209,7 +209,7 @@ uses
               else
                 begin
                 if assigned(R.AValue) then
-                  valuelab:=tcb.emit_ansistring_const(current_asmdata.asmlists[al_const],R.AValue,R.Len,getansistringcodepage)
+                  valuelab:=tcb.emit_ansistring_const(current_asmdata.asmlists[al_const],PAnsiChar(R.AValue),R.Len,getansistringcodepage)
                 end;
               end;
             current_asmdata.asmlists[al_const].concat(cai_align.Create(sizeof(pint)));
@@ -255,7 +255,7 @@ uses
         ResFileName: string;
         I,Len: Integer;
         C: tcompilerwidechar;
-        W: pcompilerwidestring;
+        W: tcompilerwidestring;
         P : PByte;
 
       begin
@@ -280,7 +280,7 @@ uses
           begin
             write(f, '{"hash":',R.Hash,',"name":"',R.Name,'","sourcebytes":[');
             if R.isUnicode then
-              P:=PByte(R.WValue^.data)
+              P:=PByte(R.WValue.asconstpunicodechar)
             else
               P:=PByte(R.AValue);
             for i:=0 to R.Len-1 do
@@ -293,15 +293,15 @@ uses
             if Not r.isUnicode then
               begin
               initwidestring(W);
-              ascii2unicode(R.AValue,R.Len,current_settings.sourcecodepage,W);
+              ascii2unicode(PAnsiChar(R.AValue),R.Len,current_settings.sourcecodepage,W);
               end
             else
               begin
               W:=R.WValue;
               end;
-            for I := 0 to W^.len - 1 do
+            for I := 0 to W.len - 1 do
               begin
-                C := W^.Data[I];
+                C := W.Data[I];
                 case C of
                   Ord('"'), Ord('\'), Ord('/'):
                     write(f, '\', Chr(C));

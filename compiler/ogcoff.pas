@@ -40,6 +40,9 @@ interface
        PE_DATADIR_ENTRIES = 16;
 
     type
+
+       TObjSymbolArray = array of TObjSymbol;
+       TObjSectionArray = array of TObjSection;
        tcoffpedatadir = packed record
          vaddr : longword;
          size  : longword;
@@ -175,13 +178,13 @@ interface
        TCoffObjInput = class(tObjInput)
        private
          FCoffsyms : tdynamicarray;
-         FCoffStrs : PChar;
+         FCoffStrs : TAnsiCharDynArray;
          FCoffStrSize: longword;
          { Convert symidx -> TObjSymbol }
-         FSymTbl   : ^TObjSymbolArray;
+         FSymTbl   : TObjSymbolArray;
          { Convert secidx -> TObjSection }
          FSecCount : Longint;
-         FSecTbl   : ^TObjSectionArray;
+         FSecTbl   : TObjSectionArray;
          win32     : boolean;
          bigobj    : boolean;
          function  GetSection(secidx:longint):TObjSection;
@@ -251,9 +254,6 @@ interface
          procedure MemPos_Start;override;
          procedure MemPos_ExeSection(const aname:string);override;
        end;
-
-       TObjSymbolArray = array[0..high(word)] of TObjSymbol;
-       TObjSectionArray = array[0..high(smallint)] of TObjSection;
 
        TDJCoffAssembler = class(tinternalassembler)
          constructor create(info: pasminfo; smart:boolean);override;
@@ -2270,12 +2270,9 @@ const pemagic : array[0..3] of byte = (
     destructor TCoffObjInput.destroy;
       begin
         FCoffSyms.free;
-        if assigned(FCoffStrs) then
-          freemem(FCoffStrs);
-        if assigned(FSymTbl) then
-          freemem(FSymTbl);
-        if assigned(FSecTbl) then
-          freemem(FSecTbl);
+        FCoffStrs:=nil;
+        FSymTbl:=nil;
+        FSecTbl:=nil;
         inherited destroy;
       end;
 
@@ -2288,7 +2285,7 @@ const pemagic : array[0..3] of byte = (
             InputError('Failed reading coff file, invalid section index');
             exit;
           end;
-        result:=FSecTbl^[secidx];
+        result:=FSecTbl[secidx];
       end;
 
 
@@ -2408,7 +2405,7 @@ const pemagic : array[0..3] of byte = (
              end;
            end;
 
-           p:=FSymTbl^[rel.sym];
+           p:=FSymTbl[rel.sym];
            if assigned(p) then
              s.addsymreloc(rel.address-s.mempos,p,rel_type)
            else
@@ -2457,7 +2454,7 @@ const pemagic : array[0..3] of byte = (
            else
              nsyms:=FCoffSyms.Size div sizeof(CoffSymbol);
            { Allocate memory for symidx -> TObjSymbol table }
-           FSymTbl:=AllocMem(nsyms*sizeof(TObjSymbol));
+           SetLength(FSymTbl,nsyms);
            { Load the Symbols }
            FCoffSyms.Seek(0);
            symidx:=0;
@@ -2576,7 +2573,7 @@ const pemagic : array[0..3] of byte = (
                 else
                   UnsupportedSymbolType;
               end;
-              FSymTbl^[symidx]:=objsym;
+              FSymTbl[symidx]:=objsym;
               { read aux records }
 
               { handle COMDAT symbols }
@@ -2771,7 +2768,7 @@ const pemagic : array[0..3] of byte = (
            if (FCoffStrSize>4) then
              begin
                { allocate an extra byte and null-terminate }
-               GetMem(FCoffStrs,FCoffStrSize+1);
+               SetLength(FCoffStrs,FCoffStrSize+1);
                FCoffStrs[FCoffStrSize]:=#0;
                for i:=0 to 3 do
                  FCoffStrs[i]:=#0;
@@ -2787,7 +2784,7 @@ const pemagic : array[0..3] of byte = (
              FSecCount:=longint(boheader.NumberOfSections)
            else
              FSecCount:=header.nsects;
-           FSecTbl:=AllocMem((FSecCount+1)*sizeof(TObjSection));
+           SetLength(FSecTbl,(FSecCount+1));
            if bigobj then
              secofs:=sizeof(tcoffbigobjheader)
            else
@@ -2850,7 +2847,7 @@ const pemagic : array[0..3] of byte = (
                      end;
                  end;
                objsec:=TCoffObjSection(createsection(secname,secalign,secoptions,false));
-               FSecTbl^[i]:=objsec;
+               FSecTbl[i]:=objsec;
                if not win32 then
                  objsec.mempos:=sechdr.rvaofs;
                objsec.orgmempos:=sechdr.rvaofs;
@@ -2871,8 +2868,6 @@ const pemagic : array[0..3] of byte = (
            { Relocs }
            ObjSectionList.ForEachCall(@objsections_read_relocs,nil);
          end;
-        if assigned(FCoffStrs) then
-          freemem(FCoffStrs);
         FCoffStrs:=nil;
         FCoffSyms.Free;
         FCoffSyms:=nil;

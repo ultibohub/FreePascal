@@ -874,8 +874,8 @@ implementation
       i,pos,l  : longint;
       InlineLevel : cardinal;
       last_align : longint;
-      do_line  : boolean;
 
+      do_line  : boolean;
       sepChar : char;
       replaceforbidden: boolean;
     begin
@@ -1303,7 +1303,7 @@ implementation
                          writer.AsmWrite(#9'.ascii'#9'"');
                          pos:=20;
                        end;
-                      ch:=tai_string(hp).str[i-1];
+                      ch:=AnsiChar(tai_string(hp).str[i-1]);
                       case ch of
                         #0, {This can't be done by range, because a bug in FPC}
                         #1..#31,
