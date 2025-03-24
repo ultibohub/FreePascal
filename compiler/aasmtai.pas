@@ -611,7 +611,11 @@ interface
           str : TAnsiCharDynArray;
           constructor Create(const _str : string);
           constructor Create(const _str : ansistring);
-          constructor Create_pchar(_str : pchar;length : longint);
+          { data: not guaranteed to #0-terminated
+            length: length of the data without #0 terminator (unless the #0
+              terminator itself must be included)
+            add0: add a terminating zero as part of the data after data  }
+          constructor Create_Data(data : pchar;length : longint; add0: boolean);
           destructor Destroy;override;
           constructor ppuload(t:taitype;ppufile:tcompilerppufile);override;
           procedure ppuwrite(ppufile:tcompilerppufile);override;
@@ -2424,10 +2428,9 @@ implementation
           inherited Create;
           typ:=ait_string;
           lNewLen:=length(_str);
-          setlength(str,lNewLen+1);
+          setlength(str,lNewLen);
           if lNewLen>0 then
             move(_str[1],str[0],lNewLen);
-          str[lNewLen]:=#0;
        end;
 
 
@@ -2438,21 +2441,21 @@ implementation
          inherited Create;
          typ:=ait_string;
          lNewLen:=length(_str);
-         setlength(str,lNewlen+1);
+         setlength(str,lNewlen);
          if lNewLen>0 then
            move(_str[1],str[0],lNewLen);
-         str[lNewLen]:=#0;
        end;
 
 
-    constructor tai_string.Create_pchar(_str : pchar;length : longint);
+    constructor tai_string.Create_Data(data : pchar;length : longint; add0: boolean);
        begin
           inherited Create;
           typ:=ait_string;
-          setlength(str,length+1);
-          str[length]:=#0;
+          setlength(str,length+ord(add0));
           if length>0 then
-            move(_str^,str[0],length);
+            move(data^,str[0],length);
+          if add0 then
+            str[length]:=#0;
        end;
 
 
@@ -2468,9 +2471,8 @@ implementation
       begin
         inherited ppuload(t,ppufile);
         lNewLen:=ppufile.getlongint;
-        setlength(str,lNewLen+1);
+        setlength(str,lNewLen);
         ppufile.getdata(str[0],lnewlen);
-        str[lNewLen]:=#0;
       end;
 
 
@@ -2479,7 +2481,7 @@ implementation
         lWriteLen : integer;
       begin
         inherited ppuwrite(ppufile);
-        lWriteLen:=length(str)-1;
+        lWriteLen:=length(str);
         ppufile.putlongint(lWriteLen);
         ppufile.putdata(str[0],lWriteLen);
       end;
@@ -2493,7 +2495,6 @@ implementation
         p:=inherited getcopy;
         lWriteLen:=length(str);
         setlength(tai_string(p).str,lWriteLen);
-        // move #0 at the end too.
         move(str[0],tai_string(p).str[0],lWriteLen);
         getcopy:=p;
       end;
@@ -2501,8 +2502,6 @@ implementation
     function tai_string.len: integer;
     begin
       Result:=Length(str);
-      if Result>0 then
-        Result:=Result-1;
     end;
 
 
