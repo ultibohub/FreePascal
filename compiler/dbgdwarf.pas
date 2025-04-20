@@ -1504,6 +1504,7 @@ implementation
       var
         hp : tenumsym;
         i  : integer;
+        entryform : Tdwarf_form;
       begin
         if assigned(def.typesym) then
           append_entry(DW_TAG_enumeration_type,true,[
@@ -1515,8 +1516,47 @@ implementation
             DW_AT_byte_size,DW_FORM_data1,def.size
             ]);
         if assigned(def.basedef) then
-          append_labelentry_ref(DW_AT_type,def_dwarf_lab(def.basedef));
+          append_labelentry_ref(DW_AT_type,def_dwarf_lab(def.basedef))
+        else if dwarf_version>=3 then
+          case def.size of
+            1:
+               if def.min<0 then
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(s8inttype))
+               else
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(u8inttype));
+            2:
+               if def.min<0 then
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(s16inttype))
+               else
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(u16inttype));
+            4:
+               if def.min<0 then
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(s32inttype))
+               else
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(u32inttype));
+            8:
+               if def.min<0 then
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(s64inttype))
+               else
+                 append_labelentry_ref(DW_AT_type,def_dwarf_lab(u64inttype));
+            else
+              Internalerror(2025041701);
+          end;
+
         finish_entry;
+
+        case def.size of
+          1:
+             entryform:=DW_FORM_data1;
+          2:
+             entryform:=DW_FORM_data2;
+          4:
+             entryform:=DW_FORM_data4;
+          8:
+             entryform:=DW_FORM_data8;
+        else
+          Internalerror(2025041601);
+        end;
 
         { write enum symbols }
         for i := 0 to def.symtable.SymList.Count - 1 do
@@ -1529,7 +1569,7 @@ implementation
               break;
             append_entry(DW_TAG_enumerator,false,[
               DW_AT_name,DW_FORM_string,symname(hp, false)+#0,
-              DW_AT_const_value,DW_FORM_data4,hp.value
+              DW_AT_const_value,entryform,hp.value
             ]);
             finish_entry;
           end;

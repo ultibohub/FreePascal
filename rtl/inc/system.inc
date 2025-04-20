@@ -1778,7 +1778,11 @@ end;
 
 {$i sysheap.inc}
 
+{$IFDEF LEGACYHEAP}
+{$i oldheap.inc}
+{$ELSE}
 {$i heap.inc}
+{$ENDIF LEGACYHEAP}
 
 {*****************************************************************************
                           Thread support
