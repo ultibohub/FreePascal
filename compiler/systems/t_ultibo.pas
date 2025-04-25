@@ -546,7 +546,7 @@ begin
          Add('        _text_start = .;');
          Add('        KEEP(*(.init, .init.*))');
          Add('        KEEP(*(.plt, .plt.*))');
-         Add('        *(.text, .text.*)');
+         Add('        *(.text, .text.* .gnu.linkonce.t.*)');
          Add('        KEEP(*(.fini, .fini.*))');
          Add('        _etext = .;');
          Add('    } > CODE');
@@ -555,9 +555,14 @@ begin
          Add('    {');
          Add('        _rodata = .;');
          Add('        *(.strings)');
-         Add('        *(.rodata, .rodata.*)');
+         Add('        *(.rodata, .rodata.* .gnu.linkonce.r.*)');
          Add('        *(.comment)');
          Add('        _erodata = .;');
+         Add('    } > ROM');
+
+         Add('    .ARM.extab : ');
+         Add('    {');
+         Add('      *(.ARM.extab* .gnu.linkonce.armextab.*)');
          Add('    } > ROM');
 
          Add('    .ARM.exidx :');
@@ -567,9 +572,29 @@ begin
          Add('        __exidx_end = .;');
          Add('    } > ROM');
 
+         Add('    .eh_frame_hdr :');
+         Add('    {');
+         Add('        *(.eh_frame_hdr, .eh_frame_hdr.*)');
+         Add('    } > ROM');
+
          Add('    .eh_frame :');
          Add('    {');
          Add('        *(.eh_frame, .eh_frame.*)');
+         Add('    } > ROM');
+
+         Add('    .gcc_except_table :');
+         Add('    {');
+         Add('        *(.gcc_except_table .gcc_except_table.*)');
+         Add('    } > ROM');
+
+         Add('    .tdata :');
+         Add('    {');
+         Add('        *(.tdata .tdata.* .gnu.linkonce.td.*)');
+         Add('    } > ROM');
+
+         Add('    .tbss :');
+         Add('    {');
+         Add('        *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon)');
          Add('    } > ROM');
 
          Add('    .data ALIGN(4096):');
@@ -590,6 +615,7 @@ begin
          Add('    .init_array :');
          Add('    {');
          Add('        __init_array_start = .;');
+         Add('        KEEP(*(SORT(.init_array.*)))');
          Add('        KEEP(*(.init_array))');
          Add('        __init_array_end = .;');
          Add('    } > RAM');
@@ -597,6 +623,7 @@ begin
          Add('    .fini_array :');
          Add('    {');
          Add('        __fini_array_start = .;');
+         Add('        KEEP(*(SORT(.fini_array.*)))');
          Add('        KEEP(*(.fini_array))');
          Add('        __fini_array_end = .;');
          Add('    } > RAM');
@@ -604,6 +631,9 @@ begin
          Add('    .ctors :');
          Add('    {');
          Add('        __ctors_start = .;');
+         Add('        KEEP(*crtbegin.o(.ctors))');
+         Add('        KEEP(*crtbegin?.o(.ctors))');
+         Add('        KEEP(*(EXCLUDE_FILE(*crtend.o *crtend?.o) .ctors))');
          Add('        KEEP(*(SORT(.ctors.*)))');
          Add('        KEEP(*(.ctors))');
          Add('        __ctors_end = .;');
@@ -612,6 +642,9 @@ begin
          Add('    .dtors :');
          Add('    {');
          Add('        __dtors_start = .;');
+         Add('        KEEP(*crtbegin.o(.dtors))');
+         Add('        KEEP(*crtbegin?.o(.dtors))');
+         Add('        KEEP(*(EXCLUDE_FILE(*crtend.o *crtend?.o) .dtors))');
          Add('        KEEP(*(SORT(.dtors.*)))');
          Add('        KEEP(*(.dtors))');
          Add('        __dtors_end = .;');
@@ -628,6 +661,9 @@ begin
          Add('_end = .;');
         end;
       end;
+     else
+      if not (cs_link_nolink in current_settings.globalswitches) then
+        internalerror(200902011);
     end;
    end;
 {$endif ARM}
@@ -793,6 +829,9 @@ begin
          Add('_end = .;');
         end;
       end;
+     else
+      if not (cs_link_nolink in current_settings.globalswitches) then
+        internalerror(200902011);
     end;
    end;
 {$endif AARCH64}
@@ -1024,6 +1063,10 @@ begin
         success:=DoExec(FindUtil(utilsprefix+'objcopy'),'-O binary '+
           maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel7.qimg',true,false);
        end;
+      else
+       begin
+        { Nothing }
+       end;
      end;  
      {$endif ARM}
      {$ifdef i386}
@@ -1058,6 +1101,10 @@ begin
           maybequoted(ChangeFileExt(current_module.exefilename,'.elf'))+' kernel8.img',true,false);
         
         {Note: Kernel trailer is no longer honoured by latest Raspberry Pi firmware}
+       end;
+      else
+       begin
+        { Nothing }
        end;
      end;  
      {$endif AARCH64}
