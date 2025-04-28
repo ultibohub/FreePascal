@@ -1698,6 +1698,9 @@ parser_e_coperators_off=03371_E_C styled assignment operators are turned off
 parser_e_cannot_evaluate_expression_at_compile_time=03372_E_Expression cannot be evaluated at compile time
 % Certain operations like the size of an object cannot be determined at compile time,
 % so it cannot be e.g. part of a constant expression.
+parser_e_type_alread_forward=03373_E_Duplicate forward type declaration: $1
+% Types might be defined only once as forward:
+% \var{type myclass = class; myclass = class;} is not allowed
 %
 % \end{description}
 %
@@ -3329,10 +3332,10 @@ unit_u_ppu_invalid_header=10007_U_PPU Invalid Header (no PPU at the begin)
 unit_u_ppu_invalid_version=10008_U_PPU Invalid Version $1
 % This unit file was compiled with a different version of the compiler, and
 % cannot be read.
-unit_u_ppu_invalid_processor=10009_U_PPU is compiled for another processor
+unit_u_ppu_invalid_processor=10009_U_PPU is compiled for another processor %1
 % This unit file was compiled for a different processor type, and
 % cannot be read.
-unit_u_ppu_invalid_target=10010_U_PPU is compiled for another target
+unit_u_ppu_invalid_target=10010_U_PPU is compiled for another target %1
 % This unit file was compiled for a different target, and
 % cannot be read.
 unit_u_ppu_source=10011_U_PPU Source: $1

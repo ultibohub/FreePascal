@@ -544,17 +544,23 @@ var rtl = {
         if (!t) t = mod['Exception'];
         if (!t) t = mod['exception'];
       }
+      if (t) rtl[typename]=t;
     }
-    if (t){
+    if (t) {
+      
       if (t.Create){
-        throw t.$create("Create");
-      } else if (t.create){
-        throw t.$create("create");
+        var e = t.$create("Create");
+      } else if (t.create) {
+        var e = t.$create("create");
+      }
+      if (e) {
+        e.FJSError = new Error;
+        throw e ;
       }
     }
-    if (typename === "EInvalidCast") throw "invalid type cast";
-    if (typename === "EAbstractError") throw "Abstract method called";
-    if (typename === "ERangeError") throw "range error";
+    if (typename === "EInvalidCast") throw new Error("invalid type cast");
+    if (typename === "EAbstractError") throw new Error("Abstract method called");
+    if (typename === "ERangeError") throw new Error("range error");
     throw typename;
   },
 
