@@ -2738,6 +2738,10 @@ override DOTESTOPT+=-V
 endif
 ifdef TEST_PARALLEL
 override DOTESTOPT+=-L
+else
+ifneq ($(findstring -j,-$(MAKEFLAGS)),)
+override DOTESTOPT+=-L
+endif
 endif
 ifdef TEST_BENCH
 override DOTESTOPT+=-D
