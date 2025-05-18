@@ -173,6 +173,8 @@ interface
           function pass_typecheck:tnode;override;
           function docompare(p: tnode) : boolean; override;
           function elements : AInt;
+          function low : AInt;
+          function high : AInt;
           function emit_data(tcb:ttai_typedconstbuilder):sizeint;
        end;
        tsetconstnodeclass = class of tsetconstnode;
@@ -1457,6 +1459,47 @@ implementation
         for i:=0 to tsetdef(resultdef).size-1 do
           result:=result+ PopCnt(Psetbytes(value_set)^[i]);
       end;
+
+
+    function tsetconstnode.low: AInt;
+      var
+        i: ASizeInt;
+      begin
+        result:=0;
+        if not(assigned(value_set)) then
+          exit;
+        i:=0;
+        while i<=tsetdef(resultdef).setmax do
+          begin
+            if i in value_set^ then
+              begin
+                result:=i;
+                exit;
+              end;
+            inc(i);
+          end;
+      end;
+
+
+    function tsetconstnode.high: AInt;
+      var
+        i: ASizeInt;
+      begin
+        result:=0;
+        if not(assigned(value_set)) then
+          exit;
+        i:=tsetdef(resultdef).setmax;
+        while i>=tsetdef(resultdef).setbase do
+          begin
+            if i in value_set^ then
+              begin
+                result:=i;
+                exit;
+              end;
+            dec(i);
+          end;
+      end;
+
 
     function tsetconstnode.emit_data(tcb:ttai_typedconstbuilder):sizeint;
       type

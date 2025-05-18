@@ -328,7 +328,8 @@ implementation
            not(is_real or is_enum or
                (source.left.resultdef.typ=orddef)) then
           begin
-            CGMessagePos(fileinfo,parser_e_illegal_expression);
+            CGMessagePos1(source.fileinfo,
+              type_e_integer_expr_expected,source.resultdef.typename);
             exit;
           end;
 
@@ -2421,11 +2422,6 @@ implementation
                vl:=0;
                vl2:=0; { second parameter Ex: ptr(vl,vl2) }
                case left.nodetype of
-                 realconstn :
-                   begin
-                     { Real functions are all handled with internproc below }
-                     CGMessage1(type_e_integer_expr_expected,left.resultdef.typename)
-                   end;
                  ordconstn :
                    vl:=tordconstnode(left).value;
                  callparan :
@@ -2435,7 +2431,17 @@ implementation
                      vl2:=tordconstnode(tcallparanode(tcallparanode(left).right).left).value;
                    end;
                  else
-                   CGMessage(parser_e_illegal_expression);
+                   begin
+                     { Real functions are all handled with internproc below, and
+                       unsupported typex are also trapped here }
+                     if is_integer(left.resultdef) then
+                       { Not as informative, but less confusing }
+                       CGMessagePos(left.fileinfo,parser_e_illegal_expression)
+                     else
+                       CGMessagePos1(left.fileinfo,type_e_integer_expr_expected,left.resultdef.typename);
+                     result:=cerrornode.create;
+                     exit;
+                   end;
                end;
                case inlinenumber of
                  in_const_abs :
@@ -5038,7 +5044,8 @@ implementation
              hpp := tcallparanode(tcallparanode(left).right).left;
              tcallparanode(tcallparanode(left).right).left := nil;
              if assigned(tcallparanode(tcallparanode(left).right).right) then
-               CGMessage(parser_e_illegal_expression);
+               { A syntax error should have already been raised }
+               InternalError(2025050601);
            end
          else
            begin

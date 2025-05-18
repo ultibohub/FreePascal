@@ -1090,7 +1090,7 @@ interface
           elementdef : tdef;
           elementdefderef : tderef;
           setbase,
-          setmax   : asizeint;
+          setlow,setmax   : asizeint;
           constructor create(def: tdef; low, high: asizeint; doregister: boolean);virtual;
           constructor ppuload(ppufile:tcompilerppufile);
           function getcopy : tstoreddef;override;
@@ -4229,6 +4229,7 @@ implementation
          elementdef:=def;
          elementdefderef.reset;
          setmax:=high;
+         setlow:=low;
          actual_setalloc:=current_settings.setalloc;
 {$if defined(cpu8bitalu) or defined(cpu16bitalu)}
          if actual_setalloc=0 then
@@ -4264,6 +4265,7 @@ implementation
          ppufile.getderef(elementdefderef);
          savesize:=ppufile.getasizeint;
          setbase:=ppufile.getasizeint;
+         setlow:=ppufile.getasizeint;
          setmax:=ppufile.getasizeint;
          ppuload_platform(ppufile);
       end;
@@ -4283,6 +4285,7 @@ implementation
          ppufile.putderef(elementdefderef);
          ppufile.putasizeint(savesize);
          ppufile.putasizeint(setbase);
+         ppufile.putasizeint(setlow);
          ppufile.putasizeint(setmax);
          writeentry(ppufile,ibsetdef);
       end;

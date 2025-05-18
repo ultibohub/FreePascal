@@ -157,14 +157,30 @@ end;
   { OS utility code }
   {$i osutil.inc}
 
+    {$IFDEF CPULLVM}
+    // LLVM does not like the constref construction. 
+    // So when LLVM is used, we keep the untyped version.
+    // This allows users of other platforms to enjoy the type safety of FreeAndNil.
     procedure FreeAndNil(var obj);
-      var
+      var 
         temp: tobject;
       begin
         temp:=tobject(obj);
         pointer(obj):=nil;
         temp.free;
       end;
+    {$ELSE}
+    procedure FreeAndNil(constref obj: TObject);
+      type
+        PObject = ^TObject;
+      var
+        temp: tobject;
+      begin
+        temp:=obj;
+        PObject(@obj)^:=nil;
+        temp.free;
+      end;
+    {$ENDIF}
 
     procedure FreeMemAndNil(var p);
 
