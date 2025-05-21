@@ -31,9 +31,17 @@ unit mad;
 {$mode objfpc}
 {$MINENUMSIZE 4}
 
+{$IFDEF ULTIBO}
+{$PACKENUM 1}
+{$PACKRECORDS C}
+{$ENDIF} 
+
 interface
 
 uses
+{$IFDEF ULTIBO}
+  Syscalls,
+{$ENDIF}
   ctypes;
 
 {$IFDEF WINDOWS}
