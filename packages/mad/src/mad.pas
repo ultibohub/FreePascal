@@ -33,13 +33,24 @@ unit mad;
 {$mode objfpc}
 {$MINENUMSIZE 4}
 
+{$IFDEF ULTIBO}
+{$PACKENUM 1}
+{$PACKRECORDS C}
+{$ENDIF} 
+
 interface
 
 {$IFDEF FPC_DOTTEDUNITS}
 uses
+{$IFDEF ULTIBO}
+  Core.Syscalls,
+{$ENDIF}
   System.CTypes;
 {$ELSE FPC_DOTTEDUNITS}
 uses
+{$IFDEF ULTIBO}
+  Syscalls,
+{$ENDIF}
   ctypes;
 {$ENDIF FPC_DOTTEDUNITS}
 
