@@ -1,4 +1,4 @@
-﻿{
+{
     Copyright (c) 1998-2002 by Florian Klaempfl and Peter Vreman
 
     Contains the abstract assembler implementation for the i386
@@ -65,6 +65,7 @@ interface
 
       OT_VECTOR_EXT = OT_VECTORMASK or OT_VECTORZERO or OT_VECTORBCST or OT_VECTORSAE or OT_VECTORER;
 
+      OT_BITSB16    = OT_BITS16 or OT_VECTORBCST;
       OT_BITSB32    = OT_BITS32 or OT_VECTORBCST;
       OT_BITSB64    = OT_BITS64 or OT_VECTORBCST;
 
@@ -235,6 +236,7 @@ interface
       OT_MEM8      = OT_MEMORY or OT_BITS8;
       OT_MEM16     = OT_MEMORY or OT_BITS16;
       OT_MEM16_M   = OT_MEM16  or OT_VECTORMASK;
+      OT_BMEM16    = OT_MEMORY or OT_BITS16 or OT_VECTORBCST;
       OT_MEM32     = OT_MEMORY or OT_BITS32;
       OT_MEM32_M   = OT_MEMORY or OT_BITS32 or OT_VECTORMASK;
       OT_BMEM32    = OT_MEMORY or OT_BITS32 or OT_VECTORBCST;
@@ -278,13 +280,14 @@ interface
       OTVE_VECTOR_BCST4        = 1 shl 4;
       OTVE_VECTOR_BCST8        = 1 shl 5;
       OTVE_VECTOR_BCST16       = 3 shl 4;
+      OTVE_VECTOR_BCST32       = 1 shl 13;
       OTVE_VECTOR_RNSAE        = OTVE_VECTOR_ER or 0;
       OTVE_VECTOR_RDSAE        = OTVE_VECTOR_ER or 1 shl 6;
       OTVE_VECTOR_RUSAE        = OTVE_VECTOR_ER or 1 shl 7;
       OTVE_VECTOR_RZSAE        = OTVE_VECTOR_ER or 3 shl 6;
 
 
-      OTVE_VECTOR_BCST_MASK    = OTVE_VECTOR_BCST2 or OTVE_VECTOR_BCST4 or OTVE_VECTOR_BCST8 or OTVE_VECTOR_BCST16;
+      OTVE_VECTOR_BCST_MASK    = OTVE_VECTOR_BCST2 or OTVE_VECTOR_BCST4 or OTVE_VECTOR_BCST8 or OTVE_VECTOR_BCST16 or OTVE_VECTOR_BCST32;
       OTVE_VECTOR_ER_MASK      = OTVE_VECTOR_RNSAE or OTVE_VECTOR_RDSAE or OTVE_VECTOR_RUSAE or OTVE_VECTOR_RZSAE;
 
       OTVE_VECTOR_MASK = OTVE_VECTOR_SAE or OTVE_VECTOR_ER or OTVE_VECTOR_ZERO or OTVE_VECTOR_WRITEMASK or OTVE_VECTOR_BCST;
@@ -297,7 +300,7 @@ interface
 {$elseif defined(i8086)}
       instabentries = {$i i8086nop.inc}
 {$endif}
-      maxinfolen    = 10;
+      maxinfolen    = 11;
 
     type
       { What an instruction can change. Needed for optimizer and spilling code.
@@ -364,13 +367,13 @@ interface
                          msiMultipleMinSize64, msiMultipleMinSize128, msiMultipleminSize256, msiMultipleMinSize512,
                          msiMemRegSize, msiMemRegx16y32, msiMemRegx16y32z64, msiMemRegx32y64, msiMemRegx32y64z128, msiMemRegx64y128, msiMemRegx64y128z256,
                          msiMemRegx64y256, msiMemRegx64y256z512,
-                         msiMem8, msiMem16, msiMem32, msiBMem32, msiMem64, msiBMem64, msiMem128, msiMem256, msiMem512,
+                         msiMem8, msiMem16, msiBMem16, msiMem32, msiBMem32, msiMem64, msiBMem64, msiMem128, msiMem256, msiMem512,
                          msiXMem32, msiXMem64, msiYMem32, msiYMem64, msiZMem32, msiZMem64,
                          msiVMemMultiple, msiVMemRegSize,
                          msiMemRegConst128,msiMemRegConst256,msiMemRegConst512);
 
-      TMemRefSizeInfoBCST = (msbUnknown, msbBCST32, msbBCST64, msbMultiple);
-      TMemRefSizeInfoBCSTType = (btUnknown, bt1to2, bt1to4, bt1to8, bt1to16);
+      TMemRefSizeInfoBCST = (msbUnknown, msbBCST16, msbBCST32, msbBCST64, msbMultiple);
+      TMemRefSizeInfoBCSTType = (btUnknown, bt1to2, bt1to4, bt1to8, bt1to16, bt1to32);
 
       TEVEXTupleState = (etsUnknown, etsIsTuple, etsNotTuple);
       TConstSizeInfo  = (csiUnknown, csiMultiple, csiNoSize, csiMem8, csiMem16, csiMem32, csiMem64);
@@ -470,6 +473,10 @@ interface
         IF_XSAVE,
         IF_PREFETCHWT1,
         IF_SHA,
+        IF_SHA512,
+        IF_SM3NI, { instruction set SM3:  ShangMi 3 hash function }
+        IF_SM4NI, { instruction set SM4 }
+        IF_GFNI,
 
         { mask for processor level }
         { please keep these in order and in sync with IF_PLEVEL }
@@ -511,6 +518,7 @@ interface
         IF_BCST4,
         IF_BCST8,
         IF_BCST16,
+        IF_BCST32,
         IF_T2,                  { disp8 - tuple - 2 }
         IF_T4,                  { disp8 - tuple - 4 }
         IF_T8,                  { disp8 - tuple - 8 }
@@ -526,7 +534,9 @@ interface
         IF_TMEM128,
         IF_THV,
         IF_THVM,
-        IF_TOVM
+        IF_TOVM,
+        IF_DISTINCT,            { destination and source registers must be distinct }
+        IF_DALL                 { destination, index and mask registers should be distinct (use together with IF_DISTINCT) }
 
       );
       tinsflags=set of tinsflag;
@@ -648,6 +658,7 @@ interface
          procedure write0x66prefix(objdata:TObjData);
          procedure write0x67prefix(objdata:TObjData);
          procedure Swapoperands;
+         function  DistinctRegisters(aAll:boolean):boolean;  { distinct vector registers? }
          function  FindInsentry(objdata:TObjData):boolean;
          function  CheckUseEVEX: boolean;
          procedure CheckEVEXTuple(const aInput:toper; aInsEntry: pInsentry; aIsVector128, aIsVector256, aIsVector512, aIsEVEXW1: boolean);
@@ -1317,6 +1328,9 @@ implementation
                  if (ot and OT_REG_EXTRA_MASK)=OT_FPUREG then
                   s:=s+'fpureg'
                else
+                 if (ot and OT_KREG)=OT_KREG then
+                  s:=s+'kreg'+ regnr
+               else
                 if (ot and OT_REGISTER)=OT_REGISTER then
                  begin
                    s:=s+'reg';
@@ -1385,6 +1399,7 @@ implementation
                       OTVE_VECTOR_BCST4: s := s + ' {1to4}';
                       OTVE_VECTOR_BCST8: s := s + ' {1to8}';
                      OTVE_VECTOR_BCST16: s := s + ' {1to16}';
+                     OTVE_VECTOR_BCST32: s := s + ' {1to32}';
                    end;
 
                   if vopext and OTVE_VECTOR_ER = OTVE_VECTOR_ER then
@@ -1902,12 +1917,12 @@ implementation
                  // e.g. vfpclasspd  k1, [RAX] {1to8}, 0
                  // =>> check flags
 
-
-                 case oper[i]^.vopext and (OTVE_VECTOR_BCST2 or OTVE_VECTOR_BCST4 or OTVE_VECTOR_BCST8 or OTVE_VECTOR_BCST16) of
+                 case oper[i]^.vopext and (OTVE_VECTOR_BCST2 or OTVE_VECTOR_BCST4 or OTVE_VECTOR_BCST8 or OTVE_VECTOR_BCST16 or OTVE_VECTOR_BCST32) of
                     OTVE_VECTOR_BCST2: if not(IF_BCST2 in p^.flags) then exit;
                     OTVE_VECTOR_BCST4: if not(IF_BCST4 in p^.flags) then exit;
                     OTVE_VECTOR_BCST8: if not(IF_BCST8 in p^.flags) then exit;
                    OTVE_VECTOR_BCST16: if not(IF_BCST16 in p^.flags) then exit;
+                   OTVE_VECTOR_BCST32: if not(IF_BCST32 in p^.flags) then exit;
                                else exit;
                  end;
                end;
@@ -1959,6 +1974,38 @@ implementation
       end;
 
 
+    function taicpu.DistinctRegisters(aAll:boolean):boolean; { distinct vector registers? }
+      var i : longint;
+          nr : array[0..max_operands-1] of shortint;
+      begin
+        result:=true;
+        if ops>1 then
+          begin
+            { avoid error about uninitialized variable }
+            fillchar(nr,sizeof(nr),0);
+            for i:=0 to ops-1 do
+              begin
+                with oper[i]^ do
+                  begin
+                    nr[i]:=-i-1;
+                    if getregtype(reg) = R_MMREGISTER then
+                      nr[i]:=getsupreg(reg);
+                    if aAll and (nr[i]<0) then
+                      if (ot and (OT_REGNORM or otf_reg_gpr))=(OT_REGNORM or otf_reg_gpr) then
+                        if (ot and (otf_reg_xmm or otf_reg_ymm or otf_reg_zmm)) > 0 then
+                            nr[i]:=getsupreg(ref^.index);
+                  end;
+              end;
+            if nr[0]=nr[1] then result:=false;
+            if ops>2 then
+              begin
+                if nr[0]=nr[2] then result:=false;
+                if aAll then if nr[1]=nr[2] then result:=false;
+              end;
+          end;
+      end;
+
+
     function taicpu.FindInsentry(objdata:TObjData):boolean;
       var
         i : longint;
@@ -1996,12 +2043,21 @@ implementation
          begin
            if matches(insentry) then
              begin
+               if (IF_DISTINCT in insentry^.flags) then
+                  if not DistinctRegisters(IF_DALL in insentry^.flags) then
+                    begin
+                      if IF_DALL in insentry^.flags then
+                        Message1(asmw_e_destination_index_mask_registers_should_be_distinct,GetString)
+                      else
+                        Message1(asmw_e_destination_and_source_registers_must_be_distinct,GetString);
+                      exit;  { unacceptable register combination (shoud be distinct) }
+                    end;
                result:=true;
                exit;
              end;
            inc(i);
            if i>high(instab) then
-             exit;
+             break; { not found and run out of entries to test for, jump into error report }
            insentry:=@instab[i];
          end;
         Message1(asmw_e_invalid_opcode_and_operands,GetString);
@@ -2044,7 +2100,12 @@ implementation
           if IF_TFV in aInsEntry^.Flags then
           begin
             for i :=  0 to aInsEntry^.ops - 1 do
-             if (aInsEntry^.optypes[i] and OT_BMEM32 = OT_BMEM32) then
+             if (aInsEntry^.optypes[i] and OT_BMEM16 = OT_BMEM16) then
+             begin
+               tuplesize := 2;
+               break;
+             end
+             else if (aInsEntry^.optypes[i] and OT_BMEM32 = OT_BMEM32) then
              begin
                tuplesize := 4;
                break;
@@ -2104,7 +2165,11 @@ implementation
             begin
               if aInsEntry^.optypes[i] and (OT_REGNORM or OT_MEMORY) = OT_REGMEM then
               begin
-                case aInsEntry^.optypes[i] and (OT_BITS32 or OT_BITS64) of
+                case aInsEntry^.optypes[i] and (OT_BITS16 or OT_BITS32 or OT_BITS64) of
+                  OT_BITS16: begin
+                               memsize := 16;
+                               break;
+                             end;
                   OT_BITS32: begin
                                memsize := 32;
                                break;
@@ -2204,14 +2269,14 @@ implementation
             if aInput.typ = top_ref then
             begin
               if aInput.ref^.base <> NR_NO then
-              begin              
+              begin
                 if (aInput.ref^.offset <> 0) and
                    ((aInput.ref^.offset mod tuplesize) = 0) and
                    (abs(aInput.ref^.offset) div tuplesize <= 127) then
                 begin
                   aInput.ref^.offset := aInput.ref^.offset div tuplesize;
                   EVEXTupleState := etsIsTuple;
-                    end;  
+                end;
               end;
             end;
           end;
@@ -3360,7 +3425,8 @@ implementation
                   // ignore for calculating length
                   ;
             &371, // VEX-Extension prefix $0F38
-            &372: // VEX-Extension prefix $0F3A
+            &372, // VEX-Extension prefix $0F3A
+            &375..&377: // opcode map 5,6,7
               begin
                 if not(exists_vex_extension) then
                 begin
@@ -3547,9 +3613,13 @@ implementation
        * \366          - operand 2 (ymmreg,zmmreg) encoded in bit 4-7 of the immediate byte
        * \367          - operand 3 (ymmreg,zmmreg) encoded in bit 4-7 of the immediate byte
 
-       * \370          - VEX 0F-FLAG
-       * \371          - VEX 0F38-FLAG
-       * \372          - VEX 0F3A-FLAG
+       * \370          - VEX 0F-FLAG (map 1)
+       * \371          - VEX 0F38-FLAG (map 2)
+       * \372          - VEX 0F3A-FLAG (map 3)
+
+       * \375          - EVEX map 5
+       * \376          - EVEX map 6
+       * \377          - EVEX map 7
       }
 
       var
@@ -3702,7 +3772,7 @@ implementation
            { RELOC_GOTPCREL, RELOC_REX_GOTPCRELX, RELOC_GOTPCRELX need special handling }
            if assigned(p) and (RelocType in [RELOC_GOTPCREL, RELOC_REX_GOTPCRELX, RELOC_GOTPCRELX]) and
               { These relocations seem to be used only for ELF
-                which always has relocs_use_addend set to true 
+                which always has relocs_use_addend set to true
                 so that it is the orgsize of the last relocation which needs to be fixed PM  }
               (insend<>objdata.CurrObjSec.size) then
              dec(TObjRelocation(objdata.CurrObjSec.ObjRelocations.Last).orgsize,insend-objdata.CurrObjSec.size);
@@ -3750,7 +3820,7 @@ implementation
         EVEXz   : byte;
         EVEXaaa : byte;
         EVEXb   : byte;
-        EVEXmm  : byte;
+        EVEXmmm : byte;
 
       begin
         { safety check }
@@ -3859,7 +3929,7 @@ implementation
         EVEXz    := 0;
         EVEXaaa  := 0;
         EVEXb    := 0;
-        EVEXmm   := 0;
+        EVEXmmm  := 0;
 
         repeat
           c:=ord(codes^);
@@ -3953,19 +4023,33 @@ implementation
                  end;
            &370: begin
                    VEXmmmmm             := VEXmmmmm OR $01; // set leading opcode byte $0F
-                   EVEXmm               := $01;
+                   EVEXmmm              := $01;
                  end;
            &371: begin
                    needed_VEX_Extension := true;
                    VEXmmmmm             := VEXmmmmm OR $02; // set leading opcode byte $0F38
-                   EVEXmm               := $02;
+                   EVEXmmm              := $02;
                  end;
            &372: begin
                    needed_VEX_Extension := true;
                    VEXmmmmm             := VEXmmmmm OR $03; // set leading opcode byte $0F3A
-                   EVEXmm               := $03;
+                   EVEXmmm              := $03;
                  end;
-
+           &375: begin
+                   needed_VEX_Extension := true;
+                   VEXmmmmm             := VEXmmmmm OR $05;
+                   EVEXmmm              := $05; // set opcode map 5
+                 end;
+           &376: begin
+                   needed_VEX_Extension := true;
+                   VEXmmmmm             := VEXmmmmm OR $06;
+                   EVEXmmm              := $06; // set opcode map 6
+                 end;
+           &377: begin
+                   needed_VEX_Extension := true;
+                   VEXmmmmm             := VEXmmmmm OR $07;
+                   EVEXmmm              := $07; // set opcode map 7
+                 end;
           end;
         until false;
 
@@ -4075,7 +4159,7 @@ implementation
 
             bytes[0] := $62;
 
-            bytes[1] := ((EVEXmm   and $03) shl 0)  or
+            bytes[1] := ((EVEXmmm  and $07) shl 0)  or
                       {$ifdef x86_64}
                         ((not(rex) and $05) shl 5)  or
                       {$else}
@@ -4516,7 +4600,7 @@ implementation
                   Internalerror(2014032001);
               end;
             &350..&352: ; // EVEX flags =>> nothing todo
-            &370..&372: ; // VEX flags =>> nothing todo
+            &370..&377: ; // VEX and EVEX flags =>> nothing todo
             &37:
               begin
 {$ifdef i8086}
@@ -5297,6 +5381,7 @@ implementation
                                   0: MRefInfo := msiNoSize;
                            OT_BITS8: MRefInfo := msiMem8;
                           OT_BITS16: MRefInfo := msiMem16;
+                         OT_BITSB16: MRefInfo := msiBMem16;
                           OT_BITS32: MRefInfo := msiMem32;
                          OT_BITSB32: MRefInfo := msiBMem32;
                           OT_BITS64: MRefInfo := msiMem64;
@@ -5324,7 +5409,7 @@ implementation
                        else
                        begin
                          // ignore broadcast-memory
-                         if not(MRefInfo in [msiBMem32, msiBMem64]) then
+                         if not(MRefInfo in [msiBMem16, msiBMem32, msiBMem64]) then
                          begin
                            if InsTabMemRefSizeInfoCache^[AsmOp].MemRefSize <> MRefInfo then
                            begin
@@ -5346,12 +5431,13 @@ implementation
                        //if not(MRefInfo in [msiBMem32, msiBMem64]) and (actRegCount > 0) then
                        if actRegCount > 0 then
                        begin
-                         if MRefInfo in [msiBMem32, msiBMem64] then
+                         if MRefInfo in [msiBMem16, msiBMem32, msiBMem64] then
                          begin
                            if IF_BCST2  in insentry^.flags then InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes := InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes + [bt1to2];
                            if IF_BCST4  in insentry^.flags then InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes := InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes + [bt1to4];
                            if IF_BCST8  in insentry^.flags then InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes := InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes + [bt1to8];
                            if IF_BCST16 in insentry^.flags then InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes := InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes + [bt1to16];
+                           if IF_BCST32 in insentry^.flags then InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes := InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes + [bt1to32];
 
                            //InsTabMemRefSizeInfoCache^[AsmOp].BCSTTypes
 
@@ -5408,6 +5494,10 @@ implementation
           begin
             case RegBCSTSizeMask of
                       0: ; // ignore;
+              OT_BITSB16: begin
+                            InsTabMemRefSizeInfoCache^[AsmOp].MemRefSizeBCST       := msbBCST16;
+                            InsTabMemRefSizeInfoCache^[AsmOp].BCSTXMMMultiplicator := 8;
+                          end;
               OT_BITSB32: begin
                             InsTabMemRefSizeInfoCache^[AsmOp].MemRefSizeBCST       := msbBCST32;
                             InsTabMemRefSizeInfoCache^[AsmOp].BCSTXMMMultiplicator := 4;
@@ -5538,6 +5628,18 @@ implementation
                      (AsmOp = A_VCVTUSI2SD) or
                      (AsmOp = A_VCVTUSI2SS) or
 
+                     (AsmOp = A_vcvtdq2ph) or
+                     (AsmOp = A_vcvtpd2ph) or
+                     (AsmOp = A_vcvtph2pd) or
+                     (AsmOp = A_vcvtqq2ph) or
+                     (AsmOp = A_vcvtsi2sh) or
+                     (AsmOp = A_vcvttph2qq) or
+                     (AsmOp = A_vcvttph2uqq) or
+                     (AsmOp = A_vcvtudq2ph) or
+                     (AsmOp = A_vcvtuqq2ph) or
+                     (AsmOp = A_vcvtusi2sh) or
+                     (AsmOp = A_VCVTNEPS2BF16) or
+                     (AsmOp = A_vcvtps2phx) or
 
                      // TODO check
                      (AsmOp = A_VCMPSS)
@@ -5568,13 +5670,13 @@ implementation
 
             if (AsmOp <> A_CVTSI2SD) and
                (AsmOp <> A_CVTSI2SS) then
-            begin            
+            begin
               inc(iCntOpcodeValError);
               Str(gas_needsuffix[AsmOp],hs1);
               Str(InsTabMemRefSizeInfoCache^[AsmOp].MemRefSize,hs2);
               Message3(asmr_e_not_supported_combination_attsuffix_memrefsize_type,
                        std_op2str[AsmOp],hs1,hs2);
-            end;               
+            end;
           end;
         end;
       end;

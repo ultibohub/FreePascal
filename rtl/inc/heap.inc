@@ -52,14 +52,6 @@ const
   );public name 'FPC_SYSTEM_MEMORYMANAGER';
 {$endif FPC_IN_HEAPMGR}
 
-
-{ Try to find the best matching block in general freelist }
-{ define BESTMATCH}
-
-{$ifndef FPC_NO_DEFAULT_MEMORYMANAGER}
-
-{$endif HAS_MEMORYMANAGER}
-
 {*****************************************************************************
                              Memory Manager
 *****************************************************************************}
@@ -177,8 +169,62 @@ end;
 {$endif FPC_HAS_FEATURE_HEAP}
 {$endif FPC_IN_HEAPMGR}
 
-{$if defined(FPC_HAS_FEATURE_HEAP) or defined(FPC_IN_HEAPMGR)}
-{$ifndef HAS_MEMORYMANAGER}
+{$if (defined(FPC_HAS_FEATURE_HEAP) or defined(FPC_IN_HEAPMGR)) and not defined(HAS_MEMORYMANAGER)}
+
+type
+
+{ Intrusive red-black tree, loosely translated from
+  https://github.com/torvalds/linux/blob/master/tools/include/linux/rbtree.h
+  https://github.com/torvalds/linux/blob/master/tools/include/linux/rbtree_augmented.h
+  https://github.com/torvalds/linux/blob/master/lib/rbtree.c }
+
+  RbTree = object
+  type
+    pNode = ^Node; ppNode = ^pNode;
+    Node = record
+      parentColor: PtrUint;
+    case uint32 of
+      0: (childs: array[0 .. 1] of pNode);
+      1: (left, right: pNode);
+    end;
+
+    { For possible future templating. Right now, hardcoded for FreeVarChunk comparisons.
+      Note that very few functions (Add and LowerBound) depend on Control, so turning the entire RbTree into a RbTree<Control> is unwise. }
+    Control = object
+      class function Less(a, b: pNode): boolean; static; inline;
+      class function KeyCompare(key: pointer; b: pNode): PtrInt; static; inline;
+    end;
+
+    procedure Add(n: pNode);
+    procedure Remove(n: pNode);
+    function LowerBound(key: pointer): pNode; { Returns smallest node ≥ key. }
+    function First: pNode;
+    class function Next(n: pNode): pNode; static;
+    class function Prev(n: pNode): pNode; static;
+
+    { ChangeInPlace is the same optimization used in Boost rbtree_best_fit.hpp:
+      shortcut Remove + Add if the node is already at correct position.
+
+      Callers check this case manually: if the node value is decreased, ChangeInPlace is possible if the new value is still ≥ Prev(node), and vice versa.
+
+      Beware of the overlaps... ChangeInPlace is potentially vulnerable to the RbTree.Node overlap in TryResizeVar,
+      so sizeof(RbTree.Node) <= VarSizeQuant is ensured with a compile-time $if. }
+
+    procedure ChangeInPlace(old, new: pNode);
+
+  private const
+    BlackTag = 1;
+    ParentMask = PtrUint(not BlackTag);
+
+  var
+    root: pNode;
+
+    procedure ChangeChild(old, new, parent: pNode); inline;
+    procedure RotateSetParents(old, new: pNode; color: PtrUint); inline;
+    procedure InsertColor(n: pNode);
+    function EraseAugmented(n: pNode): pNode;
+    procedure EraseColor(parent: pNode);
+  end;
 
 {
   We use 'fixed' size chunks for small allocations,
@@ -198,7 +244,6 @@ end;
   but otherwise it will be freed to the OS.
 }
 
-type
   HeapInc = object
   const
     { Alignment requirement for blocks. All fixed sizes (among other things) are assumed to be divisible. }
@@ -220,12 +265,11 @@ type
     class function IndexToSize(sizeIndex: SizeUint): SizeUint; static; inline;
 
   const
-    OSChunkFixedSizeQuant = 32 * 1024;
     OSChunkVarSizeQuant = 64 * 1024;
-    MaxFixedChunkSize = 256 * 1024;
-
-    { Variable freelist search strategy: -1 = exhaustive search for the best (smallest fitting) match, ≥0 = search this many after the first match. }
-    MatchEffort = {$ifdef BESTMATCH} -1 {$else} 10 {$endif};
+    FixedArenaSizeQuant = 4 * 1024;
+    MinFixedArenaSize = 8 * 1024;
+    MaxFixedArenaSize = 64 * 1024;
+    MaxKeptFixedArenas = 4;
 
     { Limit on shrinking variable chunks and keeping the tail when splitting the chunk in AllocVar / TryResizeVar. }
     MinVarHeaderAndPayload = MaxFixedHeaderAndPayload * 3 div 4;
@@ -235,20 +279,15 @@ type
   const
     SizeIndexBits = 1 + trunc(ln(FixedSizesCount - 1) /  ln(2));
     SizeIndexMask = 1 shl SizeIndexBits - 1;
-    FixedBitPos = {$if SizeIndexBits >= 3} SizeIndexBits {$else} 3 {$endif}; { Variable chunks use 3 low bits for used / first / last. }
+    FixedBitPos = {$if SizeIndexBits >= 4} SizeIndexBits {$else} 4 {$endif}; { Variable chunks use 4 low bits for used / first / last / fixed arena. }
     FixedFlag = 1 shl FixedBitPos;
-    ChunkOffsetShift = FixedBitPos + 1;
-
-    { Not really used; MaxFixedChunkSize limit on fixed OS chunks assumed to be strictly enforced and (much!) more restricting than MaxChunkOffset.
-      MaxFixedChunkSize = 256 Kb.
-      MaxChunkOffset ~ 2^(32 - 6) ~ 67 Mb.
-      Indices could be stored instead, but offsets avoid multiplications. }
-    MaxChunkOffset = High(uint32) shr ChunkOffsetShift;
+    FixedArenaOffsetShift = {$if FixedBitPos + 1 >= 5} FixedBitPos + 1 {$else} 5 {$endif}; { VarSizeQuant must be at least 2^5 to fit 3 64-bit pointers (RbTree.Node). }
 
     UsedFlag = 1 shl 0;
     FirstFlag = 1 shl 1;
     LastFlag = 1 shl 2;
-    VarSizeQuant = 1 shl ChunkOffsetShift; {$if VarSizeQuant < Alignment} {$error Assumed to be >= Alignment.} {$endif}
+    FixedArenaFlag = 1 shl 3;
+    VarSizeQuant = 1 shl FixedArenaOffsetShift; {$if VarSizeQuant < Alignment} {$error Assumed to be >= Alignment.} {$endif} {$if VarSizeQuant < 3 * sizeof(pointer)} {$error Must fit RbTree.Node.} {$endif}
     VarSizeMask = SizeUint(-VarSizeQuant);
     HugeHeader = 0; { Special header value for huge chunks. FixedFlag must be 0, and the value must be impossible for a variable chunk. 0 turns out to be suitable. :) }
 
@@ -258,13 +297,13 @@ type
       Fixed chunk header, assuming SizeIndexBits = 4:
       h[0:3] = size index (= h and SizeIndexMask)
       h[4] = 1 (h and FixedFlag <> 0)
-      h[5:31] — offset in the OS chunk (= h shr ChunkOffsetShift)
+      h[5:31] — offset in the FixedArena (= h shr FixedArenaOffsetShift)
 
       Variable chunk header, assuming SizeIndexBits = 4:
       h[0] = used flag (h and UsedFlag <> 0)
       h[1] = first flag (h and FirstFlag <> 0)
       h[2] = last flag (h and LastFlag <> 0)
-      h[3] = unused
+      h[3] = fixed arena flag (h and FixedArenaFlag <> 0)
       h[4] = 0 (h and FixedFlag = 0)
       h[5:31] = size, rounded up to 32 (VarSizeQuant), shr 5; in other words, size = h and VarSizeMask.
 
@@ -292,16 +331,7 @@ type
 
     pOSChunk = ^OSChunk;
     OSChunk = object(OSChunkBase) { Common header for all OS chunks. }
-    {$ifdef FPC_HAS_FEATURE_THREADING}
-      threadState: pThreadState; { Protected with gs.lock. Nil if orphaned. }
-    {$endif}
       prev, next: pointer; { pOSChunk, but used for different subtypes. }
-
-      { For what purpose this chunk was used the last time. -1 — var, N ≥ 0 — fixed size N. Allows for a small optimization when reusing fixed chunks. }
-      sizeIndex: SizeInt;
-
-      { Remove from list src and push to list dest. }
-      procedure MoveTo(var src, dest: pOSChunk);
     end;
 
     pFreeOSChunk = ^FreeOSChunk;
@@ -321,13 +351,15 @@ type
     {$endif}
     end;
 
-    pFixedOSChunk = ^FixedOSChunk;
-    FixedOSChunk = object(OSChunk)
-      { Data starts at FixedOSChunkDataOffset and spans for “maxSize” (virtual value, does not exist directly) bytes, of which:
+    pFixedArena = ^FixedArena;
+    FixedArena = record
+      { Allocated with AllocVar(isArena := true), so has VarHeader to the left.
+
+        Data starts at FixedArenaDataOffset and spans for “maxSize” (virtual value, does not exist directly) bytes, of which:
         — first formattedSize are either allocated (“used”; counted in usedSize) or in the freelist (firstFreeChunk; size = formattedSize - usedSize),
         — the rest “maxSize” - formattedSize are yet unallocated space.
 
-        This design, together with tracking free chunks per FixedOSChunk rather than per fixed size, trivializes reusing the chunk.
+        This design, together with tracking free chunks per FixedArena rather than per fixed size, trivializes reusing the fixed arenas.
         Chopping all available space at once would get rid of the “unallocated space” entity, but is a lot of potentially wasted work:
         https://gitlab.com/freepascal.org/fpc/source/-/issues/40447.
 
@@ -338,6 +370,8 @@ type
 
       firstFreeChunk: pFreeChunk;
       usedSize, formattedSize, fullThreshold: uint32;
+      sizeIndex: uint32; { For what size it was used the last time. Allows for a small optimization when reusing fixed arenas. }
+      prev, next: pFixedArena;
     end;
 
     pVarOSChunk = ^VarOSChunk;
@@ -347,7 +381,7 @@ type
     pVarHeader = ^VarHeader;
     VarHeader = record
     {$ifdef FPC_HAS_FEATURE_THREADING}
-      threadState: pThreadState;
+      threadState: pThreadState; { Protected with gs.lock. Nil if orphaned. }
     {$endif}
       prevSize: uint32; { Always 0 for the first chunk. }
       { Assumed to indeed match chunk’s CommonHeader, i.e. that there is no padding after this field.
@@ -358,8 +392,8 @@ type
     { Reuses the payload of variable chunks whose ch.h and UsedFlag = 0, so variable chunk payload must always fit its size. }
     pFreeVarChunk = ^FreeVarChunk;
     FreeVarChunk = record
-      prev, next: pFreeVarChunk;
       size: SizeUint; { Cached size for easier access when working with free chunks, always equals to header.ch.h and VarSizeMask. }
+      rbn: RbTree.Node;
     end;
 
     pHugeChunk = ^HugeChunk;
@@ -367,7 +401,8 @@ type
     end;
 
     ThreadState = object
-      fullOS: pFixedOSChunk; { Completely filled fixed OS chunks. }
+      emptyArenas: pFixedArena; { Empty fixed arenas to be reused instead of slower AllocVar. Singly linked list, “prev”s are garbage. }
+      nEmptyArenas: SizeUint; { # of items in emptyArenas. }
       freeOS: FreeOSChunkList; { Completely empty OS chunks. }
     {$ifdef FPC_HAS_FEATURE_THREADING}
       toFree: pFreeChunk; { Free requests from other threads, atomic. }
@@ -376,27 +411,28 @@ type
       used, maxUsed, allocated, maxAllocated: SizeUint; { “maxUsed” and “maxAllocated” include gs.hugeUsed; “used” and “allocated” don’t. }
 
       varOS: pVarOSChunk;
-      varFree: pFreeVarChunk;
+      varFree: RbTree;
 
-      { OS chunks with at least 1 free chunk (including unformatted space), but not completely empty.
-        OS chunks that become completely empty are moved to freeOS, completely full are moved to fullOS. }
-      fixedPartialOS: array[0 .. FixedSizesCount - 1] of pFixedOSChunk;
+      { Fixed arenas with at least 1 free chunk (including unformatted space), but not completely empty.
+        Fixed arenas that become completely empty are moved to emptyArenas, completely full are... not present in any list. }
+      partialArenas: array[0 .. FixedSizesCount - 1] of pFixedArena;
 
-      { Only to calculate preferable new fixed OS chunk sizes...
-        (Updated infrequently, as opposed to possible “fixedUsed”. When a new fixed OS chunk is required, all existing chunks of its size are full.) }
-      allocatedByFullFixed: array[0 .. FixedSizesCount - 1] of SizeUint;
+      { Only to calculate preferable new fixed arena sizes...
+        (Updated infrequently, as opposed to possible “usedPerArena”. When a new arena is required, all existing arenas of its size are full.) }
+      allocatedByFullArenas: array[0 .. FixedSizesCount - 1] of SizeUint;
 
     {$ifdef DEBUG_HEAP_INC}
       procedure Dump(var f: text);
     {$endif}
 
+      function ChooseFixedArenaSize(sizeIndex: SizeUint): SizeUint;
       function AllocFixed(size: SizeUint): pointer;
       function FreeFixed(p: pointer): SizeUint;
 
-      function GetOSChunk(minSize, maxSize: SizeUint; sizeIndex: SizeInt): pOSChunk;
-      function AllocateOSChunk(minSize: SizeUint; sizeIndex: SizeInt): pOSChunk;
+      function GetOSChunk(minSize, maxSize: SizeUint): pOSChunk;
+      function AllocateOSChunk(minSize: SizeUint): pOSChunk;
 
-      function AllocVar(size: SizeUint): pointer;
+      function AllocVar(size: SizeUint; isArena: boolean): pointer;
       function FreeVar(p: pointer): SizeUint;
       function TryResizeVar(p: pointer; size: SizeUint): pointer;
 
@@ -410,12 +446,10 @@ type
       procedure FlushToFree;
 
       procedure Orphan; { Must be performed under gs.lock. }
-      class procedure Orphan(list: pFixedOSChunk); static;
-      procedure Adopt(osChunk: pFixedOSChunk); { Must be performed under gs.lock. }
+      procedure AdoptArena(arena: pFixedArena);
       procedure AdoptVarOwner(p: pointer); { Adopts the OS chunk that contains p. Must be performed under gs.lock. }
-
-      class function ChangeThreadStates(list: pOSChunk; ts: pThreadState): pOSChunk; static; { Returns the last item of the list. }
       class procedure ChangeThreadState(vOs: pVarOSChunk; ts: pThreadState); static;
+      procedure FreeEmptyArenas(untilCount: SizeUint);
 
     {$ifndef FPC_SECTION_THREADVARS}
       procedure FixupSelfPtr;
@@ -434,7 +468,6 @@ type
       lockUse: int32;
 
       { Data from dead threads (“orphaned”), protected by gs.lock. }
-      fixedOS: pFixedOSChunk;
       freeOS: FreeOSChunkList;
       varOS: pVarOSChunk;
     {$endif FPC_HAS_FEATURE_THREADING}
@@ -452,10 +485,333 @@ type
   const
     CommonHeaderSize = sizeof(CommonHeader);
   {$if MinFixedHeaderAndPayload < CommonHeaderSize + sizeof(FreeChunk)} {$error MinFixedHeaderAndPayload does not fit CommonHeader + FreeChunk.} {$endif}
-    FixedOSChunkDataOffset = (sizeof(FixedOSChunk) + CommonHeaderSize + Alignment - 1) and -Alignment - CommonHeaderSize;
+    FixedArenaDataOffset = (sizeof(FixedArena) + CommonHeaderSize + Alignment - 1) and -Alignment - CommonHeaderSize;
     VarHeaderSize = sizeof(VarHeader);
     VarOSChunkDataOffset = (sizeof(VarOSChunk) + VarHeaderSize + Alignment - 1) and -Alignment - VarHeaderSize;
     HugeChunkDataOffset = (sizeof(HugeChunk) + CommonHeaderSize + Alignment - 1) and -Alignment - CommonHeaderSize;
+    FreeVarChunkRbnOffset = PtrUint(@FreeVarChunk(nil^).rbn);
+  end;
+
+  class function RbTree.Control.Less(a, b: pNode): boolean;
+  begin
+    result := HeapInc.pFreeVarChunk(pointer(a) - HeapInc.FreeVarChunkRbnOffset)^.size < HeapInc.pFreeVarChunk(pointer(b) - HeapInc.FreeVarChunkRbnOffset)^.size;
+  end;
+
+  class function RbTree.Control.KeyCompare(key: pointer; b: pNode): PtrInt;
+  begin
+    result := PtrInt(PtrUint(key)) - PtrInt(HeapInc.pFreeVarChunk(pointer(b) - HeapInc.FreeVarChunkRbnOffset)^.size);
+  end;
+
+  procedure RbTree.Add(n: pNode);
+  var
+    link: ppNode;
+    parent: pNode;
+  begin
+    link := @root;
+    parent := nil;
+    if Assigned(link^) then
+      repeat
+        parent := link^;
+        if Control.Less(n, parent) then { For me, branching is much better here: Alloc/FreeVar are up to 20% faster (when compiling the compiler) than branchless. }
+        begin
+          link := @parent^.left;
+          if Assigned(link^) then continue; { This way, “continue”s jump to the beginning of the loop. Important as this code is really hot. }
+        end else
+        begin
+          link := @parent^.right;
+          if Assigned(link^) then continue;
+        end;
+        break;
+      until false;
+    n^.parentColor := PtrUint(parent);
+    n^.left := nil;
+    n^.right := nil;
+    link^ := n;
+    InsertColor(n);
+  end;
+
+  procedure RbTree.Remove(n: pNode);
+  begin
+    n := EraseAugmented(n);
+    if Assigned(n) then EraseColor(n);
+  end;
+
+  function RbTree.LowerBound(key: pointer): pNode;
+  var
+    n: pNode;
+    cmp: PtrInt;
+  begin
+    result := nil;
+    n := root;
+    if Assigned(n) then
+      repeat
+        cmp := Control.KeyCompare(key, n);
+        if cmp <= 0 then { Same as in Add: branch on the Control predicate, but avoid extra internal jumps. }
+        begin
+          result := n;
+          if cmp = 0 then exit; { Not required (and not even correct for a method named LowerBound: if there are equal items, such a method should return first of them, not any of them, better name TBD), but exits early on many equal values, which tends to happen often with memory sizes. }
+          n := n^.left;
+          if Assigned(n) then continue;
+        end else
+        begin
+          n := n^.right;
+          if Assigned(n) then continue;
+        end;
+        break;
+      until false;
+  end;
+
+  function RbTree.First: pNode;
+  var
+    child: pNode;
+  begin
+    result := root;
+    if not Assigned(result) then exit;
+    child := result;
+    repeat
+      result := child;
+      child := child^.left;
+    until not Assigned(child);
+  end;
+
+  class function RbTree.Next(n: pNode): pNode;
+  var
+    child: pNode;
+  begin
+    child := n^.right;
+    if Assigned(child) then
+    begin
+      repeat
+        result := child;
+        child := result^.left;
+      until not Assigned(child);
+      exit;
+    end;
+    result := n;
+    repeat
+      child := result;
+      result := pointer(result^.parentColor and ParentMask);
+    until not Assigned(result) or (child = result^.left);
+  end;
+
+  class function RbTree.Prev(n: pNode): pNode;
+  var
+    child: pNode;
+  begin
+    child := n^.left;
+    if Assigned(child) then
+    begin
+      repeat
+        result := child;
+        child := result^.right;
+      until not Assigned(child);
+      exit;
+    end;
+    result := n;
+    repeat
+      child := result;
+      result := pointer(result^.parentColor and ParentMask);
+    until not Assigned(result) or (child = result^.right);
+  end;
+
+  procedure RbTree.ChangeChild(old, new, parent: pNode);
+  begin
+    if Assigned(parent) then
+      parent^.childs[ord(old = parent^.right)] := new
+    else
+      root := new;
+  end;
+
+  procedure RbTree.ChangeInPlace(old, new: pNode);
+  var
+    pc: PtrUint;
+    adj: pNode;
+  begin
+    adj := old^.left;
+    new^.left := adj;
+    if Assigned(adj) then adj^.parentColor := PtrUint(new) + adj^.parentColor and BlackTag;
+    adj := old^.right;
+    new^.right := adj;
+    if Assigned(adj) then adj^.parentColor := PtrUint(new) + adj^.parentColor and BlackTag;
+    pc := old^.parentColor;
+    new^.parentColor := pc;
+    ChangeChild(old, new, pointer(pc and ParentMask));
+  end;
+
+  procedure RbTree.RotateSetParents(old, new: pNode; color: PtrUint);
+  var
+    oldParentColor: PtrUint;
+  begin
+    oldParentColor := old^.parentColor;
+    new^.parentColor := oldParentColor;
+    old^.parentColor := PtrUint(new) + color;
+    ChangeChild(old, new, pointer(oldParentColor and ParentMask));
+  end;
+
+  procedure RbTree.InsertColor(n: pNode);
+  var
+    parent, gparent, tmp: pNode;
+    L, R: SizeUint;
+  begin
+    parent := pNode(n^.parentColor);
+    repeat
+      if not Assigned(parent) then
+      begin
+        n^.parentColor := BlackTag;
+        break;
+      end;
+      PtrUint(gparent) := parent^.parentColor;
+      if PtrUint(gparent) and BlackTag <> 0 then
+        break;
+      { L and R are offsets of left and right child, or right and left for mirrored cases. }
+      L := PtrUint(@pNode(nil)^.childs) + SizeUint(parent = gparent^.right) * sizeof(pointer);
+      R := (2 * PtrUint(@pNode(nil)^.childs) + sizeof(pointer)) - L; { offsetof(childs, Node) + (sizeof(pointer) - (L - offsetof(childs, Node))), simplified. }
+      tmp := pPointer(pointer(gparent) + R)^;
+      if Assigned(tmp) and (tmp^.parentColor and BlackTag = 0) then
+      begin
+        tmp^.parentColor := PtrUint(gparent) + BlackTag;
+        parent^.parentColor := PtrUint(gparent) + BlackTag;
+        n := gparent;
+        parent := pointer(n^.parentColor and ParentMask);
+        n^.parentColor := PtrUint(parent);
+        continue;
+      end;
+      tmp := pPointer(pointer(parent) + R)^;
+      if n = tmp then
+      begin
+        tmp := pPointer(pointer(n) + L)^;
+        pPointer(pointer(parent) + R)^ := tmp;
+        pPointer(pointer(n) + L)^ := parent;
+        if Assigned(tmp) then
+          tmp^.parentColor := PtrUint(parent) + BlackTag;
+        parent^.parentColor := PtrUint(n);
+        parent := n;
+        tmp := pPointer(pointer(n) + R)^;
+      end;
+      pPointer(pointer(gparent) + L)^ := tmp; { = parent^.R }
+      pPointer(pointer(parent) + R)^ := gparent;
+      if Assigned(tmp) then
+        tmp^.parentColor := PtrUint(gparent) + BlackTag;
+      RotateSetParents(gparent, parent, 0);
+      break;
+    until false;
+  end;
+
+  function RbTree.EraseAugmented(n: pNode): pNode;
+  var
+    child, tmp, parent, successor, child2: pNode;
+    pc: PtrUint;
+  begin
+    result := nil;
+    child := n^.right;
+    tmp := n^.left;
+    if not Assigned(tmp) then
+    begin
+      pc := n^.parentColor;
+      parent := pointer(pc and ParentMask);
+      ChangeChild(n, child, parent);
+      if Assigned(child) then
+        child^.parentColor := pc
+      else if pc and BlackTag <> 0 then
+        result := parent;
+    end
+    else if not Assigned(child) then
+    begin
+      pc := n^.parentColor;
+      tmp^.parentColor := pc;
+      parent := pointer(pc and ParentMask);
+      ChangeChild(n, tmp, parent);
+    end else
+    begin
+      successor := child;
+      tmp := child^.left;
+      if not Assigned(tmp) then
+      begin
+        parent := successor;
+        child2 := successor^.right;
+      end else
+      begin
+        repeat
+          parent := successor;
+          successor := tmp;
+          tmp := tmp^.left;
+        until not Assigned(tmp);
+        child2 := successor^.right;
+        parent^.left := child2;
+        successor^.right := child;
+        child^.parentColor := PtrUint(successor) + child^.parentColor and BlackTag;
+      end;
+
+      tmp := n^.left;
+      successor^.left := tmp;
+      tmp^.parentColor := PtrUint(successor) + tmp^.parentColor and BlackTag;
+
+      pc := n^.parentColor;
+      tmp := pointer(pc and ParentMask);
+      ChangeChild(n, successor, tmp);
+
+      if Assigned(child2) then
+        child2^.parentColor := PtrUint(parent) + BlackTag
+      else if successor^.parentColor and BlackTag <> 0 then
+        result := parent;
+      successor^.parentColor := pc;
+    end;
+  end;
+
+  procedure RbTree.EraseColor(parent: pNode);
+  var
+    n, sibling, tmp1, tmp2: pNode;
+    L, R: SizeUint;
+  begin
+    n := nil;
+    repeat
+      L := PtrUint(@pNode(nil)^.childs) + SizeUint(n = parent^.right) * sizeof(pointer);
+      R := (2 * PtrUint(@pNode(nil)^.childs) + sizeof(pointer)) - L;
+      sibling := pPointer(pointer(parent) + R)^;
+      if sibling^.parentColor and BlackTag = 0 then
+      begin
+        tmp1 := pPointer(pointer(sibling) + L)^;
+        pPointer(pointer(parent) + R)^ := tmp1;
+        pPointer(pointer(sibling) + L)^ := parent;
+        tmp1^.parentColor := PtrUint(parent) + BlackTag;
+        RotateSetParents(parent, sibling, 0);
+        sibling := tmp1;
+      end;
+      tmp1 := pPointer(pointer(sibling) + R)^;
+      if not Assigned(tmp1) or (tmp1^.parentColor and BlackTag <> 0) then
+      begin
+        tmp2 := pPointer(pointer(sibling) + L)^;
+        if not Assigned(tmp2) or (tmp2^.parentColor and BlackTag <> 0) then
+        begin
+          sibling^.parentColor := PtrUint(parent);
+          if parent^.parentColor and BlackTag = 0 then
+            inc(parent^.parentColor, BlackTag)
+          else
+          begin
+            n := parent;
+            parent := pointer(n^.parentColor and ParentMask);
+            if Assigned(parent) then continue;
+          end;
+          break;
+        end;
+        tmp1 := pPointer(pointer(tmp2) + R)^;
+        pPointer(pointer(sibling) + L)^ := tmp1;
+        pPointer(pointer(tmp2) + R)^ := sibling;
+        pPointer(pointer(parent) + R)^ := tmp2;
+        if Assigned(tmp1) then
+          tmp1^.parentColor := PtrUint(sibling) + BlackTag;
+        tmp1 := sibling;
+        sibling := tmp2;
+      end;
+      tmp2 := pPointer(pointer(sibling) + L)^;
+      pPointer(pointer(parent) + R)^ := tmp2;
+      pPointer(pointer(sibling) + L)^ := parent;
+      tmp1^.parentColor := PtrUint(sibling) + BlackTag;
+      if Assigned(tmp2) then
+        tmp2^.parentColor := PtrUint(parent) + tmp2^.parentColor and BlackTag;
+      RotateSetParents(parent, sibling, BlackTag);
+      break;
+    until false;
   end;
 
   class function HeapInc.SizeMinus1ToIndex(sizeMinus1: SizeUint): SizeUint;
@@ -466,26 +822,6 @@ type
   class function HeapInc.IndexToSize(sizeIndex: SizeUint): SizeUint;
   begin
     result := FixedSizes[sizeIndex];
-  end;
-
-  procedure HeapInc.OSChunk.MoveTo(var src, dest: pOSChunk);
-  var
-    osNext, osPrev: pOSChunk;
-  begin
-    osPrev := prev;
-    osNext := next;
-    if Assigned(osPrev) then
-      osPrev^.next := osNext
-    else
-      src := osNext;
-    if Assigned(osNext) then
-      osNext^.prev := osPrev;
-    prev := nil;
-    osNext := dest;
-    next := osNext;
-    if Assigned(osNext) then
-      osNext^.prev := @self;
-    dest := @self;
   end;
 
   function HeapInc.FreeOSChunkList.Get(minSize, maxSize: SizeUint): pOSChunk;
@@ -550,43 +886,60 @@ type
   procedure HeapInc.ThreadState.Dump(var f: text);
   var
     i: SizeInt;
-    fix: pFixedOSChunk;
+    fix: pFixedArena;
     fr: pFreeOSChunk;
   {$ifdef FPC_HAS_FEATURE_THREADING}
     tf: pFreeChunk;
   {$endif}
-    vf: pFreeVarChunk;
+    vfrbn: RbTree.pNode;
     vOs: pVarOSChunk;
     p: pointer;
+    needLE, anything: boolean;
+
+    procedure MaybeLE;
+    begin
+      if needLE then
+        writeln(f);
+      needLE := false;
+    end;
+
   begin
     writeln(f, 'used = ', used, ', allocated = ', allocated, ', hugeUsed = ', gs.hugeUsed, ', maxUsed = ', maxUsed, ', maxAllocated = ', maxAllocated);
-    fix := fullOS;
-    if Assigned(fix) then
-    begin
-      writeln(f);
-      repeat
-        writeln(f, 'Full fixed: size = ', fix^.size, ', usedSize = ', fix^.usedSize, ', formattedSize = ', fix^.formattedSize, ', fullThreshold = ', fix^.fullThreshold);
-        fix := fix^.next;
-      until not Assigned(fix);
-    end;
+    needLE := true;
+    anything := false;
     for i := 0 to FixedSizesCount - 1 do
-      if Assigned(fixedPartialOS[i]) then
+    begin
+      if not Assigned(partialArenas[i]) and (allocatedByFullArenas[i] = 0) then
+        continue;
+      MaybeLE;
+      anything := true;
+      write(f, 'Size #', i, ' (', IndexToSize(i), '):');
+      if allocatedByFullArenas[i] <> 0 then
+        write(f, ' allocatedByFullArenas = ', allocatedByFullArenas[i]);
+      if Assigned(partialArenas[i]) then
       begin
-        write(f, 'Size #', i, ' (', IndexToSize(i), ')');
-        if allocatedByFullFixed[i] <> 0 then
-          write(f, ': allocatedByFullFixed = ', allocatedByFullFixed[i]);
         writeln(f);
-        fix := fixedPartialOS[i];
-        while Assigned(fix) do
-        begin
-          writeln(f, 'size = ', fix^.size, ', usedSize = ', fix^.usedSize, ', formattedSize = ', fix^.formattedSize, ', fullThreshold = ', fix^.fullThreshold);
+        fix := partialArenas[i];
+        repeat
+          writeln(f, 'arena size = ', pVarHeader(fix)[-1].ch.h and VarSizeMask - VarHeaderSize - FixedArenaDataOffset, ', usedSize = ', fix^.usedSize, ', formattedSize = ', fix^.formattedSize, ', fullThreshold = ', fix^.fullThreshold);
           fix := fix^.next;
-        end;
-      end;
+        until not Assigned(fix);
+      end
+      else if allocatedByFullArenas[i] <> 0 then
+        writeln(f);
+    end;
+    needLE := needLE or anything;
+    if nEmptyArenas <> 0 then
+    begin
+      MaybeLE;
+      writeln(f, 'nEmptyArenas = ', nEmptyArenas);
+      needLE := true;
+    end;
     vOs := varOS;
     while Assigned(vOs) do
     begin
-      writeln(f, LineEnding, 'Var OS chunk, size ', vOs^.size);
+      MaybeLE;
+      writeln(f, 'Var OS chunk, size ', vOs^.size);
       p := pointer(vOs) + (VarOSChunkDataOffset + VarHeaderSize);
       repeat
         write(f, HexStr(p), ': ',
@@ -599,37 +952,43 @@ type
           write(f, ', first');
         if pVarHeader(p - VarHeaderSize)^.ch.h and LastFlag <> 0 then
           write(f, ', last');
+        if pVarHeader(p - VarHeaderSize)^.ch.h and FixedArenaFlag <> 0 then
+          write(f, ', fixed arena');
         writeln(f);
         if pVarHeader(p - VarHeaderSize)^.ch.h and LastFlag <> 0 then
           break;
         p := p + pVarHeader(p - VarHeaderSize)^.ch.h and uint32(VarSizeMask);
       until false;
+      needLE := true;
       vOs := vOs^.next;
     end;
     fr := freeOS.first;
     if Assigned(fr) then
     begin
-      writeln(f);
+      MaybeLE;
       repeat
         writeln(f, 'Free OS: ', HexStr(fr), ', size = ', fr^.size);
         fr := fr^.next;
       until not Assigned(fr);
+      needLE := true;
     end;
-    vf := varFree;
-    if Assigned(vf) then
+    vfrbn := varFree.First;
+    if Assigned(vfrbn) then
     begin
-      write(f, LineEnding, 'Var free:');
+      MaybeLE;
+      write(f, 'Var free:');
       repeat
-        write(f, ' ', vf^.size);
-        vf := vf^.next;
-      until not Assigned(vf);
+        write(f, ' ', pFreeVarChunk(pointer(vfrbn) - FreeVarChunkRbnOffset)^.size);
+        vfrbn := varFree.Next(vfrbn);
+      until not Assigned(vfrbn);
       writeln(f);
     end;
   {$ifdef FPC_HAS_FEATURE_THREADING}
     tf := toFree;
     if Assigned(tf) then
     begin
-      write(f, LineEnding, 'To-free:');
+      MaybeLE;
+      write(f, 'To-free:');
       repeat
         if pCommonHeader(pointer(tf) - CommonHeaderSize)^.h and FixedFlag <> 0 then
           write(f, ' f ', CommonHeaderSize + SysMemSize(tf))
@@ -643,46 +1002,65 @@ type
   end;
 {$endif DEBUG_HEAP_INC}
 
+  function HeapInc.ThreadState.ChooseFixedArenaSize(sizeIndex: SizeUint): SizeUint;
+  begin
+    result := (allocatedByFullArenas[sizeIndex] div 8 + (FixedArenaSizeQuant - 1)) and SizeUint(-FixedArenaSizeQuant); { 12.5% of memory allocated by the size. }
+    if result < MinFixedArenaSize then
+      result := MinFixedArenaSize;
+    if result > MaxFixedArenaSize then
+      result := MaxFixedArenaSize;
+    dec(result, VarHeaderSize + FixedArenaDataOffset); { Prettier fit into OS chunks. }
+  end;
+
   function HeapInc.ThreadState.AllocFixed(size: SizeUint): pointer;
   var
     sizeIndex, statv: SizeUint;
-    osChunk, osNext: pFixedOSChunk;
+    arena, nextArena: pFixedArena;
   begin
     sizeIndex := SizeMinus1ToIndex(size + (CommonHeaderSize - 1));
 
-    osChunk := fixedPartialOS[sizeIndex];
-    if not Assigned(osChunk) then
+    arena := partialArenas[sizeIndex];
+    if not Assigned(arena) then
     begin
     {$ifdef FPC_HAS_FEATURE_THREADING}
       if Assigned(toFree) then
       begin
         FlushToFree;
-        osChunk := fixedPartialOS[sizeIndex];
+        arena := partialArenas[sizeIndex];
       end;
-      if not Assigned(osChunk) then
+      if not Assigned(arena) then
     {$endif FPC_HAS_FEATURE_THREADING}
       begin
-        osChunk := pFixedOSChunk(GetOSChunk(FixedOSChunkDataOffset + MaxFixedHeaderAndPayload, MaxFixedChunkSize, sizeIndex));
-        if not Assigned(osChunk) then
-          exit(nil);
-        if SizeUint(osChunk^.sizeIndex) = sizeIndex then
+        arena := emptyArenas;
+        if Assigned(arena) then
+        begin
+          emptyArenas := arena^.next;
+          dec(nEmptyArenas);
+        end else
+        begin
+          arena := AllocVar(ChooseFixedArenaSize(sizeIndex), true);
+          if not Assigned(arena) then
+            exit(nil);
+          arena^.sizeIndex := uint32(-1);
+        end;
+        if arena^.sizeIndex = sizeIndex then
           { Lucky! Just don’t reset the chunk and use its old freelist. }
         else
         begin
-          osChunk^.sizeIndex := sizeIndex;
-          osChunk^.firstFreeChunk := nil;
-          osChunk^.usedSize := 0;
-          osChunk^.formattedSize := 0;
-          osChunk^.fullThreshold := osChunk^.size - IndexToSize(sizeIndex) - (FixedOSChunkDataOffset - 1); { available OS chunk space - chunk size + 1. }
+          arena^.sizeIndex := sizeIndex;
+          arena^.firstFreeChunk := nil;
+          arena^.usedSize := 0;
+          arena^.formattedSize := 0;
+          arena^.fullThreshold := pVarHeader(arena)[-1].ch.h and VarSizeMask - IndexToSize(sizeIndex) - (VarHeaderSize + FixedArenaDataOffset - 1); { available space - chunk size + 1. }
         end;
 
-        { Add osChunk to fixedPartialOS[sizeIndex]. }
-        osNext := fixedPartialOS[sizeIndex];
-        osChunk^.prev := nil;
-        osChunk^.next := osNext;
-        if Assigned(osNext) then
-          osNext^.prev := osChunk;
-        fixedPartialOS[sizeIndex] := osChunk;
+        { Add arena to partialArenas[sizeIndex]. }
+        nextArena := partialArenas[sizeIndex];
+        arena^.prev := nil;
+        arena^.next := nextArena;
+        if Assigned(nextArena) then
+          nextArena^.prev := arena;
+        partialArenas[sizeIndex] := arena;
       end;
     end;
 
@@ -693,123 +1071,97 @@ type
     if statv > maxUsed then
       maxUsed := statv;
 
-    { osChunk from the fixedPartialOS list has either free chunk or free unformatted space for a new chunk. }
-    result := osChunk^.firstFreeChunk;
+    { arena from partialArenas has either free chunk or free unformatted space for a new chunk. }
+    result := arena^.firstFreeChunk;
     if Assigned(result) then
-      osChunk^.firstFreeChunk := pFreeChunk(result)^.next
+      arena^.firstFreeChunk := pFreeChunk(result)^.next
     else
     begin
-      result := pointer(osChunk) + (FixedOSChunkDataOffset + CommonHeaderSize) + osChunk^.formattedSize;
-      pCommonHeader(result - CommonHeadersize)^.h := sizeIndex + osChunk^.formattedSize shl ChunkOffsetShift +
-        (FixedFlag + (FixedOSChunkDataOffset + CommonHeaderSize) shl ChunkOffsetShift); { ← const }
-      inc(osChunk^.formattedSize, size);
+      result := pointer(arena) + (FixedArenaDataOffset + CommonHeaderSize) + arena^.formattedSize;
+      pCommonHeader(result - CommonHeadersize)^.h := sizeIndex + arena^.formattedSize shl FixedArenaOffsetShift +
+        (FixedFlag + (FixedArenaDataOffset + CommonHeaderSize) shl FixedArenaOffsetShift); { ← const }
+      inc(arena^.formattedSize, size);
     end;
-    inc(osChunk^.usedSize, size);
-    if osChunk^.usedSize >= osChunk^.fullThreshold then
+    inc(arena^.usedSize, size);
+    if arena^.usedSize >= arena^.fullThreshold then
     begin
-      inc(allocatedByFullFixed[sizeIndex], osChunk^.size);
-      { Remove osChunk from fixedPartialOS[sizeIndex], add to fullOS. }
-      osNext := osChunk^.next;
-      fixedPartialOS[sizeIndex] := osNext;
-      if Assigned(osNext) then
-        osNext^.prev := nil;
-      osNext := fullOS;
-      osChunk^.next := osNext; { osChunk^.prev is already nil because osChunk was the first item of fixedPartialOS[sizeIndex]. }
-      if Assigned(osNext) then
-        osNext^.prev := osChunk;
-      fullOS := osChunk;
+      inc(allocatedByFullArenas[sizeIndex], pVarHeader(arena)[-1].ch.h and VarSizeMask);
+      { Remove arena from partialArenas[sizeIndex]. (It was first.) }
+      nextArena := arena^.next;
+      partialArenas[sizeIndex] := nextArena;
+      if Assigned(nextArena) then
+        nextArena^.prev := nil;
     end;
   end;
 
   function HeapInc.ThreadState.FreeFixed(p: pointer): SizeUint;
   var
     sizeIndex, usedSize: SizeUint;
-    osChunk, osPrev, osNext: pFixedOSChunk;
-    freeOsNext: pFreeOSChunk;
-  {$ifdef FPC_HAS_FEATURE_THREADING}
-    chunkTs: pThreadState;
-  {$endif}
+    arena, prevArena, nextArena: pFixedArena;
   begin
-    osChunk := p - pCommonHeader(p - CommonHeaderSize)^.h shr ChunkOffsetShift;
+    arena := p - pCommonHeader(p - CommonHeaderSize)^.h shr FixedArenaOffsetShift;
 
   {$ifdef FPC_HAS_FEATURE_THREADING}
-    { This can be checked without blocking; osChunk^.threadState can only change from one value not equal to @self to another value not equal to @self. }
-    if osChunk^.threadState <> @self then
+    { This can be checked without blocking; <arena>.threadState can only change from one value not equal to @self to another value not equal to @self. }
+    if pVarHeader(arena)[-1].threadState <> @self then
     begin
       EnterCriticalSection(gs.lock);
-      chunkTs := osChunk^.threadState;
-      if Assigned(chunkTs) then
+      if Assigned(pVarHeader(arena)[-1].threadState) then
       begin
-        { Despite atomic Push lock must be held as otherwise target thread might end and destroy chunkTs.
+        { Despite atomic Push lock must be held as otherwise target thread might end and destroy its threadState.
           However, target thread won’t block to free p, so PushToFree instantly invalidates p. }
         result := IndexToSize(pCommonHeader(p - CommonHeaderSize)^.h and SizeIndexMask) - CommonHeaderSize;
-        chunkTs^.PushToFree(p);
+        pVarHeader(arena)[-1].threadState^.PushToFree(p);
         LeaveCriticalSection(gs.lock);
         exit;
       end;
-      Adopt(osChunk); { ...And continue! }
+      AdoptVarOwner(arena); { ...And continue! }
       LeaveCriticalSection(gs.lock);
     end;
   {$endif FPC_HAS_FEATURE_THREADING}
 
-    pFreeChunk(p)^.next := osChunk^.firstFreeChunk;
-    osChunk^.firstFreeChunk := p;
+    pFreeChunk(p)^.next := arena^.firstFreeChunk;
+    arena^.firstFreeChunk := p;
     sizeIndex := pCommonHeader(p - CommonHeaderSize)^.h and SizeIndexMask;
     result := IndexToSize(sizeIndex);
     dec(used, result);
-    usedSize := osChunk^.usedSize;
-    if usedSize >= osChunk^.fullThreshold then
+    usedSize := arena^.usedSize;
+    if usedSize >= arena^.fullThreshold then
     begin
-      dec(allocatedByFullFixed[sizeIndex], osChunk^.size);
-
-      { Remove osChunk from fullOS, add to fixedPartialOS[sizeIndex]. }
-      osPrev := osChunk^.prev;
-      osNext := osChunk^.next;
-      if Assigned(osPrev) then
-        osPrev^.next := osNext
-      else
-        fullOS := osNext;
-      if Assigned(osNext) then
-        osNext^.prev := osPrev;
-      osChunk^.prev := nil;
-      osNext := fixedPartialOS[sizeIndex];
-      osChunk^.next := osNext;
-      if Assigned(osNext) then
-        osNext^.prev := osChunk;
-      fixedPartialOS[sizeIndex] := osChunk;
+      dec(allocatedByFullArenas[sizeIndex], pVarHeader(arena)[-1].ch.h and VarSizeMask);
+      { Add arena to partialArenas[sizeIndex]. }
+      nextArena := partialArenas[sizeIndex];
+      arena^.next := nextArena;
+      if Assigned(nextArena) then
+        nextArena^.prev := arena;
+      partialArenas[sizeIndex] := arena;
     end;
     dec(usedSize, result);
-    osChunk^.usedSize := usedSize;
+    arena^.usedSize := usedSize;
     if usedSize = 0 then
     begin
-      { Remove osChunk from fixedPartialOS[sizeIndex], add to freeOS. }
-      osPrev := osChunk^.prev;
-      osNext := osChunk^.next;
-      if Assigned(osPrev) then
-        osPrev^.next := osNext
+      { Remove arena from partialArenas[sizeIndex], add to emptyArenas (maybe). }
+      prevArena := arena^.prev;
+      nextArena := arena^.next;
+      if Assigned(prevArena) then
+        prevArena^.next := nextArena
       else
-        fixedPartialOS[sizeIndex] := osNext;
-      if Assigned(osNext) then
-        osNext^.prev := osPrev;
+        partialArenas[sizeIndex] := nextArena;
+      if Assigned(nextArena) then
+        nextArena^.prev := prevArena;
 
-      freeOsNext := freeOS.first;
-      pFreeOSChunk(osChunk)^.prev := nil;
-      pFreeOSChunk(osChunk)^.next := freeOsNext;
-      if Assigned(freeOsNext) then
-        freeOsNext^.prev := osChunk
-      else
-        freeOS.last := pFreeOSChunk(osChunk);
-      freeOS.first := pFreeOSChunk(osChunk);
-    {$ifdef HAS_SYSOSFREE}
-      inc(freeOS.n);
-      if freeOS.n > MaxKeptOSChunks then
-        dec(allocated, freeOS.FreeOne);
-    {$endif}
+      if nEmptyArenas < MaxKeptFixedArenas then
+      begin
+        arena^.next := emptyArenas;
+        emptyArenas := arena;
+        inc(nEmptyArenas);
+      end else
+        FreeVar(arena);
     end;
     dec(result, CommonHeaderSize);
   end;
 
-  function HeapInc.ThreadState.GetOSChunk(minSize, maxSize: SizeUint; sizeIndex: SizeInt): pOSChunk;
+  function HeapInc.ThreadState.GetOSChunk(minSize, maxSize: SizeUint): pOSChunk;
   var
     statv: SizeUint;
   begin
@@ -824,7 +1176,6 @@ type
       LeaveCriticalSection(gs.lock);
       if Assigned(result) then
       begin
-        result^.threadState := @self;
         statv := allocated + result^.size;
         allocated := statv;
         inc(statv, gs.hugeUsed);
@@ -834,117 +1185,65 @@ type
       end;
     end;
   {$endif FPC_HAS_FEATURE_THREADING}
-    result := AllocateOSChunk(minSize, sizeIndex);
+    result := AllocateOSChunk(minSize);
   end;
 
-  function HeapInc.ThreadState.AllocateOSChunk(minSize: SizeUint; sizeIndex: SizeInt): pOSChunk;
+  function HeapInc.ThreadState.AllocateOSChunk(minSize: SizeUint): pOSChunk;
   var
-    preferredSize, statv: SizeUint;
+    query, statv: SizeUint;
   begin
-    if sizeIndex < 0 then
+    query := used div 16 + minSize div 2; { Base: 6.25% of the memory used, so if GrowHeapSize2 = 1 Mb, 1 Mb OS allocations start at 16 Mb used. }
+    if query > GrowHeapSize2 then { Limit by GrowHeapSize2. }
+      query := GrowHeapSize2;
+    if query < minSize then { But of course allocate at least the amount requested. }
+      query := minSize;
+    query := (query + (OSChunkVarSizeQuant - 1)) and SizeUint(-OSChunkVarSizeQuant); { Quantize. }
+    result := SysOSAlloc(query);
+    if not Assigned(result) and (query > minSize) then
     begin
-      if minSize <= GrowHeapSize1 then { 256K by default. }
-        preferredSize := GrowHeapSize1
-      else if minSize <= GrowHeapSize2 then { 1M by default. }
-        preferredSize := GrowHeapSize2
-      else
-        preferredSize := (minSize + (OSChunkVarSizeQuant - 1)) and SizeUint(-OSChunkVarSizeQuant);
-    end else
-    begin
-      preferredSize := (allocatedByFullFixed[sizeIndex] div 8 + (OSChunkFixedSizeQuant - 1)) and SizeUint(-OSChunkFixedSizeQuant); { 12.5% of memory allocated by the size. }
-      if preferredSize < growheapsizesmall then
-        preferredSize := growheapsizesmall;
-      if preferredSize > MaxFixedChunkSize then
-        preferredSize := MaxFixedChunkSize;
-    end;
-    result := SysOSAlloc(preferredSize);
-    if not Assigned(result) and (preferredSize > minSize) then
-    begin
-      preferredSize := minSize;
-      result := SysOSAlloc(preferredSize);
+      query := minSize;
+      result := SysOSAlloc(query);
     end;
     if not Assigned(result) then
       exit(AllocFailed);
-    statv := allocated + preferredSize;
+    result^.size := query;
+    statv := allocated + query;
     allocated := statv;
     inc(statv, gs.hugeUsed);
     if statv > maxAllocated then
       maxAllocated := statv;
-    result^.size := preferredSize;
-  {$ifdef FPC_HAS_FEATURE_THREADING}
-    result^.threadState := @self;
-  {$endif}
-    result^.sizeIndex := -1;
   end;
 
-  function HeapInc.ThreadState.AllocVar(size: SizeUint): pointer;
+  function HeapInc.ThreadState.AllocVar(size: SizeUint; isArena: boolean): pointer;
   var
-    fv, fv2: pFreeVarChunk;
+    fv, toRemove: pFreeVarChunk;
     osChunk, osNext: pVarOSChunk;
-    varPrev, varNext: pFreeVarChunk;
     vSize, minSize, maxSize, statv: SizeUint;
-  {$if MatchEffort >= 0} fv2Size: SizeUint; {$endif}
-  {$if MatchEffort > 1} triesLeft: uint32; {$endif}
+    adj: RbTree.pNode;
   begin
     size := (size + (VarHeaderSize + VarSizeQuant - 1)) and SizeUint(-VarSizeQuant);
   {$ifdef FPC_HAS_FEATURE_THREADING}
     if Assigned(toFree) then
       FlushToFree;
   {$endif}
-    { Seach varFree for a chunk that fits size, heuristically strive for smallest. }
-    fv := varFree;
-    while Assigned(fv) and (fv^.size < size) do
-      fv := fv^.next;
-  {$if MatchEffort <> 0}
-    if Assigned(fv) and (fv^.size > size) then { Don’t search further if the size is already exact. }
-    begin
-    {$if MatchEffort > 1} triesLeft := MatchEffort + 1; {$endif}
-      fv2 := fv;
-      repeat
-      {$if MatchEffort > 1}
-        dec(triesLeft);
-        if triesLeft = 0 then
-          break;
-      {$endif}
-        fv2 := fv2^.next;
-        if not Assigned(fv2) then
-          break;
-        fv2Size := fv2^.size;
-        if (fv2Size < size) or (fv2Size >= fv^.size) then
-          continue;
-        fv := fv2;
-      {$if MatchEffort > 1}
-        if fv2Size = size then { Check here instead of the loop condition to prevent ‘continue’ from jumping to the check. }
-          break;
-      {$endif}
-      until {$if MatchEffort = 1} true {$else} false {$endif};
-    end;
-  {$endif MatchEffort <> 0}
+
+    { Search varFree for smallest chunk ≥ size. }
+    fv := pointer(varFree.LowerBound(pointer(PtrUint(size)))); { fv is temporarily RbTree.pNode. }
 
     if Assigned(fv) then
     begin
-      { Remove fv from varFree. }
-      varPrev := fv^.prev;
-      varNext := fv^.next;
-      if Assigned(varPrev) then
-        varPrev^.next := varNext
-      else
-        varFree := varNext;
-      if Assigned(varNext) then
-        varNext^.prev := varPrev;
+      dec(pointer(fv), FreeVarChunkRbnOffset); { Now fv is fair pFreeVarChunk. }
+      toRemove := fv; { Postpone the removal to maybe ChangeInPlace. }
     end else
     begin
+      toRemove := nil;
       minSize := VarOSChunkDataOffset + size;
-      if minSize <= GrowHeapSize1 then
-        maxSize := GrowHeapSize1
-      else if minSize <= GrowHeapSize2 then
-        maxSize := GrowHeapSize2
-      else
-        maxSize := High(SizeUint);
-      osChunk := pVarOSChunk(GetOSChunk(minSize, maxSize, -1));
+      maxSize := GrowHeapSize2;
+      if maxSize < minSize then
+        maxSize := High(SizeUint); { Shouldn’t happen (unless GrowHeapSize2 is too small), so don’t optimize the case when it happens. }
+      osChunk := pVarOSChunk(GetOSChunk(minSize, maxSize));
       if not Assigned(osChunk) then
         exit(nil);
-      osChunk^.sizeIndex := -1;
 
       { Add osChunk to varOS. }
       osNext := varOS;
@@ -961,11 +1260,11 @@ type
       pVarHeader(pointer(fv) - VarHeaderSize)^.threadState := @self;
     {$endif}
       vSize := SizeUint(osChunk^.size - VarOSChunkDataOffset) and SizeUint(-VarSizeQuant);
-      pVarHeader(pointer(fv) - VarHeaderSize)^.ch.h := uint32(vSize) or (FirstFlag or LastFlag);
+      pVarHeader(pointer(fv) - VarHeaderSize)^.ch.h := uint32(vSize) + (FirstFlag or LastFlag);
       fv^.size := vSize;
     end;
 
-    { Result will be allocated at the beginning of fv; maybe format the remainder and push it back to varFree. }
+    { Result will be allocated at the beginning of fv; maybe format the remainder and add it back to varFree. }
     result := fv;
     vSize := fv^.size - size;
     if (vSize > MaxFixedHeaderAndPayload) or
@@ -974,62 +1273,71 @@ type
       (vSize >= MinVarHeaderAndPayload) and (pVarHeader(result - VarHeaderSize)^.ch.h and LastFlag = 0) then
     begin
       inc(pointer(fv), size); { result = allocated block, fv = remainder. }
+      if Assigned(toRemove) then
+      begin
+        adj := varFree.Prev(@toRemove^.rbn);
+        if not Assigned(adj) or (vSize >= pFreeVarChunk(pointer(adj) - FreeVarChunkRbnOffset)^.size) then { Tree position intact (free chunk size is always decreased). }
+          varFree.ChangeInPlace(@toRemove^.rbn, @fv^.rbn)
+        else
+        begin
+          varFree.Remove(@toRemove^.rbn);
+          toRemove := nil;
+        end;
+      end;
       pVarHeader(pointer(fv) - VarHeaderSize)^.prevSize := size;
     {$ifdef FPC_HAS_FEATURE_THREADING}
       pVarHeader(pointer(fv) - VarHeaderSize)^.threadState := @self;
     {$endif}
       { Remainder is still last in the OS chunk if the original chunk was last. }
-      pVarHeader(pointer(fv) - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h and LastFlag or uint32(vSize);
+      pVarHeader(pointer(fv) - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h and LastFlag + uint32(vSize);
       fv^.size := vSize;
       if pVarHeader(result - VarHeaderSize)^.ch.h and LastFlag = 0 then
         pVarHeader(pointer(fv) + vSize - VarHeaderSize)^.prevSize := vSize;
 
-      { Add fv to varFree. }
-      varNext := varFree;
-      fv^.prev := nil;
-      fv^.next := varNext;
-      if Assigned(varNext) then
-        varNext^.prev := fv;
-      varFree := fv;
+      if not Assigned(toRemove) then
+        varFree.Add(@fv^.rbn);
 
       { Allocated chunk is still first in the OS chunk if the original chunk was first. }
-      pVarHeader(result - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h and FirstFlag or UsedFlag or uint32(size);
+      pVarHeader(result - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h and FirstFlag + UsedFlag + uint32(size);
     end else
     begin
       { Use the entire chunk. }
+      if Assigned(toRemove) then
+        varFree.Remove(@toRemove^.rbn);
       size := fv^.size;
-      pVarHeader(result - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h and (FirstFlag or LastFlag) or UsedFlag or uint32(size);
+      pVarHeader(result - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h and (FirstFlag or LastFlag) + UsedFlag + uint32(size);
     end;
-    statv := used + size;
-    used := statv;
-    inc(statv, gs.hugeUsed);
-    if statv > maxUsed then
-      maxUsed := statv;
+    if isArena then
+      inc(pVarHeader(result)[-1].ch.h, FixedArenaFlag) { Arenas aren’t counted in “used” directly. }
+    else
+    begin
+      statv := used + size;
+      used := statv;
+      inc(statv, gs.hugeUsed);
+      if statv > maxUsed then
+        maxUsed := statv;
+    end;
   end;
 
   function HeapInc.ThreadState.FreeVar(p: pointer): SizeUint;
   var
-  {$ifdef FPC_HAS_FEATURE_THREADING}
-    chunkTs: pThreadState;
-  {$endif}
-    varPrev, varNext: pFreeVarChunk;
     p2: pointer;
     fSizeFlags: SizeUint;
     osChunk, osPrev, osNext: pVarOSChunk;
     freeOsNext: pFreeOSChunk;
+    toRemove: pFreeVarChunk;
+    adj: RbTree.pNode;
   begin
   {$ifdef FPC_HAS_FEATURE_THREADING}
-    chunkTs := pVarHeader(p - VarHeaderSize)^.threadState;
-    if chunkTs <> @self then
+    if pVarHeader(p - VarHeaderSize)^.threadState <> @self then
     begin
       EnterCriticalSection(gs.lock);
-      chunkTs := pVarHeader(p - VarHeaderSize)^.threadState;
-      if Assigned(chunkTs) then
+      if Assigned(pVarHeader(p - VarHeaderSize)^.threadState) then
       begin
-        { Despite atomic Push lock must be held as otherwise target thread might end and destroy chunkTs.
+        { Despite atomic Push lock must be held as otherwise target thread might end and destroy its threadState.
           However, target thread won’t block to free p, so PushToFree instantly invalidates p. }
         result := pVarHeader(p - VarHeaderSize)^.ch.h and uint32(VarSizeMask) - VarHeaderSize;
-        chunkTs^.PushToFree(p);
+        pVarHeader(p - VarHeaderSize)^.threadState^.PushToFree(p);
         LeaveCriticalSection(gs.lock);
         exit;
       end;
@@ -1040,7 +1348,11 @@ type
 
     fSizeFlags := pVarHeader(p - VarHeaderSize)^.ch.h;
     result := fSizeFlags and VarSizeMask;
-    dec(used, result);
+    if fSizeFlags and FixedArenaFlag = 0 then
+      dec(used, result)
+    else
+      dec(fSizeFlags, FixedArenaFlag);
+    toRemove := nil;
 
     { If next/prev are free, remove them from varFree and merge with f — (f)uture (f)ree chunk that starts at p, has fSizeFlags,
       and conveniently always inherits prevSize of its final location. }
@@ -1049,17 +1361,8 @@ type
       p2 := p + result;
       if pVarHeader(p2 - VarHeaderSize)^.ch.h and UsedFlag = 0 then
       begin
-        fSizeFlags := (fSizeFlags + pFreeVarChunk(p2)^.size) or pVarHeader(p2 - VarHeaderSize)^.ch.h and LastFlag;
-
-        { Remove p2 from varFree. }
-        varPrev := pFreeVarChunk(p2)^.prev;
-        varNext := pFreeVarChunk(p2)^.next;
-        if Assigned(varPrev) then
-          varPrev^.next := varNext
-        else
-          varFree := varNext;
-        if Assigned(varNext) then
-          varNext^.prev := varPrev;
+        fSizeFlags := (fSizeFlags + pFreeVarChunk(p2)^.size) + pVarHeader(p2 - VarHeaderSize)^.ch.h and LastFlag;
+        toRemove := p2;
       end;
     end;
 
@@ -1069,17 +1372,17 @@ type
       if pVarHeader(p2 - VarHeaderSize)^.ch.h and UsedFlag = 0 then
       begin
         p := p2;
-        fSizeFlags := (fSizeFlags + pFreeVarChunk(p2)^.size) or pVarHeader(p2 - VarHeaderSize)^.ch.h and FirstFlag;
-
-        { Remove p2 from varFree. }
-        varPrev := pFreeVarChunk(p2)^.prev;
-        varNext := pFreeVarChunk(p2)^.next;
-        if Assigned(varPrev) then
-          varPrev^.next := varNext
+        fSizeFlags := (fSizeFlags + pFreeVarChunk(p2)^.size) + pVarHeader(p2 - VarHeaderSize)^.ch.h and FirstFlag;
+        { Keep the largest chunk in toRemove as it will have more chances for ChangeInPlace succeeding. }
+        if Assigned(toRemove) then
+          if pFreeVarChunk(p2)^.size >= toRemove^.size then
+          begin
+            varFree.Remove(@toRemove^.rbn);
+            toRemove := p2;
+          end else
+            varFree.Remove(@pFreeVarChunk(p2)^.rbn)
         else
-          varFree := varNext;
-        if Assigned(varNext) then
-          varNext^.prev := varPrev;
+          toRemove := p2;
       end;
     end;
 
@@ -1087,21 +1390,32 @@ type
       unless it spans the entire OS chunk, in which case instead move the chunk from varOS to freeOS. }
     if fSizeFlags and (FirstFlag or LastFlag) <> FirstFlag or LastFlag then
     begin
+      if Assigned(toRemove) then
+      begin
+        adj := varFree.Next(@toRemove^.rbn);
+        if not Assigned(adj) or (fSizeFlags and VarSizeMask <= pFreeVarChunk(pointer(adj) - FreeVarChunkRbnOffset)^.size) then { Tree position intact (free chunk size is always increased). }
+        begin
+          if toRemove <> p then { Might happen. Skip a no-op ChangeInPlace. }
+            varFree.ChangeInPlace(@toRemove^.rbn, @pFreeVarChunk(p)^.rbn);
+        end else
+        begin
+          varFree.Remove(@toRemove^.rbn);
+          toRemove := nil;
+        end;
+      end;
+
       if fSizeFlags and LastFlag = 0 then
         pVarHeader(p + fSizeFlags and VarSizeMask - VarHeaderSize)^.prevSize := fSizeFlags and VarSizeMask;
 
-      pVarHeader(p - VarHeaderSize)^.ch.h := uint32(fSizeFlags) xor UsedFlag;
+      pVarHeader(p - VarHeaderSize)^.ch.h := uint32(fSizeFlags) - UsedFlag;
       pFreeVarChunk(p)^.size := fSizeFlags and VarSizeMask;
 
-      { Add p to varFree. }
-      varNext := varFree;
-      pFreeVarChunk(p)^.prev := nil;
-      pFreeVarChunk(p)^.next := varNext;
-      if Assigned(varNext) then
-        varNext^.prev := p;
-      varFree := p;
+      if not Assigned(toRemove) then
+        varFree.Add(@pFreeVarChunk(p)^.rbn);
     end else
     begin
+      if Assigned(toRemove) then
+        varFree.Remove(@toRemove^.rbn);
       osChunk := p - (VarOSChunkDataOffset + VarHeaderSize);
 
       { Remove osChunk from varOS. }
@@ -1146,7 +1460,8 @@ type
   var
     fp, p2: pointer;
     oldpsize, fSizeFlags, growby, statv: SizeUint;
-    varNext, varPrev: pFreeVarChunk;
+    toRemove: pFreeVarChunk;
+    adj: RbTree.pNode; { Assigned(adj) means ChangeInPlace is NOT possible. }
   begin
     if (size < MinVarHeaderAndPayload - VarHeaderSize)
       or (size > GrowHeapSize2) { Not strictly necessary but rejects clearly wrong values early so adding headers to the size doesn’t overflow. }
@@ -1160,11 +1475,12 @@ type
 
     oldpsize := pVarHeader(result - VarHeaderSize)^.ch.h and uint32(VarSizeMask);
     p2 := result + oldpsize;
-    { (f)uture (f)ree chunk starting at p + size and having fSizeFlags will be created at the end, must exit before that if not required. }
+    { (f)uture (f)ree chunk starting at p + size and having fSizeFlags will be created at the end (replacing toRemove), must exit before that if not required. }
     if size <= oldpsize then
     begin
       { Shrink. Maybe. }
       fSizeFlags := oldpsize - size;
+      toRemove := nil;
 
       if pVarHeader(result - VarHeaderSize)^.ch.h and LastFlag <> 0 then
       begin
@@ -1172,7 +1488,7 @@ type
         if fSizeFlags <= MaxFixedHeaderAndPayload then
           exit;
         dec(used, fSizeFlags);
-        fSizeFlags := fSizeFlags or LastFlag;
+        inc(fSizeFlags, LastFlag);
       end
       else if pVarHeader(p2 - VarHeaderSize)^.ch.h and UsedFlag <> 0 then
       begin
@@ -1186,21 +1502,16 @@ type
           exit;
         dec(used, fSizeFlags);
         { Has empty chunk to the right: extend with freed space. }
-        fSizeFlags := (fSizeFlags + pFreeVarChunk(p2)^.size) or pVarHeader(p2 - VarHeaderSize)^.ch.h and LastFlag;
-
-        { Remove p2 from varFree. }
-        varPrev := pFreeVarChunk(p2)^.prev;
-        varNext := pFreeVarChunk(p2)^.next;
-        if Assigned(varPrev) then
-          varPrev^.next := varNext
-        else
-          varFree := varNext;
-        if Assigned(varNext) then
-          varNext^.prev := varPrev;
+        fSizeFlags := fSizeFlags + pFreeVarChunk(p2)^.size + pVarHeader(p2 - VarHeaderSize)^.ch.h and LastFlag;
+        toRemove := p2;
+        { Free chunk size increased, so the tree position is intact if still ≤ than the next. }
+        adj := varFree.Next(@toRemove^.rbn);
+        if Assigned(adj) and (fSizeFlags and VarSizeMask <= pFreeVarChunk(pointer(adj) - FreeVarChunkRbnOffset)^.size) then
+          adj := nil;
       end;
 
       { Update p size. }
-      pVarHeader(result - VarHeaderSize)^.ch.h := uint32(size) or pVarHeader(result - VarHeaderSize)^.ch.h and (FirstFlag or UsedFlag);
+      pVarHeader(result - VarHeaderSize)^.ch.h := uint32(size) + pVarHeader(result - VarHeaderSize)^.ch.h and (FirstFlag or UsedFlag);
     end
     { Grow if there is free space. }
     else if (pVarHeader(result - VarHeaderSize)^.ch.h and LastFlag = 0) and (pVarHeader(p2 - VarHeaderSize)^.ch.h and UsedFlag = 0) and
@@ -1215,7 +1526,7 @@ type
         if fSizeFlags < MinVarHeaderAndPayload then
           fSizeFlags := 0
         else
-          fSizeFlags := fSizeFlags or LastFlag;
+          inc(fSizeFlags, LastFlag);
 
       growby := pFreeVarChunk(p2)^.size - fSizeFlags and VarSizeMask;
       size := oldpsize + growby;
@@ -1225,32 +1536,36 @@ type
       if statv > maxUsed then
         maxUsed := statv;
 
-      { Remove p2 from varFree. }
-      varPrev := pFreeVarChunk(p2)^.prev;
-      varNext := pFreeVarChunk(p2)^.next;
-      if Assigned(varPrev) then
-        varPrev^.next := varNext
-      else
-        varFree := varNext;
-      if Assigned(varNext) then
-        varNext^.prev := varPrev;
-
+      toRemove := p2;
       { Update p size. }
-      pVarHeader(result - VarHeaderSize)^.ch.h := uint32(size) or pVarHeader(result - VarHeaderSize)^.ch.h and (FirstFlag or UsedFlag);
+      pVarHeader(result - VarHeaderSize)^.ch.h := uint32(size) + pVarHeader(result - VarHeaderSize)^.ch.h and (FirstFlag or UsedFlag);
       { No empty chunk? }
       if fSizeFlags = 0 then
       begin
+        varFree.Remove(@toRemove^.rbn);
         if pVarHeader(p2 - VarHeaderSize)^.ch.h and LastFlag <> 0 then
-          pVarHeader(result - VarHeaderSize)^.ch.h := pVarHeader(result - VarHeaderSize)^.ch.h or LastFlag
+          inc(pVarHeader(result - VarHeaderSize)^.ch.h, LastFlag)
         else
           pVarHeader(result + size - VarHeaderSize)^.prevSize := size;
         exit;
       end;
+      { Free chunk size decreased, so the tree position is intact if still ≥ than the previous. }
+      adj := varFree.Prev(@toRemove^.rbn);
+      if Assigned(adj) and (fSizeFlags and VarSizeMask >= pFreeVarChunk(pointer(adj) - FreeVarChunkRbnOffset)^.size) then
+        adj := nil;
     end else
       exit(nil);
 
     { Format new free var chunk. }
     fp := result + size;
+    if Assigned(toRemove) then
+      if not Assigned(adj) then
+        varFree.ChangeInPlace(@toRemove^.rbn, @pFreeVarChunk(fp)^.rbn)
+      else
+      begin
+        varFree.Remove(@toRemove^.rbn);
+        toRemove := nil;
+      end;
     pVarHeader(fp - VarHeaderSize)^.prevSize := size;
   {$ifdef FPC_HAS_FEATURE_THREADING}
     pVarHeader(fp - VarHeaderSize)^.threadState := @self;
@@ -1259,14 +1574,8 @@ type
     pFreeVarChunk(fp)^.size := fSizeFlags and VarSizeMask;
     if fSizeFlags and LastFlag = 0 then
       pVarHeader(fp + fSizeFlags and VarSizeMask - VarHeaderSize)^.prevSize := fSizeFlags and VarSizeMask;
-
-    { Add fp to varFree. }
-    varNext := varFree;
-    pFreeVarChunk(fp)^.prev := nil;
-    pFreeVarChunk(fp)^.next := varNext;
-    if Assigned(varNext) then
-      varNext^.prev := fp;
-    varFree := fp;
+    if not Assigned(toRemove) then
+      varFree.Add(@pFreeVarChunk(fp)^.rbn);
   end;
 
   { If SysOSFree is available, huge chunks aren’t cached by any means.
@@ -1291,7 +1600,7 @@ type
       exit(AllocFailed);
     pHugeChunk(result)^.size := size;
   {$else HAS_SYSOSFREE}
-    result := GetOSChunk(size, High(SizeUint), -1);
+    result := GetOSChunk(size, High(SizeUint));
     if not Assigned(result) then
       exit; { GetOSChunk throws an error if required. }
     size := pOSChunk(result)^.size;
@@ -1334,7 +1643,6 @@ type
     else
       fOs^.first := p;
     fOs^.last := p;
-    pFreeOSChunk(p)^.sizeIndex := -1;
   {$endif ndef HAS_SYSOSFREE}
   {$ifdef FPC_HAS_FEATURE_THREADING} LeaveCriticalSection(gs.lock); {$endif}
   {$ifdef HAS_SYSOSFREE} SysOSFree(p, result); {$endif}
@@ -1414,14 +1722,11 @@ type
 
   procedure HeapInc.ThreadState.Orphan;
   var
-    sizeIndex: SizeUint;
     lastFree, nextFree: pFreeOSChunk;
     vOs, nextVOs, lastVOs: pVarOSChunk;
   begin
     FlushToFree;
-    Orphan(fullOS);
-    for sizeIndex := 0 to High(fixedPartialOS) do
-      Orphan(fixedPartialOS[sizeIndex]);
+    FreeEmptyArenas(0);
     { Prepend freeOS to gs.freeOS. }
     lastFree := freeOS.last;
     if Assigned(lastFree) then
@@ -1460,56 +1765,39 @@ type
     FillChar(self, sizeof(self), 0);
   end;
 
-  class procedure HeapInc.ThreadState.Orphan(list: pFixedOSChunk);
+  procedure HeapInc.ThreadState.AdoptArena(arena: pFixedArena);
   var
-    last, osNext: pFixedOSChunk;
+    sizeIndex: SizeUint;
+    nextArena: pFixedArena;
   begin
-    if not Assigned(list) then
-      exit;
-    last := pFixedOSChunk(ChangeThreadStates(list, nil));
-    { Prepend list to gs.fixedOS. }
-    osNext := gs.fixedOS;
-    last^.next := osNext;
-    if Assigned(osNext) then
-      osNext^.prev := last;
-    gs.fixedOS := list;
-  end;
+    sizeIndex := pCommonHeader(pointer(arena) + FixedArenaDataOffset)^.h and SizeIndexMask;
+    inc(used, arena^.usedSize); { maxUsed is updated at the end of AdoptVarOwner. }
 
-  procedure HeapInc.ThreadState.Adopt(osChunk: pFixedOSChunk);
-  var
-    sizeIndex, statv: SizeUint;
-    dest: ^pFixedOSChunk;
-  begin
-    sizeIndex := pCommonHeader(pointer(osChunk) + FixedOSChunkDataOffset)^.h and SizeIndexMask;
-    statv := used + osChunk^.usedSize;
-    used := statv;
-    inc(statv, gs.hugeUsed);
-    if statv > maxUsed then
-      maxUsed := statv;
-
-    statv := allocated + osChunk^.size;
-    allocated := statv;
-    inc(statv, gs.hugeUsed);
-    if statv > maxAllocated then
-      maxAllocated := statv;
-
-    { Remove osChunk from gs.fixedOS, add to fullOS or fixedPartialOS[sizeIndex] as appropriate. }
-    dest := @fixedPartialOS[sizeIndex];
-    if osChunk^.usedSize >= osChunk^.fullThreshold then
+    if arena^.usedSize = 0 then
     begin
-      inc(allocatedByFullFixed[sizeIndex], osChunk^.size);
-      dest := @fullOS;
-    end;
-    osChunk^.MoveTo(gs.fixedOS, dest^);
-
-    osChunk^.threadState := @self;
+      { Add arena to emptyArenas. }
+      arena^.next := emptyArenas;
+      emptyArenas := arena;
+      inc(nEmptyArenas); { May exceed MaxKeptFixedArenas, extra arenas are freed at the end of AdoptVarOwner. }
+    end
+    else if arena^.usedSize < arena^.fullThreshold then
+    begin
+      { Add arena to partialArenas[sizeIndex]. }
+      nextArena := partialArenas[sizeIndex];
+      arena^.prev := nil;
+      arena^.next := nextArena;
+      if Assigned(nextArena) then
+        nextArena^.prev := arena;
+      partialArenas[sizeIndex] := arena;
+    end else
+      inc(allocatedByFullArenas[sizeIndex], pVarHeader(arena)[-1].ch.h and VarSizeMask);
   end;
 
   procedure HeapInc.ThreadState.AdoptVarOwner(p: pointer);
   var
-    prevSize, size, statv: SizeUint;
+    prevSize, statv: SizeUint;
     h: uint32;
-    varFreeHead: pFreeVarChunk;
+    vOs, osPrev, osNext: pVarOSChunk;
   begin
     repeat
       prevSize := pVarHeader(p - VarHeaderSize)^.prevSize;
@@ -1517,50 +1805,45 @@ type
     until prevSize = 0;
 
     { Move OS chunk from gs.varOS to varOS. }
-    pOSChunk(p - (VarOSChunkDataOffset + VarHeaderSize))^.MoveTo(gs.varOS, varOS);
-    statv := allocated + pOSChunk(p - (VarOSChunkDataOffset + VarHeaderSize))^.size;
+    vOs := p - (VarOSChunkDataOffset + VarHeaderSize);
+    osPrev := vOs^.prev;
+    osNext := vOs^.next;
+    if Assigned(osPrev) then
+      osPrev^.next := osNext
+    else
+      gs.varOS := osNext;
+    if Assigned(osNext) then
+      osNext^.prev := osPrev;
+    vOs^.prev := nil;
+    osNext := varOS;
+    vOs^.next := osNext;
+    if Assigned(osNext) then
+      osNext^.prev := vOs;
+    varOS := vOs;
+
+    statv := allocated + vOs^.size;
     allocated := statv;
     inc(statv, gs.hugeUsed);
     if statv > maxAllocated then
       maxAllocated := statv;
 
-    { Careful: even though VarHeaders have own threadState links, correct threadState in the OS chunk is required,
-      as the chunk might be orphaned, then adopted with this function, then become free, then be reused as fixed chunk.
-      GetOSChunk does not set threadState if it takes the chunk from local freeOS, assuming it is already set. }
-    pOSChunk(p - (VarOSChunkDataOffset + VarHeaderSize))^.threadState := @self;
-
-    varFreeHead := varFree;
     repeat
       pVarHeader(p - VarHeaderSize)^.threadState := @self;
       h := pVarHeader(p - VarHeaderSize)^.ch.h;
-      size := h and uint32(VarSizeMask);
       if h and UsedFlag = 0 then
-      begin
-        { Add free chunk to varFree. }
-        pFreeVarChunk(p)^.prev := nil;
-        pFreeVarChunk(p)^.next := varFreeHead;
-        if Assigned(varFreeHead) then
-          varFreeHead^.prev := pFreeVarChunk(p);
-        varFreeHead := p;
-      end else
-        inc(used, size); { maxUsed is updated after the loop. }
-      inc(p, size);
+        varFree.Add(@pFreeVarChunk(p)^.rbn)
+      else if h and FixedArenaFlag <> 0 then
+         AdoptArena(p)
+      else
+        inc(used, h and uint32(VarSizeMask)); { maxUsed is updated after the loop. }
+      inc(p, h and uint32(VarSizeMask));
     until h and LastFlag <> 0;
-    varFree := varFreeHead;
+
+    FreeEmptyArenas(MaxKeptFixedArenas);
+
     statv := used + gs.hugeUsed;
     if statv > maxUsed then
       maxUsed := statv;
-  end;
-
-  class function HeapInc.ThreadState.ChangeThreadStates(list: pOSChunk; ts: pThreadState): pOSChunk; static; { Returns the last item of list. }
-  begin
-    if not Assigned(list) then
-      exit(nil);
-    repeat
-      list^.threadState := ts;
-      result := list;
-      list := list^.next;
-    until not Assigned(list);
   end;
 
   class procedure HeapInc.ThreadState.ChangeThreadState(vOs: pVarOSChunk; ts: pThreadState);
@@ -1568,7 +1851,6 @@ type
     h: uint32;
     p: pointer;
   begin
-    vOs^.threadState := ts; { Not really required (for now), but done for symmetry; also see the comment on setting OSChunk.threadState in AdoptVarOwner. }
     p := pointer(vOs) + (VarOSChunkDataOffset + VarHeaderSize);
     repeat
       pVarHeader(p - VarHeaderSize)^.threadState := ts;
@@ -1577,16 +1859,24 @@ type
     until h and LastFlag <> 0;
   end;
 
+  procedure HeapInc.ThreadState.FreeEmptyArenas(untilCount: SizeUint);
+  var
+    arena: pFixedArena;
+  begin
+    while nEmptyArenas > untilCount do
+    begin
+      arena := emptyArenas;
+      emptyArenas := arena^.next;
+      dec(nEmptyArenas);
+      FreeVar(arena);
+    end;
+  end;
+
 {$ifndef FPC_SECTION_THREADVARS}
   procedure HeapInc.ThreadState.FixupSelfPtr;
   var
-    sizeIndex: SizeUint;
     vOs: pVarOSChunk;
   begin
-    ChangeThreadStates(fullOS, @self);
-    for sizeIndex := 0 to High(fixedPartialOS) do
-      ChangeThreadStates(fixedPartialOS[sizeIndex], @self);
-    ChangeThreadStates(freeOS.first, @self);
     vOs := varOS;
     while Assigned(vOs) do
     begin
@@ -1597,12 +1887,12 @@ type
 {$endif ndef FPC_SECTION_THREADVARS}
 {$endif FPC_HAS_FEATURE_THREADING}
 
-class function HeapInc.AllocFailed: pointer;
-begin
-  if not ReturnNilIfGrowHeapFails then
-    HandleError(204);
-  result := nil;
-end;
+  class function HeapInc.AllocFailed: pointer;
+  begin
+    if not ReturnNilIfGrowHeapFails then
+      HandleError(204);
+    result := nil;
+  end;
 
 function SysGetFPCHeapStatus:TFPCHeapStatus;
 var
@@ -1638,7 +1928,7 @@ begin
   if size <= HeapInc.MaxFixedHeaderAndPayload - HeapInc.CommonHeaderSize then
     result := ts^.AllocFixed(size)
   else if size < GrowHeapSize2 div 2 then { Approximate idea on the max size of the variable chunk. Approximate because size does not include headers but GrowHeapSize2 does. }
-    result := ts^.AllocVar(size)
+    result := ts^.AllocVar(size, false)
   else
     result := ts^.AllocHuge(size);
 end;
@@ -1755,10 +2045,6 @@ begin
     FillChar(result^, SysMemSize(result), 0);
 end;
 
-{$endif FPC_NO_DEFAULT_HEAP}
-
-{$ifndef HAS_MEMORYMANAGER}
-
 {*****************************************************************************
                                  InitHeap
 *****************************************************************************}
@@ -1825,7 +2111,6 @@ begin
 {$endif FPC_HAS_FEATURE_THREADING | defined(HAS_SYSOSFREE)}
 end;
 
-{$endif ndef HAS_MEMORYMANAGER}
+{$endif ndef FPC_NO_DEFAULT_HEAP}
 
-{$endif ndef FPC_NO_DEFAULT_MEMORYMANAGER}
-{$endif defined(FPC_HAS_FEATURE_HEAP) or defined(FPC_IN_HEAPMGR)}
+{$endif ndef HAS_MEMORYMANAGER and (defined(FPC_HAS_FEATURE_HEAP) or defined(FPC_IN_HEAPMGR))}
