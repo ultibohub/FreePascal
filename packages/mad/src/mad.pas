@@ -305,7 +305,7 @@ const
 
 procedure mad_stream_init(var stream: mad_stream); cdecl; external {$IFDEF DYNLINK}madlib{$ENDIF};
 procedure mad_stream_finish(var stream: mad_stream); cdecl; external {$IFDEF DYNLINK}madlib{$ENDIF};
-procedure mad_stream_options(stream: mad_stream; opts: cint);
+procedure mad_stream_options(var stream: mad_stream; opts: cint);
 procedure mad_stream_buffer(var stream: mad_stream; buffer: pcuchar; length: culong); cdecl; external {$IFDEF DYNLINK}madlib{$ENDIF};
 procedure mad_stream_skip(var stream: mad_stream; length: culong); cdecl; external {$IFDEF DYNLINK}madlib{$ENDIF};
 function  mad_stream_sync(var stream: mad_stream): cint; cdecl; external {$IFDEF DYNLINK}madlib{$ENDIF};
@@ -552,9 +552,12 @@ begin
   Result := mad_fixed_t(x * double(1 shl MAD_F_FRACBITS) + 0.5);
 end;}
 
+{$HINTS OFF}
 procedure mad_bit_finish(var bitptr: mad_bitptr);
 begin
+  // Nothing
 end;
+{$HINTS ON}
 
 function mad_bit_bitsleft(var bitptr: mad_bitptr): cushort;
 begin
@@ -576,7 +579,7 @@ begin
   MAD_RECOVERABLE := word(error) and $ff00 > 0;
 end;
 
-procedure mad_stream_options(stream: mad_stream; opts: cint);
+procedure mad_stream_options(var stream: mad_stream; opts: cint);
 begin
   stream.options := opts;
 end;
