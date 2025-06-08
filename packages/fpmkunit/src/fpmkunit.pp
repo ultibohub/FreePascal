@@ -7246,7 +7246,7 @@ begin
           CmdCreateDir(ExtractFilePath(DestFileName));
           SysCopyFile(AddPathPrefix(APackage, List.Names[i]),DestFileName)
         end
-      else
+      else if List[i]<>'' then
         SysCopyFile(AddPathPrefix(APackage, List[i]), DestDir);
 end;
 
@@ -8680,14 +8680,15 @@ Var
     L: TStrings;
     F: Text;
     Dep : TDependency;
-    aUnitName : string;
+    aUnitName, aUnitSourceDir : string;
     CompilationFailed: Boolean;
 
   begin
     if (APackage.FBUTarget.Dependencies.Count>0) then
       begin
         Log(vldebug, Format(SDbgGenerateBuildUnit, [APackage.FBUTarget.Name]));
-        system.Assign(F,AddPathPrefix(APackage,APackage.FBUTarget.FTargetSourceFileName));
+        aPath:=AddPathPrefix(APackage,APackage.GetUnitsOutputDir(Defaults.CompileTarget));
+        system.Assign(F,IncludeTrailingPathDelimiter(apath)+APackage.FBUTarget.FTargetSourceFileName);
         Rewrite(F);
         writeln(F,'unit ' + APackage.FBUTarget.Name +';');
         writeln(F,'interface');
@@ -8698,8 +8699,13 @@ Var
               write(F,',');
             Dep:=APackage.FBUTarget.Dependencies.Dependencies[i];
             aUnitName:=Dep.Value;
+	    aUnitSourceDir:=ExtractFileDir(Dep.TargetFileName);
             if aUnitName='' then
               Writeln('Aloha2');
+            if aUnitSourceDir='' then
+              APackage.UnitPath.Add('.')
+            else
+              APackage.UnitPath.Add(aUnitSourceDir);
             writeln(F,aUnitName);
           end;
         writeln(F,';');
@@ -8710,6 +8716,7 @@ Var
 
         APackage.FBuildMode:=bmOneByOne;
         Compilationfailed:=false;
+        APackage.FBUTarget.FTargetSourceFileName:=IncludeTrailingPathDelimiter(APackage.GetUnitsOutputDir(Defaults.CompileTarget))+APackage.FBUTarget.FTargetSourceFileName;
         try
           try
             Compile(APackage,APackage.FBUTarget);

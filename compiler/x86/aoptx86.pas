@@ -4589,6 +4589,18 @@ unit aoptx86;
                         DebugMsg(SPeepholeOptimization + 'MovMov2Mov 1',p);
                         RemoveInstruction(hp1);
                         Result:=true;
+
+                        if (taicpu(p).oper[1]^.typ = top_reg) then
+                          begin
+                            TransferUsedRegs(TmpUsedRegs);
+                            if not RegUsedAfterInstruction(taicpu(p).oper[1]^.reg, p, TmpUsedRegs) then
+                              begin
+                                { reg2 is no longer in use }
+                                DebugMsg(SPeepholeOptimization + 'Mov2Nop 6 done',p);
+                                RemoveCurrentP(p);
+                              end;
+                          end;
+
                         exit;
                       end
                     else
@@ -16446,6 +16458,32 @@ unit aoptx86;
         hp1, hp2, hp3, hp4, hp5, hp6, hp7, hp8: tai;
       begin
         Result:=false;
+
+{$ifdef x86_64}
+        { Change:
+            lea x(%reg1d,%reg2d),%reg3d
+
+          To:
+            lea x(%reg1q,%reg2q),%reg3d
+
+          Reduces the number of bytes of machine code
+        }
+        if (getsubreg(taicpu(p).oper[1]^.reg)=R_SUBD) and
+          (
+            (getsubreg(taicpu(p).oper[0]^.ref^.base)=R_SUBD) or
+            (getsubreg(taicpu(p).oper[0]^.ref^.index)=R_SUBD)
+          ) then
+          begin
+            DebugMsg(SPeepholeOptimization + 'Changed 32-bit registers in reference to 64-bit (reduces instruction size)', p);
+            if (getsubreg(taicpu(p).oper[0]^.ref^.base)=R_SUBD) then
+              setsubreg(taicpu(p).oper[0]^.ref^.base,R_SUBQ);
+            if (getsubreg(taicpu(p).oper[0]^.ref^.index)=R_SUBD) then
+              setsubreg(taicpu(p).oper[0]^.ref^.index,R_SUBQ);
+
+            { No reason to set Result to true }
+          end;
+{$endif x86_64}
+
         hp5:=nil;
         hp6:=nil;
         hp7:=nil;
@@ -16465,7 +16503,7 @@ unit aoptx86;
           but do it only on level 4 because it destroys stack back traces
         }
         if (cs_opt_level4 in current_settings.optimizerswitches) and
-          MatchOpType(taicpu(p),top_ref,top_reg) and
+          (taicpu(p).oper[1]^.reg=NR_STACK_POINTER_REG) and
           (taicpu(p).oper[0]^.ref^.base=NR_STACK_POINTER_REG) and
           (taicpu(p).oper[0]^.ref^.index=NR_NO) and
           { the -8, -24, -40 are not required, but bail out early if possible,
@@ -16475,7 +16513,6 @@ unit aoptx86;
            (taicpu(p).oper[0]^.ref^.offset=-40))  and
           (taicpu(p).oper[0]^.ref^.symbol=nil) and
           (taicpu(p).oper[0]^.ref^.relsymbol=nil) and
-          (taicpu(p).oper[1]^.reg=NR_STACK_POINTER_REG) and
           GetNextInstruction(p, hp1) and
           { Take a copy of hp1 }
           SetAndTest(hp1, hp4) and
@@ -16498,14 +16535,13 @@ unit aoptx86;
             GetNextInstruction(hp2,hp2) and
             MatchInstruction(hp2,A_LEA,[taicpu(p).opsize]))
           ) and
-          MatchOpType(taicpu(hp2),top_ref,top_reg) and
+          (taicpu(hp2).oper[1]^.reg=NR_STACK_POINTER_REG) and
           (taicpu(hp2).oper[0]^.ref^.offset=-taicpu(p).oper[0]^.ref^.offset) and
           (taicpu(hp2).oper[0]^.ref^.base=NR_STACK_POINTER_REG) and
           (taicpu(hp2).oper[0]^.ref^.index=NR_NO) and
           (taicpu(hp2).oper[0]^.ref^.symbol=nil) and
           (taicpu(hp2).oper[0]^.ref^.relsymbol=nil) and
           { Segment register will be NR_NO }
-          (taicpu(hp2).oper[1]^.reg=NR_STACK_POINTER_REG) and
           GetNextInstruction(hp2, hp3) and
           { trick to skip label }
           ((hp3.typ=ait_instruction) or GetNextInstruction(hp3, hp3)) and

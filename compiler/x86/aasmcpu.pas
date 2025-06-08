@@ -62,6 +62,7 @@ interface
       OT_VECTORBCST = $4000000000;  { BROADCAST-MEM-FLAG  AVX512}
       OT_VECTORSAE  = $8000000000;  { OPTIONAL SAE-FLAG  AVX512}
       OT_VECTORER   = $10000000000; { OPTIONAL ER-FLAG-FLAG  AVX512}
+      OT_VECTORSIB  = $20000000000; { SIB-MEM-FLAG  AMX (in 64 bit mode only)}
 
       OT_VECTOR_EXT = OT_VECTORMASK or OT_VECTORZERO or OT_VECTORBCST or OT_VECTORSAE or OT_VECTORER;
 
@@ -80,11 +81,11 @@ interface
       OT_SIZE_MASK = $E000001F;  { all the size attributes  }
       OT_NON_SIZE  = longint(not(longint(OT_SIZE_MASK)));
 
-      { Bits 8..11: modifiers }
+      { Bits 8..10: modifiers }
       OT_SIGNED    = $00000100;  { the operand need to be signed -128-127 }
       OT_TO        = $00000200;  { reverse effect in FADD, FSUB &c  }
       OT_COLON     = $00000400;  { operand is followed by a colon  }
-      OT_MODIFIER_MASK = $00000F00;
+      OT_MODIFIER_MASK = $00000700;
 
       { Bits 12..15: type of operand }
       OT_REGISTER  = $00001000;
@@ -95,7 +96,7 @@ interface
 
       OT_REGNORM   = OT_REGISTER or OT_REGMEM;  { 'normal' reg, qualifies as EA  }
 
-      { Bits 20..22, 24..26: register classes
+      { Bits 11, 20..29: register classes
         otf_* consts are not used alone, only to build other constants. }
       otf_reg_cdt  = $00100000;
       otf_reg_gpr  = $00200000;
@@ -106,18 +107,20 @@ interface
       otf_reg_xmm  = $04000000;
       otf_reg_ymm  = $08000000;
       otf_reg_zmm  = $10000000;
+      otf_reg_tmm  = $00000800;
 
-
-      otf_reg_extra_mask = $0F000000;
+      //otf_reg_extra_mask = $0F000000;
+      otf_reg_extra_mask = $1F000800;
       { Bits 16..19: subclasses, meaning depends on classes field }
       otf_sub0     = $00010000;
       otf_sub1     = $00020000;
       otf_sub2     = $00040000;
       otf_sub3     = $00080000;
+
       OT_REG_SMASK = otf_sub0 or otf_sub1 or otf_sub2 or otf_sub3;
 
       //OT_REG_EXTRA_MASK = $0F000000;
-      OT_REG_EXTRA_MASK = $1F000000;
+      OT_REG_EXTRA_MASK = $1F000800;
 
       OT_REG_TYPMASK = otf_reg_cdt or otf_reg_gpr or otf_reg_sreg or otf_reg_k or otf_reg_extra_mask;
       { register class 0: CRx, DRx and TRx }
@@ -229,6 +232,10 @@ interface
       OT_KREG       = OT_REGNORM or otf_reg_k;
       OT_KREG_M     = OT_KREG or OT_VECTORMASK;
 
+      { register class 5: TMM (both reg and r/m) }
+      OT_TMMREG     = OT_REGNORM or otf_reg_tmm;
+      //OT_TMMRM      = OT_REGMEM or otf_reg_tmm;
+
       { Vector-Memory operands }
       OT_VMEM_ANY  = OT_XMEM32 or OT_XMEM64 or OT_YMEM32 or OT_YMEM64 or OT_ZMEM32 or OT_ZMEM64;
 
@@ -252,7 +259,7 @@ interface
       OT_MEM512    = OT_MEMORY or OT_BITS512;
       OT_MEM512_M  = OT_MEMORY or OT_BITS512 or OT_VECTORMASK;
       OT_MEM80     = OT_MEMORY or OT_BITS80;
-
+      OT_SIBMEM    = OT_MEMORY or OT_VECTORSIB;
 
 
 
@@ -300,7 +307,7 @@ interface
 {$elseif defined(i8086)}
       instabentries = {$i i8086nop.inc}
 {$endif}
-      maxinfolen    = 11;
+      maxinfolen    = 12;
 
     type
       { What an instruction can change. Needed for optimizer and spilling code.
@@ -461,6 +468,7 @@ interface
         IF_AVX,
         IF_AVX2,
         IF_AVX512,
+        IF_AVX102,      { AVX10.2 }
         IF_BMI1,
         IF_BMI2,
         { Intel ADX (Multi-Precision Add-Carry Instruction Extensions) }
@@ -474,9 +482,21 @@ interface
         IF_PREFETCHWT1,
         IF_SHA,
         IF_SHA512,
-        IF_SM3NI, { instruction set SM3:  ShangMi 3 hash function }
-        IF_SM4NI, { instruction set SM4 }
+        IF_SM3NI,       { SM3  ShangMi 3 hash function }
+        IF_SM4NI,       { SM4 }
         IF_GFNI,
+        IF_AES,
+        IF_AESKLE,
+        IF_AESKLEWIDE,  { AESKLE WIDE_KL }
+        IF_MOVRS,
+        IF_MOVDIRI,
+        IF_RAOINT,      { RAO-INT }
+        IF_CMPCCXADD,
+        IF_UINTR,
+        IF_SERIALIZE,
+        IF_USERMSR,     { USER_MSR }
+        IF_AVXVNNI,     { AVX-VNNI }
+        IF_AMX,         { AMX-BF16, AMX-TILE, AMX-INT8, AMX-FP16, AMX-FP8, AMX-TF32, AMX-COMPLEX, AMX-MOVRS, AMX-TRANSPOSE, AMX-AVX512 }
 
         { mask for processor level }
         { please keep these in order and in sync with IF_PLEVEL }
@@ -1320,7 +1340,9 @@ implementation
                else
                  if (ot and OT_ZMMREG)=OT_ZMMREG then
                   s:=s+'zmmreg' + regnr
-
+               else
+                 if (ot and OT_TMMREG)=OT_TMMREG then
+                  s:=s+'tmmreg' + regnr
                else
                  if (ot and OT_REG_EXTRA_MASK)=OT_MMXREG then
                   s:=s+'mmxreg'
@@ -1749,6 +1771,7 @@ implementation
         i,j,asize,oprs : longint;
         insflags:tinsflags;
         vopext: int64;
+        EvexRegs :boolean;
         siz : array[0..max_operands-1] of longint;
       begin
         result:=false;
@@ -1768,11 +1791,16 @@ implementation
           exit;
 {$endif i8086}
 
+        EvexRegs:=false;
         for i:=0 to p^.ops-1 do
          begin
            insot:=p^.optypes[i];
            currot:=oper[i]^.ot;
 
+           if (oper[i]^.typ=top_reg) and
+              (getregtype(oper[i]^.reg) = R_MMREGISTER) then
+            if getsupreg(oper[i]^.reg) and $10 = $10 then
+              EvexRegs:=true;
            { Check the operand flags }
            if (insot and (not currot) and OT_NON_SIZE)<>0 then
              exit;
@@ -1791,6 +1819,17 @@ implementation
            if (insot and OT_FAR)<>(currot and OT_FAR) then
              exit;
          end;
+
+        { Chack Evex support in encoding }
+        if EvexRegs then
+        begin
+          for i:=0 to  maxinfolen do
+          begin
+            if byte(p^.code[i]) = &350 then break;
+            if byte(p^.code[i]) = 0 then break;
+          end;
+          if byte(p^.code[i]) <> &350 then exit;
+        end;
 
         { Check operand sizes }
         insflags:=p^.flags;
@@ -2047,7 +2086,7 @@ implementation
                   if not DistinctRegisters(IF_DALL in insentry^.flags) then
                     begin
                       if IF_DALL in insentry^.flags then
-                        Message1(asmw_e_destination_index_mask_registers_should_be_distinct,GetString)
+                        Message1(asmw_e_registers_should_be_distinct,GetString)
                       else
                         Message1(asmw_e_destination_and_source_registers_must_be_distinct,GetString);
                       exit;  { unacceptable register combination (shoud be distinct) }
@@ -2619,7 +2658,7 @@ implementation
 
 
 
-    function process_ea_ref_64_32(const input:toper;var output:ea;rfield:longint; uselargeoffset: boolean):boolean;
+    function process_ea_ref_64_32(const input:toper;var output:ea;rfield:longint; uselargeoffset,forceSibByte: boolean):boolean;
       var
         sym   : tasmsymbol;
         md,s  : byte;
@@ -2882,7 +2921,7 @@ implementation
            else
             output.bytes:=md;
            { SIB needed ? }
-           if (ir=NR_NO) and (br<>NR_RSP) and (br<>NR_R12) and (br<>NR_ESP) and (br<>NR_R12D)  then
+           if not forceSibByte and (ir=NR_NO) and (br<>NR_RSP) and (br<>NR_R12) and (br<>NR_ESP) and (br<>NR_R12D)  then
             begin
               output.sib_present:=false;
               output.modrm:=(md shl 6) or (rfield shl 3) or base;
@@ -3150,7 +3189,11 @@ implementation
       end;
 {$endif}
 
+{$ifdef x86_64}
+    function process_ea(const input:toper;out output:ea;rfield:longint; uselargeoffset, forceSibByte: boolean):boolean;
+{$else x86_64}
     function process_ea(const input:toper;out output:ea;rfield:longint; uselargeoffset: boolean):boolean;
+{$endif x86_64}
       var
         rv  : byte;
       begin
@@ -3172,7 +3215,7 @@ implementation
         if input.typ<>top_ref then
           internalerror(200409263);
 {$if defined(x86_64)}
-        result:=process_ea_ref_64_32(input,output,rfield, uselargeoffset);
+        result:=process_ea_ref_64_32(input,output,rfield, uselargeoffset,forceSibByte);
 {$elseif defined(i386) or defined(i8086)}
         if is_16_bit_ref(input.ref^) then
           result:=process_ea_ref_16(input,output,rfield, uselargeoffset)
@@ -3382,8 +3425,11 @@ implementation
                     //const aInput:toper; aInsEntry: pInsentry; aIsVector128, aIsVector256, aIsVector512, aIsEVEXW1: boolean);
                   end;
                 end;
-
+{$ifdef x86_64}
+                if process_ea(oper[(c shr 3) and 7]^, ea_data, 0, EVEXTupleState = etsNotTuple, (p^.optypes[(c shr 3) and 7] and ot_sibmem)=ot_sibmem) then
+{$else x86_64}
                 if process_ea(oper[(c shr 3) and 7]^, ea_data, 0, EVEXTupleState = etsNotTuple) then
+{$endif x86_64}
                  inc(len,ea_data.size)
                   else Message(asmw_e_invalid_effective_address);
 
@@ -3391,6 +3437,13 @@ implementation
                 rex:=rex or ea_data.rex;
 {$endif x86_64}
 
+              end;
+            &240..&243:
+              begin
+{$ifdef x86_64}
+                rex:=rex or (rexbits(oper[c and 7]^.reg) and $F4);
+{$endif x86_64}
+                inc(len);
               end;
             &350:
               begin
@@ -3577,6 +3630,7 @@ implementation
        *                 field the register value of operand b.
        * \2ab          - a ModRM, calculated on EA in operand a, with the spare
        *                 field equal to digit b.
+       * \24a          - operator a in ModRM.reg. ModRM 11:rrr:000
        * \254,\255,\256 - a signed 32-bit immediate to be extended to 64 bits
        * \300,\301,\302 - might be an 0x67, depending on the address size of
        *                 the memory reference in operand x.
@@ -3795,6 +3849,7 @@ implementation
         data,s,opidx : longint;
         ea_data : ea;
         relsym : TObjSymbol;
+        mod11 : boolean;
 
         needed_VEX_Extension: boolean;
         needed_VEX: boolean;
@@ -3820,6 +3875,7 @@ implementation
         EVEXz   : byte;
         EVEXaaa : byte;
         EVEXb   : byte;
+        EVEXu   : byte;
         EVEXmmm : byte;
 
       begin
@@ -3929,6 +3985,7 @@ implementation
         EVEXz    := 0;
         EVEXaaa  := 0;
         EVEXb    := 0;
+        EVEXu    := 1;
         EVEXmmm  := 0;
 
         repeat
@@ -3982,6 +4039,16 @@ implementation
 
 
                  end;
+           &240..&243:
+              begin
+                opidx := c and 7;
+                if ops > opidx then
+                begin
+                  if (oper[opidx]^.typ=top_reg) then
+                    if getsupreg(oper[opidx]^.reg) and $10 = $0 then EVEXr := 1;
+                end else EVEXr := 1; // modrm:reg not used =>> 1
+                EVEXx:=1; //-- modrm.rm not used;
+              end;
            &333: begin
                    VEXvvvv              := VEXvvvv  OR $02; // set SIMD-prefix $F3
                    //VEXpp                := $02;             // set SIMD-prefix $F3
@@ -4121,6 +4188,9 @@ implementation
           begin
             EVEXaaa:= 0;
             EVEXz  := 0;
+            mod11:=true;
+            for opidx := 0 to ops - 1 do
+              if oper[opidx]^.typ = top_ref then begin mod11:=false; break end;
 
             for i := 0 to ops - 1 do
              if (oper[i]^.vopext and OTVE_VECTOR_MASK) <> 0 then
@@ -4137,15 +4207,16 @@ implementation
                end;
 
                // flag EVEXb is multiple use (broadcast, sae and er)
-               if oper[i]^.vopext and OTVE_VECTOR_SAE = OTVE_VECTOR_SAE then
+               if mod11 and (oper[i]^.vopext and OTVE_VECTOR_SAE = OTVE_VECTOR_SAE) then
                begin
                  EVEXb := 1;
+                 if EVEXll = 1 then EVEXu:=0; { AVX10.2 ymmreg_sae }
                end;
 
-               if oper[i]^.vopext and OTVE_VECTOR_ER = OTVE_VECTOR_ER then
+               if mod11 and (oper[i]^.vopext and OTVE_VECTOR_ER = OTVE_VECTOR_ER) then
                begin
                  EVEXb := 1;
-
+                 if EVEXll = 1 then EVEXu:=0; { AVX10.2 ymmreg_er }
                  case oper[i]^.vopext and OTVE_VECTOR_ER_MASK of
                    OTVE_VECTOR_RNSAE: EVEXll := 0;
                    OTVE_VECTOR_RDSAE: EVEXll := 1;
@@ -4169,7 +4240,7 @@ implementation
                         ((EVEXx    and $01) shl 6);
 
             bytes[2] := ((EVEXpp   and $03) shl 0)  or
-                        ((1        and $01) shl 2)  or  // fixed in AVX512
+                        ((EVEXu    and $01) shl 2)  or  { EVEX.u if ModRM.mod=11 or EVEX.x4 if ModRM.mod!=11 }
                         ((EVEXvvvv and $0F) shl 3)  or
                         ((EVEXw1   and $01) shl 7);
 
@@ -4480,6 +4551,11 @@ implementation
               end;
             &74,&75,&76 : ; // 074..076 - vex-coded vector operand
                             // ignore
+            &240..&243:
+              begin
+                bytes[0]:=$C0 or ((byte(oper[c and 7]^.reg) and 7) shl 3); {ModRM 11:rrr:000}
+                objdata.writebytes(bytes,1);
+              end;
             &254,&255,&256 :  // 0254..0256 - dword implicitly sign-extended to 64-bit (x86_64 only)
               begin
                 getvalsym(c-&254);
@@ -4590,7 +4666,8 @@ implementation
                   (
                    ((oper[opidx]^.ot and OT_REG_EXTRA_MASK)=otf_reg_xmm) or
                    ((oper[opidx]^.ot and OT_REG_EXTRA_MASK)=otf_reg_ymm) or
-                   ((oper[opidx]^.ot and OT_REG_EXTRA_MASK)=otf_reg_zmm)
+                   ((oper[opidx]^.ot and OT_REG_EXTRA_MASK)=otf_reg_zmm) or
+                   ((oper[opidx]^.ot and OT_REG_EXTRA_MASK)=otf_reg_tmm)
                   ) then
                   begin
                     bytes[0] := ((getsupreg(oper[opidx]^.reg) and 15) shl 4);
@@ -4632,8 +4709,11 @@ implementation
                    else
                     rfield:=c and 7;
                    opidx:=(c shr 3) and 7;
-
+{$ifdef x86_64}
+                   if not process_ea(oper[opidx]^,ea_data,rfield, EVEXTupleState = etsNotTuple, (insentry^.optypes[(c shr 3) and 7] and ot_sibmem)=ot_sibmem) then
+{$else x86_64}
                    if not process_ea(oper[opidx]^,ea_data,rfield, EVEXTupleState = etsNotTuple) then
+{$endif x86_64}
                     Message(asmw_e_invalid_effective_address);
 
 
@@ -5182,7 +5262,8 @@ implementation
             for i := 0 to insentry^.ops -1 do
             begin
               if (insentry^.optypes[i] and OT_REGISTER) = OT_REGISTER then
-               case insentry^.optypes[i] and (OT_XMMREG or OT_YMMREG or OT_ZMMREG or OT_KREG or OT_REG_EXTRA_MASK) of
+               case insentry^.optypes[i] and (OT_TMMREG or OT_XMMREG or OT_YMMREG or OT_ZMMREG or OT_KREG or OT_REG_EXTRA_MASK) of
+                  OT_TMMREG,
                   OT_XMMREG,
                   OT_YMMREG,
                   OT_ZMMREG: ExistsSSEAVXReg := true;
@@ -5219,7 +5300,7 @@ implementation
                   NewRegSize := (insentry^.optypes[j] and OT_SIZE_MASK);
                   if NewRegSize = 0 then
                     begin
-                      case insentry^.optypes[j] and (OT_MMXREG or OT_XMMREG or OT_YMMREG or OT_ZMMREG or OT_KREG or OT_REG_EXTRA_MASK) of
+                      case insentry^.optypes[j] and (OT_MMXREG or OT_TMMREG or OT_XMMREG or OT_YMMREG or OT_ZMMREG or OT_KREG or OT_REG_EXTRA_MASK) of
                         OT_MMXREG: begin
                                      NewRegSize := OT_BITS64;
                                    end;
@@ -5238,13 +5319,16 @@ implementation
                           OT_KREG: begin
                                      InsTabMemRefSizeInfoCache^[AsmOp].ExistsSSEAVX := true;
                                    end;
+                        OT_TMMREG: begin
+                                     InsTabMemRefSizeInfoCache^[AsmOp].ExistsSSEAVX := true;
+                                   end;
 
                               else NewRegSize := not(0);
                       end;
                   end;
 
                 actRegSize  := actRegSize or NewRegSize;
-                actRegTypes := actRegTypes or (insentry^.optypes[j] and (OT_MMXREG or OT_XMMREG or OT_YMMREG or OT_ZMMREG or OT_KREG or OT_REG_EXTRA_MASK));
+                actRegTypes := actRegTypes or (insentry^.optypes[j] and (OT_MMXREG or OT_TMMREG or OT_XMMREG or OT_YMMREG or OT_ZMMREG or OT_KREG or OT_REG_EXTRA_MASK));
                 end
               else if ((insentry^.optypes[j] and OT_MEMORY) <> 0) then
                 begin
@@ -5640,6 +5724,13 @@ implementation
                      (AsmOp = A_vcvtusi2sh) or
                      (AsmOp = A_VCVTNEPS2BF16) or
                      (AsmOp = A_vcvtps2phx) or
+
+                     (AsmOp = A_vcvtph2bf8) or
+                     (AsmOp = A_vcvtph2bf8s) or
+                     (AsmOp = A_vcvtph2hf8) or
+                     (AsmOp = A_vcvtph2hf8s) or
+                     (AsmOp = A_vcvttpd2dqs) or
+                     (AsmOp = A_vcvttpd2udqs) or
 
                      // TODO check
                      (AsmOp = A_VCMPSS)
