@@ -1258,6 +1258,7 @@ begin
   FreeAndNil(FFields);
   for K in TSQLKind do
     FreeAndNil(FSQL[K]);
+  FreeAndNil(FParameters);
   inherited Destroy;
 end;
 
@@ -1426,6 +1427,8 @@ begin
       Res:=Res+Term;
       end;
     end;
+  if Res='' then
+    Res:='*';
   Result:=Res;
 end;
 
