@@ -2702,7 +2702,7 @@ TYPE
        Function Commit(grfCommitFlags:Dword):Hresult; StdCall;
        Function Revert:HResult; StdCall;
        Function EnumElements(Reserved1 :Dword;Reserved2:Pointer;Reserved3:DWord;Out penum:IEnumStatStg):HResult;StdCall;
-       Function RemoteEnumElements(Reserved1 :Dword;cbReserved2:ULong;Reserved2:pbyte;reserved3:DWord;Out penum:IEnumStatStg):HResult;StdCall;
+//       Function RemoteEnumElements(Reserved1 :Dword;cbReserved2:ULong;Reserved2:pbyte;reserved3:DWord;Out penum:IEnumStatStg):HResult;StdCall;
        Function DestroyElement(wcsName: POleStr):HResult;StdCall;
        Function RenameElement(wcsoldName: POleStr;wcsnewName: POleStr):HResult;StdCall;
        Function SetElementTimes(wcsName:POleStr; Const pctime,patime,pmtime : FileTime):HResult;StdCall;
@@ -3844,6 +3844,7 @@ type
 
 { redefinitions }
   function CoCreateGuid(out _para1:TGUID):HRESULT;stdcall;external 'ole32.dll' name 'CoCreateGuid';
+  function CoGetCancelObject (InThreadId : DWORD; constref InIid : TIID; out ppunk : IUnknown):HRESULT;stdcall;external 'ole32.dll' name 'CoGetCancelObject';
 
 { additional definitions }
 {$ifndef wince}
