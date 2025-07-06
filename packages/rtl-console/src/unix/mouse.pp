@@ -62,6 +62,7 @@ const
 
 var
   mousecurcell : TVideoCell;
+  MouseCurBkg : Byte; { for mouse draw in EnhancedVideoBuf }
   SysLastMouseEvent : TMouseEvent;
 
 const
@@ -84,11 +85,15 @@ begin
    MouseEvent.y:=0;
   MouseEvent.buttons:=0;
   if e.buttons and Gpm_b_left<>0 then
-   inc(MouseEvent.buttons,1);
+   inc(MouseEvent.buttons,MouseLeftButton);
   if e.buttons and Gpm_b_right<>0 then
-   inc(MouseEvent.buttons,2);
+   inc(MouseEvent.buttons,MouseRightButton);
   if e.buttons and Gpm_b_middle<>0 then
-   inc(MouseEvent.buttons,4);
+   inc(MouseEvent.buttons,MouseMiddleButton);
+  if e.buttons and $08<>0 then
+   inc(MouseEvent.buttons,MouseXButton1);
+  if e.buttons and $10<>0 then
+   inc(MouseEvent.buttons,MouseXButton2);
   case (e.EventType and $f) of
     GPM_MOVE,
     GPM_DRAG :
@@ -127,22 +132,40 @@ procedure PlaceMouseCur(ofs:longint);
 var
   upd : boolean;
 begin
-  if (VideoBuf=nil) or (MouseCurOfs=Ofs) then
-   exit;
-  upd:=false;
-
-  if (MouseCurOfs<>-1) and (VideoBuf^[MouseCurOfs]=MouseCurCell) then
-   begin
-     VideoBuf^[MouseCurOfs]:=MouseCurCell xor $7f00;
-     upd:=true;
-   end;
-  MouseCurOfs:=ofs;
-  if (MouseCurOfs<>-1) then
-   begin
-     MouseCurCell:=VideoBuf^[MouseCurOfs] xor $7f00;
-     VideoBuf^[MouseCurOfs]:=MouseCurCell;
-     upd:=true;
-   end;
+  if MouseCurOfs=Ofs then
+    exit;
+   upd:=false;
+  if assigned(EnhancedVideoBuf) then
+    begin
+      if (MouseCurOfs<>-1) then
+        if EnhancedVideoBuf[MouseCurOfs].BackgroundColor=MouseCurBkg then
+        begin
+          EnhancedVideoBuf[MouseCurOfs].BackgroundColor:=byte(MouseCurBkg xor $f);
+          upd:=true;
+        end;
+      MouseCurOfs:=ofs;
+      if (MouseCurOfs<>-1) then
+        begin
+          MouseCurBkg:=byte(EnhancedVideoBuf[MouseCurOfs].BackgroundColor xor $f);
+          EnhancedVideoBuf[MouseCurOfs].BackgroundColor:=byte(MouseCurBkg);
+          upd:=true;
+        end;
+    end
+  else if assigned(VideoBuf) then
+    begin
+      if (MouseCurOfs<>-1) and (VideoBuf^[MouseCurOfs]=MouseCurCell) then
+        begin
+          VideoBuf^[MouseCurOfs]:=MouseCurCell xor $7f00;
+          upd:=true;
+        end;
+      MouseCurOfs:=ofs;
+      if (MouseCurOfs<>-1) then
+        begin
+          MouseCurCell:=VideoBuf^[MouseCurOfs] xor $7f00;
+          VideoBuf^[MouseCurOfs]:=MouseCurCell;
+          upd:=true;
+        end;
+    end;
   if upd then
    Updatescreen(false);
 end;

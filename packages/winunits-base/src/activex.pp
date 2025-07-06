@@ -2461,13 +2461,13 @@ TYPE
 
      IMarshal = Interface(IUnknown)
         ['{00000003-0000-0000-C000-000000000046}']
-        Function GetUnmarshalClass ( Const riid: TIID; pv:Pointer; Const dwDestContext:DWord;
+        Function GetUnmarshalClass ( Constref riid: TIID; pv:Pointer; Const dwDestContext:DWord;
                     pvDestContext:Pointer; Const mshlflags:DWORD;out LCid : TCLSID ):HResult;Stdcall;
-        Function GetMarshalSizeMax ( Const Riid: TIID; {in, unique} pv:Pointer; Const dwDestContext : DWord;
-                   {in, unique} pvDestContext:Pointer; Const mshlflags : DWord; out pSize : PDWord ): HResult;Stdcall;
-        Function MarshalInterface ( Const {in, unique} pStm: IStream; Const riid: TIID; {in, unique} pv:Pointer;
+        Function GetMarshalSizeMax ( Constref Riid: TIID; {in, unique} pv:Pointer; Const dwDestContext : DWord;
+                   {in, unique} pvDestContext:Pointer; Const mshlflags : DWord; out pSize : DWord ): HResult;Stdcall;
+        Function MarshalInterface ( Const {in, unique} pStm: IStream; Constref riid: TIID; {in, unique} pv:Pointer;
                    Const dwDestContext:DWord; {in, unique} pvDestContext:Pointer; Const mshlflags:DWord ): HRESULT;Stdcall;
-        Function UnmarshalInterface ( {[in, unique]} Const pStm:IStream; Const riid: TIID;
+        Function UnmarshalInterface ( {[in, unique]} Const pStm:IStream; Constref riid: TIID;
                    out ppv ): HResult;Stdcall;
         Function ReleaseMarshalData ( {[in, unique]} Const Strm: IStream ):HResult;Stdcall;
         Function DisconnectObject ( Const dwReserved:DWord ):HRESULT;Stdcall;
@@ -2491,7 +2491,7 @@ TYPE
      IMallocSpy = Interface(IUnknown)
         ['{0000001d-0000-0000-C000-000000000046}']
 
-        Function  PreAlloc(cbrequest:Size_t):Longint; StdCall;
+        Function  PreAlloc(cbrequest:Size_t):Size_t; StdCall;
         function  PostAlloc(Pactual:Pointer):Pointer;StdCall;
         Function  PreFree(pRequest:Pointer;fSpyed:bool):pointer;StdCall;
         Procedure PostFree(fspyed:Bool);Stdcall;
