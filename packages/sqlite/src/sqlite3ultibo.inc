@@ -1,7 +1,7 @@
 {
 Ultibo SQLite OS interface include file.
 
-Copyright (C) 2022 - SoftOz Pty Ltd.
+Copyright (C) 2025 - SoftOz Pty Ltd.
 
 Arch
 ====
@@ -991,7 +991,7 @@ begin
  Result:=Status;
  
  {$IFDEF SQLITE3_DEBUG}
- if PLATFORM_LOG_ENABLED then PlatformLogDebug('sqlite3_ultibo_vfs_CurrentTime (Result=' + IntToStr(Result) + ')');
+ if PLATFORM_LOG_ENABLED then PlatformLogDebug('sqlite3_ultibo_vfs_CurrentTime (Result=' + IntToStr(Result) + ' time=' + FloatToStr(time^) + ')');
  {$ENDIF}
 end;
 
@@ -1059,13 +1059,13 @@ begin
  Int64(Value):=ClockGetTime;
  
  {Return Current Time}
- time^:=FiletimeEpoch + (Value.dwHighDateTime * MaxValue) + (Value.dwLowDateTime div 10000);
+ time^:=FiletimeEpoch + ((Value.dwHighDateTime * MaxValue) + Value.dwLowDateTime) div 10000;
  
  {Return Result}
  Result:=SQLITE_OK;
  
  {$IFDEF SQLITE3_DEBUG}
- if PLATFORM_LOG_ENABLED then PlatformLogDebug('sqlite3_ultibo_vfs_CurrentTimeInt64 (Result=' + IntToStr(Result) + ')');
+ if PLATFORM_LOG_ENABLED then PlatformLogDebug('sqlite3_ultibo_vfs_CurrentTimeInt64 (Result=' + IntToStr(Result) + ' time=' + IntToStr(time^) + ')');
  {$ENDIF}
 end;
 
