@@ -25,8 +25,8 @@ const
       cmPasteWin          = 241;
       cmSelectAll         = 246;
       cmUnselect          = 247;
-      cmCommentSel        = 249;
-      cmUnCommentSel      = 250;
+      cmCommentSel        = 250;
+      cmUnCommentSel      = 251;
 
       cmLocalMenu            = 54100;
       cmUpdate               = 54101;
@@ -43,7 +43,7 @@ const
       cmUserBtn3             = $fee2;
       cmUserBtn4             = $fee3;
 
-      CPlainCluster          = #7#8#9#9;
+      CPlainCluster          = #7#8#9#9#13#9;{normal}{ active }{shortcut}{..}{disabled}{..}
 
 type
     longstring = ansistring;
@@ -2403,6 +2403,8 @@ procedure TScrollerRadioButtons.HandleEvent (Var Event: TEvent);
 VAR I: Sw_Integer; Mouse: TPoint;
    LinesScroll : sw_integer;
 begin
+   TView.HandleEvent(Event);                              { Call TView, skip TCluster }
+                                                          { Set focus to this view    }
    If ((Options AND ofSelectable) <> 0) Then
    begin
      If (Event.What = evMouseWheel) Then Begin            { Mouse wheel event }

@@ -1462,7 +1462,8 @@ begin
                MouseButton5: Event.Wheel:=mwDown;
              end;
              e.Buttons:=e.Buttons and( not word( MouseButton4 or MouseButton5)); {remove wheel buttons for Buttons}
-             AutoTicks:=0;  {there is no "holding down" mouse wheel }
+             { do not temper with AutoTicks because other buttons can be held down while scrolling
+             AutoTicks:=0;}  {there is no "holding down" mouse wheel }
            end;
          end;
        MouseActionUp :
@@ -1807,10 +1808,10 @@ VAR W, ResultLength : SmallInt;
              Inc(ResultLength,Length(S));
              Continue;
            end;
-           'c': S := AnsiChar(TLongArray(Params)[I]);  { Character parameter }
+           'c': S := Sw_Char (TLongArray(Params)[I]);  { Character parameter }
              'd': S := LongToStr(TLongArray(Params)[I],
                10);                                   { Decimal parameter }
-             's': S := PString(TLongArray(Params)[I])^;{ String parameter }
+             's': S := Sw_String(Pointer(TLongArray(Params)[I])^); { String parameter }
              'x': S := LongToStr(TLongArray(Params)[I],
                16);                                   { Hex parameter }
            end;

@@ -111,7 +111,7 @@ type
 
   PIndicator = ^TIndicator;
   TIndicator = object (TView)
-    Location   : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
+    Location   : TPoint;
     Modified   : Boolean;
     AutoIndent : Boolean;          { Added boolean for AutoIndent mode. }
     WordWrap   : Boolean;          { Added boolean for WordWrap mode.   }
@@ -119,7 +119,7 @@ type
     procedure   Draw; virtual;
     function    GetPalette : PPalette; virtual;
     procedure   SetState (AState : Word; Enable : Boolean); virtual;
-    procedure   SetValue (ALocation : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint; IsAutoIndent : Boolean;
+    procedure   SetValue (ALocation : TPoint; IsAutoIndent : Boolean;
                                                       IsModified   : Boolean;
                                                       IsWordWrap   : Boolean);
   end;
@@ -159,9 +159,9 @@ type
     SelStart           : Sw_Word;
     SelEnd             : Sw_Word;
     CurPtr             : Sw_Word;
-    CurPos             : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
-    Delta              : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
-    Limit              : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
+    CurPos             : TPoint;
+    Delta              : TPoint;
+    Limit              : TPoint;
     DrawLine           : Sw_Integer;
     DrawPtr            : Sw_Word;
     DelCount           : Sw_Word;
@@ -184,19 +184,19 @@ type
 
     constructor Init (var Bounds : TRect; AHScrollBar, AVScrollBar : PScrollBar;
                           AIndicator : PIndicator; ABufSize : Sw_Word);
-    constructor Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    constructor Load (var S : TStream);
     destructor Done; virtual;
     function   BufChar (P : Sw_Word) : AnsiChar;
     function   BufPtr (P : Sw_Word) : Sw_Word;
     procedure  ChangeBounds (var Bounds : TRect); virtual;
-    procedure  ConvertEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent); virtual;
+    procedure  ConvertEvent (var Event : TEvent); virtual;
     function   CursorVisible : Boolean;
     procedure  DeleteSelect;
     procedure  DoneBuffer; virtual;
     procedure  Draw; virtual;
     procedure  FormatLine (var DrawBuf; LinePtr : Sw_Word; Width : Sw_Integer; Colors : Word);virtual;
     function   GetPalette : PPalette; virtual;
-    procedure  HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent); virtual;
+    procedure  HandleEvent (var Event : TEvent); virtual;
     procedure  InitBuffer; virtual;
     function   InsertBuffer (var P : PEditBuffer; Offset, Length : Sw_Word;AllowUndo, SelectText : Boolean) : Boolean;
     function   InsertFrom (Editor : PEditor) : Boolean; virtual;
@@ -208,7 +208,7 @@ type
     procedure  SetSelect (NewStart, NewEnd : Sw_Word; CurStart : Boolean);
     procedure  SetCurPtr (P : Sw_Word; SelectMode : Byte);
     procedure  SetState (AState : Word; Enable : Boolean); virtual;
-    procedure  Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    procedure  Store (var S : TStream);
     procedure  TrackCursor (Center : Boolean);
     procedure  Undo;
     procedure  UpdateCommands; virtual;
@@ -234,7 +234,8 @@ type
     function   Do_Word_Wrap (Select_Mode : Byte; Center_Cursor : Boolean) : Boolean;
     procedure  DrawLines (Y, Count : Sw_Integer; LinePtr : Sw_Word);
     procedure  Find;
-    function   GetMousePtr (Mouse : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint) : Sw_Word;
+    function   GetLineDisplayLen: Sw_word;
+    function   GetMousePtr (Mouse : TPoint) : Sw_Word;
     function   HasSelection : Boolean;
     procedure  HideSelect;
     procedure  Insert_Line (Select_Mode : Byte);
@@ -279,13 +280,13 @@ type
 
   PMemo = ^TMemo;
   TMemo = object (TEditor)
-    constructor Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    constructor Load (var S : TStream);
     function    DataSize : Sw_Word; virtual;
     procedure   GetData (var Rec); virtual;
     function    GetPalette : PPalette; virtual;
-    procedure   HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent); virtual;
+    procedure   HandleEvent (var Event : TEvent); virtual;
     procedure   SetData (var Rec); virtual;
-    procedure   Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    procedure   Store (var S : TStream);
   end;
 
   PFileEditor = ^TFileEditor;
@@ -293,16 +294,16 @@ type
     FileName : FNameStr;
     constructor Init (var Bounds : TRect; AHScrollBar, AVScrollBar : PScrollBar;
                           AIndicator : PIndicator; AFileName : FNameStr);
-    constructor Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    constructor Load (var S : TStream);
     procedure   DoneBuffer; virtual;
-    procedure   HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent); virtual;
+    procedure   HandleEvent (var Event : TEvent); virtual;
     procedure   InitBuffer; virtual;
     function    LoadFile : Boolean;
     function    Save : Boolean;
     function    SaveAs : Boolean;
     function    SaveFile : Boolean;
     function    SetBufSize (NewSize : Sw_Word) : Boolean; virtual;
-    procedure   Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    procedure   Store (var S : TStream);
     procedure   UpdateCommands; virtual;
     function    Valid (Command : Word) : Boolean; virtual;
   end;
@@ -311,12 +312,12 @@ type
   TEditWindow = object (TWindow)
     Editor : PFileEditor;
     constructor Init (var Bounds : TRect; FileName : FNameStr; ANumber : SmallInt);
-    constructor Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    constructor Load (var S : TStream);
     procedure   Close; virtual;
     function    GetTitle (MaxSize : Sw_Integer) : TTitleStr; virtual;
-    procedure   HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent); virtual;
+    procedure   HandleEvent (var Event : TEvent); virtual;
     procedure   SizeLimits(var Min, Max: TPoint); virtual;
-    procedure   Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+    procedure   Store (var S : TStream);
   end;
 
 
@@ -326,7 +327,7 @@ function CreateReplaceDialog: PDialog;
 function JumpLineDialog : PDialog;
 function ReformDocDialog : PDialog;
 function RightMarginDialog : PDialog;
-function TabStopDialog : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog;
+function TabStopDialog : PDialog;
 function StdEditorDialog(Dialog: SmallInt; Info: Pointer): Word;
 
 const
@@ -397,27 +398,27 @@ TYPE
 
 CONST
   { VMT constants. }
-  REditor   : TStreamRec = (ObjType : 70;
+  REditor   : TStreamRec = (ObjType : idEditor;
                             VmtLink : Ofs (TypeOf (TEditor)^);
                                Load : @TEditor.Load;
                               Store : @TEditor.Store);
 
-  RMemo     : TStreamRec = (ObjType : 71;
+  RMemo     : TStreamRec = (ObjType : idMemo;
                             VmtLink : Ofs (TypeOf (TMemo)^);
                                Load : @TMemo.Load;
                               Store : @TMemo.Store);
 
-  RFileEditor : TStreamRec = (ObjType : 72;
+  RFileEditor : TStreamRec = (ObjType : idFileEditor;
                               VmtLink : Ofs (TypeOf (TFileEditor)^);
                                  Load : @TFileEditor.Load;
                                 Store : @TFileEditor.Store);
 
-  RIndicator : TStreamRec = (ObjType : 73;
+  RIndicator : TStreamRec = (ObjType : idIndicator;
                              VmtLink : Ofs (TypeOf (TIndicator)^);
                                 Load : @TIndicator.Load;
                                Store : @TIndicator.Store);
 
-  REditWindow : TStreamRec = (ObjType : 74;
+  REditWindow : TStreamRec = (ObjType : idEditWindow;
                               VmtLink : Ofs (TypeOf (TEditWindow)^);
                                  Load : @TEditWindow.Load;
                                 Store : @TEditWindow.Store);
@@ -466,6 +467,7 @@ resourcestring  sClipboard='Clipboard';
                 sUntitled='Untitled';
                 sWordWrapNotPossible='Wordwrap on:  Wordwrap not possible in current margins with continuous line.';
                 sWordWrapOff='You must turn on wordwrap before you can reformat.';
+                sSaveFileAs='Save file as';
 
                 slCaseSensitive='~C~ase sensitive';
                 slCurrentLine='~C~urrent line';
@@ -714,7 +716,7 @@ begin
     Insert(New(PHistory, Init(R, PInputLine(Control), 11)));
 
     R.Assign(3, 8, 37, 12);
-    Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PCheckBoxes, Init (R,
+    Control := New (PCheckBoxes, Init (R,
       NewSItem (slCasesensitive,
       NewSItem (slWholewordsonly,
       NewSItem (slPromptonreplace,
@@ -751,24 +753,24 @@ Begin
       Options := Options or ofCentered;
 
       R.Assign (3, 2, 15, 3);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PStaticText, Init (R,slLineNumber));
+      Control := New (PStaticText, Init (R,slLineNumber));
       Insert (Control);
 
       R.Assign (15, 2, 21, 3);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PInputLine, Init (R, 4));
+      Control := New (PInputLine, Init (R, 4));
       Control^.HelpCtx := hcDLineNumber;
       Insert (Control);
 
       R.Assign (21, 2, 24, 3);
-      Insert (New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PHistory, Init (R, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PInputLine (Control), 12)));
+      Insert (New (PHistory, Init (R, PInputLine (Control), 12)));
 
       R.Assign (2, 5, 12, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slOK, cmOK, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfDefault));
+      Control := New (PButton, Init (R, slOK, cmOK, bfDefault));
       Control^.HelpCtx := hcDOk;
       Insert (Control);
 
       R.Assign (14, 5, 24, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slCancel, cmCancel, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfNormal));
+      Control := New (PButton, Init (R, slCancel, cmCancel, bfNormal));
       Control^.HelpCtx := hcDCancel;
       Insert (Control);
 
@@ -778,46 +780,46 @@ Begin
 end; { JumpLineDialog }
 
 
-function ReformDocDialog : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog;
+function ReformDocDialog : PDialog;
   { This is a local function that brings up a dialog box  }
   { that asks where to start reformatting the document.   }
 VAR
   R            : TRect;
-  D            : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog;
+  D            : PDialog;
   Control      : PView;
 Begin
   R.Assign (0, 0, 32, 11);
-  D := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog, Init (R, sReformatDocument));
+  D := New (PDialog, Init (R, sReformatDocument));
   with D^ do
     begin
       Options := Options or ofCentered;
 
       R.Assign (2, 2, 30, 3);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PStaticText, Init (R, sSelectWhereToBegin));
+      Control := New (PStaticText, Init (R, sSelectWhereToBegin));
       Insert (Control);
 
       R.Assign (3, 3, 29, 4);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PStaticText, Init (R, sReformattingTheDocument));
+      Control := New (PStaticText, Init (R, sReformattingTheDocument));
       Insert (Control);
 
       R.Assign (50, 5, 68, 6);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PLabel, Init (R, sReformatDocument, Control));
+      Control := New (PLabel, Init (R, sReformatDocument, Control));
       Insert (Control);
 
       R.Assign (5, 5, 26, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PRadioButtons, Init (R,
+      Control := New (PRadioButtons, Init (R,
         NewSItem (slCurrentLine,
         NewSItem (slEntireDocument, Nil))));
       Control^.HelpCtx := hcDReformDoc;
       Insert (Control);
 
       R.Assign (4, 8, 14, 10);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slOK, cmOK, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfDefault));
+      Control := New (PButton, Init (R, slOK, cmOK, bfDefault));
       Control^.HelpCtx := hcDOk;
       Insert (Control);
 
       R.Assign (17, 8, 27, 10);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slCancel, cmCancel, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfNormal));
+      Control := New (PButton, Init (R, slCancel, cmCancel, bfNormal));
       Control^.HelpCtx := hcDCancel;
       Insert (Control);
 
@@ -827,7 +829,7 @@ Begin
 end; { ReformDocDialog }
 
 
-function RightMarginDialog : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog;
+function RightMarginDialog : PDialog;
   { This is a local function that brings up a dialog box }
   { that allows the user to change the Right_Margin.     }
 VAR
@@ -836,30 +838,30 @@ VAR
   Control  : PView;
 Begin
   R.Assign (0, 0, 26, 8);
-  D := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog, Init (R, sRightMargin));
+  D := New (PDialog, Init (R, sRightMargin));
   with D^ do
     begin
       Options := Options or ofCentered;
 
       R.Assign (5, 2, 13, 3);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PStaticText, Init (R, sSetting));
+      Control := New (PStaticText, Init (R, sSetting));
       Insert (Control);
 
       R.Assign (13, 2, 18, 3);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PInputLine, Init (R, 3));
+      Control := New (PInputLine, Init (R, 3));
       Control^.HelpCtx := hcDRightMargin;
       Insert (Control);
 
       R.Assign (18, 2, 21, 3);
-      Insert (New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PHistory, Init (R, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PInputLine (Control), 13)));
+      Insert (New (PHistory, Init (R, PInputLine (Control), 13)));
 
       R.Assign (2, 5, 12, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slOK, cmOK, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfDefault));
+      Control := New (PButton, Init (R, slOK, cmOK, bfDefault));
       Control^.HelpCtx := hcDOk;
       Insert (Control);
 
       R.Assign (14, 5, 24, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slCancel, cmCancel, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfNormal));
+      Control := New (PButton, Init (R, slCancel, cmCancel, bfNormal));
       Control^.HelpCtx := hcDCancel;
       Insert (Control);
 
@@ -869,7 +871,7 @@ Begin
 end; { RightMarginDialog; }
 
 
-function TabStopDialog : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog;
+function TabStopDialog : PDialog;
   { This is a local function that brings up a dialog box }
   { that allows the user to set their own tab stops.     }
 VAR
@@ -880,13 +882,13 @@ VAR
   Tab_Stop   : String[2];        { Local string to print tab column number. }
 Begin
   R.Assign (0, 0, 80, 8);
-  D := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PDialog, Init (R, sTabSettings));
+  D := New (PDialog, Init (R, sTabSettings));
   with D^ do
     begin
       Options := Options or ofCentered;
 
       R.Assign (2, 2, 77, 3);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PStaticText, Init (R,
+      Control := New (PStaticText, Init (R,
                   ' ....|....|....|....|....|....|....|....|....|....|....|....|....|....|....'));
       Insert (Control);
 
@@ -894,25 +896,25 @@ Begin
         begin
           R.Assign (Index * 10 + 1, 1, Index * 10 + 3, 2);
           Str (Index * 10, Tab_Stop);
-          Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PStaticText, Init (R, Tab_Stop));
+          Control := New (PStaticText, Init (R, Tab_Stop));
           Insert (Control);
         end;
 
       R.Assign (2, 3, 78, 4);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PInputLine, Init (R, 74));
+      Control := New (PInputLine, Init (R, 74));
       Control^.HelpCtx := hcDTabStops;
       Insert (Control);
 
       R.Assign (38, 5, 41, 6);
-      Insert (New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PHistory, Init (R, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PInputLine (Control), 14)));
+      Insert (New (PHistory, Init (R, PInputLine (Control), 14)));
 
       R.Assign (27, 5, 37, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slOK, cmOK, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfDefault));
+      Control := New (PButton, Init (R, slOK, cmOK, bfDefault));
       Control^.HelpCtx := hcDOk;
       Insert (Control);
 
       R.Assign (42, 5, 52, 7);
-      Control := New ({$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.PButton, Init (R, slCancel, cmCancel, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Dialogs.bfNormal));
+      Control := New (PButton, Init (R, slCancel, cmCancel, bfNormal));
       Control^.HelpCtx := hcDCancel;
       Insert (Control);
       SelectNext (False);
@@ -941,7 +943,7 @@ begin
       StdEditorDialog := MessageBox(sFileUntitled, nil, mfInformation + mfYesNoCancel);
     edSaveAs:
       StdEditorDialog := Application^.ExecuteDialog(New(PFileDialog, Init('*.*',
-        slSaveFileAs, slName, fdOkButton, 101)), Info);
+        sSaveFileAs, slName, fdOkButton, 101)), Info);
     edFind:
       StdEditorDialog := Application^.ExecuteDialog(CreateFindDialog, Info);
     edSearchFailed:
@@ -1015,7 +1017,7 @@ begin
 end;
 
 
-procedure GetLimits(var Buf; Count: sw_Word;var lim:{$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint);
+procedure GetLimits(var Buf; Count: sw_Word;var lim:TPoint);
 { Get the limits needed for Buf, its an extended version of countlines (lim.y),
   which also gets the maximum line length in lim.x }
 var
@@ -1097,7 +1099,7 @@ Var
 begin
   BMMakeTable(str,bt);
   len:=length(str);
-  s2[0]:=chr(len);       { sets the length to that of the search String }
+  SetLength(s2,len);       { sets the length to that of the search String }
   found:=False;
   numb:=pred(len);
   While (not found) and (numb<(size-len)) do
@@ -1146,7 +1148,7 @@ begin
     exit;
   end;
   { create uppercased string }
-  s[0]:=chr(len);
+  SetLength(s,len);
   for x:=1 to len do
    begin
      if str[x] in ['a'..'z'] then
@@ -1260,7 +1262,7 @@ begin
 end; { TIndicator.SetState }
 
 
-procedure TIndicator.SetValue (ALocation : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint; IsAutoIndent : Boolean;
+procedure TIndicator.SetValue (ALocation : TPoint; IsAutoIndent : Boolean;
                                                            IsModified   : Boolean;
                                                            IsWordWrap   : Boolean);
 begin
@@ -1393,7 +1395,7 @@ begin
 end; { TEditor.Init }
 
 
-constructor TEditor.Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+constructor TEditor.Load (var S : TStream);
 begin
   Inherited Load (S);
   GetPeerViewPtr (S, HScrollBar);
@@ -1602,7 +1604,7 @@ begin
 end; { TEditor.ClipPaste }
 
 
-procedure TEditor.ConvertEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent);
+procedure TEditor.ConvertEvent (var Event : TEvent);
 VAR
   ShiftState : Byte;
   Key        : Word;
@@ -1677,7 +1679,7 @@ end; { TEditor.DoneBuffer }
 procedure TEditor.DoSearchReplace;
 VAR
   I : Sw_Word;
-  C : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
+  C : TPoint;
 begin
   repeat
     I := cmCancel;
@@ -1999,7 +2001,16 @@ begin
 end; {TEditor.FormatLine}
 
 
-function TEditor.GetMousePtr (Mouse : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint) : Sw_Word;
+function TEditor.GetLineDisplayLen: Sw_word;
+var S, E : Sw_word;
+begin
+  S:=LineStart(CurPtr);
+  E:=LineEnd(CurPtr);
+  GetLineDisplayLen:=Min(E-S,MaxLineLength-1);
+end; {TEditor.GetLineDisplayLen}
+
+
+function TEditor.GetMousePtr (Mouse : TPoint) : Sw_Word;
 begin
   MakeLocal (Mouse, Mouse);
   Mouse.X := Max (0, Min (Mouse.X, Size.X - 1));
@@ -2017,14 +2028,15 @@ begin
 end; { TEditor.GetPalette }
 
 
-procedure TEditor.HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent);
+procedure TEditor.HandleEvent (var Event : TEvent);
 VAR
   ShiftState   : Byte;
   CenterCursor : Boolean;
   SelectMode   : Byte;
-  D            : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
-  Mouse        : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint;
+  D            : TPoint;
+  Mouse        : TPoint;
   LinesScroll  : Sw_Integer;
+  E            : TEvent;
 
   function CheckScrollBar (P : PScrollBar; var D : Sw_Integer) : Boolean;
   begin
@@ -2050,15 +2062,19 @@ begin
       begin
         if (Event.Wheel=mwDown) then { Mouse scroll down}
           begin
+            Lock;
             LinesScroll:=1;
             if Event.Double then LinesScroll:=LinesScroll+4;
             ScrollTo(Delta.X, Delta.Y + LinesScroll);
+            Unlock;
           end else
         if (Event.Wheel=mwUp) then  { Mouse scroll up }
           begin
+            Lock;
             LinesScroll:=-1;
             if Event.Double then LinesScroll:=LinesScroll-4;
             ScrollTo(Delta.X, Delta.Y + LinesScroll);
+            Unlock;
           end
         else exit;
       end;
@@ -2068,6 +2084,12 @@ begin
           SelectMode := SelectMode or smDouble;
         repeat
           Lock;
+          if Event.What = evMouseWheel then
+            begin
+              E:=Event;
+              HandleEvent(Event); { Scroll }
+              Event:=E;
+            end;
           if Event.What = evMouseAuto then
           begin
             MakeLocal (Event.Where, Mouse);
@@ -2085,7 +2107,7 @@ begin
           SetCurPtr (GetMousePtr (Event.Where), SelectMode);
           SelectMode := SelectMode or smExtend;
           Unlock;
-        until not MouseEvent (Event, evMouseMove + evMouseAuto);
+        until not MouseEvent (Event, evMouseMove + evMouseAuto + evMouseWheel);
       end; { evMouseDown }
 
     evKeyDown:
@@ -2105,9 +2127,9 @@ begin
 
       else
         Exit;
-      end; { {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evKeyDown }
+      end; { evKeyDown }
 
-    {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evCommand:
+    evCommand:
       case Event.Command of
         cmFind        : Find;
         cmReplace     : Replace;
@@ -2205,9 +2227,9 @@ begin
             Remove_EOL_Spaces (SelectMode);
           Unlock;
         end; { Event.Command (Outer) }
-      end; { {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evCommand }
+      end; { evCommand }
 
-    {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evBroadcast:
+    evBroadcast:
       case Event.Command of
         cmScrollBarChanged:
           if (Event.InfoPtr = HScrollBar) or
@@ -2220,7 +2242,7 @@ begin
             exit;
       else
         Exit;
-      end; { {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evBroadcast }
+      end; { evBroadcast }
 
   end;
   ClearEvent (Event);
@@ -2327,6 +2349,8 @@ begin
   if not IsClipboard then
     Modified := True;
   SetBufSize (BufLen + DelCount);
+  if Not Word_Wrap then
+    Limit.X:=Max(Limit.X,GetLineDisplayLen+1);
   if (SelLines = 0) and (Lines = 0) then
     Update (ufLine)
   else
@@ -2485,7 +2509,7 @@ begin
   if P>CurPtr then
    begin
      start:=PAnsiChar(Buffer)+GapLen;
-     pc:=start;
+     pc:=start+P;
      i:=P-CurPtr;
      dec(pc);
      while (i>0) do
@@ -2876,7 +2900,7 @@ procedure TEditor.Scroll_Down;
 VAR
   C : Sw_Word;           { Position of CurPtr when we enter procedure. }
   P : Sw_Word;           { Position of CurPtr at any given time.       }
-  W : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint; { CurPos.Y of CurPtr and P ('.X and '.Y).     }
+  W : TPoint; { CurPos.Y of CurPtr and P ('.X and '.Y).     }
 begin
   { Remember current cursor position.  Remember current CurPos.Y position. }
   { Now issue the equivalent of a [Ctrl]-[End] command so the cursor will  }
@@ -2913,7 +2937,7 @@ procedure TEditor.Scroll_Up;
 VAR
   C : Sw_Word;           { Position of CurPtr when we enter procedure. }
   P : Sw_Word;           { Position of CurPtr at any given time.       }
-  W : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TPoint; { CurPos.Y of CurPtr and P ('.X and '.Y).     }
+  W : TPoint; { CurPos.Y of CurPtr and P ('.X and '.Y).     }
 begin
   { Remember current cursor position.  Remember current CurPos.Y position. }
   { Now issue the equivalent of a [Ctrl]-[Home] command so the cursor will }
@@ -3197,7 +3221,6 @@ begin
           if Length (Tab_String) = 0 then
             begin
               FillChar (Tab_Settings, SizeOf (Tab_Settings), #0);
-              Tab_Settings[0] := #0;
               Exit;
             end
           else
@@ -3219,7 +3242,7 @@ begin
 end; { TEditor.StartSelect }
 
 
-procedure TEditor.Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+procedure TEditor.Store (var S : TStream);
 begin
   Inherited Store (S);
   PutPeerViewPtr (S, HScrollBar);
@@ -3254,7 +3277,7 @@ begin
   Position := CurPos.X + 1;
   repeat
     Inc (Position);
-  until (Tab_Settings[Position] <> #32) or (Position >= Ord (Tab_Settings[0]));
+  until (Tab_Settings[Position] <> #32) or (Position >= Length (Tab_Settings));
   E := CurPos.X;
   Index := 1;
   { Now we enter a loop to go to the next tab position.  }
@@ -3267,7 +3290,7 @@ begin
       if Overwrite then
         begin
           if (Position > LineEnd (CurPtr) - LineStart (CurPtr))
-              or (Position > Ord (Tab_Settings[0])) then
+              or (Position > Length (Tab_Settings)) then
             begin
               SetCurPtr (LineStart (LineMove (CurPtr, 1)), Select_Mode);
               Exit;
@@ -3278,7 +3301,7 @@ begin
         end
       else
         begin
-          if (Position > Right_Margin) or (Position > Ord (Tab_Settings[0])) then
+          if (Position > Right_Margin) or (Position > Length (Tab_Settings)) then
             begin
               SetCurPtr (LineStart (LineMove (CurPtr, 1)), Select_Mode);
               Exit;
@@ -3418,7 +3441,7 @@ end; { TEditor.Valid }
                                    TMEMO
 ****************************************************************************}
 
-constructor TMemo.Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+constructor TMemo.Load (var S : TStream);
 VAR
   Length : Sw_Word;
 begin
@@ -3459,9 +3482,9 @@ begin
 end; { TMemo.GetPalette }
 
 
-procedure TMemo.HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent);
+procedure TMemo.HandleEvent (var Event : TEvent);
 begin
-  if (Event.What <> {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evKeyDown) or (Event.KeyCode <> {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.kbTab) then
+  if (Event.What <> evKeyDown) or (Event.KeyCode <> kbTab) then
     Inherited HandleEvent (Event);
 end; { TMemo.HandleEvent }
 
@@ -3475,7 +3498,7 @@ begin
 end; { TMemo.SetData }
 
 
-procedure TMemo.Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+procedure TMemo.Store (var S : TStream);
 begin
   Inherited Store (S);
   S.Write (BufLen, SizeOf (BufLen));
@@ -3504,7 +3527,7 @@ begin
 end; { TFileEditor.Init }
 
 
-constructor TFileEditor.Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+constructor TFileEditor.Load (var S : TStream);
 VAR
   SStart,SEnd,Curs : Sw_Word;
 begin
@@ -3531,16 +3554,16 @@ begin
 end; { TFileEditor.DoneBuffer }
 
 
-procedure TFileEditor.HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent);
+procedure TFileEditor.HandleEvent (var Event : TEvent);
 begin
   Inherited HandleEvent (Event);
   case Event.What of
-    {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evCommand:
+    evCommand:
       case Event.Command of
         cmSave   : Save;
         cmSaveAs : SaveAs;
         cmSaveDone : if Save then
-                       Message (Owner, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evCommand, cmClose, nil);
+                       Message (Owner, evCommand, cmClose, nil);
       else
         Exit;
       end;
@@ -3613,7 +3636,7 @@ begin
   if EditorDialog (edSaveAs, @FileName) <> cmCancel then
   begin
     FileName := FExpand (FileName);
-    Message (Owner, {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evBroadcast, cmUpdateTitle, nil);
+    Message (Owner, evBroadcast, cmUpdateTitle, nil);
     SaveAs := SaveFile;
     if IsClipboard then
       FileName := '';
@@ -3624,10 +3647,10 @@ end; { TFileEditor.SaveAs }
 function TFileEditor.SaveFile : Boolean;
 VAR
   F          : File;
-  BackupName : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.FNameStr;
-  D          : {$IFDEF FPC_DOTTEDUNITS}TP.{$ENDIF}DOS.DirStr;
-  N          : {$IFDEF FPC_DOTTEDUNITS}TP.{$ENDIF}DOS.NameStr;
-  E          : {$IFDEF FPC_DOTTEDUNITS}TP.{$ENDIF}DOS.ExtStr;
+  BackupName : FNameStr;
+  D          : DirStr;
+  N          : NameStr;
+  E          : ExtStr;
 begin
   SaveFile := False;
   if Flags and efBackupFiles <> 0 then
@@ -3686,7 +3709,7 @@ begin
 end; { TFileEditor.SetBufSize }
 
 
-procedure TFileEditor.Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+procedure TFileEditor.Store (var S : TStream);
 begin
   Inherited Store (S);
   S.Write (FileName, Length (FileName) + 1);
@@ -3735,7 +3758,7 @@ end; { TFileEditor.Valid }
 ****************************************************************************}
 
 constructor TEditWindow.Init (var Bounds   : TRect;
-                                  FileName : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.FNameStr;
+                                  FileName : FNameStr;
                                   ANumber  : SmallInt);
 var
   HScrollBar : PScrollBar;
@@ -3768,7 +3791,7 @@ begin
 end; { TEditWindow.Init }
 
 
-constructor TEditWindow.Load (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+constructor TEditWindow.Load (var S : TStream);
 begin
   Inherited Load (S);
   GetSubViewPtr (S, Editor);
@@ -3796,10 +3819,10 @@ begin
 end; { TEditWindow.GetTile }
 
 
-procedure TEditWindow.HandleEvent (var Event : {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.TEvent);
+procedure TEditWindow.HandleEvent (var Event : TEvent);
 begin
   Inherited HandleEvent (Event);
-  if (Event.What = {$IFDEF FPC_DOTTEDUNITS}FreeVision.{$ENDIF}Drivers.evBroadcast) then
+  if (Event.What = evBroadcast) then
     { and (Event.Command = cmUpdateTitle) then }
     { Changed if statement above so I could test for cmBlugeonStats.       }
     { Stats would not show up when loading a file until a key was pressed. }
@@ -3825,7 +3848,7 @@ begin
 end;
 
 
-procedure TEditWindow.Store (var S : {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}Objects.TStream);
+procedure TEditWindow.Store (var S : TStream);
 begin
   Inherited Store (S);
   PutSubViewPtr (S, Editor);

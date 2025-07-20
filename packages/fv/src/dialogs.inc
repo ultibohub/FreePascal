@@ -1818,21 +1818,19 @@ Delta, Anchor, OldCurPos, OldFirstPos, OldSelStart, OldSelEnd: Sw_Integer;
     wlen : sw_integer;
    begin
      {$ifdef FV_UNICODE}
-     wlen:=ASize;
+     wlen:=ASize*2+2;  { over estimate length }
      Setlength(S,wlen);
      wlen:=Utf8ToUnicode(@S[1],wlen,P,ASize);
+     if wlen>0 then
+       dec(wlen);
      Setlength(S,wlen);
      {$else}
      Setlength(S,Min(ASize,255));
      Move(P^,s[1],Min(ASize,255));
      {$endif}
-     for i:=1 to Min(length(s),255) do
+     for i:=1 to length(S) {Min(length(s),255)} do
      begin
-       {$ifdef FV_UNICODE}
-       st:=Data+S[i];
-       {$else}
-       st:=Data^+s[i];
-       {$endif}
+       st:=Data Sw_PString_DeRef+s[i];
        If not assigned(validator) or
           Validator^.IsValidInput(st,False)  then
          Begin
@@ -1845,7 +1843,9 @@ Delta, Anchor, OldCurPos, OldFirstPos, OldSelStart, OldSelEnd: Sw_Integer;
            Event.Scancode:=0;
            TInputLine.HandleEvent(Event);             { add pasted chars}
          End;
+       {$ifndef FV_UNICODE}
        if length(st)=255 then break;
+       {$endif}
      end;
    end;
 
@@ -3254,7 +3254,8 @@ BEGIN
        else
        begin
          AtStartOfLine := False;
-         if (EGC <> #13) and (EGC <> #10) then
+         { ha, #13#10 is one unicode character }
+         if (EGC <> #13#10) and (EGC <> #13) and (EGC <> #10) then
          begin
            if EGC = ' ' then
            begin
@@ -3269,7 +3270,7 @@ BEGIN
              LastTruncatedBoundaryWidth := CurLineWidth;
            end;
          end;
-         if (CurLineWidth >= Size.X) or (EGC = #13) then
+         if (CurLineWidth >= Size.X) or (EGC = #13#10) or (EGC = #13) or (EGC = #10) then
          begin
            if CurLineWidth >= Size.X then
            begin
@@ -3344,9 +3345,9 @@ BEGIN
         J := P;
         while (P <= L) and (S[P] = ' ') do
           Inc(P);
-        while (P <= L) and (S[P] <> ' ') and (S[P] <> #13) do
+        while (P <= L) and (S[P] <> ' ') and (S[P] <> #13) and (S[P] <> #10) do
           Inc(P);
-      until (P > L) or (P >= I + Size.X) or (S[P] = #13);
+      until (P > L) or (P >= I + Size.X) or (S[P] = #13) or (S[P] = #10);
       If P > I + Size.X Then                           { Text to long }
         If J > I Then
           P := J
@@ -3358,8 +3359,14 @@ BEGIN
         2: J := Size.X - (P-I);              { Right justify }
       End;
       MoveBuf(B[J], S[I], Color, P - I);
-      While (P <= L) AND (P-I <= Size.X) AND ((S[P] = #13) OR (S[P] = #10))
-        Do Inc(P);                                     { Remove CR/LF }
+      While (P <= L) AND (P-I <= Size.X) AND ((S[P] = #13) or (S[P] = #10))  do
+        begin
+          inc(P);                            { Remove CR or LF }
+          if length(S)>=P then
+            if (Ord (S[P]) + Ord (S[P-1])) = 23 then
+              Inc(P);                        { Remove CRLF }
+          break;
+        end;
     End;
     WriteLine(0, Y, Size.X, 1, B);
     Inc(Y);                                          { Next line }

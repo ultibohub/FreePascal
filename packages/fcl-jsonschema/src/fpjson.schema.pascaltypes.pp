@@ -247,6 +247,8 @@ Type
     function GetSchemaTypeData(aType: TPascalTypeData; lSchema: TJSONSchema; AllowCreate: Boolean=False): TPascalTypeData;
     // Add a type to the alias list
     Procedure AddAliasType(aType : TPascalTypeData); virtual;
+    // Sanitize identifier
+    function Sanitize(const aName : string) : String;
     // Sort types in dependency order
     procedure SortTypes;
   Public
@@ -273,7 +275,7 @@ Type
     // Add a type to the list
     Procedure AddType(const aSchemaName: String; aType : TPascalTypeData); virtual;
     // Add a type definition to the type map.
-    procedure AddAliasToTypeMap(aType: TPascalType; const aAlias, aSchemaTypeName, aPascalTypeName: String; aSchema: TJSONSchema); overload;
+    function AddAliasToTypeMap(aType: TPascalType; const aAlias, aSchemaTypeName, aPascalTypeName: String; aSchema: TJSONSchema) : TPascalTypeData; overload;
     // Add a property to a type
     function AddTypeProperty(aType: TPascalTypeData; lProp: TJSONSchema; aName : string = ''; Recurse : Boolean = True): TPascalPropertyData;
     // Add properties to structured pascal type from aSchema. if aSchema = nil then use aType.Schema
@@ -530,8 +532,6 @@ constructor TPascalTypeData.Create(aIndex: integer; aType: TPascalType; const aS
   );
 
 begin
-  if (aType=ptArray) and (Pos('Meeting',aSchemaName)>0) then
-    Writeln('ah');
   FIndex:=aIndex;
   FSchema:=ASchema;
   FSchemaName:=aSchemaName;
@@ -805,6 +805,19 @@ begin
   FAliasList.Add(aType);
 end;
 
+function TSchemaData.Sanitize(const aName: string): String;
+var
+  i : integer;
+  lRes : string;
+begin
+  lRes:=aName;
+  UniqueString(lRes);
+  For I:=1 to Length(lRes) do
+    if not (lRes[i] in ['a'..'z','A'..'Z','0'..'9','_']) then
+      lRes[i]:='_';
+  Result:=lRes;
+end;
+
 
 // Determine the PascalType and pascal type name of the given schema
 
@@ -827,7 +840,7 @@ begin
     end;
 end;
 
-Procedure TSchemaData.FinishAutoCreatedType(aName : string; aType: TPascalTypeData; lElementTypeData: TPascalTypeData);
+procedure TSchemaData.FinishAutoCreatedType(aName: string; aType: TPascalTypeData; lElementTypeData: TPascalTypeData);
 
 begin
   AddType(aName,aType);
@@ -899,11 +912,7 @@ begin
       sstArray:
         begin
         lElTypeData:=GetSchemaTypeData(Nil,lSchema.Items[0]);
-//        if
-//         Data.FindSchemaTypeData('Array of string')
-        lPascalName:=ArrayTypePrefix+lElTypeData.PascalName+ArrayTypeSuffix;
-        if lElTypeData.SchemaName='MeetingOption' then
-          Writeln('Ah');
+        lPascalName:=Sanitize(ArrayTypePrefix+lElTypeData.PascalName+ArrayTypeSuffix);
         lName:='['+lElTypeData.SchemaName;
         if lSchema.Items[0].Validations.HasKeywordData(jskformat) then
           lName:=lName+'--'+lSchema.Items[0].Validations.Format;
@@ -913,8 +922,6 @@ begin
           lName:='';
         if (Result=Nil) and AllowCreate then
           begin
-          if (lName='[MeetingOption]') then
-            Writeln('ah');
           Result:=CreatePascalType(-1,ptArray,lName,lPascalName,lSchema);
           FinishAutoCreatedType(lName,Result,lElTypeData);
           lName:='';
@@ -931,7 +938,7 @@ begin
           else
             lBaseName:='Nested_'+lSchema.Name;
           lName:='{'+lBaseName+'}';
-          lPascalName:='T'+lBaseName;
+          lPascalName:=ObjectTypePrefix+Sanitize(lBaseName);
           Result:=FindSchemaTypeData(lName);
           if (Result=Nil) and AllowCreate then
             begin
@@ -963,8 +970,8 @@ var
 begin
   lName:=aName;
   if lName='' then
-    lName:=EscapeKeyWord(lProp.Name);
-  Writeln('Adding property name ',lName,' to ',aType.PascalName);
+    lName:=EscapeKeyWord(Sanitize(lProp.Name));
+  DoLog(etInfo,'Adding property name %s to %s',[lName,aType.PascalName]);
   if lProp.Validations.TypesCount>1 then
     Raise ESchemaData.CreateFmt('Creating property for schema with multiple types ("%s") is not supported',[lName]);
   if (lProp.Validations.GetFirstType=sstArray) then
@@ -1027,7 +1034,8 @@ begin
 end;
 
 
-procedure TSchemaData.AddAliasToTypeMap(aType : TPascalType; const aAlias,aSchemaTypeName, aPascalTypeName: String; aSchema: TJSONSchema);
+function TSchemaData.AddAliasToTypeMap(aType: TPascalType; const aAlias, aSchemaTypeName, aPascalTypeName: String;
+  aSchema: TJSONSchema): TPascalTypeData;
 
 var
   lType : TPascalTypeData;
@@ -1038,6 +1046,7 @@ begin
     lType.InterfaceName:=aPascalTypeName;
   AddToTypeMap(aAlias,lType);
   AddAliasType(lType);
+  Result:=lType;
 end;
 
 
@@ -1066,24 +1075,40 @@ begin
 end;
 
 procedure TSchemaData.DefineStandardPascalTypes;
+var
+  lArr,lElem : TPascalTypeData;
+
 begin
   // typename--format
-  AddAliasToTypeMap(ptInteger,'integer','integer','integer',Nil);
+  lElem:=AddAliasToTypeMap(ptInteger,'integer','integer','integer',Nil);
+  lArr:=AddAliasToTypeMap(ptArray,'[integer]','[integer]','TIntegerDynArray',Nil);
+  lArr.ElementTypeData:=lElem;
+
   AddAliasToTypeMap(ptInteger,'integer--int32','integer','integer',Nil);
-  AddAliasToTypeMap(ptInt64,'integer--int64','integer','int64',Nil);
-  AddAliasToTypeMap(ptString,'string','string','string',Nil);
+
+  lElem:=AddAliasToTypeMap(ptInt64,'integer--int64','integer','int64',Nil);
+  lArr:=AddAliasToTypeMap(ptArray,'[integer--int64]','[integer--int64]','TInt64DynArray',Nil);
+  lArr.ElementTypeData:=lElem;
+
+  lElem:=AddAliasToTypeMap(ptString,'string','string','string',Nil);
+  lArr:=AddAliasToTypeMap(ptArray,'[string]','[string]','TStringDynArray',Nil);
+  lArr.ElementTypeData:=lElem;
+
   AddAliasToTypeMap(ptDateTime,'string--date','string','TDateTime',Nil);
   AddAliasToTypeMap(ptDateTime,'string--time','string','TDateTime',Nil);
   AddAliasToTypeMap(ptDateTime,'string--date-time','string','TDateTime',Nil);
-  AddAliasToTypeMap(ptBoolean,'boolean','boolean','boolean',Nil);
-  AddAliasToTypeMap(ptFloat64,'number','number','double',Nil);
+
+  lElem:=AddAliasToTypeMap(ptFloat64,'number','number','double',Nil);
+  lArr:=AddAliasToTypeMap(ptArray,'[number]','[number]','TDoubleDynArray',Nil);
+  lArr.ElementTypeData:=lElem;
+
   AddAliasToTypeMap(ptJSON,'JSON','object','string',Nil);
   AddAliasToTypeMap(ptJSON,'any','object','string',Nil);
-  AddAliasToTypeMap(ptArray,'[string]','[string]','TStringDynArray',Nil);
-  AddAliasToTypeMap(ptArray,'[integer]','[integer]','TIntegerDynArray',Nil);
-  AddAliasToTypeMap(ptArray,'[integer--int64]','[integer--int64]','TInt64DynArray',Nil);
-  AddAliasToTypeMap(ptArray,'[number]','[number]','TDoubleDynArray',Nil);
-  AddAliasToTypeMap(ptArray,'[boolean]','[boolean]','TBooleanDynArray',Nil);
+
+  lElem:=AddAliasToTypeMap(ptBoolean,'boolean','boolean','boolean',Nil);
+  lArr:=AddAliasToTypeMap(ptArray,'[boolean]','[boolean]','TBooleanDynArray',Nil);
+  lArr.ElementTypeData:=lElem;
+
 end;
 
 

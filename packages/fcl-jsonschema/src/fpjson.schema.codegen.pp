@@ -44,7 +44,7 @@ Type
     procedure GenerateFPCDirectives(modeswitches : array of string);
     procedure GenerateFPCDirectives();
     function GetPascalTypeAndDefault(aType: TSchemaSimpleType; out aPasType, aPasDefault: string) : boolean;
-    function GetJSONDefault(aType: TPropertyType) : String;
+    function GetJSONDefault(aType: TPascalType) : String;
     procedure SetTypeData(aData : TSchemaData);
   public
     Property TypeData : TSchemaData Read FData;
@@ -59,6 +59,7 @@ Type
   private
     FTypeParentClass: string;
     procedure GenerateClassTypes(aData: TSchemaData);
+    procedure GeneratePascalArrayTypes(aData: TSchemaData);
     procedure GenerateStringTypes(aData: TSchemaData);
     procedure WriteDtoConstructor(aType: TPascalTypeData); virtual;
     procedure WriteDtoField(aType: TPascalTypeData; aProperty: TPascalPropertyData); virtual;
@@ -82,19 +83,29 @@ Type
   private
     FConvertUTC: Boolean;
     FDataUnitName: string;
-    function FieldToJSON(aProperty: TPascalPropertyData) : string;
-    function ArrayMemberToField(aType: TPropertyType; const aPropertyTypeName: String; const aFieldName: string): string;
-    function FieldToJSON(aType: TPropertyType; aFieldName: String): string;
-    procedure GenerateConverters;
-    function JSONToField(aProperty: TPascalPropertyData) : string;
-    function JSONToField(aType: TPropertyType; const aPropertyTypeName: string; const aKeyName: string): string;
-    procedure WriteFieldDeSerializer(aType : TPascalTypeData; aProperty: TPascalPropertyData);
-    procedure WriteFieldSerializer(aType : TPascalTypeData; aProperty: TPascalPropertyData);
-    procedure WriteDtoObjectSerializer(aType: TPascalTypeData);
-    procedure WriteDtoSerializer(aType: TPascalTypeData);
-    procedure WriteDtoObjectDeserializer(aType: TPascalTypeData);
-    procedure WriteDtoDeserializer(aType: TPascalTypeData);
-    procedure WriteDtoHelper(aType: TPascalTypeData);
+  protected
+    function MustSerializeType(aType : TPascalTypeData) : boolean; virtual;
+    function FieldToJSON(aProperty: TPascalPropertyData) : string; virtual;
+    function ArrayMemberToField(aType: TPascalType; const aPropertyTypeName: String; const aFieldName: string): string; virtual;
+    function FieldToJSON(aType: TPascalType; aFieldName: String): string; virtual;
+    procedure GenerateConverters; virtual;
+    function JSONToField(aProperty: TPascalPropertyData) : string; virtual;
+    function JSONToField(aType: TPascalType; const aPropertyTypeName: string; const aKeyName: string): string; virtual;
+    procedure WriteFieldDeSerializer(aType : TPascalTypeData; aProperty: TPascalPropertyData); virtual;
+    procedure WriteFieldSerializer(aType : TPascalTypeData; aProperty: TPascalPropertyData); virtual;
+    // Dto (object) type helpers
+    procedure WriteDtoObjectSerializer(aType: TPascalTypeData); virtual;
+    procedure WriteDtoSerializer(aType: TPascalTypeData); virtual;
+    procedure WriteDtoObjectDeserializer(aType: TPascalTypeData); virtual;
+    procedure WriteDtoDeserializer(aType: TPascalTypeData); virtual;
+    procedure WriteDtoHelper(aType: TPascalTypeData); virtual;
+    // Array type helpers
+    procedure WriteArrayHelper(aType: TPascalTypeData); virtual;
+    procedure WriteArrayHelperDeserialize(aType: TPascalTypeData);
+    procedure WriteArrayHelperDeSerializeArray(aType: TPascalTypeData);
+    procedure WriteArrayHelperImpl(aType: TPascalTypeData);
+    procedure WriteArrayHelperSerialize(aType: TPascalTypeData);
+    procedure WriteArrayHelperSerializeArray(aType: TPascalTypeData);
   public
     procedure Execute(aData: TSchemaData);
     property DataUnitName: string read FDataUnitName write FDataUnitName;
@@ -145,7 +156,7 @@ begin
 end;
 
 
-function TJSONSchemaCodeGenerator.GetJSONDefault(aType: TPropertyType): String;
+function TJSONSchemaCodeGenerator.GetJSONDefault(aType: TPascalType): String;
 
 begin
   case aType of
@@ -313,9 +324,10 @@ end;
 procedure TTypeCodeGenerator.GenerateStringTypes(aData : TSchemaData);
 
 var
-  I: integer;
+  I,lCount: integer;
   lType,lArray : TPascalTypeData;
 begin
+  lCount:=0;
   for I := 0 to aData.TypeCount-1 do
     begin
     lType:=aData.Types[I];
@@ -323,11 +335,17 @@ begin
       begin
       DoLog('Generating string type %s', [lType.PascalName]);
       WriteStringType(lType);
+      inc(lCount);
       lArray:=aData.FindSchemaTypeData('['+lType.SchemaName+']');
       if lArray<>Nil then
-         WriteStringArrayType(lArray);
+        begin
+        WriteStringArrayType(lArray);
+        inc(lCount);
+        end;
       end;
     end;
+  if lCount>0 then
+    AddLn('');
 end;
 
 procedure TTypeCodeGenerator.GenerateClassTypes(aData : TSchemaData);
@@ -335,16 +353,47 @@ procedure TTypeCodeGenerator.GenerateClassTypes(aData : TSchemaData);
 var
   I: integer;
   lArray : TPascalTypeData;
+  lName : string;
 begin
   for I := 0 to aData.TypeCount-1 do
     if aData.Types[I].PascalType in [ptSchemaStruct,ptAnonStruct] then
       begin
         DoLog('Generating DTO class type %s', [aData.Types[I].PascalName]);
+        lName:=aData.Types[I].PascalName;
         WriteDtoType(aData.Types[I]);
         lArray:=aData.FindSchemaTypeData('['+aData.Types[I].SchemaName+']');
         if lArray<>Nil then
           WriteDtoArrayType(lArray);
       end
+end;
+
+procedure TTypeCodeGenerator.GeneratePascalArrayTypes(aData : TSchemaData);
+
+// Generate a definition of an array of a standard pascal type.
+
+var
+  I, lCount: integer;
+  lType : TPascalTypeData;
+
+begin
+  lCount := 0;
+  for I := 0 to aData.TypeCount-1 do
+    begin
+    lType:=aData.Types[I];
+    // It is an array
+    if (lType.PascalType=ptArray) then
+      begin
+      // the element type is a standard type
+      if (lType.ElementTypeData.Schema=Nil) then
+        begin
+        DoLog('Generating array type %s', [lType.PascalName]);
+        WriteDtoArrayType(lType);
+        inc(lCount);
+        end;
+      end;
+    end;
+  if lCount>0 then
+    AddLn('');
 end;
 
 procedure TTypeCodeGenerator.Execute(aData: TSchemaData);
@@ -371,6 +420,7 @@ begin
     Addln('');
     indent;
     GenerateStringTypes(aData);
+    GeneratePascalArrayTypes(aData);
     GenerateClassTypes(aData);
     undent;
     Addln('implementation');
@@ -394,6 +444,11 @@ end;
 
 { TSerializerCodeGenerator }
 
+function TSerializerCodeGenerator.MustSerializeType(aType: TPascalTypeData): boolean;
+begin
+  Result:=Assigned(aType);
+end;
+
 function TSerializerCodeGenerator.FieldToJSON(aProperty: TPascalPropertyData): string;
 
 begin
@@ -401,11 +456,9 @@ begin
 end;
 
 
-function TSerializerCodeGenerator.FieldToJSON(aType: TPropertyType; aFieldName : String): string;
+function TSerializerCodeGenerator.FieldToJSON(aType: TPascalType; aFieldName : String): string;
 
 begin
-  if aFieldName='options' then
-    Writeln('ah');
   if aType in [ptAnonStruct,ptSchemaStruct] then
   begin
     Result := Format('%s.SerializeObject', [aFieldName]);
@@ -427,6 +480,8 @@ begin
         Result := Format('DateToISO8601(%s,%s)', [aFieldName,Bools[Not ConvertUTC]]);
       ptEnum :
         Result := Format('%s.AsString', [aFieldName]);
+      ptArray:
+        Result := Format('%s.SerializeArray', [aFieldName]);
     else
       Result := aFieldName;
     end;
@@ -441,7 +496,7 @@ begin
 end;
 
 
-function TSerializerCodeGenerator.JSONToField(aType: TPropertyType; const aPropertyTypeName: string; const aKeyName: string): string;
+function TSerializerCodeGenerator.JSONToField(aType: TPascalType; const aPropertyTypeName: string; const aKeyName: string): string;
 
   function ObjectField(lName: string) : string;
   begin
@@ -449,6 +504,14 @@ function TSerializerCodeGenerator.JSONToField(aType: TPropertyType; const aPrope
       Result := Format('aJSON.GetValue<TJSONObject>(''%s'',Nil)', [lName])
     else
       Result := Format('aJSON.Get(''%s'',TJSONObject(Nil))', [lName]);
+  end;
+
+  function ArrayField(lName: string) : string;
+  begin
+    if DelphiCode then
+      Result := Format('aJSON.GetValue<TJSONArray>(''%s'',Nil)', [lName])
+    else
+      Result := Format('aJSON.Get(''%s'',TJSONArray(Nil))', [lName]);
   end;
 
 var
@@ -459,6 +522,10 @@ begin
   if aType in [ptSchemaStruct,ptAnonStruct] then
   begin
     Result := Format('%s.Deserialize(%s)', [aPropertyTypeName, ObjectField(aKeyName)]);
+  end
+  else if aType = ptArray then
+  begin
+    Result := Format('%s.Deserialize(%s)', [aPropertyTypeName, ArrayField(aKeyName)]);
   end
   else
   begin
@@ -496,14 +563,28 @@ begin
 end;
 
 
-function TSerializerCodeGenerator.ArrayMemberToField(aType: TPropertyType; const aPropertyTypeName : String; const aFieldName: string): string;
+function TSerializerCodeGenerator.ArrayMemberToField(aType: TPascalType; const aPropertyTypeName : String; const aFieldName: string): string;
+
+  function getStdType : string;
+  begin
+    case aType of
+      ptFloat32,
+      ptFloat64: Result:='Float';
+      ptString : Result:='string';
+      ptInteger : Result:='Integer';
+      ptInt64 : Result:='Int64';
+      ptBoolean : Result:='Boolean';
+    end;
+  end;
 
 var
-  lPasDefault: string;
+  lType,lPasDefault: string;
 
 begin
   if aType in [ptAnonStruct,ptSchemaStruct] then
     Result := Format('%s.Deserialize(%s as TJSONObject)', [aPropertyTypeName, aFieldName])
+  else if aType = ptArray then
+    Result := Format('%s.Deserialize(%s as TJSONArray)', [aPropertyTypeName, aFieldName])
   else
     begin
     case aType of
@@ -517,18 +598,19 @@ begin
         end;
       ptDateTime:
         Result := Format('%s.AsString', [aFieldName]);
-      ptString,
       ptFloat32,
       ptFloat64,
+      ptString,
       ptInteger,
       ptInt64,
       ptBoolean:
       begin
+        lType:=GetStdType;
         lPasDefault:=GetJSONDefault(aType);
         if DelphiCode then
-          Result := Format('%s.GetValue<%s>('''',%s)', [aFieldName, aPropertyTypeName, lPasDefault])
+          Result := Format('%s.GetValue<%s>('''',%s)', [aFieldName, lType, lPasDefault])
         else
-          Result := Format('%s.As%s', [aFieldName, aPropertyTypeName]);
+          Result := Format('%s.As%s', [aFieldName, lType]);
       end;
       ptAnonStruct:
       begin
@@ -548,7 +630,7 @@ procedure TSerializerCodeGenerator.WriteFieldSerializer(aType : TPascalTypeData;
 
 var
   lAssign, lValue, lKeyName, lFieldName: string;
-  lType: TPropertyType;
+  lType: TPascalType;
   lNilCheck : Boolean;
 
 begin
@@ -576,6 +658,7 @@ begin
     ptFloat32,
     ptFloat64,
     ptJSON,
+    ptAnonStruct,
     ptSchemaStruct:
     begin
       if lNilCheck then
@@ -597,8 +680,6 @@ begin
     ptArray:
     begin
       Addln('Arr:=TJSONArray.Create;');
-      if lKeyName='options' then
-        Writeln('ah');
       if DelphiCode then
         Addln('Result.AddPair(''%s'',Arr);', [lKeyName])
       else
@@ -656,6 +737,7 @@ begin
       Addln('begin');
       Addln('SetLength(Result.%s,lArr.Count);', [lFieldName]);
       lElName := Format('%s[i]', [lFieldName]);
+
       Addln('For I:=0 to Length(Result.%s)-1 do', [lFieldName]);
       indent;
       Addln('Result.%s:=%s;', [lElName, lValue]);
@@ -846,6 +928,152 @@ begin
   Addln('end;');
 end;
 
+procedure TSerializerCodeGenerator.WriteArrayHelper(aType: TPascalTypeData);
+
+begin
+  if DelphiCode then
+    Addln('%s = record helper for %s', [aType.SerializerName, aType.PascalName])
+  else
+    Addln('%s = type helper for %s', [aType.SerializerName, aType.PascalName]);
+  Indent;
+  if stSerialize in aType.SerializeTypes then
+    begin
+    Addln('function SerializeArray : TJSONArray;');
+    Addln('function Serialize : String;');
+    end;
+  if stDeserialize in aType.SerializeTypes then
+    begin
+    Addln('class function Deserialize(aJSON : TJSONArray) : %s; overload; static;', [aType.PascalName]);
+    Addln('class function Deserialize(aJSON : String) : %s; overload; static;', [aType.PascalName]);
+    end;
+  undent;
+  Addln('end;');
+end;
+
+procedure TSerializerCodeGenerator.WriteArrayHelperSerializeArray(aType: TPascalTypeData);
+begin
+  Addln('');
+  Addln('function %s.SerializeArray : TJSONArray;',[aType.SerializerName]);
+  Addln('var');
+  indent;
+  Addln('I : Integer;');
+  undent;
+  Addln('begin');
+  indent;
+  Addln('Result:=TJSONArray.Create;');
+  Addln('try');
+  indent;
+  Addln('For I:=0 to length(Self)-1 do');
+  Indent;
+  Addln('Result.Add(self[i]);');
+  undent;
+  undent;
+  Addln('except');
+  indent;
+  Addln('Result.Free;');
+  Addln('raise;');
+  undent;
+  Addln('end;');
+  undent;
+  Addln('end;');
+  Addln('');
+end;
+
+procedure TSerializerCodeGenerator.WriteArrayHelperSerialize(aType: TPascalTypeData);
+begin
+  Addln('');
+  Addln('function %s.Serialize : String;',[aType.SerializerName]);
+  Addln('var');
+  indent;
+  Addln('lObj : TJSONArray;');
+  undent;
+  Addln('begin');
+  indent;
+  Addln('lObj:=SerializeArray;');
+  Addln('try');
+  indent;
+  if DelphiCode then
+    Addln('Result:=lObj.ToJSON;')
+  else
+    Addln('Result:=lObj.AsJSON;');
+  undent;
+  Addln('finally');
+  indent;
+  Addln('lObj.Free');
+  undent;
+  Addln('end;');
+  undent;
+  Addln('end;');
+  Addln('');
+end;
+
+procedure TSerializerCodeGenerator.WriteArrayHelperDeSerializeArray(aType: TPascalTypeData);
+var
+  lType : string;
+begin
+  Addln('class function %s.Deserialize(aJSON : TJSONArray) : %s; ', [aType.SerializerName, aType.PascalName]);
+  Addln('');
+  Addln('var');
+  indent;
+  Addln('i : integer;');
+  undent;
+  Addln('begin');
+  indent;
+  Addln('SetLength(Result,aJSON.Count);');
+  Addln('For i:=0 to aJSON.Count-1 do');
+  indent;
+  lType:=ArrayMemberToField(aType.ElementTypeData.Pascaltype,aType.ElementTypeData.PascalName,'aJSON[i]');
+  Addln('Result[i]:=%s;',[lType]);
+  undent;
+  undent;
+  Addln('end;');
+  Addln('');
+end;
+
+procedure TSerializerCodeGenerator.WriteArrayHelperDeserialize(aType: TPascalTypeData);
+begin
+  Addln('class function %s.Deserialize(aJSON : String) : %s; ', [aType.SerializerName,aType.PascalName]);
+  Addln('');
+  Addln('var');
+  indent;
+  Addln('lObj : TJSONData;');
+  Addln('lArr : TJSONArray absolute lobj;');
+  undent;
+  Addln('begin');
+  indent;
+  Addln('lObj:=GetJSON(aJSON);');
+  Addln('try');
+  indent;
+  Addln('Result:=DeSerialize(lArr);');
+  undent;
+  Addln('finally');
+  indent;
+  Addln('lObj.Free;');
+  undent;
+  Addln('end;');
+  undent;
+  Addln('end;');
+  Addln('');
+
+end;
+
+
+procedure TSerializerCodeGenerator.WriteArrayHelperImpl(aType: TPascalTypeData);
+
+begin
+  if stSerialize in aType.SerializeTypes then
+    begin
+    WriteArrayHelperSerializeArray(aType);
+    WriteArrayHelperSerialize(aType);
+    end;
+  if stDeserialize in aType.SerializeTypes then
+    begin
+    WriteArrayHelperDeserializeArray(aType);
+    WriteArrayHelperDeserialize(aType);
+    end;
+end;
+
+
 procedure TSerializerCodeGenerator.GenerateConverters;
 
 begin
@@ -890,9 +1118,15 @@ begin
     Addln('uses');
     indent;
     if DelphiCode then
+      begin
+      AddLn('System.Types,');
       Addln('System.JSON,')
+      end
     else
+      begin
+      AddLn('Types,');
       Addln('fpJSON,');
+      end;
     Addln(DataUnitName+';');
     undent;
     Addln('');
@@ -900,39 +1134,60 @@ begin
     indent;
     for I := 0 to aData.TypeCount-1 do
     begin
-      with aData.Types[I] do
-        if Pascaltype in [ptSchemaStruct,ptAnonStruct] then
-          begin
-          DoLog('Generating serialization helper type %s for Dto %s', [SerializerName, PascalName]);
-          WriteDtoHelper(aData.Types[I]);
-          Addln('');
-          end;
+      lType := aData.Types[I];
+      if MustSerializeType(lType) then
+        with lType do
+          if Pascaltype in [ptSchemaStruct,ptAnonStruct] then
+            begin
+            DoLog('Generating serialization helper type %s for Dto %s', [SerializerName, PascalName]);
+            WriteDtoHelper(lType);
+            Addln('');
+            end
+          else if Pascaltype=ptArray then
+            begin
+            // For arrays of simple types, we need to generate code to read/write the array
+            if (ElementTypeData.Pascaltype=ptArray) and (ElementTypeData.Schema=Nil) then
+              begin
+              WriteArrayHelper(ElementTypeData);
+              end;
+            end;
     end;
     undent;
     Addln('implementation');
     Addln('');
     if DelphiCode then
-      Addln('uses System.Generics.Collections, System.SysUtils, System.Types, System.DateUtils, System.StrUtils;')
+      Addln('uses System.Generics.Collections, System.SysUtils, System.DateUtils, System.StrUtils;')
     else
-      Addln('uses Generics.Collections, SysUtils, Types, DateUtils, StrUtils;');
+      Addln('uses Generics.Collections, SysUtils, DateUtils, StrUtils;');
     Addln('');
     GenerateConverters;
     for I := 0 to aData.TypeCount-1 do
     begin
       lType := aData.Types[I];
-      if LType.Pascaltype in [ptSchemaStruct,ptAnonStruct] then
-        begin
-        if stSerialize in lType.SerializeTypes then
-        begin
-          WriteDtoObjectSerializer(aData.Types[I]);
-          WriteDtoSerializer(aData.Types[I]);
-        end;
-        if stDeserialize in lType.SerializeTypes then
-        begin
-          WriteDtoObjectDeserializer(aData.Types[I]);
-          WriteDtoDeserializer(aData.Types[I]);
-        end;
-        end;
+      if MustSerializeType(lType) then
+      begin
+        if LType.Pascaltype in [ptSchemaStruct,ptAnonStruct] then
+          begin
+          if stSerialize in lType.SerializeTypes then
+          begin
+            WriteDtoObjectSerializer(aData.Types[I]);
+            WriteDtoSerializer(aData.Types[I]);
+          end;
+          if stDeserialize in lType.SerializeTypes then
+          begin
+            WriteDtoObjectDeserializer(aData.Types[I]);
+            WriteDtoDeserializer(aData.Types[I]);
+          end;
+          end
+        else if lType.Pascaltype=ptArray then
+          begin
+          // For arrays of simple types, we need to generate code to read/write the array
+          if (lType.ElementTypeData.Pascaltype=ptArray) and (lType.ElementTypeData.Schema=Nil) then
+            begin
+            WriteArrayHelperImpl(lType.ElementTypeData);
+            end;
+          end;
+      end;
     end;
     Addln('');
     Addln('end.');
