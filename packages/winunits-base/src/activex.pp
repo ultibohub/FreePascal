@@ -2485,7 +2485,7 @@ TYPE
      IMallocSpy = Interface(IUnknown)
         ['{0000001d-0000-0000-C000-000000000046}']
 
-        Function  PreAlloc(cbrequest:Size_t):Longint; StdCall;
+        Function  PreAlloc(cbrequest:Size_t):Size_t; StdCall;
         function  PostAlloc(Pactual:Pointer):Pointer;StdCall;
         Function  PreFree(pRequest:Pointer;fSpyed:bool):pointer;StdCall;
         Procedure PostFree(fspyed:Bool);Stdcall;
@@ -3338,7 +3338,7 @@ TYPE
      Function  GetRefTypeOfImplType(index: UINT; OUT pRefType: HREFTYPE):HResult;StdCall;
      Function  GetImplTypeFlags(index: UINT; OUT pImplTypeFlags: WINT):HResult;StdCall;
      {$ifndef Call_as}
-      Function  GetIDsOfNames(CONST rgszNames: pOleStr; cNames: UINT; OUT pMemId: MEMBERID):HResult;StdCall;
+      Function  GetIDsOfNames(rgszNames: POleStrList; cNames: UINT; OUT pMemId: MEMBERID):HResult;StdCall;
      {$else}
       Function  LocalGetIDsOfNames():HResult;StdCall;
      {$endif}
@@ -4335,7 +4335,7 @@ type
 {$ifndef wince}
   function OleCreateMenuDescriptor(hmenuCombined:HMENU; lpMenuWidths:LPOLEMENUGROUPWIDTHS):HOLEMENU;stdcall;external 'ole32.dll' name 'OleCreateMenuDescriptor';
   function OleDestroyMenuDescriptor(holemenu:HOLEMENU):WINOLEAPI;stdcall;external 'ole32.dll' name 'OleDestroyMenuDescriptor';
-  function OleTranslateAccelerator(lpFrame:IOleInPlaceFrame; lpFrameInfo:TOleInPlaceFrameInfo; lpmsg:LPMSG):WINOLEAPI;stdcall;external 'ole32.dll' name 'OleTranslateAccelerator';
+  function OleTranslateAccelerator(lpFrame:IOleInPlaceFrame; var lpFrameInfo:TOleInPlaceFrameInfo; lpmsg:LPMSG):WINOLEAPI;stdcall;external 'ole32.dll' name 'OleTranslateAccelerator';
 {$endif wince}
   function OleSetMenuDescriptor(holemenu:HOLEMENU; hwndFrame:HWND; hwndActiveObject:HWND; lpFrame:IOleInPlaceFrame; lpActiveObj:IOleInPlaceActiveObject):WINOLEAPI;stdcall;external 'ole32.dll' name 'OleSetMenuDescriptor';
 
@@ -4404,12 +4404,12 @@ type
   type
      LPOLESTREAM = ^_OLESTREAM;
      _OLESTREAMVTBL = record
-       Get : function (p : POleStr;out o;dw : DWORD) : DWORD;
-       Put : function (p : POleStr;const o;dw : DWORD) : DWORD;
+       Get : function (p : POleStr;out o;dw : DWORD) : DWORD; stdcall;
+       Put : function (p : POleStr;const o;dw : DWORD) : DWORD; stdcall;
      end;
      OLESTREAMVTBL =  _OLESTREAMVTBL;
 
-     LPOLESTREAMVTBL = OLESTREAMVTBL;
+     LPOLESTREAMVTBL = ^OLESTREAMVTBL;
 
      _OLESTREAM = record
           lpstbl : LPOLESTREAMVTBL;
