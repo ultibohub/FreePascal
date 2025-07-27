@@ -65,7 +65,8 @@ USES Objects,
     {$else}
     Fvcommon, Drivers, Views, App,          { Standard GFV units }
     {$endif}
-    FVConsts,Video;
+    FVConsts,
+    {$IFDEF OS_ULTIBO}ConsoleVideo{$ELSE}Video{$ENDIF};
 {$ENDIF FPC_DOTTEDUNITS}
 
 {***************************************************************************}

@@ -477,7 +477,8 @@ uses
 uses
   Dos,
 {$ifdef FV_UNICODE}
-  Video, Graphemebreakproperty, uApp, uStdDlg, uMsgBox;
+  {$IFDEF OS_ULTIBO}ConsoleVideo{$ELSE}Video{$ENDIF},
+  Graphemebreakproperty, uApp, uStdDlg, uMsgBox;
 {$else FV_UNICODE}
   App, StdDlg, MsgBox;
 {$ENDIF}
