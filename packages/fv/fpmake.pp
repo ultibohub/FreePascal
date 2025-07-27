@@ -53,7 +53,7 @@ begin
           AddUnit('fvclip',AllUnixOSes);
         end;
     T.ResourceStrings := True;
-    T:=P.Targets.AddUnit('uapp.pas');
+    T:=P.Targets.AddUnit('uapp.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('app.inc');
@@ -72,11 +72,24 @@ begin
     T:=P.Targets.AddUnit('asciitab.pas');
       with T.Dependencies do
         begin
+          AddInclude('asciitab.inc');
           AddInclude('platform.inc');
+          AddUnit('fvcommon');
           AddUnit('fvconsts');
           AddUnit('drivers');
           AddUnit('views');
           AddUnit('app');
+        end;
+    T:=P.Targets.AddUnit('uasciitab.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('asciitab.inc');
+          AddInclude('platform.inc');
+          AddUnit('ufvcommon');
+          AddUnit('fvconsts');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('uapp');
         end;
     T:=P.Targets.AddUnit('buildfv.pas');
     T.Install := false; // Build-unit
@@ -108,19 +121,47 @@ begin
     T:=P.Targets.AddUnit('colorsel.pas');
       with T.Dependencies do
         begin
-          AddUnit('drivers');
-          AddUnit('views');
-          AddUnit('dialogs');
-          AddUnit('fvconsts');
-        end;
-    T:=P.Targets.AddUnit('colortxt.pas');
-      with T.Dependencies do
-        begin
+          AddInclude('colorsel.inc');
           AddInclude('platform.inc');
           AddUnit('drivers');
           AddUnit('views');
           AddUnit('dialogs');
+          AddUnit('fvconsts');
+          AddUnit('fvcommon');
+        end;
+    T:=P.Targets.AddUnit('ucolorsel.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('colorsel.inc');
+          AddInclude('platform.inc');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('udialogs');
+          AddUnit('fvconsts');
+          AddUnit('ufvcommon');
+        end;
+    T:=P.Targets.AddUnit('colortxt.pas');
+      with T.Dependencies do
+        begin
+          AddInclude('colortxt.inc');
+          AddInclude('platform.inc');
+          AddUnit('fvcommon');
+          AddUnit('drivers');
+          AddUnit('views');
+          AddUnit('dialogs');
           AddUnit('app');
+          AddUnit('fvconsts');
+        end;
+    T:=P.Targets.AddUnit('ucolortxt.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('colortxt.inc');
+          AddInclude('platform.inc');
+          AddUnit('ufvcommon');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('udialogs');
+          AddUnit('uapp');
           AddUnit('fvconsts');
         end;
     T:=P.Targets.AddUnit('dialogs.pas');
@@ -137,7 +178,7 @@ begin
           AddUnit('histlist');
         end;
     T.ResourceStrings := True;
-    T:=P.Targets.AddUnit('udialogs.pas');
+    T:=P.Targets.AddUnit('udialogs.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('dialogs.inc');
@@ -160,7 +201,7 @@ begin
           AddUnit('fvcommon');
           AddUnit('fvconsts');
         end;
-    T:=P.Targets.AddUnit('udrivers.pas');
+    T:=P.Targets.AddUnit('udrivers.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('drivers.inc');
@@ -172,6 +213,7 @@ begin
     T:=P.Targets.AddUnit('editors.pas');
       with T.Dependencies do
         begin
+          AddInclude('editors.inc');
           AddInclude('platform.inc');
           AddUnit('drivers');
           AddUnit('views');
@@ -181,6 +223,21 @@ begin
           AddUnit('app');
           AddUnit('stddlg');
           AddUnit('msgbox');
+        end;
+    T.ResourceStrings := True;
+    T:=P.Targets.AddUnit('ueditors.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('editors.inc');
+          AddInclude('platform.inc');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('udialogs');
+          AddUnit('ufvcommon');
+          AddUnit('fvconsts');
+          AddUnit('uapp');
+          AddUnit('ustddlg');
+          AddUnit('umsgbox');
         end;
     T.ResourceStrings := True;
     T:=P.Targets.AddUnit('fvclip.pas',AllUnixOSes);
@@ -209,7 +266,7 @@ begin
           AddInclude('fvcommon.inc');
           AddInclude('platform.inc');
         end;
-    T:=P.Targets.AddUnit('ufvcommon.pas');
+    T:=P.Targets.AddUnit('ufvcommon.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('fvcommon.inc');
@@ -219,12 +276,26 @@ begin
     T:=P.Targets.AddUnit('gadgets.pas');
       with T.Dependencies do
         begin
+          AddInclude('gadgets.inc');
           AddInclude('platform.inc');
           AddUnit('fvconsts');
           AddUnit('time');
           AddUnit('drivers');
           AddUnit('views');
           AddUnit('app');
+          AddUnit('fvcommon');
+        end;
+    T:=P.Targets.AddUnit('ugadgets.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('gadgets.inc');
+          AddInclude('platform.inc');
+          AddUnit('fvconsts');
+          AddUnit('time');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('uapp');
+          AddUnit('ufvcommon');
         end;
     T:=P.Targets.AddUnit('histlist.pas');
       with T.Dependencies do
@@ -233,7 +304,7 @@ begin
           AddInclude('platform.inc');
           AddUnit('fvcommon');
         end;
-    T:=P.Targets.AddUnit('uhistlist.pas');
+    T:=P.Targets.AddUnit('uhistlist.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('histlist.inc');
@@ -252,7 +323,7 @@ begin
           AddUnit('fvcommon');
           AddUnit('fvconsts');
         end;
-    T:=P.Targets.AddUnit('uinplong.pas');
+    T:=P.Targets.AddUnit('uinplong.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('inplong.inc');
@@ -280,7 +351,7 @@ begin
           AddUnit('fvcommon');
           AddUnit('fvconsts');
         end;
-    T:=P.Targets.AddUnit('umenus.pas');
+    T:=P.Targets.AddUnit('umenus.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('menus.inc');
@@ -302,7 +373,7 @@ begin
           AddUnit('fvcommon');
         end;
     T.ResourceStrings := True;
-    T:=P.Targets.AddUnit('umsgbox.pas');
+    T:=P.Targets.AddUnit('umsgbox.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('msgbox.inc');
@@ -321,7 +392,7 @@ begin
           AddUnit('drivers');
           AddUnit('views');
         end;
-    T:=P.Targets.AddUnit('uoutline.pas');
+    T:=P.Targets.AddUnit('uoutline.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('outline.inc');
@@ -331,6 +402,7 @@ begin
     T:=P.Targets.AddUnit('statuses.pas');
       with T.Dependencies do
         begin
+          AddInclude('statuses.inc');
           AddInclude('platform.inc');
           AddUnit('fvcommon');
           AddUnit('fvconsts');
@@ -340,10 +412,25 @@ begin
           AddUnit('msgbox');
           AddUnit('app');
         end;
+    T:=P.Targets.AddUnit('ustatuses.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('statuses.inc');
+          AddInclude('platform.inc');
+          AddUnit('ufvcommon');
+          AddUnit('fvconsts');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('udialogs');
+          AddUnit('umsgbox');
+          AddUnit('uapp');
+        end;
     T:=P.Targets.AddUnit('stddlg.pas');
       with T.Dependencies do
         begin
+          AddInclude('stddlg.inc');
           AddInclude('platform.inc');
+          AddUnit('fvcommon');
           AddUnit('fvconsts');
           AddUnit('drivers');
           AddUnit('views');
@@ -352,6 +439,22 @@ begin
           AddUnit('app');
           AddUnit('histlist');
           AddUnit('msgbox');
+        end;
+    T.ResourceStrings := True;
+    T:=P.Targets.AddUnit('ustddlg.pas',P.OSes-[msdos]);
+      with T.Dependencies do
+        begin
+          AddInclude('stddlg.inc');
+          AddInclude('platform.inc');
+          AddUnit('ufvcommon');
+          AddUnit('fvconsts');
+          AddUnit('udrivers');
+          AddUnit('uviews');
+          AddUnit('udialogs');
+          AddUnit('uvalidate');
+          AddUnit('uapp');
+          AddUnit('uhistlist');
+          AddUnit('umsgbox');
         end;
     T.ResourceStrings := True;
     T:=P.Targets.AddUnit('sysmsg.pas');
@@ -372,7 +475,7 @@ begin
           AddUnit('fvcommon');
           AddUnit('dialogs');
         end;
-    T:=P.Targets.AddUnit('utabs.pas');
+    T:=P.Targets.AddUnit('utabs.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('tabs.inc');
@@ -395,7 +498,7 @@ begin
           AddUnit('app');
           AddUnit('msgbox');
         end;
-    T:=P.Targets.AddUnit('utimeddlg.pas');
+    T:=P.Targets.AddUnit('utimeddlg.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('timeddlg.inc');
@@ -421,7 +524,7 @@ begin
           AddUnit('fvconsts');
           AddUnit('msgbox');
         end;
-    T:=P.Targets.AddUnit('uvalidate.pas');
+    T:=P.Targets.AddUnit('uvalidate.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('validate.inc');
@@ -439,7 +542,7 @@ begin
           AddUnit('drivers');
           AddUnit('fvconsts');
         end;
-    T:=P.Targets.AddUnit('uviews.pas');
+    T:=P.Targets.AddUnit('uviews.pas',P.OSes-[msdos]);
       with T.Dependencies do
         begin
           AddInclude('views.inc');

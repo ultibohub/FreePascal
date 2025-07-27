@@ -926,6 +926,12 @@ begin
 {$include fcl-wit/fpmake.pp}
 end;
 
+procedure add_fcl_ebnf(const ADirectory: string);
+begin
+  with Installer do
+{$include fcl-ebnf/fpmake.pp}
+end;
+
 procedure add_fcl_yaml(const ADirectory: string);
 begin
   with Installer do
@@ -950,4 +956,10 @@ procedure add_libsndfile(const ADirectory: string);
 begin
   with Installer do
 {$include libsndfile/fpmake.pp}
+end;
+
+procedure add_redis(const ADirectory: string);
+begin
+  with Installer do
+{$include redis/fpmake.pp}
 end;

@@ -850,6 +850,8 @@ begin
     Add(AccessNames[aArg.Access]+' ');
   Add(aArg.SafeName+' : ');
   WriteType(aArg.ArgType,False);
+  if aArg.Value<>'' then  
+    Add(' = '+aArg.Value);
 end;
 
 procedure TPasWriter.WriteOverloadedProc(aProc: TPasOverloadedProc; ForceBody: Boolean = False; NamePrefix : String = '');
@@ -1248,6 +1250,8 @@ begin
     WriteImplExceptOn(TPasImplExceptOn(aElement))
   else if AElement.InheritsFrom(TPasImplWithDo) then
       WriteImplWithDo(TPasImplWithDo(aElement))
+  else if AElement.InheritsFrom(TPasImplLabelMark) then
+      WriteImplLabelMark(TPasImplLabelMark(aElement))
   else
     raise EPasWriter.CreateFmt('Writing not yet implemented for %s implementation elements',[AElement.ClassName]);
 end;
@@ -1262,6 +1266,7 @@ var
   ind : integer;
   Expr : string;
 begin
+  Expr:='';
   With aWith do
     begin
     for ind:=0 to Expressions.Count-1 do

@@ -74,6 +74,7 @@ Type
   private
     FDataRead : Int64;
     FContentLength : Int64;
+    FRequestCookies: TCookies;
     FRequestDataWritten : Int64;
     FRequestContentLength : Int64;
     FAllowRedirect: Boolean;
@@ -90,8 +91,10 @@ Type
     FPassword: String;
     FIOTimeout: Integer;
     FConnectTimeout: Integer;
+    FResponseCookies: TCookies;
     FSentCookies,
     FCookies: TStrings;
+    FCookieList: TCookies;
     FHTTPVersion: String;
     FRequestBody: TStream;
     FRequestHeaders: TStrings;
@@ -112,14 +115,18 @@ Type
     FTrustedCertsDir: String;
     function CheckContentLength: Int64;
     function CheckTransferEncoding: string;
+    function CreateCookies: TCookies;
     function GetCookies: TStrings;
+    function GetCookieList: TCookies;
     function GetProxy: TProxyData;
     Procedure ResetResponse;
     procedure SetConnectTimeout(AValue: Integer);
     Procedure SetCookies(const AValue: TStrings);
+    Procedure SetCookieList(const AValue: TCookies);
     procedure SetHTTPVersion(const AValue: String);
     procedure SetKeepConnection(AValue: Boolean);
     procedure SetProxy(AValue: TProxyData);
+    procedure SetRequestCookies(AValue: TCookies);
     Procedure SetRequestHeaders(const AValue: TStrings);
     procedure SetIOTimeout(AValue: Integer);
     Procedure ExtractHostPort(AURI: TURI; Out AHost: String; Out APort: Word);
@@ -322,8 +329,11 @@ Type
     // Additional headers for request. Host; and Authentication are automatically added.
     Property RequestHeaders : TStrings Read FRequestHeaders Write SetRequestHeaders;
     // Cookies. Set before request to send cookies to server.
-    // After request the property is filled with the cookies sent by the server.
-    Property Cookies : TStrings Read GetCookies Write SetCookies;
+    Property RequestCookies : TCookies Read FRequestCookies Write SetRequestCookies;
+    // After request the property is filled with the set-cookies sent by the server.
+    Property ResponseCookies : TCookies Read FResponseCookies;
+    // the implementation was buggy, use RequestCookie/ResponseCookies above instead
+    Property Cookies : TStrings Read GetCookies Write SetCookies; deprecated 'use CookieList';
     // Optional body to send (mainly in POST request)
     Property RequestBody : TStream read FRequestBody Write FRequestBody;
     // used HTTP version when constructing the request.
@@ -392,11 +402,14 @@ Type
 
 
   TFPHTTPClient = Class(TFPCustomHTTPClient)
+  public
+    Property ResponseCookies;
   Published
     Property KeepConnection;
     Property Connected;
     Property IOTimeout;
     Property ConnectTimeout;
+    Property RequestCookies;
     Property RequestHeaders;
     Property RequestBody;
     Property ResponseHeaders;
@@ -442,6 +455,12 @@ Function DecodeURLElement(const S : AnsiString) : AnsiString;
 function DecodeURLElement(const S: UnicodeString): UnicodeString;
 
 implementation
+
+{$IFDEF FPC_DOTTEDUNITS}
+uses System.StrUtils;
+{$ELSE}
+uses StrUtils;
+{$ENDIF}
 
 resourcestring
   SErrInvalidProtocol = 'Invalid protocol : "%s"';
@@ -751,8 +770,7 @@ begin
   end;
 end;
 
-Procedure TFPCustomHTTPClient.ReconnectToServer(const AHost: String;
-  APort: Integer; UseSSL: Boolean);
+procedure TFPCustomHTTPClient.ReconnectToServer(const AHost: String; APort: Integer; UseSSL: Boolean);
 begin
   DisconnectFromServer;
   ConnectToServer(AHost, APort, UseSSL);
@@ -784,7 +802,7 @@ begin
   Result:=(AHeader<>'') and (Pos(':',AHeader)<>0);
 end;
 
-Function TFPCustomHTTPClient.HasConnectionClose: Boolean;
+function TFPCustomHTTPClient.HasConnectionClose: Boolean;
 begin
   Result := CompareText(GetHeader('Connection'), 'close') = 0;
 end;
@@ -836,13 +854,20 @@ begin
     FRequestHeaders.Delete(FRequestHeaders.IndexOfName('Content-Length'));
   if Assigned(FCookies) then
     begin
-    L:='Cookie: ';
+    L:='';
     For I:=0 to FCookies.Count-1 do
       begin
       If (I>0) then
         L:=L+'; ';
       L:=L+FCookies[i];
       end;
+    For I:=0 to FRequestCookies.Count-1 do
+      begin
+      if L<>'' then
+        L:=L+'; ';
+      L:=FRequestCookies[I].Name+'='+FRequestCookies[I].Value;
+      end;
+    L:='Cookie: '+L;
     if AllowHeader(L) then
       S:=S+L+CRLF;
     end;
@@ -1023,7 +1048,7 @@ Var
 
 begin
   S:=Uppercase(GetNextWord(AStatusLine));
-  If (Copy(S,1,5)<>'HTTP/') then
+  If not StartsStr('HTTP/',S) then
     Raise EHTTPClient.CreateFmt(SErrInvalidProtocolVersion,[S]);
   System.Delete(S,1,5);
   FServerHTTPVersion:=S;
@@ -1050,7 +1075,7 @@ function TFPCustomHTTPClient.ReadResponseHeaders: integer;
       If (P=0) then
         P:=Length(S)+1;
       C:=Trim(Copy(S,1,P-1));
-      Cookies.Add(C);
+      FCookies.Add(C);
       System.Delete(S,1,P);
     Until (S='') or Terminated;
   end;
@@ -1071,8 +1096,11 @@ begin
     if ReadString(S) and (S<>'') then
       begin
       ResponseHeaders.Add(S);
-      If (LowerCase(Copy(S,1,Length(SetCookie)))=SetCookie) then
+      If StartsText(SetCookie,S) then
+        begin
         DoCookies(S);
+        ResponseCookies.AddFromString(S);
+        end;
       end
   Until (S='') or Terminated;
 end;
@@ -1117,7 +1145,7 @@ begin
   While (Result=-1) and (I<FResponseHeaders.Count) do
     begin
     S:=Trim(LowerCase(FResponseHeaders[i]));
-    If (Copy(S,1,Length(Cl))=Cl) then
+    If StartsStr(Cl,S) then
       begin
       System.Delete(S,1,Length(CL));
       Result:=StrToInt64Def(Trim(S),-1);
@@ -1141,7 +1169,7 @@ begin
   While (I<FResponseHeaders.Count) do
     begin
     S:=Trim(LowerCase(FResponseHeaders[i]));
-    If (Copy(S,1,Length(Cl))=Cl) then
+    If StartsStr(Cl,S) then
       begin
       System.Delete(S,1,Length(CL));
       Result:=Trim(S);
@@ -1164,6 +1192,11 @@ begin
   Result:=FCookies;
 end;
 
+function TFPCustomHTTPClient.GetCookieList: TCookies;
+begin
+  Result:=FCookieList;
+end;
+
 function TFPCustomHTTPClient.GetProxy: TProxyData;
 begin
   If not Assigned(FProxy) then
@@ -1178,6 +1211,12 @@ procedure TFPCustomHTTPClient.SetCookies(const AValue: TStrings);
 begin
   if GetCookies=AValue then exit;
   GetCookies.Assign(AValue);
+end;
+
+procedure TFPCustomHTTPClient.SetCookieList(const AValue: TCookies);
+begin
+  if GetCookieList=AValue then exit;
+  GetCookieList.Assign(AValue);
 end;
 
 procedure TFPCustomHTTPClient.SetHTTPVersion(const AValue: String);
@@ -1205,8 +1244,14 @@ begin
   Proxy.Assign(AValue);
 end;
 
-Function TFPCustomHTTPClient.ReadResponse(Stream: TStream;
-  const AllowedResponseCodes: array of Integer; HeadersOnly: Boolean): Boolean;
+procedure TFPCustomHTTPClient.SetRequestCookies(AValue: TCookies);
+begin
+  if FRequestCookies=AValue then Exit;
+  FRequestCookies.Assign(AValue);
+end;
+
+function TFPCustomHTTPClient.ReadResponse(Stream: TStream; const AllowedResponseCodes: array of Integer; HeadersOnly: Boolean
+  ): Boolean;
 
   Function Transfer(LB : Integer) : Integer;
 
@@ -1392,8 +1437,7 @@ begin
     end;
 end;
 
-Procedure TFPCustomHTTPClient.ExtractHostPort(AURI: TURI; Out AHost: String;
-  Out APort: Word);
+procedure TFPCustomHTTPClient.ExtractHostPort(AURI: TURI; out AHost: String; out APort: Word);
 Begin
   if ProxyActive then
     begin
@@ -1430,10 +1474,8 @@ begin
     AddHeader('Connection', 'close');
 end;
 
-Procedure TFPCustomHTTPClient.DoNormalRequest(const AURI: TURI;
-  const AMethod: string; AStream: TStream;
-  const AAllowedResponseCodes: array of Integer;
-  AHeadersOnly, AIsHttps: Boolean);
+procedure TFPCustomHTTPClient.DoNormalRequest(const AURI: TURI; const AMethod: string; AStream: TStream;
+  const AAllowedResponseCodes: array of Integer; AHeadersOnly, AIsHttps: Boolean);
 Var
   CHost: string;
   CPort: Word;
@@ -1450,10 +1492,8 @@ begin
   End;
 end;
 
-Procedure TFPCustomHTTPClient.DoKeepConnectionRequest(const AURI: TURI;
-  const AMethod: string; AStream: TStream;
-  const AAllowedResponseCodes: array of Integer;
-  AHeadersOnly, AIsHttps: Boolean);
+procedure TFPCustomHTTPClient.DoKeepConnectionRequest(const AURI: TURI; const AMethod: string; AStream: TStream;
+  const AAllowedResponseCodes: array of Integer; AHeadersOnly, AIsHttps: Boolean);
 Var
   SkipReconnect: Boolean;
   CHost: string;
@@ -1507,8 +1547,7 @@ begin
   Until SkipReconnect or Terminated;
 end;
 
-Procedure TFPCustomHTTPClient.DoMethod(Const AMethod, AURL: String;
-  Stream: TStream; Const AllowedResponseCodes: Array of Integer);
+procedure TFPCustomHTTPClient.DoMethod(const AMethod, AURL: String; Stream: TStream; const AllowedResponseCodes: array of Integer);
 
 Var
   URI: TURI;
@@ -1541,18 +1580,27 @@ begin
   FResponseHeaders.NameValueSeparator:=':';
   HTTPVersion:='1.1';
   FMaxRedirects:=DefMaxRedirects;
+  FRequestCookies:=CreateCookies;
+  FResponseCookies:=CreateCookies;
 end;
 
 destructor TFPCustomHTTPClient.Destroy;
 begin
   if IsConnected then
     DisconnectFromServer;
+  FreeAndNil(FRequestCookies);
+  FreeAndNil(FResponseCookies);
   FreeAndNil(FProxy);
   FreeAndNil(FCookies);
   FreeAndNil(FSentCookies);
   FreeAndNil(FRequestHeaders);
   FreeAndNil(FResponseHeaders);
   inherited Destroy;
+end;
+
+function TFPCustomHTTPClient.CreateCookies : TCookies;
+begin
+  Result:=TCookies.Create(TCookie);
 end;
 
 class procedure TFPCustomHTTPClient.AddHeader(HTTPHeaders: TStrings;
@@ -1582,7 +1630,7 @@ begin
   H:=LowerCase(Aheader)+':';
   l:=Length(H);
   Result:=HTTPHeaders.Count-1;
-  While (Result>=0) and ((LowerCase(Copy(HTTPHeaders[Result],1,l)))<>h) do
+  While (Result>=0) and not StartsText(H,HTTPHeaders[Result]) do
     Dec(Result);
 end;
 
@@ -1613,6 +1661,7 @@ end;
 procedure TFPCustomHTTPClient.ResetResponse;
 
 begin
+  FResponseCookies.Clear;
   FResponseStatusCode:=0;
   FResponseStatusText:='';
   FResponseHeaders.Clear;
@@ -2267,7 +2316,7 @@ begin
     end;
 end;
 
-procedure TFPCustomHTTPClient.FormPost(const URL : String; FormData: RawBytestring; const Response: TStream);
+procedure TFPCustomHTTPClient.FormPost(const URL: String; FormData: RawByteString; const Response: TStream);
 
 begin
   RequestBody:=TRawByteStringStream.Create(FormData);
@@ -2311,7 +2360,7 @@ begin
   Response.Text:=FormPost(URL,FormData);
 end;
 
-function TFPCustomHTTPClient.FormPost(const URL : String;  Const FormData: RawBytestring): RawByteString;
+function TFPCustomHTTPClient.FormPost(const URL: String; const FormData: RawByteString): RawByteString;
 Var
   SS : TRawByteStringStream;
 begin
@@ -2337,7 +2386,7 @@ begin
   end;
 end;
 
-class procedure TFPCustomHTTPClient.SimpleFormPost(const URL : String; Const FormData: RawByteString; const Response: TStream);
+class procedure TFPCustomHTTPClient.SimpleFormPost(const URL: String; const FormData: RawByteString; const Response: TStream);
 
 begin
   With Self.Create(nil) do
@@ -2364,7 +2413,7 @@ begin
 end;
 
 
-class procedure TFPCustomHTTPClient.SimpleFormPost(const URL : String; Const FormData: RawBytestring; const Response: TStrings);
+class procedure TFPCustomHTTPClient.SimpleFormPost(const URL: String; const FormData: RawByteString; const Response: TStrings);
 
 begin
   With Self.Create(nil) do
@@ -2389,7 +2438,7 @@ begin
     end;
 end;
 
-class function TFPCustomHTTPClient.SimpleFormPost(const URL: string;Const FormData : RawByteString): RawByteString;
+class function TFPCustomHTTPClient.SimpleFormPost(const URL: String; const FormData: RawByteString): RawByteString;
 
 begin
   With Self.Create(nil) do

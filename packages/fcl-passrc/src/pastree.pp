@@ -124,7 +124,7 @@ type
                         ccOldFPCCall,ccSafeCall,ccSysCall,ccMWPascal,
                         ccHardFloat,ccSysV_ABI_Default,ccSysV_ABI_CDecl,
                         ccMS_ABI_Default,ccMS_ABI_CDecl,
-                        ccVectorCall);
+                        ccVectorCall, ccWinApi);
   TProcTypeModifier = (ptmOfObject,ptmIsNested,ptmStatic,ptmVarargs,
                        ptmReferenceTo,ptmAsync,ptmFar,ptmCblock);
   TProcTypeModifiers = set of TProcTypeModifier;
@@ -986,6 +986,7 @@ type
     // Typerefs cannot be parented! -> AParent _must_ be NIL
     constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
     function ElementTypeName: TPasTreeString; override;
+    function GetDeclaration(full : Boolean) : TPasTreeString; override;
   end;
 
   { TPasUnresolvedUnitRef }
@@ -1136,7 +1137,8 @@ type
                         pmInline, pmAssembler, pmPublic,
                         pmCompilerProc, pmExternal, pmForward, pmDispId,
                         pmNoReturn, pmFar, pmFinal, pmDiscardResult,
-                        pmNoStackFrame, pmsection, pmRtlProc, pmInternProc);
+                        pmNoStackFrame, pmsection, pmRtlProc, pmInternProc,
+                        pmWeakExternal);
   TProcedureModifiers = Set of TProcedureModifier;
   TProcedureMessageType = (pmtNone,pmtInteger,pmtString);
 
@@ -1873,7 +1875,7 @@ const
       ( '', 'Register','Pascal','cdecl','stdcall','OldFPCCall','safecall','SysCall','MWPascal',
                         'HardFloat','SysV_ABI_Default','SysV_ABI_CDecl',
                         'MS_ABI_Default','MS_ABI_CDecl',
-                        'VectorCall');
+                        'VectorCall','WinApi');
   ProcTypeModifiers : Array[TProcTypeModifier] of TPasTreeString =
       ('of Object', 'is nested','static','varargs','reference to','async','far','cblock');
 
@@ -1883,7 +1885,7 @@ const
                    'inline','assembler','public',
                    'compilerproc','external','forward','dispid',
                    'noreturn','far','final','discardresult','nostackframe',
-                   'section','rtlproc','internproc');
+                   'section','rtlproc','internproc','weakexternal');
 
   VariableModifierNames : Array[TVariableModifier] of TPasTreeString
      = ('cvar', 'external', 'public', 'export', 'class', 'static','far');
@@ -3811,7 +3813,11 @@ begin
     else
       Result:=ArgType.GetDeclaration(False);
     If Full and (Name<>'') then
+      begin
       Result:=SafeName+': '+Result;
+      if Value<>'' then            
+        Result:=Result+'='+Value;  
+      end;
     end
   else If Full then
     Result:=SafeName
@@ -3972,6 +3978,14 @@ begin
   inherited Create(AName, nil);
   if AParent=nil then ;
 end;
+
+function TPasUnresolvedTypeRef.GetDeclaration(full: Boolean): TPasTreeString;
+begin
+  Result:=Name;
+  if Full then
+    Result:=FixTypeDecl(Result);
+end;
+
 
 procedure TPasVariable.FreeChildren(Prepare: boolean);
 begin
@@ -5855,7 +5869,7 @@ end;
 function TPasImplExceptOn.TypeName: TPasTreeString;
 begin
   If assigned(TypeEl) then
-    Result:=TypeEl.GetDeclaration(True)
+    Result:=TypeEl.GetDeclaration(false)
   else
     Result:='';
 end;

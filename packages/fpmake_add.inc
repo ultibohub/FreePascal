@@ -164,8 +164,10 @@
   add_fcl_jsonschema(ADirectory+IncludeTrailingPathDelimiter('fcl-jsonschema'));
   add_fcl_openapi(ADirectory+IncludeTrailingPathDelimiter('fcl-openapi'));
   add_fcl_wit(ADirectory+IncludeTrailingPathDelimiter('fcl-wit'));
+  add_fcl_ebnf(ADirectory+IncludeTrailingPathDelimiter('fcl-ebnf'));
   add_fcl_yaml(ADirectory+IncludeTrailingPathDelimiter('fcl-yaml'));
   add_ptckvm(ADirectory+IncludeTrailingPathDelimiter('ptckvm'));
   add_fcl_fpterm(ADirectory+IncludeTrailingPathDelimiter('fcl-fpterm'));
   add_libjack(ADirectory+IncludeTrailingPathDelimiter('libjack'));
   add_libsndfile(ADirectory+IncludeTrailingPathDelimiter('libsndfile'));
+  add_redis(ADirectory+IncludeTrailingPathDelimiter('redis'));

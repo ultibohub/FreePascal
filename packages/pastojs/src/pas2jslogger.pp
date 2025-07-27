@@ -50,9 +50,6 @@ uses
   {$IFDEF NodeJS}
   Node.FS,
   {$ENDIF}
-  {$IFDEF HASFILESYSTEM}
-  Pas2jsFileUtils,
-  {$ENDIF}
   {$ENDIF}
   pas2jsutils,
   Types, Classes, SysUtils,
@@ -1006,9 +1003,9 @@ procedure TPas2jsLogger.LogExceptionBackTrace(E: Exception);
 {$IFDEF Pas2js}
 begin
   {$IFDEF NodeJS}
-  if (E<>nil) and (E.NodeJSError<>nil) then
+  if (E<>nil) and (E.JSError<>nil) then
     {AllowWriteln}
-    writeln(E.NodeJSError.Stack);
+    writeln(E.JSError.Stack);
     {AllowWriteln-}
   {$ENDIF}
 end;
@@ -1115,7 +1112,7 @@ begin
   if LogFile=nil then
     LogFile:=TStringList.Create;
   LogFile.Add(TPas2jsLogger.Concatenate(args));
-  LogFile.SaveToFile('c:\tmp\libpas2jsparams.txt');
+  LogFile.SaveToFile(GetTempDir+'libpas2jsparams.txt');
 end;
 {$ENDIF}
 

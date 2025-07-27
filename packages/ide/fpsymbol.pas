@@ -79,6 +79,22 @@ type
       function  At(Index: sw_Integer): PGDBValue;
       end;
 
+      {Shell of TSymbol used to filter inherited and to display qualified symbols }
+    PHollowSymbol = ^THollowSymbol;
+    THollowSymbol = object(TSymbol)
+        Sym        : PSymbol; { orginal symbol, need for unit info save}
+        Parent     : PSymbol; { to get object name from }
+        NeedPrefix : Boolean; { GetName will add object prefix if needed }
+        constructor Init(ASymbol,AParent:PSymbol);
+        function    GetName: string; virtual;
+        destructor  Done; virtual;
+      end;
+
+    PHollowSymbolCollection=^THollowSymbolCollection;
+    THollowSymbolCollection = Object(TSortedSymbolCollection)
+        function  At(Index: Sw_Integer): PHollowSymbol;
+      end;
+
 
     PFilteredSym = ^TFilteredSym;
     TFilteredSym = Object(TObject)
@@ -131,10 +147,15 @@ type
       function    GotoItem(Item: sw_integer): boolean; virtual;
       function    TrackItem(Item: sw_integer; AutoTrack: boolean): boolean; virtual;
     private
+      Inh       : Boolean; {filter for inheritance is possible}
+      ObjSymbol : PSymbol;
+      OrgSymbols: PSymbolCollection;
       FilteredSym: PFilteredSymCollection;
-      Symbols: PSymbolCollection;
+      Symbols  : PHollowSymbolCollection;
       SymbolsValue : PGDBValueCollection;
       LookupStr: string;
+      procedure   CopyOrgSymbols;
+      procedure   PullInInheritance;
     end;
 
     PSymbolReferenceView = ^TSymbolReferenceView;
@@ -182,6 +203,7 @@ type
       function     GetNumChildrenExposed(Node: Pointer) : sw_Integer; virtual;
       procedure    Adjust(Node: Pointer; Expand: Boolean); virtual;
       function     IsExpanded(Node: Pointer): Boolean; virtual;
+      function     NodeCountToFoc(aFoc:Sw_Integer):Sw_Integer;
 {$ifdef HASOUTLINE}
       function     GetText(Node: Pointer): String; virtual;
 {$else not HASOUTLINE}
@@ -229,24 +251,38 @@ type
     PUnitInfoPanel = ^TUnitInfoPanel;
     TUnitInfoPanel = object(TPanel)
       InOwnerCall: boolean;
+      UnitInfoUsed: PSymbolScopeView;
+      UnitInfoDependent: PSymbolScopeView;
+      UsedVSB: PScrollBar;
+      DependVSB: PScrollBar;
+      UsedCST: PColorStaticText;
+      DependCST: PColorStaticText;
+      procedure SetState(AState: Word; Enable: Boolean); virtual;
       procedure HandleEvent(var Event: TEvent); virtual;
     end;
+
+    PBrowserLinkedCollection=^TBrowserLinkedCollection;
+    PBrowserLinked = ^TBrowserLinked;
 
     TBrowserWindow = object(TFPWindow)
       constructor Init(var Bounds: TRect; ATitle: TTitleStr; ANumber: Sw_Integer;ASym : PSymbol;
                     const AName,APrefix: string; ASymbols: PSymbolCollection; AReferences: PReferenceCollection;
                     AInheritance: PObjectSymbol; AMemInfo: PSymbolMemInfo);
       procedure   HandleEvent(var Event: TEvent); virtual;
-      procedure   SetState(AState: Word; Enable: Boolean); virtual;
+      {procedure   SetState(AState: Word; Enable: Boolean); virtual;}
+      procedure   UpdateCommands; Virtual;
       procedure   Close; virtual;
       procedure   SelectTab(BrowserTab: Sw_integer); virtual;
       function    GetPalette: PPalette; virtual;
       function    Disassemble : boolean;
       function    GetFlags: longint; virtual;
       procedure   SetFlags(AFlags: longint); virtual;
+      procedure   SizeLimits (Var Min, Max: TPoint); Virtual;
+      procedure   OnResize; Virtual; { called on window resize event }
       destructor  Done;virtual;
     private
       BrowserFlags  : Longint;
+      PrevSize      : TPoint;
       PageTab       : PBrowserTab;
       ST            : PStaticText;
       Sym           : PSymbol;
@@ -261,12 +297,55 @@ type
       Prefix        : PString;
       IsValid       : boolean;
       DebuggerValue : PGDBValue;
+      BrowserLinked : PBrowserLinked;
     end;
 
-procedure OpenSymbolBrowser(X,Y: Sw_integer;const Name,Line: string;S : PSymbol;
+    { Tree to go to previous browser windows }
+    { Holds all parametrs to recreate closed previous window if needed to be}
+    TBrowserLinked = Object(TObject)
+        BrowserWindow : PBrowserWindow;
+        Previous : PBrowserLinked;
+        Branches : PBrowserLinkedCollection;
+        Origin, Size : TPoint;
+        Title: TTitleStr;
+        Number: Sw_Integer;
+        Name : String;
+        Prefix: string;
+        Sym : PSymbol;
+        Symbols: PSymbolCollection;
+        References: PReferenceCollection;
+        Inheritance: PObjectSymbol;
+        MemInfo: PSymbolMemInfo;
+        BrowserFlags  : Longint;
+        Tab : sw_integer;
+        ScopeTop : sw_integer;
+        ScopeFocused:sw_integer;
+        ReferenceTop : sw_integer;
+        ReferenceFocused:sw_integer;
+        InheritanceTop : sw_integer;
+        InheritanceFocused : sw_integer;
+        UnitInfoUsedTop : sw_integer;
+        UnitInfoUsedFocused:sw_integer;
+        UnitInfoDependentTop : sw_integer;
+        UnitInfoDependentFocused:sw_integer;
+        constructor Init(ATitle: TTitleStr; ANumber: Sw_Integer;ASym : PSymbol;
+                    const AName,APrefix: string; ASymbols: PSymbolCollection; AReferences: PReferenceCollection;
+                    AInheritance: PObjectSymbol; AMemInfo: PSymbolMemInfo);
+        procedure InsertWindow(BW : PBrowserWindow);
+        procedure PreviousWindow; { activate previous window }
+        procedure CreateNewWindow;
+        procedure LeaveTree; { cut itself from tree }
+        destructor Done;virtual;
+      end;
+
+    TBrowserLinkedCollection = Object(TCollection)
+      function  At(Index: sw_Integer): PBrowserLinked;
+      end;
+
+function OpenSymbolBrowser(X,Y,W,H: Sw_integer;const Name,Line: string;S : PSymbol;
             ParentBrowser : PBrowserWindow;
             Symbols: PSymbolCollection; References: PReferenceCollection;
-            Inheritance: PObjectSymbol; MemInfo: PSymbolMemInfo);
+            Inheritance: PObjectSymbol; MemInfo: PSymbolMemInfo):PBrowserWindow;
 
 function IsSymbolInfoAvailable: boolean;
 
@@ -281,9 +360,11 @@ const
    ProcedureCollection : PSortedCollection = nil;
    ModulesCollection : PSortedCollection = nil;
 
+var BrowserRoot : PBrowserLinked;
+
 implementation
 
-uses App,Strings,Stddlg,
+uses App,Strings,Stddlg,Keyboard,
      FVConsts,
 {$ifdef BROWSERCOL}
      symconst,
@@ -308,6 +389,7 @@ const
 
                 { Symbol view local menu items }
                 menu_symlocal_browse = '~B~rowse';
+                menu_symlocal_previous = '~P~revious';
                 menu_symlocal_gotosource = '~G~oto source';
                 menu_symlocal_tracksource = '~T~rack source';
                 menu_symlocal_saveas = 'Save ~a~s';
@@ -330,6 +412,18 @@ const           { Symbol browser tabs }
                 label_browsertab_inheritance = 'I';
                 label_browsertab_memory = 'M';
                 label_browsertab_unit = 'U';
+
+function ReplaceCurrent:longint;
+var K:TKeyEvent;
+    ShiftState : byte;
+begin
+   K:=PollShiftStateEvent;
+   ShiftState:=GetKeyEventShiftState(K);
+   if (ShiftState and kbShift)=0 then
+     ReplaceCurrent:=1
+   else
+     ReplaceCurrent:=0; { Reverse replace current }
+end;
 
 procedure CloseAllBrowsers;
   procedure SendCloseIfBrowser(P: PView);
@@ -401,14 +495,19 @@ end;
 procedure OpenOneSymbolBrowser(Name : String);
 
 var Index : sw_integer;
-    PS,S : PSymbol;
+    PS,S,MS : PSymbol;
     Anc : PObjectSymbol;
     P : Pstring;
     Symbols: PSymbolCollection;
+    PB : PBrowserWindow;
 
   function Search(P : PSymbol) : boolean;
   begin
     Search:=UpcaseStr(P^.Items^.LookUp(Name,Index))=Name;
+  end;
+  function SearchModule(P : PSymbol) : boolean;
+  begin
+    SearchModule:=UpcaseStr(P^.Name^)=Name;
   end;
 
 begin
@@ -416,6 +515,7 @@ begin
    If BrowCol.Modules<>nil then
      begin
        PS:=BrowCol.Modules^.FirstThat(TCallbackFunBoolParam(@Search));
+       MS:=BrowCol.Modules^.FirstThat(TCallbackFunBoolParam(@SearchModule));
        If assigned(PS) then
          begin
            S:=PS^.Items^.At(Index);
@@ -429,11 +529,22 @@ begin
              Anc:=ObjectTree
            else
              Anc:=SearchObjectForSymbol(S^.Ancestor);
-           OpenSymbolBrowser(0,20,
+           PB:=OpenSymbolBrowser(0,20,0,0,
                 PS^.Items^.At(Index)^.GetName,
                 PS^.Items^.At(Index)^.GetText,
                 PS^.Items^.At(Index),nil,
                 Symbols,PS^.Items^.At(Index)^.References,Anc,PS^.MemInfo);
+           BrowserRoot^.InsertWindow(PB);
+         end
+       else If assigned(MS) then
+         begin
+           Symbols:=MS^.Items;
+           PB:=OpenSymbolBrowser(0,20,0,0,
+                MS^.GetName,
+                MS^.GetText,
+                MS,nil,
+                Symbols,MS^.References,nil,nil);
+           BrowserRoot^.InsertWindow(PB);
          end
        else
          begin
@@ -628,6 +739,54 @@ begin
 end;
 
 {****************************************************************************
+                               THollowSymbol
+****************************************************************************}
+constructor THollowSymbol.init(ASymbol,AParent:PSymbol);
+begin
+  TObject.Init;
+  Name       := ASymbol^.Name;
+  Typ        := ASymbol^.Typ;
+  varoptions := ASymbol^.varoptions;
+  varspez    := ASymbol^.varspez;
+  Params     := ASymbol^.Params;
+  References := ASymbol^.References;
+  Items      := ASymbol^.Items;
+  DType      := ASymbol^.DType;
+  VType      := ASymbol^.VType;
+  TypeID     := ASymbol^.TypeID;
+  RelatedTypeID := ASymbol^.RelatedTypeID;
+  DebuggerCount := ASymbol^.DebuggerCount;
+  Ancestor   := ASymbol^.Ancestor;
+  Flags      := ASymbol^.Flags;
+  MemInfo    := ASymbol^.MemInfo;
+  Sym        := ASymbol;
+  Parent     := AParent;
+  NeedPrefix := false;
+end;
+
+function THollowSymbol.GetName: string;
+begin
+  if (not NeedPrefix) or (not assigned(Parent)) then
+    GetName:=inherited GetName
+  else
+    GetName:=Parent^.Name^+'.'+inherited GetName;
+end;
+
+destructor THollowSymbol.done;
+begin
+  { Skip TSymbol.Done because we do not own any of actual pointers here }
+  TObject.Done;
+end;
+
+{****************************************************************************
+                               THollowSymbolCollection
+****************************************************************************}
+function THollowSymbolCollection.At(Index: Sw_Integer): PHollowSymbol;
+begin
+  At:=TCollection.At(Index);
+end;
+
+{****************************************************************************
                                TFilteredSym
 ****************************************************************************}
 constructor TFilteredSym.Init(AItemSym:Sw_Integer;ASym : PSymbol);
@@ -736,13 +895,21 @@ begin
         case Event.KeyCode of
           kbEnter :
             Browse;
-          kbCtrlEnter :
+          kbCtrlEnter,kbCtrlG :
             GotoSource;
-          kbSpaceBar :
+          kbSpaceBar,kbCtrlT :
             TrackSource;
+          kbCtrlP :
+            Message(MyBW,evCommand,cmSymPrevious,nil);
+          kbF2 :
+            SaveAs;
+          kbCtrlO :
+            OptionsDlg;
           kbRight,kbLeft :
             if HScrollBar<>nil then
               HScrollBar^.HandleEvent(Event);
+          kbTab:
+            Message(Owner,evBroadcast,cmSymTabKeyPress,@Self);
         else DontClear:=true;
         end;
         if DontClear=false then ClearEvent(Event);
@@ -761,6 +928,8 @@ begin
         case Event.Command of
           cmSymBrowse :
             Browse;
+          cmSymPrevious :
+            Message(MyBW,evCommand,cmSymPrevious,nil);
           cmSymGotoSource :
             GotoSource;
           cmSymTrackSource :
@@ -796,12 +965,13 @@ function TSymbolView.GetLocalMenu: PMenu;
 begin
   GetLocalMenu:=NewMenu(
     NewItem(menu_symlocal_browse,'',kbNoKey,cmSymBrowse,hcSymBrowse,
-    NewItem(menu_symlocal_gotosource,'',kbNoKey,cmSymGotoSource,hcSymGotoSource,
-    NewItem(menu_symlocal_tracksource,'',kbNoKey,cmSymTrackSource,hcSymTrackSource,
+    NewItem(menu_symlocal_previous,'Ctrl+P',kbCtrlP,cmSymPrevious,hcSymPrevious,
+    NewItem(menu_symlocal_gotosource,'Ctrl+G',kbCtrlG,cmSymGotoSource,hcSymGotoSource,
+    NewItem(menu_symlocal_tracksource,'Ctrl+T',kbCtrlT,cmSymTrackSource,hcSymTrackSource,
     NewLine(
-    NewItem(menu_symlocal_saveas,'',kbNoKey,cmSymSaveAs,hcSymSaveAs,
-    NewItem(menu_symlocal_options,'',kbNoKey,cmSymOptions,hcSymOptions,
-    nil)))))));
+    NewItem(menu_symlocal_saveas,'F2',kbF2,cmSymSaveAs,hcSymSaveAs,
+    NewItem(menu_symlocal_options,'Ctrl+O',kbCtrlO,cmSymOptions,hcSymOptions,
+    nil))))))));
 end;
 
 function TSymbolView.GotoItem(Item: sw_integer): boolean;
@@ -902,9 +1072,15 @@ end;
 constructor TSymbolScopeView.Init(var Bounds: TRect; ASymbols: PSymbolCollection; AHScrollBar, AVScrollBar: PScrollBar);
 begin
   inherited Init(Bounds,AHScrollBar, AVScrollBar);
-  Symbols:=ASymbols;
+  OrgSymbols:=ASymbols;
+  Inh:=false; { use inheritance filter (set to true only if view object or class) }
+  ObjSymbol:=nil;
+
   New(SymbolsValue,Init(50,50));
   New(FilteredSym,Init(50,50));
+  New(Symbols,Init(50,50));
+
+  CopyOrgSymbols;
   FilterSymbols(false); {select all}
   NewList(FilteredSym);
   SetRange(FilteredSym^.Count);
@@ -912,12 +1088,11 @@ end;
 
 destructor TSymbolScopeView.Done;
 begin
-  {if assigned(Symbols) then
+  if assigned(Symbols) then
     begin
-       the elements belong to other lists
-       Symbols^.DeleteAll;
        dispose(Symbols,done);
-    end;}
+       Symbols:=nil;
+    end;
   if Assigned(SymbolsValue) then
     begin
       Dispose(SymbolsValue,Done);
@@ -1069,11 +1244,78 @@ begin
     end;
 end;
 
-procedure TSymbolScopeView.FilterSymbols(AFilter:boolean);
+procedure TSymbolScopeView.CopyOrgSymbols;
 var S : PSymbol;
     I : sw_integer;
+begin
+  Symbols^.FreeAll;
+  if OrgSymbols^.Count>0 then
+    For i:=0 to OrgSymbols^.Count-1 do
+      begin
+        S:=OrgSymbols^.At(I);
+        Symbols^.Insert(new(PHollowSymbol,Init(S,nil)));
+      end;
+end;
+
+procedure TSymbolScopeView.PullInInheritance; {adds to the list inherited procedures and fields}
+var S : PSymbol;
+    O : PObjectSymbol;
+    InhSymbols : PSymbolCollection;
+    I : sw_integer;
+
+  function LookFor (Collection, AItems : PSymbolCollection):PSymbol;
+  var I : sw_integer;
+      S : PSymbol;
+      R : PSymbol;
+  begin
+    R:=nil;
+    for i:=0 to Collection^.count-1 do
+    begin
+      S:=Collection^.At(I);
+      if assigned(S) and assigned(S^.Items) then
+      begin
+        if S^.Items = AItems then
+        begin
+          R:=S; break;
+        end;
+        R:=LookFor(S^.Items,AItems);
+        if R<>nil then break;
+      end;
+    end;
+    LookFor:=R;
+  end;
+
+begin
+  S:=LookFor(Modules,OrgSymbols); { find the owner of OrgSymbols }
+  if assigned(S) then
+  begin
+    ObjSymbol:=S;
+    For i:=0 to Symbols^.Count-1 do
+      Symbols^.At(I)^.Parent:=S;
+    SymbolsValue^.FreeAll;
+    O:=SearchObjectForSymbol(S);
+    if assigned(O) then
+      while assigned(O^.Parent) do
+      begin
+        O:=O^.Parent;
+        S:=O^.Symbol;
+        if assigned(S) then
+        begin
+          {-- add inherited symbols --}
+          InhSymbols:=S^.Items;
+          if InhSymbols^.Count>0 then
+            For i:=0 to InhSymbols^.Count-1 do
+              Symbols^.Insert(new(PHollowSymbol,Init(InhSymbols^.At(I),S)));
+        end;
+    end;
+  end;
+end;
+
+procedure TSymbolScopeView.FilterSymbols(AFilter:boolean);
+var S : PHollowSymbol;
+    I : sw_integer;
     Flags : Longint;
-    bUni, bLab, bcon, btyp, bvar, bprc, binh: boolean;
+    bUni, bLab, bCon, bTyp, bVar, bPrc, bInh, bQua: boolean;
 begin
   Flags:=0;
   if assigned(MyBW) then
@@ -1085,6 +1327,7 @@ begin
   bVar:=(Flags and bfVariables)<>0;
   bPrc:=(Flags and bfProcedures)<>0;
   bInh:=(Flags and bfInherited)<>0;
+  bQua:=(Flags and bfQualifiedSymbols)<>0;
   FilteredSym^.FreeAll;
   if Symbols^.Count = 0 then exit;
   For i:=0 to Symbols^.Count-1 do
@@ -1092,11 +1335,16 @@ begin
       S:=Symbols^.At(I);
       if AFilter then begin
         {----------  only selected ones  ----------}
+        S^.NeedPrefix:=bQua;
+        if Inh then  { we are in object scope view }
+          if not bInh then  { Inherite checkbox is not selected }
+            if S^.Parent <> ObjSymbol then continue;
         case S^.typ of
           labelsym: if not bLab then continue;
           namespacesym,staticvarsym,localvarsym,paravarsym,
-          fieldvarsym,absolutevarsym,programparasym: if not bVar then continue;
-          procsym,propertysym,syssym : if not bPrc then continue;
+          fieldvarsym,absolutevarsym,programparasym,
+          propertysym: if not bVar then continue;
+          procsym,syssym : if not bPrc then continue;
           typesym : if not bTyp then continue;
           constsym,enumsym : if not bCon then continue;
           unitsym : if not bUni then continue;
@@ -1116,6 +1364,7 @@ begin
   F:=FilteredSym^.At(Item);
   Item:=F^.ItemSym;
   S:=Symbols^.At(Item);
+  //S:=F^.Sym;
   if Assigned(SymbolsValue) and (SymbolsValue^.Count>Item) then
     SG:=SymbolsValue^.At(Item)
   else
@@ -1381,6 +1630,9 @@ begin
               HScrollBar^.HandleEvent(Event)
             else
               DontClear:=true;
+          kbCtrlP :
+            Message(MyBw,evCommand,cmSymPrevious,nil);
+          kbF2: SaveAs;
         else DontClear:=true;
         end;
         if DontClear=false then ClearEvent(Event);
@@ -1403,6 +1655,8 @@ begin
         case Event.Command of
           cmSymBrowse :
             Message(@Self,evKeyDown,kbEnter,nil);
+          cmSymPrevious :
+            Message(MyBw,evCommand,cmSymPrevious,nil);
           cmSymSaveAs,cmSaveAs :
             SaveAs;
         else DontClear:=true;
@@ -1423,9 +1677,49 @@ function TSymbolInheritanceView.GetLocalMenu: PMenu;
 begin
     GetLocalMenu:=NewMenu(
     NewItem(menu_symlocal_browse,'',kbNoKey,cmSymBrowse,hcSymBrowse,
+    NewItem(menu_symlocal_previous,'Ctrl+P',kbCtrlP,cmSymPrevious,hcSymPrevious,
     NewLine(
-    NewItem(menu_symlocal_saveas,'',kbNoKey,cmSymSaveAs,hcSymSaveAs,
-    nil))));
+    NewItem(menu_symlocal_saveas,'F2',kbF2,cmSymSaveAs,hcSymSaveAs,
+    nil)))));
+end;
+
+function TSymbolInheritanceView.NodeCountToFoc(aFoc:Sw_Integer):Sw_Integer;
+var P : PObjectSymbol;
+    Exp: Sw_Integer;
+    ExpandedFoc, NormalFoc : Sw_integer;
+
+    procedure CountSymbolTree(P:PObjectSymbol;Depth:Sw_Integer);
+    var
+      Q : PObjectSymbol;
+      Des,Count : integer;
+    begin
+      if not assigned(P) then
+         exit;
+      Count:=GetNumChildren{Exposed}(P);
+      if Count=0 then exit;
+      Des:=0;
+      if not IsExpanded(P) then
+        Inc(Exp);
+      While Count>Des do
+        begin
+          Q:=P^.GetDescendant(Des);
+          If aFoc=NormalFoc then break; { exit if reached focused node }
+          if Exp=0 then Inc(NormalFoc);
+          Inc(ExpandedFoc);
+          CountSymbolTree(Q,Depth+1);
+          Inc(Des);
+        end;
+      if not IsExpanded(P) then
+        Dec(Exp);
+    end;
+
+begin
+      P:=Root;
+      Exp:=0;
+      ExpandedFoc:=0;
+      NormalFoc:=0;
+      CountSymbolTree(P,1);
+      NodeCountToFoc:=ExpandedFoc;
 end;
 
 function TSymbolInheritanceView.SaveToFile(const AFileName: string): boolean;
@@ -1434,10 +1728,10 @@ var OK: boolean;
     st : string;
     P : PObjectSymbol;
 
-    procedure WriteSymbolTree(P:PObjectSymbol;Depth:Sw_Integer);
+    procedure WriteSymbolTree(P:PObjectSymbol;Depth:Sw_Integer;grph:string);
     var
       Q : PObjectSymbol;
-      Nc,Des,Count : integer;
+      Des,Count : integer;
       Space : String;
     begin
       if not assigned(P) then
@@ -1445,13 +1739,14 @@ var OK: boolean;
       Des:=0;
       Count:=GetNumChildren{Exposed}(P);
       if Count=0 then exit;
-      SetLength(Space,Depth*2);
-      for nc:=1 to Length(Space) do Space[nc]:=' ';
       While Count>Des do
         begin
           if not ok then exit;
           Q:=P^.GetDescendant(Des);
-          st:=GetText(Q);
+          st:=Q^.GetName;
+          if (Des+1)=Count then
+            Space:=grph+#32#192#196#196
+          else Space:=grph+#32#195#196#196;
           S^.Write(Space[1],Length(Space));
           if not OK then exit;
           S^.Write(St[1],length(St));
@@ -1461,7 +1756,11 @@ var OK: boolean;
           OK:=(S^.Status=stOK);
           if not OK then exit;
           if Ok then
-            WriteSymbolTree(Q,Depth+1);
+          begin
+            if (Des+1)=Count then
+              Space:=grph+'   ' else Space:=grph+' '#179' ';
+            WriteSymbolTree(Q,Depth+1,Space);
+          end;
           Inc(Des);
         end;
     end;
@@ -1472,7 +1771,7 @@ begin
   if OK then
     begin
       P:=Root;
-      st:=GetText(P);
+      st:=#32#192#196#196+P^.GetName;
       S^.Write(St[1],length(St));
       OK:=(S^.Status=stOK);
       if OK then
@@ -1480,7 +1779,7 @@ begin
         S^.Write(EOL[1],length(EOL));
         OK:=(S^.Status=stOK);
         if OK then
-          WriteSymbolTree(P,1);
+          WriteSymbolTree(P,1,'   ');
       end;
     end;
   if Assigned(S) then Dispose(S, Done);
@@ -1646,6 +1945,7 @@ var
     S: PSymbol;
     St : String;
     Anc: PObjectSymbol;
+    R, WH :TPoint;
 begin
   if P=nil then Exit;
 
@@ -1654,20 +1954,28 @@ begin
   { this happens for the top objects view (PM) }
   if S=nil then exit;
 
+  R.X:=MyBw^.Origin.X-1;WH.X:=0;WH.Y:=0;
+{$ifdef HASOUTLINE}
+    R.Y:=FOC-Delta.Y+1;
+{$else not HASOUTLINE}
+    R.Y:=MyBw^.Origin.Y+1;
+{$endif not HASOUTLINE}
+  if DefaultBrowserSub = ReplaceCurrent then begin
+    R.X:=MyBw^.Origin.X;R.Y:=MyBw^.Origin.Y;
+    WH.X:=Size.X;WH.Y:=Size.Y;
+  end;
+
   st:=S^.GetName;
   if S^.Ancestor=nil then
     Anc:=ObjectTree
   else
     Anc:=SearchObjectForSymbol(S^.Ancestor);
-  OpenSymbolBrowser(Origin.X-1,
-{$ifdef HASOUTLINE}
-    FOC-Delta.Y+1,
-{$else not HASOUTLINE}
-    Origin.Y+1,
-{$endif not HASOUTLINE}
+  OpenSymbolBrowser(R.X,R.Y,WH.X,WH.Y,
     st,
-    S^.GetText,S,nil,
+    S^.GetText,S,MyBw,
     S^.Items,S^.References,Anc,S^.MemInfo);
+  if DefaultBrowserSub = ReplaceCurrent then
+    Message(MyBw,evCommand,cmClose,nil);
 end;
 
 
@@ -1691,11 +1999,22 @@ end;
 
 procedure TBrowserTab.SelectItem(Index: Sw_integer);
 var P: PBrowserTabItem;
+    PrevTab:Sw_Integer;
 begin
+  PrevTab:=Current;
   Current:=Index;
+  if PrevTab<>Current then
+  begin
+    P:=GetItem(PrevTab);
+    if (P<>nil) and (P^.Link<>nil) then
+      P^.Link^.SetState(sfVisible,False);
+  end;
   P:=GetItem(Current);
   if (P<>nil) and (P^.Link<>nil) then
+  begin
+    P^.Link^.SetState(sfVisible,True);
     P^.Link^.Focus;
+  end;
   DrawView;
 end;
 
@@ -1817,6 +2136,25 @@ begin
   inherited Done;
 end;
 
+procedure TUnitInfoPanel.SetState(AState: Word; Enable: Boolean);
+var OState: longint;
+begin
+  OState:=State;
+  inherited SetState(AState,Enable);
+  if ((OState xor State) and sfVisible)<>0 then
+  begin
+    if GetState(sfVisible) then
+      begin
+        { even they are visible already
+          we need to make them visible for focus to work }
+        if assigned(UnitInfoUsed) then
+          UnitInfoUsed^.SetState(sfVisible,true);
+        if assigned(UnitInfoDependent) then
+          UnitInfoDependent^.SetState(sfVisible,true);
+      end;
+  end;
+end;
+
 procedure TUnitInfoPanel.HandleEvent(var Event: TEvent);
 begin
   if (Event.What=evBroadcast) and (Event.Command=cmListItemSelected) and
@@ -1826,7 +2164,17 @@ begin
       if Assigned(Owner) then
         Owner^.HandleEvent(Event);
       InOwnerCall:=false;
-    end;
+    end else
+  if (Event.What=evBroadcast) and (Event.Command=cmSymTabKeyPress) then
+  begin
+    if Event.InfoPtr = UnitInfoUsed then
+      if assigned(UnitInfoDependent) then
+        UnitInfoDependent^.Focus;
+    if Event.InfoPtr = UnitInfoDependent then
+      if assigned(UnitInfoUsed) then
+        UnitInfoUsed^.Focus;
+    ClearEvent(Event);
+  end;
   inherited HandleEvent(Event);
 end;
 
@@ -1855,6 +2203,8 @@ begin
 end;
 begin
   inherited Init(Bounds, FormatStrStr(dialog_browse,ATitle), ANumber);
+  New(BrowserLinked,Init(ATitle,ANumber,ASym,
+      AName,APrefix,ASymbols,AReferences,AInheritance,AMemInfo));
   HelpCtx:=hcBrowserWindow;
   Sym:=ASym;
   Prefix:=NewStr(APrefix);
@@ -1888,6 +2238,11 @@ begin
       ScopeView^.GrowMode:=gfGrowHiX+gfGrowHiY;
       Insert(ScopeView);
       ScopeView^.MyBW:=@Self;
+      if assigned(AInheritance) then
+      begin
+        ScopeView^.Inh:=true;
+        ScopeView^.PullInInheritance;
+      end;
       ScopeView^.SetGDBCol;
       ScopeView^.FilterSymbols(true);
       ScopeView^.SetRange(ScopeView^.FilteredSym^.Count);
@@ -1931,29 +2286,33 @@ begin
       R2.B.Y:=R2.A.Y+3;
       if (Assigned(UsedUnits) or Assigned(DependentUnits))=false then
         R2.B.Y:=R3.B.Y;
-      HSB:=CreateHSB(R2); {UnitInfo^.Insert(HSB); HSB:=nil;}
-      VSB:=CreateVSB(R2);
+      {HSB:=CreateHSB(R2);} {UnitInfo^.Insert(HSB); HSB:=nil;}
+      {VSB:=CreateVSB(R2);}
+      HSB:=nil; { It is for the best to not have HSB at all. M }
+      VSB:=nil;
       {UnitInfo^.Insert(VSB);
        VSB will be owned by UnitInfoText PM }
       New(UnitInfoText, Init(R2,HSB,VSB, nil));
       with UnitInfoText^ do
       begin
         GrowMode:=gfGrowHiX;
-        if Assigned(LoadedFrom) then
-        begin
+        if Assigned(LoadedFrom) then  {this will be false always because it is not set anymore in browcol unit}
           AddLine(FormatStrStr2('%s : %s',msg_usedfirstin,GetStr(LoadedFrom)));
+        if Assigned(MainSource) then
+        begin
           AddLine(FormatStrStr('%s : ',msg_mainsource));
           AddLine(FormatStrStr('  %s',GetStr(MainSource)));
-          if Assigned(SourceFiles) and (SourceFiles^.Count>1) then
-          begin
-            AddLine(FormatStrStr('%s : ',msg_sourcefiles));
-            for I:=0 to SourceFiles^.Count-1 do
-              AddLine(FormatStrStr('  %s',GetStr(SourceFiles^.At(I))));
-          end;
+        end;
+        if Assigned(SourceFiles) and (SourceFiles^.Count>1) then
+        begin
+          AddLine(FormatStrStr('%s : ',msg_sourcefiles));
+          for I:=0 to SourceFiles^.Count-1 do
+            AddLine(FormatStrStr('  %s',GetStr(SourceFiles^.At(I))));
         end;
       end;
       UnitInfo^.Insert(UnitInfoText);
 
+      UnitInfo^.UnitInfoUsed:=nil;
       if Assigned(UsedUnits) then
       begin
         Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R2.A.Y+1;
@@ -1961,43 +2320,73 @@ begin
         CST^.GrowMode:=gfGrowHiX;
         UnitInfo^.Insert(CST);
 
-        Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R2.A.Y+4;
+        Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R2.A.Y+Max(3,Size.Y-12);
+        Dec(R2.B.X);  { make space for VSB inside Panel }
         if Assigned(DependentUnits)=false then R2.B.Y:=R3.B.Y;
         {HSB:=CreateHSB(R2); UnitInfo^.Insert(HSB); }
         HSB:=nil;
         VSB:=CreateVSB(R2);
         {UnitInfo^.Insert(VSB);  this created crashes,
         that were difficult to findout PM }
+        { Maybe because it was outside Panel?  M }
+        UnitInfo^.Insert(VSB); { lets try again with VSB inside Panel area }
         New(UnitInfoUsed, Init(R2,UsedUnits,HSB,VSB));
+        Inc(R2.B.X); { restore R2 }
         UnitInfoUsed^.GrowMode:=gfGrowHiY+gfGrowHiX;
         UnitInfoUsed^.MyBW:=@Self;
         UnitInfo^.Insert(UnitInfoUsed);
+        UnitInfo^.UnitInfoUsed:=UnitInfoUsed;
+        UnitInfo^.UsedVSB:=VSB;
+        UnitInfo^.UsedCST:=CST;
       end;
 
+      UnitInfo^.UnitInfoDependent:=nil;
       if Assigned(DependentUnits) then
       begin
         Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R2.A.Y+1;
         New(CST, Init(R2,#180' Dependent units '#195+CharStr(#196,255),ColorIndex(12),false));
         CST^.GrowMode:=gfGrowLoY+gfGrowHiX+gfGrowHiY;
+        if not Assigned(UsedUnits) then CST^.GrowMode:=gfGrowHiX;
         UnitInfo^.Insert(CST);
 
         Inc(R2.A.Y,R2.B.Y-R2.A.Y); R2.B.Y:=R3.B.Y;
+        Dec(R2.B.X); { make space for VSB inside Panel }
         {HSB:=CreateHSB(R2); UnitInfo^.Insert(HSB); }
         HSB:=nil;
         VSB:=CreateVSB(R2);
         { UnitInfo^.Insert(VSB);  this created crashes,
         that were difficult to findout PM }
+        { Maybe because it was outside Panel?  M }
+        UnitInfo^.Insert(VSB); { lets try again with VSB inside Panel area }
+        if Assigned(UsedUnits) then
+          VSB^.GrowMode:=gfGrowLoY+gfGrowHiX+gfGrowLoX+gfGrowHiY;
         New(UnitInfoDependent, Init(R2,DependentUnits,HSB,VSB));
         UnitInfoDependent^.GrowMode:=gfGrowLoY+gfGrowHiX+gfGrowHiY;
+        if not Assigned(UsedUnits) then
+          UnitInfoDependent^.GrowMode:=gfGrowHiY+gfGrowHiX;
         UnitInfoDependent^.MyBW:=@Self;
         UnitInfo^.Insert(UnitInfoDependent);
+        UnitInfo^.UnitInfoDependent:=UnitInfoDependent;
+        UnitInfo^.DependVSB:=VSB;
+        UnitInfo^.DependCST:=CST;
       end;
 
       if Assigned(UnitInfoText) then
         UnitInfoText^.Select;
 
+      PrevSize.Y:=0;
+      PrevSize.X:=0;
+      OnResize;
       Insert(UnitInfo);
     end;
+  PrevSize:=Size;
+
+  { hide not active pages so that scrollbars do not overlap }
+  if assigned(ScopeView) then ScopeView^.SetState(sfVisible,False);
+  if assigned(ReferenceView) then ReferenceView^.SetState(sfVisible,False);
+  if assigned(InheritanceView) then InheritanceView^.SetState(sfVisible,False);
+  if assigned(MemInfoView) then MemInfoView^.SetState(sfVisible,False);
+  if assigned(UnitInfo) then UnitInfo^.SetState(sfVisible,False);
 
   GetExtent(R); R.Grow(-1,-1); R.Move(0,1); R.B.Y:=R.A.Y+1;
   New(PageTab, Init(R,
@@ -2047,10 +2436,10 @@ end;
 
 procedure TBrowserWindow.HandleEvent(var Event: TEvent);
 var DontClear: boolean;
-    S: PSymbol;
+    S: PHollowSymbol;
     Symbols: PSymbolCollection;
     Anc: PObjectSymbol;
-    P: TPoint;
+    P,WH: TPoint;
 begin
   case Event.What of
     evBroadcast :
@@ -2073,27 +2462,32 @@ begin
             S:=nil;
             if (Event.InfoPtr=ScopeView) then
               begin
-                S:=ScopeView^.FilteredSym^.At(ScopeView^.Focused)^.Sym;
+                S:=PHollowSymbol(ScopeView^.FilteredSym^.At(ScopeView^.Focused)^.Sym);
                 MakeGlobal(ScopeView^.Origin,P);
                 Desktop^.MakeLocal(P,P); Inc(P.Y,ScopeView^.Focused-ScopeView^.TopItem);
                 Inc(P.Y);
               end;
             if (Event.InfoPtr=UnitInfoUsed) then
               begin
-                S:=UnitInfoUsed^.Symbols^.At(UnitInfoUsed^.Focused);
+                S:=PHollowSymbol(UnitInfoUsed^.FilteredSym^.At(UnitInfoUsed^.Focused)^.Sym);
                 MakeGlobal(UnitInfoUsed^.Origin,P);
                 Desktop^.MakeLocal(P,P); Inc(P.Y,UnitInfoUsed^.Focused-UnitInfoUsed^.TopItem);
                 Inc(P.Y);
               end;
             if (Event.InfoPtr=UnitInfoDependent) then
               begin
-                S:=UnitInfoDependent^.Symbols^.At(UnitInfoDependent^.Focused);
+                S:=PHollowSymbol(UnitInfoDependent^.FilteredSym^.At(UnitInfoDependent^.Focused)^.Sym);
                 MakeGlobal(UnitInfoDependent^.Origin,P);
                 Desktop^.MakeLocal(P,P); Inc(P.Y,UnitInfoDependent^.Focused-UnitInfoDependent^.TopItem);
                 Inc(P.Y);
               end;
             if Assigned(S) then
               begin
+                P.X:=Origin.X-1;WH.X:=0;WH.Y:=0;
+                if DefaultBrowserSub = ReplaceCurrent then begin
+                  P.X:=Origin.X;P.Y:=Origin.Y;
+                  WH.X:=Size.X;WH.Y:=Size.Y;
+                end;
                 if S^.Ancestor=nil then Anc:=nil else
                   Anc:=SearchObjectForSymbol(S^.Ancestor);
                 Symbols:=S^.Items;
@@ -2101,12 +2495,15 @@ begin
                   if assigned(S^.Ancestor) then
                     Symbols:=S^.Ancestor^.Items;
                 if (S^.GetReferenceCount>0) or (assigned(Symbols) and (Symbols^.Count>0)) or (Anc<>nil) then
-                 OpenSymbolBrowser(Origin.X-1,P.Y,
+                 OpenSymbolBrowser(P.X,P.Y,WH.X,WH.Y,
                    S^.GetName,
-                   ScopeView^.GetText(ScopeView^.Focused,255),
-                   S,@self,
+                   S^.GetText {ScopeView^.GetText(ScopeView^.Focused,255)},
+                   S^.Sym,@self,
                    Symbols,S^.References,Anc,S^.MemInfo);
                 ClearEvent(Event);
+                if DefaultBrowserSub = ReplaceCurrent then
+                  if (S^.GetReferenceCount>0) or (assigned(Symbols) and (Symbols^.Count>0)) or (Anc<>nil) then
+                    Message(@Self,evCommand,cmClose,nil);
               end;
             end;
       end;
@@ -2142,6 +2539,23 @@ begin
         else DontClear:=true;
         end;
         if DontClear=false then ClearEvent(Event);
+      end;
+    evCommand :
+      begin
+        if Event.Command = cmSymPrevious then
+        begin
+          if assigned (BrowserLinked) then
+            BrowserLinked^.PreviousWindow;
+          ClearEvent(Event);
+        end else
+        if Event.Command = cmClose then
+        begin
+          if assigned (BrowserLinked) then begin
+            BrowserLinked^.LeaveTree;
+            BrowserLinked:=nil;
+          end;
+          { do not clear event because actual close will be handled later }
+        end;
       end;
   end;
   inherited HandleEvent(Event);
@@ -2189,16 +2603,93 @@ begin
   end;
 end;
 
-procedure TBrowserWindow.SetState(AState: Word; Enable: Boolean);
-var OldState: word;
+procedure TBrowserWindow.UpdateCommands;
+var Active, Visible: boolean;
 begin
-  OldState:=State;
-  inherited SetState(AState,Enable);
-  if ((AState and sfActive)<>0) and (((OldState xor State) and sfActive)<>0) then
-    SetCmdState([cmSaveAs],Enable);
-{  if ((State xor OldState) and sfActive)<>0 then
-    if GetState(sfActive)=false then
-      Message(Desktop,evBroadcast,cmClearLineHighlights,nil);}
+  Visible:=GetState(sfVisible);
+  Active:=GetState(sfActive) and Visible;
+  SetCmdState([cmSaveAs,cmSymPrevious],Active);
+  if Active and assigned(BrowserLinked) then
+    if not assigned(BrowserLinked^.Previous) then
+      SetCmdState([cmSymPrevious],false)  { parent is unknown yet }
+    else if not assigned(BrowserLinked^.Previous^.Previous) then
+      SetCmdState([cmSymPrevious],false); { those based in root have no Previous option }
+  {Message(Application,evBroadcast,cmCommandSetChanged,nil);}
+end;
+
+procedure TBrowserWindow.SizeLimits (Var Min, Max: TPoint);
+begin
+  Min.X:=20;
+  Min.Y:=15; { Scrollbars in unit info page is still usable }
+  Max.X:=ScreenWidth;
+  Max.Y:=ScreenHeight-2;
+  if (PrevSize.X<>Size.X) or (PrevSize.Y<>Size.Y) then
+  begin
+    OnResize;
+    PrevSize:=Size;
+  end;
+end;
+
+procedure TBrowserWindow.OnResize;
+var Y, uL,dL,tL: sw_integer;
+    uMi,dMi,tMi: sw_integer;
+    T,U,D : sw_integer;
+    TotalLinesNeed : sw_integer;
+begin
+  if (PrevSize.Y<>Size.Y) then
+  begin
+    {-- unit info page resize manualy --}
+    if assigned(UnitInfo) then
+    begin
+      { get number of lines everyone needs }
+      Y:=UnitInfo^.Size.Y;
+      tL:=UnitInfoText^.GetLineCount;
+      tMi:=Min(tL,3);
+      uL:=0;dL:=0;uMi:=0;dMi:=0;
+      if assigned(UnitInfoUsed) then
+      begin
+        uMi:=4;
+        uL:=UnitInfoUsed^.FilteredSym^.Count+1;
+      end;
+      if assigned(UnitInfoDependent) then
+      begin
+        dMi:=4;
+        dL:=UnitInfoDependent^.FilteredSym^.Count+1;
+      end;
+      { proportional split amongst needy }
+      TotalLinesNeed:=Max(tL+uL+dL,1);
+      T:=Max(tMi,(tL*Y) div TotalLinesNeed);
+      T:=Min(T,Max(tMi,tL)); { don't give more than actual need }
+      TotalLinesNeed:=Max(uL+dL,1);
+      Y:=Y-T;
+      U:=Max(uMi,(uL*Y) div TotalLinesNeed);
+      Y:=Y-U;
+      D:=Y;
+      if D<dMi then
+      begin
+        U:=U-(dMi-D);
+        D:=dMi;
+      end;
+      { assign newly calculated positions and height for everyone }
+      UnitInfoText^.Size.Y:=T;
+      if assigned(UnitInfoUsed) then
+      begin
+        UnitInfo^.UsedCST^.Origin.Y:=T;
+        UnitInfoUsed^.Origin.Y:=T+1;
+        UnitInfo^.UsedVSB^.Origin.Y:=T+1;
+        UnitInfoUsed^.Size.Y:=U-1;
+        UnitInfo^.UsedVSB^.Size.Y:=U-1;
+      end;
+      if assigned(UnitInfoDependent) then
+      begin
+        UnitInfo^.DependCST^.Origin.Y:=T+U;
+        UnitInfoDependent^.Origin.Y:=T+U+1;
+        UnitInfo^.DependVSB^.Origin.Y:=T+U+1;
+        UnitInfoDependent^.Size.Y:=D-1;
+        UnitInfo^.DependVSB^.Size.Y:=D-1;
+      end;
+    end;
+  end;
 end;
 
 procedure TBrowserWindow.Close;
@@ -2308,17 +2799,19 @@ begin
   GetPalette:=@S;
 end;
 
-procedure OpenSymbolBrowser(X,Y: Sw_integer;const Name,Line: string;S : PSymbol;
+function OpenSymbolBrowser(X,Y,W,H: Sw_integer;const Name,Line: string;S : PSymbol;
             ParentBrowser : PBrowserWindow;
             Symbols: PSymbolCollection; References: PReferenceCollection;
-            Inheritance: PObjectSymbol; MemInfo: PSymbolMemInfo);
+            Inheritance: PObjectSymbol; MemInfo: PSymbolMemInfo):PBrowserWindow;
 var R: TRect;
     PB : PBrowserWindow;
     St,st2 : string;
 begin
   if X=0 then X:=Desktop^.Size.X-35;
   R.A.X:=X; R.A.Y:=Y;
-  R.B.X:=R.A.X+35; R.B.Y:=R.A.Y+15;
+  R.B.X:=R.A.X+35; R.B.Y:=R.A.Y+Max(15,(ScreenHeight * 3 div 5));
+  if W<>0 then R.B.X:=R.A.X+W;
+  if H<>0 then R.B.Y:=R.A.Y+H;
   while (R.B.Y>Desktop^.Size.Y) do R.Move(0,-1);
   if assigned(ParentBrowser) and assigned(ParentBrowser^.Prefix) and
      assigned(ParentBrowser^.sym) and
@@ -2347,7 +2840,202 @@ begin
      (assigned(ParentBrowser) and ParentBrowser^.IsValid) then
     PB^.IsValid:=true;
 
+  if assigned(ParentBrowser) then
+    ParentBrowser^.BrowserLinked^.InsertWindow(PB);
+
   Desktop^.Insert(PB);
+  OpenSymbolBrowser:=PB;
 end;
 
+
+constructor TBrowserLinked.Init(ATitle: TTitleStr; ANumber: Sw_Integer;ASym : PSymbol;
+                    const AName,APrefix: string; ASymbols: PSymbolCollection; AReferences: PReferenceCollection;
+                    AInheritance: PObjectSymbol; AMemInfo: PSymbolMemInfo);
+begin
+  inherited init;
+  Title:=ATitle;
+  Number:=ANumber;
+  Sym:=ASym;
+  Name:=AName;
+  Prefix:=APrefix;
+  Symbols:= ASymbols;
+  References:=AReferences;
+  Inheritance:=AInheritance;
+  MemInfo:=AMemInfo;
+  New(Branches,Init(10,10));
+end;
+
+destructor TBrowserLinked.Done;
+begin
+  if Assigned(Branches) then
+    begin
+      Dispose(Branches,Done);
+      Branches:=nil;
+    end;
+  Inherited Done;
+end;
+
+procedure TBrowserLinked.InsertWindow(BW : PBrowserWindow);
+begin
+  BW^.BrowserLinked^.Previous:=@self;
+  BW^.BrowserLinked^.BrowserWindow:=BW;
+  Branches^.Insert(BW^.BrowserLinked);
+end;
+
+procedure TBrowserLinked.CreateNewWindow;
+var R: TRect;
+    BW:PBrowserWindow;
+begin
+      R.A.X:=Origin.X;
+      R.A.Y:=Origin.Y;
+      R.B.X:=Origin.X+Size.X;
+      R.B.Y:=Origin.Y+Size.Y;
+      New(BrowserWindow, Init(R,Title,Number,Sym,
+                    Name,Prefix,Symbols,References,
+                    Inheritance,MemInfo));
+      Dispose(BrowserWindow^.BrowserLinked,Done);
+      BrowserWindow^.BrowserLinked:=@self;
+
+      BW:=BrowserWindow;
+      BW^.SelectTab(Tab);
+      BW^.SetFlags(BrowserFlags);
+      if assigned(BW^.ScopeView) then
+      begin
+        BW^.ScopeView^.SetTopItem(ScopeTop);
+        BW^.ScopeView^.FocusItem(ScopeFocused);
+      end;
+      if assigned(BW^.ReferenceView) then
+      begin
+        BW^.ReferenceView^.SetTopItem(ReferenceTop);
+        BW^.ReferenceView^.FocusItem(ReferenceFocused);
+      end;
+      if assigned(BW^.InheritanceView) then
+      begin
+{$ifdef HASOUTLINE}
+        BW^.InheritanceView^.Delta.Y:=InheritanceTop;
+        BW^.InheritanceView^.Focused(InheritanceFocused);
+{$else}
+        BW^.InheritanceView^.SetTopItem(InheritanceTop);
+        BW^.InheritanceView^.FocusItem(InheritanceFocused);
+{$endif}
+      end;
+      if assigned(BW^.UnitInfoUsed) then
+      begin
+        BW^.UnitInfoUsed^.SetTopItem(UnitInfoUsedTop);
+        BW^.UnitInfoUsed^.FocusItem(UnitInfoUsedFocused);
+      end;
+      if assigned(BW^.UnitInfoDependent) then
+      begin
+        BW^.UnitInfoDependent^.SetTopItem(UnitInfoDependentTop);
+        BW^.UnitInfoDependent^.FocusItem(UnitInfoDependentFocused);
+      end;
+
+      Desktop^.Insert(BrowserWindow);
+end;
+
+procedure TBrowserLinked.PreviousWindow;
+begin
+  if assigned(Previous) then
+  begin
+    if not assigned(Previous^.Previous) then
+      exit; {root has no window to show}
+    if not assigned(Previous^.BrowserWindow) then
+      {window has been closed - recreate}
+      Previous^.CreateNewWindow;
+    if assigned(Previous^.BrowserWindow) then
+    begin
+      Previous^.BrowserWindow^.Show;
+      Previous^.BrowserWindow^.Focus;
+      if DefaultBrowserSub = ReplaceCurrent then
+        if assigned(BrowserWindow) then
+          Message(BrowserWindow,evCommand,cmClose,nil);
+    end;
+  end;
+end;
+
+function FreeIfEmpty(bl : PBrowserLinkedCollection):boolean;
+var k : sw_integer;
+    p : PBrowserLinked;
+begin
+   FreeIfEmpty:=true;
+   if bl^.Count > 0 then
+     for k:= bl^.Count-1 downto 0 do
+     begin
+        p:=bl^.at(k);
+        if FreeIfEmpty(p^.Branches) then
+          begin
+            if assigned(p^.BrowserWindow) then
+              FreeIfEmpty:=false
+            else
+              bl^.Free(P);
+          end
+        else
+          FreeIfEmpty:=false;
+     end;
+end;
+
+
+procedure TBrowserLinked.LeaveTree;
+var k : sw_integer;
+   BW : PBrowserWindow;
+begin
+  if assigned(BrowserWindow) then
+  begin
+    BW:=BrowserWindow;
+    Origin:=BW^.Origin;
+    Size:=BW^.Size;
+    Tab:=BW^.PageTab^.Current;
+    BrowserFlags:=BW^.GetFlags;
+    if assigned(BW^.ScopeView) then
+    begin
+      ScopeTop:=BW^.ScopeView^.TopItem;
+      ScopeFocused:=BW^.ScopeView^.Focused;
+    end;
+    if assigned(BW^.ReferenceView) then
+    begin
+      ReferenceTop:=BW^.ReferenceView^.TopItem;
+      ReferenceFocused:=BW^.ReferenceView^.Focused;
+    end;
+    if assigned(BW^.InheritanceView) then
+    begin
+{$ifdef HASOUTLINE}
+      InheritanceTop:=BW^.InheritanceView^.Delta.Y;
+      InheritanceFocused:=BW^.InheritanceView^.Foc;
+      InheritanceFocused:=BW^.InheritanceView^.NodeCountToFoc(InheritanceFocused);
+{$else}
+      InheritanceTop:=BW^.InheritanceView^.TopItem;
+      InheritanceFocused:=BW^.InheritanceView^.Focused;
+{$endif}
+    end;
+    if assigned(BW^.UnitInfoUsed) then
+    begin
+      UnitInfoUsedTop:=BW^.UnitInfoUsed^.TopItem;
+      UnitInfoUsedFocused:=BW^.UnitInfoUsed^.Focused;
+    end;
+    if assigned(BW^.UnitInfoDependent) then
+    begin
+      UnitInfoDependentTop:=BW^.UnitInfoDependent^.TopItem;
+      UnitInfoDependentFocused:=BW^.UnitInfoDependent^.Focused;
+    end;
+
+    BrowserWindow^.BrowserLinked:=nil; {this is pulling rug under the feet, FreeAndNil style}
+    BrowserWindow:=nil;
+  end;
+  if FreeIfEmpty(Branches) then
+  begin
+    if assigned(Previous) then
+      Previous^.Branches^.Free(@self);
+    FreeIfEmpty(BrowserRoot^.Branches);
+  end;
+end;
+
+function TBrowserLinkedCollection.At(Index: sw_Integer): PBrowserLinked;
+begin
+  At:=inherited At(Index);
+end;
+
+initialization
+  New(BrowserRoot,init('',0,nil,'','',nil,nil,nil,nil));
+finalization
+  Dispose(BrowserRoot,Done);
 END.

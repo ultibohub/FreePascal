@@ -2232,7 +2232,7 @@ begin
 
     ACompareRec.Desc := ixDescending in AIndexOptions;
     if assigned(ADescFields) then
-      ACompareRec.Desc := ACompareRec.Desc or (ADescFields.IndexOf(AField)>-1);
+      ACompareRec.Desc := ACompareRec.Desc and (ADescFields.IndexOf(AField)>-1);
 
     ACompareRec.Options := ALocateOptions;
     if assigned(ACInsFields) and (ACInsFields.IndexOf(AField)>-1) then
@@ -2536,8 +2536,8 @@ function TCustomBufDataset.GetFieldSize(FieldDef : TFieldDef) : longint;
 begin
   case FieldDef.DataType of
     ftUnknown    : result := 0;
+    ftGuid: result := FieldDef.Size + 1;
     ftString,
-      ftGuid,
       ftFixedChar: result := FieldDef.Size*FieldDef.CharSize + 1;
     ftFixedWideChar,
       ftWideString:result := (FieldDef.Size + 1)*FieldDef.CharSize;

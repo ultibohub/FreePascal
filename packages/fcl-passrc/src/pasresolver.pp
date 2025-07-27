@@ -2239,7 +2239,7 @@ type
     procedure WriteScopesShort(Title: string);
     // find value and type of an element
     procedure ComputeElement(El: TPasElement; out ResolvedEl: TPasResolverResult;
-      Flags: TPasResolverComputeFlags; StartEl: TPasElement = nil);
+      Flags: TPasResolverComputeFlags; StartEl: TPasElement = nil); virtual;
     procedure ComputeResultElement(El: TPasResultElement; out ResolvedEl: TPasResolverResult;
       Flags: TPasResolverComputeFlags; StartEl: TPasElement = nil); virtual;
     function Eval(Expr: TPasExpr; Flags: TResEvalFlags; Store: boolean = true): TResEvalValue; overload;
@@ -5910,8 +5910,8 @@ begin
     begin
     CurrentParser.NextToken;
     if CurrentParser.Scanner.CurToken<>tkEOF then
-      LogMsg(20180628131456,mtHint,nTextAfterFinalIgnored,sTextAfterFinalIgnored,
-        [],nil);
+      LogMsg(20180628131456,mtHint,nTextAfterFinalIgnored,sTextAfterFinalIgnored+' '+CurrentParser.Scanner.FormatCurrentSrcPos,
+        [],CurModule);
     end;
   {$IFDEF VerbosePasResolver}
   writeln('TPasResolver.FinishModule END ',CurModule.Name);
@@ -12217,7 +12217,8 @@ begin
     end;
   PopGenericParamScope(El);
 
-  if El.Name<>'' then begin
+  if El.Name<>'' then
+    begin
     if not (TopScope is TPasIdentifierScope) then
       RaiseInvalidScopeForElement(20190812215622,El);
 
@@ -12228,7 +12229,8 @@ begin
       Scope:=TPasArrayScope(PushScope(El,ScopeClass_Array));
       AddGenericTemplateIdentifiers(TypeParams,Scope);
       end;
-  end else if TypeParams<>nil then
+    end
+  else if TypeParams<>nil then
     RaiseNotYetImplemented(20190812215851,El); // anonymous generic array type
 end;
 
@@ -14231,6 +14233,11 @@ begin
         // function call => return result
         ComputeResultElement(TPasFunctionType(Proc.ProcType).ResultEl,ResolvedEl,
           Flags+[rcCall],StartEl)
+      else if Proc.IsAsync then
+        begin
+        // async proc => return promise
+        ComputeElement(Proc,ResolvedEl,Flags+[rcCall],StartEl);
+        end
       else if (Proc.ClassType=TPasConstructor) then
         begin
         // constructor -> return value of type class
@@ -14629,7 +14636,7 @@ begin
         [],'array values',GetTypeDescription(ResolvedEl),El);
     end
   else
-    SetResolverValueExpr(ResolvedEl,btArrayLit,nil,nil,TArrayValues(El),[rrfReadable]);
+    SetResolverValueExpr(ResolvedEl,btArrayLit,nil,nil,El,[rrfReadable]);
 end;
 
 procedure TPasResolver.ComputeRecordValues(El: TRecordValues; out
@@ -27825,6 +27832,12 @@ procedure TPasResolver.ComputeElement(El: TPasElement; out
             // function => return result
             ComputeResultElement(TPasFunction(ResolvedEl.IdentEl).FuncType.ResultEl,
               ResolvedEl,Flags+[rcCall],StartEl);
+            end
+          else if (ResolvedEl.IdentEl is TPasProcedure)
+              and TPasProcedure(ResolvedEl.IdentEl).IsAsync then
+            begin
+            // async proc => return promise
+            ComputeElement(ResolvedEl.IdentEl,ResolvedEl,Flags+[rcCall],StartEl);
             end
           else if (ResolvedEl.IdentEl.ClassType=TPasConstructor) then
             begin

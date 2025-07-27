@@ -225,6 +225,7 @@ const
      }
 
      cmPrint             = 248;
+     cmSymPrevious       = 249; {previous symbol browser window}
 
      cmNotImplemented    = 1000;
      cmNewFromTemplate   = 1001;
@@ -312,6 +313,8 @@ const
      cmSymTrackSource    = 2702;
      cmSymOptions        = 2703;
      cmSymSaveAs         = 2704;
+     cmSymTabKeyPress    = 2705;
+     {cmSymPrevious       = 249;}
 
      { Help constants }
      hcSourceWindow      = 8000;
@@ -442,6 +445,7 @@ const
      hcSymTrackSource    = hcShift+cmSymTrackSource;
      hcSymOptions        = hcShift+cmSymOptions;
      hcSymSaveAs         = hcShift+cmSymSaveAs;
+     hcSymPrevious       = hcShift+cmSymPrevious;
      hcGotoCursor        = hcShift+cmGotoCursor;
      hcNewBreakpoint     = hcShift+cmNewBreakpoint;
      hcEditBreakpoint    = hcShift+cmEditBreakpoint;

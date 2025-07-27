@@ -481,11 +481,7 @@ Var
 Procedure StartLog;
 
 begin
-{$if defined(win32) or defined(win64)}
-  Assign(FL,'c:\service.log');
-{$else}
-  Assign(FL,'/tmp/service.log');
-{$endif}
+  Assign(FL,GetTempDir+'service.log');
   Rewrite(FL);
   InitCriticalSection(LCS);
   DebugLog('Start logging');
@@ -1300,15 +1296,13 @@ procedure TDaemonThread.HandleControlCode(ACode, AEventType : DWord; AEventData 
 
 Var
   CS : TCurrentStatus;
-  CC,OK : Boolean;
-  S : String;
+  OK : Boolean;
 
 begin
  {$ifdef svcdebug}DebugLog('Handling control code '+IntToStr(ACode));{$endif svcdebug}
   CS:=FDaemon.Status;
   Try
     OK:=True;
-    CC:=False;
     Case ACode of
       SERVICE_CONTROL_STOP        : OK:=StopDaemon;
       SERVICE_CONTROL_PAUSE       : OK:=PauseDaemon;
@@ -1316,7 +1310,6 @@ begin
       SERVICE_CONTROL_SHUTDOWN    : OK:=ShutDownDaemon;
       SERVICE_CONTROL_INTERROGATE : OK:=InterrogateDaemon;
     else
-      CC:=True;
       FDaemon.HandleCustomCode(ACode, AEventType, AEventData);
     end;
     If not OK then
@@ -1327,10 +1320,6 @@ begin
       // Shutdown MUST be done, in all other cases roll back status.
       If (ACode<>SERVICE_CONTROL_SHUTDOWN) then
         FDaemon.Status:=CS;
-      If (ACode in [1..5]) then
-        S:=SStatus[ACode]
-      else
-        S:=Format(SCustomCode,[ACode]);
       end;
   end;
 end;

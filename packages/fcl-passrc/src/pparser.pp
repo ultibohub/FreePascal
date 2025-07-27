@@ -755,7 +755,7 @@ Var
   CCNames : Array[TCallingConvention] of String
          = ('','register','pascal','cdecl','stdcall','oldfpccall','safecall','syscall',
            'mwpascal', 'hardfloat','sysv_abi_default','sysv_abi_cdecl',
-           'ms_abi_default','ms_abi_cdecl','vectorcall');
+           'ms_abi_default','ms_abi_cdecl','vectorcall','winapi');
 Var
   C : TCallingConvention;
 
@@ -3150,9 +3150,9 @@ begin
     else
       begin
       NextToken;
-      // Empty record constant: a: Record .. end = ();
       if (CurToken=tkBraceClose) then
         begin
+        // Empty record constant: a: Record .. end = ();
         Result:=CreateRecordValues(AParent);
         NextToken;
         Exit;
@@ -4355,7 +4355,7 @@ begin
       else if CurToken=tkSemicolon then
         begin
         NextToken;
-        if CurTokenIsIdentifier('external') then
+        if CurTokenIsIdentifier('external') or CurTokenIsIdentifier('weakexternal') then
           begin
           // typed external const without expression is allowed
           Result.IsConst:=true;
@@ -4905,7 +4905,7 @@ begin
     NextToken;
     end;
   s:=LowerCase(CurTokenText);
-  if (vmExternal in AllowedMods) and (s='external') then
+  if (vmExternal in AllowedMods) and ((s='external') or (s='weakexternal')) then
     ExtMod:=vmExternal
   else if (vmPublic in AllowedMods) and (s='public') then
     ExtMod:=vmPublic
@@ -5147,6 +5147,7 @@ begin
   if not ParseRTTIDirective(Param,NewVisibility) then
     ParseExc(nErrInvalidParamsForDirectiveX,SErrInvalidParamsForDirectiveX,[Directive]);
   RTTIVisibility:=NewVisibility;
+  if Sender=nil then ;
 end;
 
 function TPasParser.SaveComments: String;
