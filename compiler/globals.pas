@@ -56,7 +56,7 @@ interface
           m_out,m_default_para,m_duplicate_names,m_hintdirective,
           m_property,m_default_inline,m_except,m_advanced_records,
           m_array_operators,m_prefixed_attributes,m_underscoreisseparator,
-          m_function_references,m_anonymous_functions];
+          m_function_references,m_anonymous_functions,m_multiline_strings];
        delphiunicodemodeswitches = delphimodeswitches + [m_systemcodepage,m_default_unicodestring];
        fpcmodeswitches =
          [m_fpc,m_string_pchar,m_nested_comment,m_repeat_forward,
@@ -65,7 +65,7 @@ interface
        objfpcmodeswitches =
          [m_objfpc,m_fpc,m_class,m_objpas,m_result,m_string_pchar,m_nested_comment,
           m_repeat_forward,m_cvar_support,m_initfinal,m_out,m_default_para,m_hintdirective,
-          m_property,m_default_inline,m_except];
+          m_property,m_default_inline,m_except,m_multiline_strings];
        tpmodeswitches =
          [m_tp7,m_tp_procvar,m_duplicate_names];
 {$ifdef gpc_mode}
@@ -201,6 +201,13 @@ Const
 
          { WARNING: this pointer cannot be written as such in record token }
          pmessage : pmessagestaterecord;
+
+         lineendingtype : tlineendingtype;
+
+         whitespacetrimcount : word;
+         
+         whitespacetrimauto : boolean;
+         
 {$if defined(generic_cpu)}
          case byte of
 {$endif}
@@ -674,6 +681,9 @@ Const
         tlsmodel : tlsm_none;
         controllertype : ct_none;
         pmessage : nil;
+        lineendingtype : le_platform;
+        whitespacetrimcount : 0;
+        whitespacetrimauto : false;
 {$if defined(i8086) or defined(GENERIC_CPU)}
         x86memorymodel : mm_small;
 {$endif defined(i8086) or defined(GENERIC_CPU)}

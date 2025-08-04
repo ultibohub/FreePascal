@@ -18,6 +18,14 @@ unit fpsockets;
 {$mode ObjFPC}{$H+}
 {$TypedAddress on}
 {$modeswitch advancedrecords}
+{$macro on}
+{$COPERATORS ON}
+
+{$IFDEF FPC_DOTTEDUNITS}
+{$define socketsunit:=System.Net.Sockets}
+{$ELSE FPC_DOTTEDUNITS}
+{$define socketsunit:=sockets}
+{$ENDIF FPC_DOTTEDUNITS}
 
 interface
 
@@ -35,13 +43,13 @@ interface
 uses
   {$IfDef WINDOWS}WinApi.WinSock2, {$ENDIF}
   {$ifdef unix} UnixApi.Base, UnixApi.TermIO, {$EndIf}
-  {$IfDef HASAMIGA}system.ctypes, {$EndIf}
+  System.CTypes,
   System.SysUtils, System.Net.Sockets, System.Nullable, System.Tuples;
 {$ELSE FPC_DOTTEDUNITS}
 uses
   {$IfDEF WINDOWS}WinSock2, {$ENDIF}
   {$IFDEF unix}BaseUnix, termio, {$EndIf}  
-  {$IfDef HASAMIGA}ctypes, {$EndIf}
+  ctypes,
   sysutils, sockets, nullable, tuples;
 {$ENDIF FPC_DOTTEDUNITS}
 
@@ -221,11 +229,17 @@ function ConnectionState(const ASocket: TFPSocket): TConnectionState;
 
 type
   PAddressUnion = ^TAddressUnion;
+
+  { TAddressUnion }
+
   TAddressUnion = record
-   case TFPSocketType of
-  stIPv4: (In4Addr: sockaddr_in);
-  stIPv6: (In6Addr: sockaddr_in6);
-  stUnixSocket: (UnixAddr: sockaddr_un);
+    function GetAddr : socketsunit.psockaddr;
+    function GetAddrSize : cint;
+    procedure GetAddrAndSize(out aAddr: socketsunit.pSockAddr;out aSize: cint);
+  case SocketType : TFPSocketType of
+    stIPv4: (In4Addr: sockaddr_in);
+    stIPv6: (In6Addr: sockaddr_in6);
+    stUnixSocket: (UnixAddr: sockaddr_un);
   end;
 
 function SocketInvalid(ASocket: TSocket): Boolean; inline;
@@ -243,13 +257,6 @@ uses
 {$ELSE FPC_DOTTEDUNITS}
 uses
   math;
-{$ENDIF FPC_DOTTEDUNITS}
-
-{$macro on}
-{$IFDEF FPC_DOTTEDUNITS}
-{$define socketsunit:=System.Net.Sockets}
-{$ELSE FPC_DOTTEDUNITS}
-{$define socketsunit:=sockets}
 {$ENDIF FPC_DOTTEDUNITS}
 
 { Helper }
@@ -286,12 +293,14 @@ begin
     AAddress := IN4MappedIN6Address(AAddress.Address);
   if AAddress.AddressType = atIN4 then
   begin
+    Result.SocketType:=stIPv4;
     Result.In4Addr.sin_family := AF_INET;
     Result.In4Addr.sin_port := HToNS(APort);
     Result.In4Addr.sin_addr.s_addr := LongWord(StrToNetAddr(AAddress.Address));
   end
   else if AAddress.AddressType = atIN6 then
   begin
+    Result.SocketType:=stIPv6;
     Result.In6Addr.sin6_family := AF_INET6;
     Result.In6Addr.sin6_port := HToNS(APort);
     Result.In6Addr.sin6_addr := StrToHostAddr6(AAddress.Address);
@@ -300,6 +309,7 @@ begin
   end
   else if AAddress.AddressType = atUnixSock then
   begin
+    Result.SocketType:=stUnixSocket;
     if Length(AAddress.Address) > SizeOf(Result.UnixAddr.sun_path)-1 then
       raise EUnsupportedAddress.Create('Unix address should be at most 108 characters');
     Result.UnixAddr.sun_family := AF_UNIX;
@@ -540,11 +550,14 @@ procedure Bind(const ASocket: TFPSocket; const AAddress: TNetworkAddress;
 var
   enableReuse: Integer = 1;
   addr: TAddressUnion;
+  addrptr : socketsunit.psockaddr;
+  addrlen : cint;
 begin
   if ReuseAddr then
     fpsetsockopt(ASocket.FD, SOL_SOCKET, SO_REUSEADDR, @enableReuse, SizeOf(enableReuse));
   addr := CreateAddr(AAddress, APort, ASocket.SocketType = stIPDualStack);
-  if fpbind(ASocket.FD, socketsunit.PSockAddr(@addr), SizeOf(addr)) <> 0 then raise
+  addr.GetAddrAndSize(addrptr,addrlen);
+  if fpbind(ASocket.FD, addrptr, addrlen) <> 0 then raise
     ESocketCodeError.Create(socketerror, 'bind (%s:%d)'.Format([AAddress.Address, APort]));
 end;
 
@@ -557,7 +570,7 @@ end;
 function AcceptConnection(const ASocket: TFPSocket): TFPSocketConnection;
 var
   addr: TAddressUnion;
-  addrLen: TSocklen = SizeOf(addr);
+  addrLen: TSocklen;
 begin
   Result.Socket.FD := fpaccept(ASocket.FD, socketsunit.psockaddr(@addr), @addrLen);
   if SocketInvalid(Result.Socket.FD) then
@@ -588,6 +601,9 @@ function Connect(const ASocket: TFPSocket; const AAddress: TNetworkAddress;
   APort: Word): TConnectionState;
 var
   addr: TAddressUnion;
+  AddrLen : cint;
+  addrPtr : socketsunit.psockaddr;
+
 const
   {$IFDEF WINDOWS} 
   EALREADY = WSAEALREADY;
@@ -614,7 +630,8 @@ const
   {$ENDIF}
 begin
   addr := CreateAddr(AAddress, APort, ASocket.SocketType = stIPDualStack);
-  if fpconnect(ASocket.FD, socketsunit.psockaddr(@addr), SizeOf(addr)) <> 0 then
+  Addr.GetAddrAndSize(addrPtr,AddrLen);
+  if fpconnect(ASocket.FD, addrptr, addrlen) <> 0 then
     case socketerror of
     EALREADY,
     EINPROGRESS,
@@ -664,7 +681,7 @@ end;
 function ReceiveFromNonBlocking(const ASocket:TFPSocket;ABuffer:Pointer;MaxSize:
   SizeInt;AFlags:Integer):specialize TNullable<TReceiveFromResult>;
 begin
-  Result := ReceiveFromNonBlocking(ASocket, ABuffer, MaxSize, AFlags);
+  Result := ReceiveFrom(ASocket, ABuffer, MaxSize, AFlags);
   if Result.Value.DataSize = 0 then
     Result := null;
 end;
@@ -1242,6 +1259,42 @@ begin
   inherited Create(AMessage);
   FFragment := AFragment;
   FExpectedSize := AExpected;
+end;
+
+{ TAddressUnion }
+
+function TAddressUnion.GetAddr: socketsunit.psockaddr;
+begin
+  case SocketType of
+    stIPv4,
+    stIPDualStack:
+      Result:=psockaddr(@self.In4Addr);
+    stIPv6 :
+      Result:=psockaddr(@self.In6Addr);
+    stUnixSocket :
+      result:=psockaddr(@self.UnixAddr);
+  end;
+
+end;
+
+function TAddressUnion.GetAddrSize: cint;
+
+begin
+  case SocketType of
+  stIPv4,
+  stIPDualStack:
+    Result:=sizeof(sockaddr_in);
+  stIPv6 :
+    Result:=sizeof(sockaddr_in6);
+  stUnixSocket :
+    Result:=sizeof(sockaddr_un);
+  end;
+end;
+
+procedure TAddressUnion.GetAddrAndSize(out aAddr: socketsunit.pSockAddr;out aSize: cint);
+begin
+  aAddr:=GetAddr;
+  aSize:=GetAddrSize;
 end;
 
 end.

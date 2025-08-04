@@ -7316,13 +7316,14 @@ begin
     Proc:=TPasProcedure(El);
     if Proc.IsAsync then
       begin
-      // an async function call returns a TJSPromise
-      JSPromiseClass:=FindTJSPromise(StartEl);
-
-      SetResolverIdentifier(ResolvedEl, btContext, El, JSPromiseClass,
-        JSPromiseClass, [rrfReadable, rrfWritable]);
-
-      Exit;
+      // an async function call returns a TJSPromise if available
+      JSPromiseClass:=FindTJSPromise(nil);
+      if JSPromiseClass<>nil then
+        begin
+         SetResolverIdentifier(ResolvedEl, btContext, El, JSPromiseClass,
+           JSPromiseClass, [rrfReadable, rrfWritable]);
+         Exit;
+        end;
       end;
     end;
   inherited ComputeElement(El,ResolvedEl,Flags,StartEl);
@@ -21161,7 +21162,6 @@ var
   begin
     if ExtVis > -1 then
       Call.AddArg(CreateLiteralNumber(Proc,ExtVis));
-
     ExtVis := -1;
   end;
 
@@ -21268,7 +21268,6 @@ begin
       if ResultTypeInfo<>nil then
         begin
         AddExtRTTIVisibility;
-
         Call.AddArg(ResultTypeInfo);
         end;
       end;
@@ -21276,7 +21275,6 @@ begin
     if (ResultTypeInfo=nil) and ((Flags>0) or (length(Attr)>0)) then
     begin
       AddExtRTTIVisibility;
-
       Call.AddArg(CreateLiteralNull(Proc));
     end;
 
