@@ -472,6 +472,7 @@ type
     procedure TestOrderByCollate;
     procedure TestOrderByCollateDesc;
     procedure TestOrderByCollateDescTwoFields;
+    procedure TestOrderByUpper;
     procedure TestGroupByOne;
     procedure TestGroupByTwo;
     procedure TestHavingOne;
@@ -495,10 +496,16 @@ type
     procedure TestWhereAll;
     procedure TestWhereAny;
     procedure TestWhereSome;
+    procedure TestWhereInRange;
     procedure TestParam;
+    procedure TestParam_Underscore;
     procedure TestParamExpr;
     procedure TestNoTable;
     procedure TestSourcePosition;
+    procedure TestForUpdate;
+    procedure TestForUpdateNowait;
+    procedure TestForUpdateOf;
+    procedure TestWithLock;
   end;
 
   { TTestRollBackParser }
@@ -4204,6 +4211,36 @@ begin
   AssertEquals('Table source position = 6', 6, Select.Tables[0].SourcePos);
 end;
 
+procedure TTestSelectParser.TestForUpdate;
+begin
+  TestSelect('SELECT B FROM A FOR UPDATE');
+  AssertEquals('FOR UPDATE',Select.ForUpdate<>nil,true);
+  AssertEquals('FOR UPDATE list count',Select.ForUpdate.Count,0);
+end;
+
+procedure TTestSelectParser.TestForUpdateNowait;
+begin
+  TestSelect('SELECT B FROM A FOR UPDATE NOWAIT');
+  AssertEquals('FOR UPDATE',Select.ForUpdate<>nil,true);
+  AssertEquals('FOR UPDATE list count',Select.ForUpdate.Count,0);
+  AssertEquals('FOR UPDATE',Select.ForUpdateNoWait,true);
+end;
+
+procedure TTestSelectParser.TestForUpdateOf;
+begin
+  TestSelect('SELECT * FROM A FOR UPDATE OF B,C');
+  AssertEquals('FOR UPDATE',Select.ForUpdate<>nil,true);
+  AssertEquals('FOR UPDATE list count',Select.ForUpdate.Count,2);
+  AssertIdentifierName('FOR UPDATE[0]','B',Select.ForUpdate[0]);
+  AssertIdentifierName('FOR UPDATE[1]','C',Select.ForUpdate[1]);
+end;
+
+procedure TTestSelectParser.TestWithLock;
+begin
+  TestSelect('SELECT * FROM DOCUMENT WITH LOCK');
+  AssertEquals('WITH LOCK',Select.WithLock,true);
+end;
+
 procedure TTestSelectParser.TestSelectTwoFieldsTwoInnerTablesJoin;
 Var
   J : TSQLJoinTableReference;
@@ -4813,6 +4850,20 @@ begin
   AssertIdentifierName('Correct collation','E',O.Collation);
 end;
 
+procedure TTestSelectParser.TestOrderByUpper;
+var
+  O: TSQLOrderByElement;
+begin
+  TestSelect('SELECT B FROM A ORDER BY UPPER(C)');
+  AssertEquals('One field',1,Select.Fields.Count);
+  AssertEquals('One table',1,Select.Tables.Count);
+  AssertField(Select.Fields[0],'B');
+  AssertTable(Select.Tables[0],'A');
+  AssertEquals('One order by field',1,Select.Orderby.Count);
+  O:=AssertOrderBy(Select.OrderBy[0],'C',0,obAscending);
+  AssertEquals('Order by upper',O.Upper,true);
+end;
+
 procedure TTestSelectParser.TestGroupByOne;
 begin
   TestSelect('SELECT B,COUNT(C) AS THECOUNT FROM A GROUP BY B');
@@ -5275,6 +5326,10 @@ begin
   AssertTable(S.Tables[0],'D','');
 end;
 
+procedure TTestSelectParser.TestWhereInRange;
+begin
+  TestSelect('SELECT A FROM B WHERE A IN (4..6)');
+end;
 
 procedure TTestSelectParser.TestParam;
 
@@ -5292,6 +5347,22 @@ begin
   AssertNotNull('Have field expresssion,',F.Expression);
   P:=TSQLParameterExpression(CheckClass(F.Expression,TSQLParameterExpression));
   AssertIdentifierName('Correct parameter name','A',P.Identifier);
+end;
+
+procedure TTestSelectParser.TestParam_Underscore;
+var
+  F: TSQLSelectField;
+  P: TSQLParameterExpression;
+begin
+  TestSelect('SELECT :_A FROM B');
+  AssertEquals('1 table in select',1,Select.Tables.Count);
+  AssertTable(Select.Tables[0],'B','');
+  AssertEquals('1 fields in select',1,Select.Fields.Count);
+  AssertNotNull('Have field',Select.Fields[0]);
+  F:=TSQLSelectField(CheckClass(Select.Fields[0],TSQLSelectField));
+  AssertNotNull('Have field expresssion,',F.Expression);
+  P:=TSQLParameterExpression(CheckClass(F.Expression,TSQLParameterExpression));
+  AssertIdentifierName('Correct parameter name','_A',P.Identifier);
 end;
 
 procedure TTestSelectParser.TestParamExpr;
