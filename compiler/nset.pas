@@ -433,10 +433,9 @@ implementation
     constructor trangenode.create(l,r : tnode);
       var
         value: string;
-
       begin
-         { if right is char and left is string then }
-         { right should be treated as one-symbol string }
+         { if right is char and left is string then
+           right should be treated as one-symbol string }
          if is_conststringnode(l) and is_constcharnode(r) then
            begin
              value := char(tordconstnode(r).value.uvalue) + ''#0;
@@ -458,7 +457,8 @@ implementation
          if codegenerror then
            exit;
          { both types must be compatible }
-         if compare_defs(left.resultdef,right.resultdef,left.nodetype)=te_incompatible then
+         if not (nf_generic_para in left.flags) and not (nf_generic_para in right.flags) and
+           (compare_defs(left.resultdef,right.resultdef,left.nodetype)=te_incompatible) then
            IncompatibleTypes(left.resultdef,right.resultdef);
          { check if only when its a constant set and
            ignore range nodes which are generic parameter derived }
