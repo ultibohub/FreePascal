@@ -8741,7 +8741,7 @@ Var
             try
               aPath:=AddPathPrefix(APackage,APackage.GetUnitsOutputDir(Defaults.CompileTarget));
               APackage.FBUTarget.GetCleanFiles(L,IncludeTrailingPathDelimiter(aPath),'',Defaults.CompileTarget);
-              L.Add(AddPathPrefix(APackage,APackage.FBUTarget.SourceFileName));
+              L.Add(AddPathPrefix(APackage,APackage.FBUTarget.FTargetSourceFileName));
               CmdDeleteFiles(L);
             finally
               L.Free;
@@ -9326,7 +9326,7 @@ procedure TBuildEngine.DoAfterClean(APackage: TPackage);
 begin
   If Assigned(APackage.AfterClean) then
     APackage.AfterClean(APackage);
-  If Assigned(APackage.AfterInstallProc) then
+  If Assigned(APackage.AfterCleanProc) then
     APackage.AfterCleanProc(APackage);
   ExecuteCommands(APackage.Commands,caAfterClean);
 end;
