@@ -33,7 +33,8 @@ uses fmodule;
     function proc_package(curr: tmodule) : boolean;
     function proc_program(curr: tmodule; islibrary : boolean) : boolean;
     function proc_program_declarations(curr : tmodule; islibrary : boolean) : boolean;
-    procedure finish_unit(module:tmodule);
+    function finish_compile_unit(module:tmodule): boolean;
+    function finish_unit(module:tmodule): boolean;
 
 implementation
 
@@ -1205,11 +1206,12 @@ type
         for i:=0 to curr.waitingunits.count-1 do
           for j:=curr.waitingforunit.count-1 downto 0 do
             if curr.waitingunits[i]=curr.waitingforunit[j] then
-              curr.waitingforunit.delete(j);
+              curr.waitingforunit.Delete(j);
 
     {$ifdef DEBUG_UNITWAITING}
-        Writeln('Units waiting for ', curr.modulename^, ': ',
-          curr.waitingforunit.Count);
+        Writeln('Unit ', curr.modulename^, ' is waiting for units: ');
+        for i:=curr.waitingforunit.count-1 downto 0 do
+          writeln('  ',i,'/',curr.waitingforunit.count,' ',tmodule(curr.waitingforunit[i]).realmodulename^);
     {$endif}
         result:=curr.waitingforunit.count=0;
 
@@ -1220,7 +1222,7 @@ type
         curr.finishstate:=finishstate;
 
         if result then
-          finish_unit(curr)
+          result:=finish_compile_unit(curr)
         else
           curr.state:=ms_compiling_waitfinish;
       end;
@@ -1290,7 +1292,10 @@ type
         if (target_cpu=tsystemcpu.cpu_wasm32) then
           add_synthetic_interface_classes_for_st(curr.globalsymtable,true,false);
 
-        { Our interface is compiled, generate CRC and switch to implementation }
+        { Our interface is compiled, generate interface CRC and switch to implementation }
+        {$IFDEF Debug_WaitCRC}
+        writeln('parse_unit_interface_declarations ',curr.realmodulename^);
+        {$ENDIF}
         if not(cs_compilesystem in current_settings.moduleswitches) and
           (Errorcount=0) then
            tppumodule(curr).getppucrc;
@@ -1344,7 +1349,7 @@ type
         { Can we continue compiling ? }
         result:=curr.state<>ms_compiling_waitimpl;
         if result then
-          result:=proc_unit_implementation(curr)
+          result:=proc_unit_implementation(curr);
       end;
 
     function proc_unit(curr: tmodule):boolean;
@@ -1510,7 +1515,13 @@ type
            result:=parse_unit_interface_declarations(curr);
       end;
 
-    procedure finish_unit(module:tmodule);
+    procedure module_is_done(curr: tmodule);inline;
+      begin
+        dispose(pfinishstate(curr.finishstate));
+        curr.finishstate:=nil;
+      end;
+
+    function finish_compile_unit(module: tmodule): boolean;
 
       function is_assembler_generated:boolean;
       var
@@ -1528,18 +1539,10 @@ type
           end;
       end;
 
-      procedure module_is_done(curr: tmodule);inline;
-        begin
-          dispose(pfinishstate(curr.finishstate));
-          curr.finishstate:=nil;
-        end;
-
       var
 {$ifdef EXTDEBUG}
         store_crc,
 {$endif EXTDEBUG}
-        store_interface_crc,
-        store_indirect_crc: cardinal;
         force_init_final : boolean;
         init_procinfo,
         finalize_procinfo : tcgprocinfo;
@@ -1548,6 +1551,7 @@ type
         finishstate : tfinishstate;
         waitingmodule : tmodule;
       begin
+         result:=true;
          { curr is now module }
 
          if not assigned(module.finishstate) then
@@ -1741,43 +1745,83 @@ type
            end;
 
          if ag then
+           begin
+             { create callframe info }
+             create_dwarf_frame;
+             { assemble }
+             create_objectfile(module);
+           end;
+
+        // remove all waits for this unit
+        for i:=0 to module.waitingunits.count-1 do
           begin
-            { create callframe info }
-            create_dwarf_frame;
-            { assemble }
-            create_objectfile(module);
+            waitingmodule:=tmodule(module.waitingunits[i]);
+            waitingmodule.remove_from_waitingforunits(module);
           end;
 
-         { Write out the ppufile after the object file has been created }
-         store_interface_crc:=module.interface_crc;
-         store_indirect_crc:=module.indirect_crc;
+        // compute CRC
+        if ErrorCount=0 then
+          begin
+          if not module.usedunitsfinalcrc(waitingmodule) then
+            begin
+            { Some used units are still compiling, so their CRCs can change.
+              Compute the final CRC of this module, for the case of a
+              circular dependency, and wait.
+            }
+            {$IFDEF Debug_WaitCRC}
+            writeln('finish_compile_unit ',module.realmodulename^,' waiting for used unit CRCs...');
+            {$ENDIF}
+            tppumodule(module).getppucrc;
+            module.crc_final:=true;
+            module.state:=ms_compiled_waitcrc;
+            exit(false);
+            end;
+          end;
+
+        result:=finish_unit(module);
+      end;
+
+    function finish_unit(module: tmodule): boolean;
+
+      var
+        store_interface_crc,
+        store_indirect_crc : cardinal;
+        i : longint;
+        waitingmodule : tmodule;
+
+      begin
+        result:=true;
+
+        { Write out the ppufile after the object file has been created }
+        store_interface_crc:=module.interface_crc;
+        store_indirect_crc:=module.indirect_crc;
 {$ifdef EXTDEBUG}
-         store_crc:=module.crc;
+        store_crc:=module.crc;
 {$endif EXTDEBUG}
-         if (Errorcount=0) then
-           tppumodule(module).writeppu;
+        if ErrorCount=0 then
+          tppumodule(module).writeppu;
 
-         if not(cs_compilesystem in current_settings.moduleswitches) then
-           begin
-             if store_interface_crc<>module.interface_crc then
-               Message1(unit_u_interface_crc_changed,module.ppufilename);
-             if store_indirect_crc<>module.indirect_crc then
-               Message1(unit_u_indirect_crc_changed,module.ppufilename);
-           end;
+        if not(cs_compilesystem in current_settings.moduleswitches) then
+          begin
+            if store_interface_crc<>module.interface_crc then
+              Message1(unit_u_interface_crc_changed,module.ppufilename);
+            if store_indirect_crc<>module.indirect_crc then
+              Message1(unit_u_indirect_crc_changed,module.ppufilename);
+          end;
 {$ifdef EXTDEBUG}
-         if not(cs_compilesystem in current_settings.moduleswitches) then
-           if (store_crc<>module.crc) then
-             Message1(unit_u_implementation_crc_changed,module.ppufilename);
+        if not(cs_compilesystem in current_settings.moduleswitches) then
+          if (store_crc<>module.crc) then
+            Message1(unit_u_implementation_crc_changed,module.ppufilename);
 {$endif EXTDEBUG}
 
-         { release unregistered defs/syms from the localsymtable }
-         free_unregistered_localsymtable_elements(module);
-         { release local symtables that are not needed anymore }
-         free_localsymtables(module.globalsymtable);
-         free_localsymtables(module.localsymtable);
+        { release unregistered defs/syms from the localsymtable }
+        free_unregistered_localsymtable_elements(module);
+        { release local symtables that are not needed anymore }
+        free_localsymtables(module.globalsymtable);
+        free_localsymtables(module.localsymtable);
 
-         { leave when we got an error }
-         if (Errorcount>0) and not status.skip_error then
+        { leave when we got an error }
+        if (Errorcount>0) and not status.skip_error then
           begin
             Message1(unit_f_errors_in_unit,tostr(Errorcount));
             status.skip_error:=true;
@@ -1789,41 +1833,41 @@ type
           end;
 
 {$ifdef debug_devirt}
-         { print out all instantiated class/object types }
-         writeln('constructed object/class/classreftypes in ',module.realmodulename^);
-         for i := 0 to module.wpoinfo.createdobjtypes.count-1 do
-           begin
-             write('  ',tdef(module.wpoinfo.createdobjtypes[i]).GetTypeName);
-             case tdef(module.wpoinfo.createdobjtypes[i]).typ of
-               objectdef:
-                 case tobjectdef(module.wpoinfo.createdobjtypes[i]).objecttype of
-                   odt_object:
-                     writeln(' (object)');
-                   odt_class:
-                     writeln(' (class)');
-                   else
-                     internalerror(2008101103);
-                 end;
-               else
-                 internalerror(2008101104);
-             end;
-           end;
+        { print out all instantiated class/object types }
+        writeln('constructed object/class/classreftypes in ',module.realmodulename^);
+        for i := 0 to module.wpoinfo.createdobjtypes.count-1 do
+          begin
+            write('  ',tdef(module.wpoinfo.createdobjtypes[i]).GetTypeName);
+            case tdef(module.wpoinfo.createdobjtypes[i]).typ of
+              objectdef:
+                case tobjectdef(module.wpoinfo.createdobjtypes[i]).objecttype of
+                  odt_object:
+                    writeln(' (object)');
+                  odt_class:
+                    writeln(' (class)');
+                  else
+                    internalerror(2008101103);
+                end;
+              else
+                internalerror(2008101104);
+            end;
+          end;
 
-         for i := 0 to module.wpoinfo.createdclassrefobjtypes.count-1 do
-           begin
-             write('  Class Of ',tdef(module.wpoinfo.createdclassrefobjtypes[i]).GetTypeName);
-             case tdef(module.wpoinfo.createdclassrefobjtypes[i]).typ of
-               objectdef:
-                 case tobjectdef(module.wpoinfo.createdclassrefobjtypes[i]).objecttype of
-                   odt_class:
-                     writeln(' (classrefdef)');
-                   else
-                     internalerror(2008101105);
-                 end
-               else
-                 internalerror(2008101102);
-             end;
-           end;
+        for i := 0 to module.wpoinfo.createdclassrefobjtypes.count-1 do
+          begin
+            write('  Class Of ',tdef(module.wpoinfo.createdclassrefobjtypes[i]).GetTypeName);
+            case tdef(module.wpoinfo.createdclassrefobjtypes[i]).typ of
+              objectdef:
+                case tobjectdef(module.wpoinfo.createdclassrefobjtypes[i]).objecttype of
+                  odt_class:
+                    writeln(' (classrefdef)');
+                  else
+                    internalerror(2008101105);
+                end
+              else
+                internalerror(2008101102);
+            end;
+          end;
 {$endif debug_devirt}
 
         Message1(unit_u_finished_compiling,module.modulename^);
@@ -1831,17 +1875,10 @@ type
         module_is_done(module);
         module.end_of_parsing;
 
-        for i:=0 to module.waitingunits.count-1 do
-          begin
-            waitingmodule:=tmodule(module.waitingunits[i]);
-            waitingmodule.remove_from_waitingforunits(module);
-          end;
-
 {$ifdef DEBUG_NODE_XML}
         XMLFinalizeNodeFile('unit');
 {$endif DEBUG_NODE_XML}
       end;
-
 
     function proc_package(curr: tmodule) : boolean;
       var

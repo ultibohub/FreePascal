@@ -286,9 +286,9 @@ uses
           exit;
 
         if (hmodule.state = ms_load) and hmodule.interface_compiled then
-           Exit;
+          Exit;
 
-        if not (hmodule.state in [ms_compiled,ms_processed]) then
+        if not (hmodule.state in [ms_compiling_waitfinish,ms_compiled_waitcrc,ms_compiled,ms_processed]) then
           begin
 {$ifdef DEBUG_UNITWAITING}
             Writeln('Unit ', current_module.modulename^,
@@ -2989,7 +2989,8 @@ uses
                     generic was declared in the same unit (otherwise there
                     should be one) }
                   mstate:=hmodule.state;
-                  if ((hmodule=current_module) or (hmodule.state<ms_compiling_waitfinish)) and tprocdef(def.genericdef).forwarddef then
+                  if ((hmodule=current_module) or (hmodule.state<ms_compiling_waitfinish))
+                      and tprocdef(def.genericdef).forwarddef then
                     begin
                       readdlist.add(def);
                       continue;

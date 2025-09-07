@@ -129,6 +129,7 @@ interface
         interface_only: boolean; { interface-only macpas unit; flag does not need saving/restoring to ppu }
         mainfilepos   : tfileposinfo;
         recompile_reason : trecompile_reason;  { the reason why the unit should be recompiled }
+        crc_final: boolean;
         crc,
         interface_crc,
         indirect_crc  : cardinal;
@@ -263,6 +264,7 @@ interface
         function findusedunit(m : tmodule) : tused_unit;
         function usedunitsloaded(interface_units: boolean; out firstwaiting : tmodule): boolean;
         function nowaitingforunits(out firstwaiting : tmodule) : Boolean;
+        function usedunitsfinalcrc(out firstwaiting : tmodule): boolean;
         procedure updatemaps;
         function  derefidx_unit(id:longint):longint;
         function  resolve_unit(id:longint):tmodule;
@@ -513,7 +515,7 @@ implementation
         in_interface:=intface;
         in_uses:=inuses;
         unitsym:=usym;
-        if _u.state in [ms_compiled,ms_processed] then
+        if _u.state in [ms_compiled_waitcrc,ms_compiled,ms_processed] then
          begin
            checksum:=u.crc;
            interface_checksum:=u.interface_crc;
@@ -609,6 +611,7 @@ implementation
         linkotherframeworks:=TLinkContainer.Create;
         mainname:=nil;
         FImportLibraryList:=TFPHashObjectList.Create(true);
+        crc_final:=false;
         crc:=0;
         interface_crc:=0;
         indirect_crc:=0;
@@ -972,6 +975,7 @@ implementation
         localframeworksearchpath:=TSearchPathList.Create;
         moduleoptions:=[];
         is_dbginfo_written:=false;
+        crc_final:=false;
         crc:=0;
         interface_crc:=0;
         indirect_crc:=0;
@@ -1037,7 +1041,7 @@ implementation
              this unit, unless this unit is already compiled during
              the loading }
            m:=pm.u;
-           if (m=callermodule) and (m.state<ms_compiled) then
+           if (m=callermodule) and (m.state<ms_compiled_waitcrc) then
              Message1(unit_u_no_reload_is_caller,m.modulename^)
            else
             if (m.state=ms_compile) {and (pm.u.compilecount>1)} then
@@ -1071,8 +1075,9 @@ implementation
     function tmodule.usedunitsloaded(interface_units : boolean; out firstwaiting : tmodule): boolean;
 
       const
-        statesneeded : array[boolean] of tmodulestates = ([ms_processed, ms_compiled,ms_compiling_waitimpl, ms_compiling_waitfinish],
-                                                          [ms_processed, ms_compiled,ms_compiling_waitimpl, ms_compiling_waitfinish]);
+        statesneeded : array[boolean] of tmodulestates = (
+          [ms_processed, ms_compiled, ms_compiling_waitimpl, ms_compiling_waitfinish, ms_compiled_waitcrc],
+          [ms_processed, ms_compiled, ms_compiling_waitimpl, ms_compiling_waitfinish, ms_compiled_waitcrc]);
 
       var
         itm : TLinkedListItem;
@@ -1088,10 +1093,15 @@ implementation
           result:=tused_unit(itm).u.state in states;
           {$IFDEF DEBUG_CTASK}writeln('  ',ToString,' checking state of ', tused_unit(itm).u.ToString,' : ',tused_unit(itm).u.state,' : ',Result);{$ENDIF}
           if not result then
-             begin
-             if firstwaiting=Nil then
-                firstwaiting:=tused_unit(itm).u;
-             end;
+            begin
+            if firstwaiting=Nil then
+              begin
+              firstwaiting:=tused_unit(itm).u;
+              {$IFNDEF DEBUG_CTASK}
+              break;
+              {$ENDIF}
+              end;
+            end;
           itm:=itm.Next;
           end;
       end;
@@ -1104,6 +1114,26 @@ implementation
         If not Result then
           firstwaiting:=tmodule(waitingforunit[0]);
       end;
+
+    function tmodule.usedunitsfinalcrc(out firstwaiting: tmodule): boolean;
+
+    var
+      itm: TLinkedListItem;
+
+    begin
+      Result:=True;
+      itm:=self.used_units.First;
+      firstwaiting:=Nil;
+      while assigned(itm) do
+        begin
+        if not tused_unit(itm).u.crc_final then
+          begin
+          firstwaiting:=tused_unit(itm).u;
+          exit(false);
+          end;
+        itm:=itm.Next;
+        end;
+    end;
 
     function tmodule.usesmodule_in_interface(m: tmodule): boolean;
 
