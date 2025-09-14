@@ -3309,9 +3309,6 @@ type
 
     procedure tscannerfile.tokenwritebyte(val : byte);
       begin
-{$ifdef FPC_BIG_ENDIAN}
-        val:=swapendian(val);
-{$endif}
         recordtokenbuf.write(val,sizeof(byte));
       end;
 
@@ -6689,7 +6686,7 @@ exit_label:
            '''','`' :
              if not ((c='`') and (not (m_multiline_strings in current_settings.modeswitches))) then
                begin
-                 readquotedstring;
+                 cstringpattern:=readquotedstring;
                  current_scanner.preproc_pattern:=cstringpattern;
                  readpreproc:=_CSTRING;
                end;

@@ -557,7 +557,9 @@ implementation
             end;
           if (current_settings.controllertype=ct_esp32c3) then
             begin
-              if idf_version>=50200 then
+              if idf_version>=50300 then
+                CheckAddUnit('esp32c3idf_50300')
+              else if idf_version>=50200 then
                 CheckAddUnit('esp32c3idf_50200')
               else if idf_version>=50000 then
                 CheckAddUnit('esp32c3idf_50000')
@@ -1784,6 +1786,9 @@ type
     function finish_unit(module: tmodule): boolean;
 
       var
+{$ifdef EXTDEBUG}
+        store_crc,
+{$endif EXTDEBUG}
         store_interface_crc,
         store_indirect_crc : cardinal;
         i : longint;

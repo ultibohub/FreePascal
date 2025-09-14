@@ -16157,6 +16157,7 @@ unit aoptx86;
 
       begin
         Result := False;
+        DoAddMov2Lea:=false;
 
         if (taicpu(p).opsize in [S_L{$ifdef x86_64}, S_Q{$endif}]) and
           (taicpu(p).oper[1]^.typ = top_reg) then
@@ -16345,7 +16346,11 @@ unit aoptx86;
                     reference_reset(NewRef, 1, []);
                     NewRef.base := taicpu(p).oper[1]^.reg;
                     NewRef.scalefactor := 1;
-                    NewRef.offset := asizeint(taicpu(p).oper[0]^.val);
+                    { if the destination reg is the same as the ADD register,
+                      and we keep the ADD instruction, do not add the offset
+                      to LEA instruction, otherwise the reg gets increased by 2 times the offset value }
+                    if DoAddMov2Lea or not MatchOperand(taicpu(hp1).oper[0]^,taicpu(hp1).oper[1]^.reg) then
+                      NewRef.offset := asizeint(taicpu(p).oper[0]^.val);
 
                     taicpu(hp1).opcode := A_LEA;
                     taicpu(hp1).loadref(0, NewRef);
@@ -16501,6 +16506,7 @@ unit aoptx86;
 
       begin
         Result := False;
+        DoSubMov2Lea:=false;
 
         if (taicpu(p).opsize in [S_L{$ifdef x86_64}, S_Q{$endif}]) and
           MatchOpType(taicpu(p),top_const,top_reg) then
@@ -16618,7 +16624,11 @@ unit aoptx86;
                     reference_reset(NewRef, 1, []);
                     NewRef.base := taicpu(p).oper[1]^.reg;
                     NewRef.scalefactor := 1;
-                    NewRef.offset := -taicpu(p).oper[0]^.val;
+                    { if the destination reg is the same as the SUB register,
+                      and we keep the ADD instruction, do not substract the offset
+                      to LEA instruction, otherwise the reg gets decreased by 2 times the offset value }
+                    if DoSubMov2Lea or not MatchOperand(taicpu(hp1).oper[0]^,taicpu(hp1).oper[1]^.reg) then
+                       NewRef.offset := -taicpu(p).oper[0]^.val;
 
                     taicpu(hp1).opcode := A_LEA;
                     taicpu(hp1).loadref(0, NewRef);
