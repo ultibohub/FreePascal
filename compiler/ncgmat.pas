@@ -70,7 +70,7 @@ interface
            The actual optimizations regarding shifts have already
            been done and emitted, so this should really a do a divide.
          }
-         procedure emit_div_reg_reg(signed: boolean;denum,num : tregister);virtual;abstract;
+         procedure emit_div_reg_reg_reg(signed: boolean;denum,num,res : tregister);virtual;abstract;
          { This routine must do an actual 32-bit modulo, be it
            signed or unsigned. The result must set into the the
            @var(num) register.
@@ -82,7 +82,7 @@ interface
            The actual optimizations regarding shifts have already
            been done and emitted, so this should really a do a modulo.
          }
-         procedure emit_mod_reg_reg(signed: boolean;denum,num : tregister);virtual;abstract;
+         procedure emit_mod_reg_reg_reg(signed: boolean;denum,num,res : tregister);virtual;abstract;
 {$if not defined(cpu64bitalu) and not defined(cpuhighleveltarget)}
          { This routine must do an actual 64-bit division, be it
            signed or unsigned. The result must set into the the
@@ -431,6 +431,9 @@ implementation
                     End
                   Else { not signed }
                     cg.a_op_const_reg(current_asmdata.CurrAsmList,OP_SHR,OS_INT,power,hreg1);
+
+                  location_reset(location,LOC_REGISTER,opsize);
+                  location.register:=hreg1;
                 End
               else
                 begin
@@ -438,8 +441,13 @@ implementation
                   { hdenom is always free, it's }
                   { only used for temporary }
                   { purposes                }
-                  hdenom := cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
-                  hlcg.a_load_loc_reg(current_asmdata.CurrAsmList,right.resultdef,osuinttype,right.location,hdenom);
+                  if not(right.location.loc in [LOC_CREGISTER,LOC_REGISTER]) then
+                    begin
+                      hdenom := cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
+                      hlcg.a_load_loc_reg(current_asmdata.CurrAsmList,right.resultdef,osuinttype,right.location,hdenom);
+                    end
+                  else
+                    hdenom:=right.location.register;
                   { verify if the divisor is zero, if so return an error immediately,
                     except if we have a const node, where we don't need this, because
                     then zero check was done earlier.
@@ -457,13 +465,13 @@ implementation
                       paraloc1.done;
                       cg.a_label(current_asmdata.CurrAsmList,hl);
                     end;
+                  location_reset(location,LOC_REGISTER,opsize);
+                  location.register:=cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
                   if nodetype = modn then
-                    emit_mod_reg_reg(is_signed(left.resultdef),hdenom,hreg1)
+                    emit_mod_reg_reg_reg(is_signed(left.resultdef),hdenom,hreg1,location.register)
                   else
-                    emit_div_reg_reg(is_signed(left.resultdef),hdenom,hreg1);
+                    emit_div_reg_reg_reg(is_signed(left.resultdef),hdenom,hreg1,location.register);
                 end;
-              location_reset(location,LOC_REGISTER,opsize);
-              location.register:=hreg1;
            end;
         cg.g_overflowcheck(current_asmdata.CurrAsmList,location,resultdef);
       end;

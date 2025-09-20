@@ -974,6 +974,10 @@ implementation
                         break;
                       end;
 
+                    in_ror_x,
+                    in_ror_x_y,
+                    in_rol_x,
+                    in_rol_x_y,
                     in_inc_x,
                     in_dec_x,
                     in_include_x_y,

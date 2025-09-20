@@ -218,6 +218,8 @@ unit aoptcpu;
                   Result:=OptPass1Sub(p);
                 A_Jcc:
                   Result:=OptPass1Jcc(p);
+                A_NOT:
+                  Result:=OptPass1NOT(p);
                 A_MOVDQA,
                 A_MOVAPD,
                 A_MOVAPS,
@@ -453,6 +455,12 @@ unit aoptcpu;
                   Result:=PostPeepholeOptRET(p);
                 A_VPXOR:
                   Result:=PostPeepholeOptVPXOR(p);
+                A_SARX,
+                A_SHLX,
+                A_SHRX:
+                  Result:=PostPeepholeOptSARXSHLXSHRX(p);
+                A_RORX:
+                  Result:=PostPeepholeOptRORX(p);
                 else
                   ;
               end;

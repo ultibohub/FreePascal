@@ -45,7 +45,7 @@ end;
 
 Function QuoteString (Const S : String; Const Quote : String) : String;
 Var
-  I,J : Integer;
+  I,J : SizeInt;
 begin
   J:=0;
   Result:=S;
@@ -260,7 +260,7 @@ end;
 
 procedure TStrings.GetNameValue(Index : Integer; Out AName,AValue : String);
 
-Var L : longint;
+Var L : SizeInt;
 
 begin
   aName:='';
@@ -289,7 +289,7 @@ end;
 
 function TStrings.ExtractName(const s:String):String;
 var
-  L: Longint;
+  L: SizeInt;
 begin
   CheckSpecialChars;
   L:=Pos(FNameValueSeparator,S);
@@ -498,7 +498,7 @@ end;
 Function TStrings.GetValue(const Name: string): string;
 
 Var
-  L : longint;
+  L : Longint;
   N : String;
 
 begin
@@ -1305,6 +1305,12 @@ begin
   Result:=Indexof(S)<>-1;
 end;
 
+Function TStrings.ContainsObject(const AObject: TObject): Boolean;
+
+begin
+  Result:=IndexOfObject(AObject)<>-1;
+end;
+
 Function TStrings.IndexOf(const S: string): Integer;
 begin
   Result:=0;
@@ -1334,7 +1340,7 @@ end;
 
 Function TStrings.IndexOfName(const Name: string): Integer;
 Var
-  len : longint;
+  len : SizeInt;
   S : String;
 begin
   CheckSpecialChars;
