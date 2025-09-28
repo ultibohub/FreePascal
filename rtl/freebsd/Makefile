@@ -621,6 +621,7 @@ WASIAPIUNIT=WASIApi.WASIApi
 WASIUTILUNIT=WASIApi.WASIUtil
 WATCOMUNIT=WatcomApi.WatCom
 WEBASSEMBLYUNIT=Wasm.Api
+WASMSEMUNIT=Wasm.Semaphore
 WIN31UNIT=WinApi.Win31
 WINDIRSUNIT=WinApi.WinDirs
 WINDOWSUNIT=WinApi.Windows
@@ -883,6 +884,7 @@ WASIAPIUNIT=wasiapi
 WASIUTILUNIT=wasiutil
 WATCOMUNIT=watcom
 WEBASSEMBLYUNIT=webassembly
+WASMSEMUNIT=wasmsem
 WIN31UNIT=win31
 WINDIRSUNIT=windirs
 WINDOWSUNIT=windows
@@ -1209,6 +1211,7 @@ STATICLIBPREFIX=libp
 IMPORTLIBPREFIX=libimp
 RSTEXT=.rsj
 EXEDBGEXT=.dbg
+ALL_EXEEXT=.exe
 ifeq ($(OS_TARGET),go32v1)
 STATICLIBPREFIX=
 SHORTSUFFIX=v1
@@ -1305,6 +1308,7 @@ ifeq ($(OS_TARGET),atari)
 EXEEXT=.ttp
 SHORTSUFFIX=ata
 endif
+ALL_EXEEXT+=.ttp
 ifeq ($(OS_TARGET),beos)
 BATCHEXT=.sh
 EXEEXT=
@@ -1331,6 +1335,7 @@ STATICLIBPREFIX=
 SHORTSUFFIX=nw
 IMPORTLIBPREFIX=imp
 endif
+ALL_EXEEXT+=.nlm
 ifeq ($(OS_TARGET),netwlibc)
 EXEEXT=.nlm
 STATICLIBPREFIX=
@@ -1356,6 +1361,7 @@ EXEEXT=.gba
 SHAREDLIBEXT=.so
 SHORTSUFFIX=gba
 endif
+ALL_EXEEXT+=.gba
 ifeq ($(OS_TARGET),symbian)
 SHAREDLIBEXT=.dll
 SHORTSUFFIX=symbian
@@ -1369,6 +1375,7 @@ EXEEXT=.dol
 SHAREDLIBEXT=.so
 SHORTSUFFIX=wii
 endif
+ALL_EXEEXT+=.dol
 ifeq ($(OS_TARGET),aix)
 BATCHEXT=.sh
 EXEEXT=
@@ -1411,6 +1418,7 @@ OEXT=.rel
 endif
 SHORTSUFFIX=emb
 endif
+ALL_EXEEXT+=.bin
 ifeq ($(OS_TARGET),win16)
 STATICLIBPREFIX=
 STATICLIBEXT=.a
@@ -1423,6 +1431,7 @@ endif
 ifeq ($(OS_TARGET),wasip1)
 EXEEXT=.wasm
 endif
+ALL_EXEEXT+=.wasm
 ifeq ($(OS_TARGET),wasip1threads)
 EXEEXT=.wasm
 endif
@@ -2050,6 +2059,7 @@ override CLEANEXEDBGFILES:=$(addprefix $(TARGETDIRPREFIX),$(CLEANEXEDBGFILES))
 endif
 ifdef CLEAN_PROGRAMS
 override CLEANEXEFILES+=$(addprefix $(TARGETDIRPREFIX),$(addsuffix $(EXEEXT), $(CLEAN_PROGRAMS)))
+override ALL_CLEANEXEFILES+=$(foreach lEXEEXT,$(ALL_EXEEXT),$(addprefix $(TARGETDIRPREFIX),$(addsuffix $(lEXEEXT), $(CLEAN_PROGRAMS))))
 override CLEANEXEDBGFILES+=$(addprefix $(TARGETDIRPREFIX),$(addsuffix $(EXEDBGEXT), $(CLEAN_PROGRAMS)))
 endif
 ifdef CLEAN_UNITS
@@ -2088,11 +2098,14 @@ ifdef LIB_NAME
 	-$(DEL) $(LIB_NAME) $(LIB_FULLNAME)
 endif
 	-$(DEL) $(FPCMADE) *$(FULL_TARGET).fpm Package.fpc *$(ASMEXT)
-	-$(DEL) $(FPCEXTFILE) $(REDIRFILE) script*.res link*.res *_script.res *_link.res
+	-$(DEL) $(FPCEXTFILE) $(REDIRFILE) script*.res link*.res *_script.res *_link.res symbol_order*.fpc
 	-$(DEL) $(PPAS) *_ppas$(BATCHEXT) ppas$(BATCHEXT) ppaslink$(BATCHEXT)
 fpc_cleanall: $(CLEANTARGET)
 ifdef CLEANEXEFILES
 	-$(DEL) $(CLEANEXEFILES)
+endif
+ifdef ALL_CLEANEXEFILES
+	-$(DEL) $(ALL_CLEANEXEFILES)
 endif
 ifdef COMPILER_UNITTARGETDIR
 ifdef CLEANPPUFILES
@@ -2116,7 +2129,7 @@ ifneq ($(PPUEXT),.ppu)
 endif
 	-$(DELTREE) *$(SMARTEXT)
 	-$(DEL) fpcmade.* Package.fpc *.fpm
-	-$(DEL) $(FPCEXTFILE) $(REDIRFILE) script*.res link*.res *_script.res *_link.res
+	-$(DEL) $(FPCEXTFILE) $(REDIRFILE) script*.res link*.res *_script.res *_link.res symbol_order*.fpc
 	-$(DEL) $(PPAS) *_ppas$(BATCHEXT) ppas$(BATCHEXT) ppaslink$(BATCHEXT)
 ifdef AOUTEXT
 	-$(DEL) *$(AOUTEXT)

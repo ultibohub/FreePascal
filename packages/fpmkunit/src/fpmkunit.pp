@@ -8700,8 +8700,6 @@ Var
             Dep:=APackage.FBUTarget.Dependencies.Dependencies[i];
             aUnitName:=Dep.Value;
 	    aUnitSourceDir:=ExtractFileDir(Dep.TargetFileName);
-            if aUnitName='' then
-              Writeln('Aloha2');
             if aUnitSourceDir='' then
               APackage.UnitPath.Add('.')
             else

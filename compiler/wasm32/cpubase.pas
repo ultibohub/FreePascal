@@ -99,8 +99,10 @@ uses
       a_i64_trunc_sat_f32_u,
       a_i64_trunc_sat_f64_s,
       a_i64_trunc_sat_f64_u,
-      // exceptions
-      a_try,a_catch,a_catch_all,a_delegate,a_throw,a_rethrow,a_end_try,
+      // exceptions (legacy)
+      a_legacy_try,a_legacy_catch,a_legacy_catch_all,a_legacy_delegate,a_legacy_throw,a_legacy_rethrow,a_end_legacy_try,
+      // exceptions (with exnref)
+      a_try_table,a_catch,a_catch_ref,a_catch_all,a_catch_all_ref,a_throw,a_throw_ref,a_end_try_table,
       // atomic memory accesses - load/store
       a_i32_atomic_load8_u, a_i32_atomic_load16_u, a_i32_atomic_load,
       a_i64_atomic_load8_u, a_i64_atomic_load16_u, a_i64_atomic_load32_u,

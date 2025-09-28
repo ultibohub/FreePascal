@@ -1,8 +1,8 @@
-{ %target=linux,freebsd,openbsd,netbsd,win32,win64,darwin,haiku,morphos }
+{ %target=linux,freebsd,openbsd,netbsd,win32,win64,darwin,haiku,morphos,wasip1,wasip1threads }
 
 {$codepage utf8}
 
-{$ifdef go32v2}
+{$if defined(go32v2) or defined(wasi)}
   {$define USE_INTERNAL_UNICODE}
 {$endif}
 

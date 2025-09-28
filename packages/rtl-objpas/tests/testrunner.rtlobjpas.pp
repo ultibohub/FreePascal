@@ -32,6 +32,9 @@ uses
   cthreads,
   cwstring,
 {$endif}
+{$ifdef wasi}
+  unicodeducet, fpwidestring,
+{$endif}
 {$ifdef useffi}
   ffi.manager,
 {$endif}
@@ -53,9 +56,9 @@ uses
   utcmatrix,
   utcpoint,
   utcvector,
-  utcquaternion
+  utcquaternion,
 {$IFDEF HAS_MONITOR}
-  ,utcfpmonitor, tests.rtti.attrtypes2,
+  utcfpmonitor, tests.rtti.attrtypes2,
 {$ENDIF}
    utcStrUtils
   ;

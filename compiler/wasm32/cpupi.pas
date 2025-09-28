@@ -122,51 +122,6 @@ implementation
       end;
 
 {*****************************************************************************
-                     twasmexceptionstatehandler_jsexceptions
-*****************************************************************************}
-
-    type
-      twasmexceptionstatehandler_jsexceptions = class(tcgexceptionstatehandler)
-        class procedure get_exception_temps(list:TAsmList;var t:texceptiontemps); override;
-        class procedure unget_exception_temps(list:TAsmList;const t:texceptiontemps); override;
-        class procedure new_exception(list:TAsmList;const t:texceptiontemps; const exceptframekind: texceptframekind; out exceptstate: texceptionstate); override;
-        class procedure free_exception(list: TAsmList; const t: texceptiontemps; const s: texceptionstate; a: aint; endexceptlabel: tasmlabel; onlyfree:boolean); override;
-        class procedure handle_nested_exception(list:TAsmList;var t:texceptiontemps;var entrystate: texceptionstate); override;
-      end;
-
-    class procedure twasmexceptionstatehandler_jsexceptions.get_exception_temps(list:TAsmList;var t:texceptiontemps);
-      begin
-        if not assigned(exceptionreasontype) then
-          exceptionreasontype:=search_system_proc('fpc_setjmp').returndef;
-        reference_reset(t.envbuf,0,[]);
-        reference_reset(t.jmpbuf,0,[]);
-        tg.gethltemp(list,exceptionreasontype,exceptionreasontype.size,tt_persistent,t.reasonbuf);
-      end;
-
-    class procedure twasmexceptionstatehandler_jsexceptions.unget_exception_temps(list:TAsmList;const t:texceptiontemps);
-      begin
-        tg.ungettemp(list,t.reasonbuf);
-      end;
-
-    class procedure twasmexceptionstatehandler_jsexceptions.new_exception(list:TAsmList;const t:texceptiontemps; const exceptframekind: texceptframekind; out exceptstate: texceptionstate);
-      begin
-        exceptstate.exceptionlabel:=nil;
-        exceptstate.oldflowcontrol:=flowcontrol;
-        exceptstate.finallycodelabel:=nil;
-
-        flowcontrol:=[fc_inflowcontrol,fc_catching_exceptions];
-      end;
-
-    class procedure twasmexceptionstatehandler_jsexceptions.free_exception(list: TAsmList; const t: texceptiontemps; const s: texceptionstate; a: aint; endexceptlabel: tasmlabel; onlyfree:boolean);
-      begin
-      end;
-
-    class procedure twasmexceptionstatehandler_jsexceptions.handle_nested_exception(list:TAsmList;var t:texceptiontemps;var entrystate: texceptionstate);
-      begin
-        list.Concat(tai_comment.Create(strpnew('TODO: handle_nested_exception')));
-      end;
-
-{*****************************************************************************
                      twasmexceptionstatehandler_nativeexceptions
 *****************************************************************************}
 
@@ -461,10 +416,8 @@ implementation
 
     procedure tcpuprocinfo.setup_eh;
       begin
-        if ts_wasm_native_exceptions in current_settings.targetswitches then
+        if ts_wasm_native_legacy_exceptions in current_settings.targetswitches then
           cexceptionstatehandler:=twasmexceptionstatehandler_nativeexceptions
-        else if ts_wasm_js_exceptions in current_settings.targetswitches then
-          cexceptionstatehandler:=twasmexceptionstatehandler_jsexceptions
         else if ts_wasm_no_exceptions in current_settings.targetswitches then
           cexceptionstatehandler:=twasmexceptionstatehandler_noexceptions
         else if ts_wasm_bf_exceptions in current_settings.targetswitches then
@@ -558,7 +511,7 @@ implementation
                       a_block,
                       a_loop,
                       a_if,
-                      a_try:
+                      a_legacy_try:
                         begin
                           blockstack.Concat(twasmblockitem.create(lastinstr));
                           inc(cur_nesting_depth);
@@ -577,7 +530,7 @@ implementation
                       a_end_block,
                       a_end_loop,
                       a_end_if,
-                      a_end_try:
+                      a_end_legacy_try:
                         begin
                           dec(cur_nesting_depth);
                           if cur_nesting_depth<0 then
@@ -587,7 +540,7 @@ implementation
                              ((cblock.blockstart.opcode=a_block) and (lastinstr.opcode<>a_end_block)) or
                              ((cblock.blockstart.opcode=a_loop) and (lastinstr.opcode<>a_end_loop)) or
                              ((cblock.blockstart.opcode=a_if) and (lastinstr.opcode<>a_end_if)) or
-                             ((cblock.blockstart.opcode=a_try) and (lastinstr.opcode<>a_end_try)) then
+                             ((cblock.blockstart.opcode=a_legacy_try) and (lastinstr.opcode<>a_end_legacy_try)) then
                             Message1(parser_f_unsupported_feature,'incompatible nesting level');
                           cblock.free;
                         end;
@@ -602,11 +555,11 @@ implementation
                     lbl.labsym.nestingdepth:=-1;
                     nextinstr:=FindNextInstruction(hp);
 
-                    if assigned(nextinstr) and (nextinstr.opcode in [a_end_block,a_end_try,a_end_if]) then
+                    if assigned(nextinstr) and (nextinstr.opcode in [a_end_block,a_end_legacy_try,a_end_if]) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth
                     else if assigned(lastinstr) and (lastinstr.opcode=a_loop) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth
-                    else if assigned(lastinstr) and (lastinstr.opcode in [a_end_block,a_end_try,a_end_if]) then
+                    else if assigned(lastinstr) and (lastinstr.opcode in [a_end_block,a_end_legacy_try,a_end_if]) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth+1
                     else if assigned(nextinstr) and (nextinstr.opcode=a_loop) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth+1;
@@ -640,13 +593,13 @@ implementation
                     a_block,
                     a_loop,
                     a_if,
-                    a_try:
+                    a_legacy_try:
                       inc(cur_nesting_depth);
 
                     a_end_block,
                     a_end_loop,
                     a_end_if,
-                    a_end_try:
+                    a_end_legacy_try:
                       begin
                         dec(cur_nesting_depth);
                         if cur_nesting_depth<0 then
