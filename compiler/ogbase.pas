@@ -271,6 +271,7 @@ interface
 {$endif ARM}
 
        constructor create(AList:TFPHashObjectList;const AName:string);virtual;
+       function  ToString:ansistring;override;
        function  address:qword;
        procedure SetAddress(apass:byte;aobjsec:TObjSection;abind:TAsmsymbind;atyp:Tasmsymtype);
        function  ObjData: TObjData;
@@ -308,6 +309,7 @@ interface
         constructor CreateGroup(ADataOffset:TObjSectionOfs;grp:TObjSectionGroup;Atyp:TObjRelocationType);
         constructor CreateRaw(ADataOffset:TObjSectionOfs;s:TObjSymbol;ARawType:byte);
         function TargetName:TSymStr;
+        function ToString: ansistring; override;
         property typ: TObjRelocationType read GetType write SetType;
      end;
 
@@ -342,6 +344,7 @@ interface
        VTRefList : TFPObjectList;
        constructor create(AList:TFPHashObjectList;const Aname:string;Aalign:longint;Aoptions:TObjSectionOptions);virtual;
        destructor  destroy;override;
+       function  ToString:ansistring;override;
        function  write(const d;l:TObjSectionOfs):TObjSectionOfs;
        procedure writeInt8(v: int8);
        procedure writeInt16LE(v: int16);
@@ -859,6 +862,20 @@ implementation
       end;
 
 
+    function TObjSymbol.ToString: ansistring;
+      var
+        objsectionstr: ansistring;
+      begin
+        if Assigned(objsection) then
+          objsectionstr:=objsection.ToString
+        else
+          objsectionstr:='nil';
+        WriteStr(Result,'(Name:',Name,';bind:',bind,';typ:',typ,';pass:',pass,
+          ';refs:',refs,';symidx:',symidx,';objsection:',objsectionstr,';offset:',
+          offset,';size:',size,')');
+      end;
+
+
     function TObjSymbol.address:qword;
       begin
         if assigned(objsection) then
@@ -998,6 +1015,34 @@ implementation
           result:=objsection.Name;
       end;
 
+
+    function TObjRelocation.ToString: ansistring;
+      var
+        typstr,
+        symbolstr,
+        objsectionstr,
+        groupstr: ansistring;
+      begin
+        Str(typ,typstr);
+        if Assigned(symbol) then
+          symbolstr:=symbol.ToString
+        else
+          symbolstr:='nil';
+        if Assigned(objsection) then
+          objsectionstr:=objsection.ToString
+        else
+          objsectionstr:='nil';
+        if Assigned(group) then
+          groupstr:=group.ToString
+        else
+          groupstr:='nil';
+        Result:='(typ:'+typstr+';DataOffset:'+tostr(DataOffset)+
+          ';orgsize:'+tostr(orgsize)+';symbol:'+symbolstr+
+          ';objsection:'+objsectionstr+';group:'+groupstr+
+          ';ftype:'+tostr(ftype)+';size:'+tostr(size)+
+          ';flags:'+tostr(flags)+')';
+      end;
+
 {****************************************************************************
                               TObjSection
 ****************************************************************************}
@@ -1038,6 +1083,14 @@ implementation
       end;
 
 
+    function TObjSection.ToString: ansistring;
+      begin
+        System.WriteStr(Result,'(Name:',Name,';index',index,';SecSymIdx:',SecSymIdx,
+          ';SecAlign:',SecAlign,';Size:',Size,';DataPos:',DataPos,';MemPos:',
+          MemPos,';DataAlignBytes:',DataAlignBytes,';Used:',Used,')');
+      end;
+
+
     procedure TObjSection.SetSecOptions(Aoptions:TObjSectionOptions);
       begin
         FSecOptions:=FSecOptions+AOptions;
@@ -1069,7 +1122,7 @@ implementation
           begin
             if Size<>Data.size then
               internalerror(200602281);
-{$ifndef cpu64bitalu}
+{$ifndef cpu64bitaddr}
             if (qword(size)+l)>SizeLimit then
               SectionTooLargeError;
 {$endif}
@@ -1274,7 +1327,7 @@ implementation
 
     procedure TObjSection.alloc(l:TObjSectionOfs);
       begin
-{$ifndef cpu64bitalu}
+{$ifndef cpu64bitaddr}
         if (qword(size)+l)>SizeLimit then
           SectionTooLargeError;
 {$endif}
@@ -3948,7 +4001,7 @@ implementation
                 DoRelocationFixup(objsec);
                 {for size = 0 data is not valid PM }
                 if assigned(objsec.data) and (objsec.data.size<>objsec.size) then
-                  internalerror(2010092801);
+                  internalerror(2010092801,'wrong data size for '+objsec.FullName);
               end;
           end;
       end;

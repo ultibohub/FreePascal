@@ -5536,7 +5536,6 @@ begin
               end;
           end;
       end;
-
     abi_riscv_ilp32d:
       begin
         if not option.CPUSetExplicitly then
@@ -5577,7 +5576,6 @@ begin
               end;
           end;
       end;
-
     abi_riscv_lp64d:
       begin
         if not option.CPUSetExplicitly then
@@ -5755,7 +5753,7 @@ begin
 
 {$if defined(loongarch64)}
   { LoongArch defaults }
-  if (target_info.abi = abi_riscv_hf) then
+  if (target_info.abi = abi_loongarch_lp64d) then
     begin
       init_settings.cputype:=cpu_3a;
       init_settings.fputype:=fpu_fd;
