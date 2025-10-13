@@ -411,20 +411,33 @@ implementation
         instr: taicpu;
         bl: taicpu_wasm_structured_instruction;
         l: TAsmLabel;
+        lblopidx: Integer;
       begin
         result.typ:=amfrtNoChange;
         if ai.typ<>ait_instruction then
           exit;
         instr:=taicpu(ai);
-        if not (instr.opcode in [a_br,a_br_if]) then
+        case instr.opcode of
+          a_br,a_br_if,a_catch_all,a_catch_all_ref:
+            begin
+              if instr.ops<>1 then
+                internalerror(2023101601);
+              lblopidx:=0;
+            end;
+          a_catch,a_catch_ref:
+            begin
+              if instr.ops<>2 then
+                internalerror(2023101601);
+              lblopidx:=1;
+            end;
+          else
+            exit;
+        end;
+        if instr.oper[lblopidx]^.typ<>top_const then
           exit;
-        if instr.ops<>1 then
-          internalerror(2023101601);
-        if instr.oper[0]^.typ<>top_const then
-          exit;
-        bl:=blockstack[instr.oper[0]^.val];
+        bl:=blockstack[instr.oper[lblopidx]^.val];
         l:=bl.getlabel;
-        instr.loadsymbol(0,l,0);
+        instr.loadsymbol(lblopidx,l,0);
       end;
 
     function tcpuprocinfo.ConvertIfToBrIf(ai: tai; blockstack: twasmstruc_stack): TAsmMapFuncResult;
@@ -644,11 +657,11 @@ implementation
                     lbl.labsym.nestingdepth:=-1;
                     nextinstr:=FindNextInstruction(hp);
 
-                    if assigned(nextinstr) and (nextinstr.opcode in [a_end_block,a_end_legacy_try,a_end_if]) then
+                    if assigned(nextinstr) and (nextinstr.opcode in [a_end_block,a_end_legacy_try,a_end_try_table,a_end_if]) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth
                     else if assigned(lastinstr) and (lastinstr.opcode=a_loop) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth
-                    else if assigned(lastinstr) and (lastinstr.opcode in [a_end_block,a_end_legacy_try,a_end_if]) then
+                    else if assigned(lastinstr) and (lastinstr.opcode in [a_end_block,a_end_legacy_try,a_end_try_table,a_end_if]) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth+1
                     else if assigned(nextinstr) and (nextinstr.opcode=a_loop) then
                       lbl.labsym.nestingdepth:=cur_nesting_depth+1;
@@ -666,7 +679,7 @@ implementation
       function resolve_labels_pass2(asmlist: TAsmList): Boolean;
         var
           hp: tai;
-          instr: taicpu;
+          instr, catchinstr: taicpu;
           hlabel: tasmsymbol;
           cur_nesting_depth: longint;
         begin
@@ -685,10 +698,73 @@ implementation
                     a_legacy_try:
                       inc(cur_nesting_depth);
 
+                    a_try_table:
+                      begin
+                        catchinstr:=taicpu(instr.try_table_catch_clauses.First);
+                        while assigned(catchinstr) do
+                          begin
+                            case catchinstr.opcode of
+                              a_catch,
+                              a_catch_ref:
+                                begin
+                                  if catchinstr.ops<>2 then
+                                    Message1(parser_f_unsupported_feature,'a_catch or a_catch_ref with wrong operand count');
+                                  if catchinstr.oper[1]^.typ=top_ref then
+                                    begin
+                                      if not assigned(catchinstr.oper[1]^.ref^.symbol) then
+                                        Message1(parser_f_unsupported_feature,'a_catch or a_catch_ref with wrong ref operand');
+                                      if (catchinstr.oper[1]^.ref^.base<>NR_NO) or
+                                         (catchinstr.oper[1]^.ref^.index<>NR_NO) or
+                                         (catchinstr.oper[1]^.ref^.offset<>0) then
+                                        Message1(parser_f_unsupported_feature,'a_catch or a_catch_ref with wrong ref type');
+                                      if (catchinstr.oper[1]^.ref^.symbol.nestingdepth<>-1) and
+                                         (cur_nesting_depth>=catchinstr.oper[1]^.ref^.symbol.nestingdepth) then
+                                        catchinstr.loadconst(0,cur_nesting_depth-catchinstr.oper[1]^.ref^.symbol.nestingdepth)
+                                      else
+                                        begin
+                                          result:=false;
+                                          hlabel:=tasmsymbol(catchinstr.oper[1]^.ref^.symbol);
+                                          asmlist.insertafter(tai_comment.create(strpnew('Unable to find destination of label '+hlabel.name)),hp);
+                                        end;
+                                    end;
+                                end;
+                              a_catch_all,
+                              a_catch_all_ref:
+                                begin
+                                  if catchinstr.ops<>1 then
+                                    Message1(parser_f_unsupported_feature,'a_catch_all or a_catch_all_ref with wrong operand count');
+                                  if catchinstr.oper[0]^.typ=top_ref then
+                                    begin
+                                      if not assigned(catchinstr.oper[0]^.ref^.symbol) then
+                                        Message1(parser_f_unsupported_feature,'a_catch_all or a_catch_all_ref with wrong ref operand');
+                                      if (catchinstr.oper[0]^.ref^.base<>NR_NO) or
+                                         (catchinstr.oper[0]^.ref^.index<>NR_NO) or
+                                         (catchinstr.oper[0]^.ref^.offset<>0) then
+                                        Message1(parser_f_unsupported_feature,'a_catch_all or a_catch_all_ref with wrong ref type');
+                                      if (catchinstr.oper[0]^.ref^.symbol.nestingdepth<>-1) and
+                                         (cur_nesting_depth>=catchinstr.oper[0]^.ref^.symbol.nestingdepth) then
+                                        catchinstr.loadconst(0,cur_nesting_depth-catchinstr.oper[0]^.ref^.symbol.nestingdepth)
+                                      else
+                                        begin
+                                          result:=false;
+                                          hlabel:=tasmsymbol(catchinstr.oper[0]^.ref^.symbol);
+                                          asmlist.insertafter(tai_comment.create(strpnew('Unable to find destination of label '+hlabel.name)),hp);
+                                        end;
+                                    end;
+                                end;
+                              else
+                                internalerror(2025100515);
+                            end;
+                            catchinstr:=taicpu(catchinstr.Next);
+                          end;
+                        inc(cur_nesting_depth);
+                      end;
+
                     a_end_block,
                     a_end_loop,
                     a_end_if,
-                    a_end_legacy_try:
+                    a_end_legacy_try,
+                    a_end_try_table:
                       begin
                         dec(cur_nesting_depth);
                         if cur_nesting_depth<0 then
@@ -743,8 +819,9 @@ implementation
           blocks: TFPHashObjectList;
           curr_block, tmplist: TAsmList;
           hp, hpnext: tai;
-          block_nr, machine_state, target_block_index: Integer;
+          block_nr, machine_state, target_block_index, catch_nr: Integer;
           state_machine_loop_start_label, state_machine_exit: TAsmLabel;
+          catchinstr: taicpu;
         begin
           blocks:=TFPHashObjectList.Create;
           curr_block:=TAsmList.Create;
@@ -821,6 +898,67 @@ implementation
                           curr_block.insertListAfter(hp,tmplist);
                           curr_block.Remove(hp);
                         end;
+                    end
+                  else if (hp.typ=ait_wasm_structured_instruction) and
+                          (taicpu_wasm_structured_instruction(hp).wstyp=aitws_try_table) and
+                          (tai_wasmstruc_try_table(hp).try_table_instr.try_table_catch_clauses.Count>0) then
+                    begin
+                      {
+                        block            ;; Count
+                          block          ;; Count-1
+                            ...
+                            block        ;; 1
+                              block      ;; 0
+                                try_table (catch 0) (catch 1) (catch 2) ... (catch Count-1)
+                                  ;; code inside try
+                                end_try_table
+                                br Count
+                              end_block  ;; 0
+                              br catch_0_label
+                            end_block
+                            br catch_1_label
+                            ...
+                          end_block      ;; Count-1
+                          br catch_Count-1_label
+                        end_block        ;; Count
+                      }
+                      for catch_nr:=0 to tai_wasmstruc_try_table(hp).try_table_instr.try_table_catch_clauses.Count do
+                        curr_block.InsertBefore(taicpu.op_none(a_block),hp);
+                      tmplist.Clear;
+                      tmplist.Concat(taicpu.op_const(a_br,tai_wasmstruc_try_table(hp).try_table_instr.try_table_catch_clauses.Count));
+                      catchinstr:=taicpu(tai_wasmstruc_try_table(hp).try_table_instr.try_table_catch_clauses.Last);
+                      for catch_nr:=tai_wasmstruc_try_table(hp).try_table_instr.try_table_catch_clauses.Count-1 downto 0 do
+                        begin
+                          case catchinstr.opcode of
+                            a_catch,a_catch_ref:
+                              begin
+                                if (catchinstr.ops<>2) or
+                                   (catchinstr.oper[1]^.typ<>top_ref) or
+                                   not assigned(catchinstr.oper[1]^.ref^.symbol) then
+                                  internalerror(2025100517);
+                                target_block_index:=blocks.FindIndexOf(catchinstr.oper[1]^.ref^.symbol.Name);
+                                catchinstr.loadconst(1,catch_nr);
+                              end;
+                            a_catch_all,a_catch_all_ref:
+                              begin
+                                if (catchinstr.ops<>1) or
+                                   (catchinstr.oper[0]^.typ<>top_ref) or
+                                   not assigned(catchinstr.oper[0]^.ref^.symbol) then
+                                  internalerror(2025100518);
+                                target_block_index:=blocks.FindIndexOf(catchinstr.oper[0]^.ref^.symbol.Name);
+                                catchinstr.loadconst(0,catch_nr);
+                              end;
+                            else
+                              internalerror(2025100516);
+                          end;
+                          tmplist.Concat(taicpu.op_none(a_end_block));
+                          tmplist.Concat(taicpu.op_const(a_i32_const,target_block_index));
+                          tmplist.Concat(taicpu.op_const(a_local_set,machine_state));
+                          tmplist.Concat(taicpu.op_sym(a_br,state_machine_loop_start_label));
+                          catchinstr:=taicpu(catchinstr.Previous);
+                        end;
+                      tmplist.Concat(taicpu.op_none(a_end_block));
+                      curr_block.insertListAfter(hp,tmplist);
                     end;
                   hp:=hpnext;
                 end;
@@ -886,20 +1024,27 @@ implementation
             begin
               if hp.typ=ait_wasm_structured_instruction then
                 begin
-                  if not (taicpu_wasm_structured_instruction(hp).wstyp in [aitws_try_catch,aitws_try_delegate]) then
-                    internalerror(2023102201);
-                  resolve_labels_of_asmlist_with_try_blocks_recursive(tai_wasmstruc_try(hp).try_asmlist);
-                  if taicpu_wasm_structured_instruction(hp).wstyp=aitws_try_catch then
-                    with tai_wasmstruc_try_catch(hp) do
-                      begin
-                        for i:=low(catch_list) to high(catch_list) do
-                          resolve_labels_of_asmlist_with_try_blocks_recursive(catch_list[i].asmlist);
-                        resolve_labels_of_asmlist_with_try_blocks_recursive(catch_all_asmlist);
-                      end
-                  else if taicpu_wasm_structured_instruction(hp).wstyp=aitws_try_delegate then
-                    {nothing}
+                  if taicpu_wasm_structured_instruction(hp).wstyp=aitws_try_table then
+                    begin
+                      resolve_labels_of_asmlist_with_try_blocks_recursive(tai_wasmstruc_try_table(hp).inner_asmlist);
+                    end
                   else
-                    internalerror(2023102202);
+                    begin
+                      if not (taicpu_wasm_structured_instruction(hp).wstyp in [aitws_legacy_try_catch,aitws_legacy_try_delegate]) then
+                        internalerror(2023102201);
+                      resolve_labels_of_asmlist_with_try_blocks_recursive(tai_wasmstruc_legacy_try(hp).try_asmlist);
+                      if taicpu_wasm_structured_instruction(hp).wstyp=aitws_legacy_try_catch then
+                        with tai_wasmstruc_legacy_try_catch(hp) do
+                          begin
+                            for i:=low(catch_list) to high(catch_list) do
+                              resolve_labels_of_asmlist_with_try_blocks_recursive(catch_list[i].asmlist);
+                            resolve_labels_of_asmlist_with_try_blocks_recursive(catch_all_asmlist);
+                          end
+                      else if taicpu_wasm_structured_instruction(hp).wstyp=aitws_legacy_try_delegate then
+                        {nothing}
+                      else
+                        internalerror(2023102202);
+                    end;
                 end;
               hp:=tai(hp.next);
             end;

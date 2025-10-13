@@ -145,6 +145,8 @@ uses
       { taicpu }
 
       taicpu = class(tai_cpu_abstract_sym)
+      private type
+        TCatchArray = array of taicpu;
       private
          insoffset : longint;
       public
@@ -169,6 +171,8 @@ uses
 
          constructor op_functype(op : tasmop; _op1: TWasmFuncType);
 
+         constructor op_catch(op : tasmop;_op1 : TCatchArray);
+
          procedure loadfunctype(opidx:longint;ft:TWasmFuncType);
          procedure loadsingle(opidx:longint;f:single);
          procedure loaddouble(opidx:longint;d:double);
@@ -187,8 +191,9 @@ uses
         aitws_if,
         aitws_block,
         aitws_loop,
-        aitws_try_delegate,
-        aitws_try_catch
+        aitws_legacy_try_delegate,
+        aitws_legacy_try_catch,
+        aitws_try_table
       );
 
       { taicpu_wasm_structured_instruction }
@@ -248,11 +253,11 @@ uses
         procedure ConvertToFlatList(l: TAsmList);override;
       end;
 
-      { tai_wasmstruc_try }
+      { tai_wasmstruc_legacy_try }
 
-      tai_wasmstruc_try = class(taicpu_wasm_structured_instruction)
+      tai_wasmstruc_legacy_try = class(taicpu_wasm_structured_instruction)
       private
-        class function create_from(srclist: TAsmList): tai_wasmstruc_try;
+        class function create_from(srclist: TAsmList): tai_wasmstruc_legacy_try;
       public
         try_asmlist: TAsmList;
 
@@ -262,9 +267,9 @@ uses
         procedure ConvertToFlatList(l: TAsmList);override;
       end;
 
-      { tai_wasmstruc_try_delegate }
+      { tai_wasmstruc_legacy_try_delegate }
 
-      tai_wasmstruc_try_delegate = class(tai_wasmstruc_try)
+      tai_wasmstruc_legacy_try_delegate = class(tai_wasmstruc_legacy_try)
         delegate_instr: taicpu;
 
         constructor internal_create(first_ins: taicpu; a_try_asmlist, srclist: TAsmList);
@@ -274,9 +279,9 @@ uses
         procedure ConvertToFlatList(l: TAsmList);override;
       end;
 
-      { tai_wasmstruc_try_catch }
+      { tai_wasmstruc_legacy_try_catch }
 
-      tai_wasmstruc_try_catch = class(tai_wasmstruc_try)
+      tai_wasmstruc_legacy_try_catch = class(tai_wasmstruc_legacy_try)
         catch_list: array of record
           catch_instr: taicpu;
           asmlist: TAsmList;
@@ -285,6 +290,19 @@ uses
 
         constructor internal_create(first_ins: taicpu; a_try_asmlist, srclist: TAsmList);
         destructor Destroy; override;
+        function getcopy:TLinkedListItem;override;
+        procedure Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);override;
+        procedure ConvertToFlatList(l: TAsmList);override;
+      end;
+
+      { tai_wasmstruc_try_table }
+
+      tai_wasmstruc_try_table = class(taicpu_wasm_structured_instruction)
+        try_table_instr: taicpu;
+        inner_asmlist: TAsmList;
+
+        constructor create_from(a_try_table_instr: taicpu; srclist: TAsmList);
+        destructor Destroy;override;
         function getcopy:TLinkedListItem;override;
         procedure Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);override;
         procedure ConvertToFlatList(l: TAsmList);override;
@@ -1545,9 +1563,9 @@ uses
         l.Concat(taicpu.op_none(a_end_loop));
       end;
 
-    { tai_wasmstruc_try }
+    { tai_wasmstruc_legacy_try }
 
-    class function tai_wasmstruc_try.create_from(srclist: TAsmList): tai_wasmstruc_try;
+    class function tai_wasmstruc_legacy_try.create_from(srclist: TAsmList): tai_wasmstruc_legacy_try;
       var
         Done: Boolean;
         p: tai;
@@ -1571,31 +1589,31 @@ uses
         until Done;
         case taicpu(p).opcode of
           a_end_legacy_try,a_legacy_catch,a_legacy_catch_all:
-            result:=tai_wasmstruc_try_catch.internal_create(taicpu(p),tmp_asmlist,srclist);
+            result:=tai_wasmstruc_legacy_try_catch.internal_create(taicpu(p),tmp_asmlist,srclist);
           a_legacy_delegate:
-            result:=tai_wasmstruc_try_delegate.internal_create(taicpu(p),tmp_asmlist,srclist);
+            result:=tai_wasmstruc_legacy_try_delegate.internal_create(taicpu(p),tmp_asmlist,srclist);
           else
             internalerror(2023100502);
         end;
       end;
 
-    constructor tai_wasmstruc_try.internal_create(a_try_asmlist: TAsmList);
+    constructor tai_wasmstruc_legacy_try.internal_create(a_try_asmlist: TAsmList);
       begin
         inherited Create;
         try_asmlist:=a_try_asmlist;
       end;
 
-    destructor tai_wasmstruc_try.Destroy;
+    destructor tai_wasmstruc_legacy_try.Destroy;
       begin
         try_asmlist.free;
         inherited Destroy;
       end;
 
-    function tai_wasmstruc_try.getcopy: TLinkedListItem;
+    function tai_wasmstruc_legacy_try.getcopy: TLinkedListItem;
       var
-        p: tai_wasmstruc_try;
+        p: tai_wasmstruc_legacy_try;
       begin
-        p:=tai_wasmstruc_try(inherited getcopy);
+        p:=tai_wasmstruc_legacy_try(inherited getcopy);
         if assigned(try_asmlist) then
           begin
             p.try_asmlist:=TAsmList.Create;
@@ -1604,15 +1622,15 @@ uses
         getcopy:=p;
       end;
 
-    procedure tai_wasmstruc_try.ConvertToFlatList(l: TAsmList);
+    procedure tai_wasmstruc_legacy_try.ConvertToFlatList(l: TAsmList);
       begin
         l.Concat(taicpu.op_none(a_legacy_try));
         l.concatList(try_asmlist);
       end;
 
-    { tai_wasmstruc_try_catch }
+    { tai_wasmstruc_legacy_try_catch }
 
-    constructor tai_wasmstruc_try_catch.internal_create(first_ins: taicpu; a_try_asmlist, srclist: TAsmList);
+    constructor tai_wasmstruc_legacy_try_catch.internal_create(first_ins: taicpu; a_try_asmlist, srclist: TAsmList);
       var
         p: tai;
 
@@ -1660,7 +1678,7 @@ uses
       var
         Done: Boolean;
       begin
-        wstyp:=aitws_try_catch;
+        wstyp:=aitws_legacy_try_catch;
         inherited internal_create(a_try_asmlist);
         if assigned(first_ins.Previous) or assigned(first_ins.Next) then
           internalerror(2023100310);
@@ -1690,7 +1708,7 @@ uses
         until Done;
       end;
 
-    destructor tai_wasmstruc_try_catch.Destroy;
+    destructor tai_wasmstruc_legacy_try_catch.Destroy;
       var
         i: Integer;
       begin
@@ -1703,12 +1721,12 @@ uses
         inherited Destroy;
       end;
 
-    function tai_wasmstruc_try_catch.getcopy: TLinkedListItem;
+    function tai_wasmstruc_legacy_try_catch.getcopy: TLinkedListItem;
       var
-        p: tai_wasmstruc_try_catch;
+        p: tai_wasmstruc_legacy_try_catch;
         i: Integer;
       begin
-        p:=tai_wasmstruc_try_catch(inherited getcopy);
+        p:=tai_wasmstruc_legacy_try_catch(inherited getcopy);
         p.catch_list:=Copy(catch_list);
         for i:=0 to length(catch_list)-1 do
           begin
@@ -1728,7 +1746,7 @@ uses
         getcopy:=p;
       end;
 
-    procedure tai_wasmstruc_try_catch.Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);
+    procedure tai_wasmstruc_legacy_try_catch.Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);
       var
         i: Integer;
       begin
@@ -1740,7 +1758,7 @@ uses
         blockstack.pop;
       end;
 
-    procedure tai_wasmstruc_try_catch.ConvertToFlatList(l: TAsmList);
+    procedure tai_wasmstruc_legacy_try_catch.ConvertToFlatList(l: TAsmList);
       var
         i: Integer;
       begin
@@ -1761,41 +1779,111 @@ uses
           l.concat(tai_label.create(FLabel));
       end;
 
-    { tai_wasmstruc_try_delegate }
+    { tai_wasmstruc_try_table }
 
-    constructor tai_wasmstruc_try_delegate.internal_create(first_ins: taicpu; a_try_asmlist, srclist: TAsmList);
+    constructor tai_wasmstruc_try_table.create_from(a_try_table_instr: taicpu;srclist: TAsmList);
+      var
+        Done: Boolean;
+        p: tai;
       begin
-        wstyp:=aitws_try_delegate;
+        wstyp:=aitws_try_table;
+        inherited Create;
+        if assigned(a_try_table_instr.Previous) or assigned(a_try_table_instr.Next) then
+          internalerror(2023100304);
+        try_table_instr:=a_try_table_instr;
+
+        inner_asmlist:=TAsmList.Create;
+
+        Done:=False;
+        repeat
+          p:=tai(srclist.First);
+          if not assigned(p) then
+            internalerror(2023100305);
+          if (p.typ=ait_instruction) and (taicpu(p).opcode=a_end_try_table) then
+            begin
+              srclist.Remove(p);
+              Done:=True;
+            end
+          else
+            inner_asmlist.Concat(wasm_convert_first_item_to_structured(srclist));
+        until Done;
+      end;
+
+    destructor tai_wasmstruc_try_table.Destroy;
+      begin
+        inner_asmlist.free;
+        try_table_instr.free;
+        inherited Destroy;
+      end;
+
+    function tai_wasmstruc_try_table.getcopy: TLinkedListItem;
+      var
+        p: tai_wasmstruc_try_table;
+      begin
+        p:=tai_wasmstruc_try_table(inherited getcopy);
+        if assigned(try_table_instr) then
+          p.try_table_instr:=taicpu(try_table_instr.getcopy);
+        if assigned(inner_asmlist) then
+          begin
+            p.inner_asmlist:=TAsmList.Create;
+            p.inner_asmlist.concatListcopy(inner_asmlist);
+          end;
+        getcopy:=p;
+      end;
+
+    procedure tai_wasmstruc_try_table.Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);
+      begin
+        map_structured_asmlist_inner(try_table_instr.try_table_catch_clauses,f,blockstack);
+        blockstack.push(self);
+        map_structured_asmlist_inner(inner_asmlist,f,blockstack);
+        blockstack.pop;
+      end;
+
+    procedure tai_wasmstruc_try_table.ConvertToFlatList(l: TAsmList);
+      begin
+        l.Concat(try_table_instr);
+        try_table_instr:=nil;
+        l.concatList(inner_asmlist);
+        l.Concat(taicpu.op_none(a_end_try_table));
+        if FLabelIsNew then
+          l.concat(tai_label.create(FLabel));
+      end;
+
+    { tai_wasmstruc_legacy_try_delegate }
+
+    constructor tai_wasmstruc_legacy_try_delegate.internal_create(first_ins: taicpu; a_try_asmlist, srclist: TAsmList);
+      begin
+        wstyp:=aitws_legacy_try_delegate;
         inherited internal_create(a_try_asmlist);
         if assigned(first_ins.Previous) or assigned(first_ins.Next) then
           internalerror(2023100309);
         delegate_instr:=first_ins;
       end;
 
-    destructor tai_wasmstruc_try_delegate.Destroy;
+    destructor tai_wasmstruc_legacy_try_delegate.Destroy;
       begin
         delegate_instr.free;
         inherited Destroy;
       end;
 
-    function tai_wasmstruc_try_delegate.getcopy: TLinkedListItem;
+    function tai_wasmstruc_legacy_try_delegate.getcopy: TLinkedListItem;
       var
-        p: tai_wasmstruc_try_delegate;
+        p: tai_wasmstruc_legacy_try_delegate;
       begin
-        p:=tai_wasmstruc_try_delegate(inherited getcopy);
+        p:=tai_wasmstruc_legacy_try_delegate(inherited getcopy);
         if assigned(delegate_instr) then
           p.delegate_instr:=taicpu(delegate_instr.getcopy);
         getcopy:=p;
       end;
 
-    procedure tai_wasmstruc_try_delegate.Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);
+    procedure tai_wasmstruc_legacy_try_delegate.Map(f: TAsmMapFunc; blockstack: twasmstruc_stack);
       begin
         blockstack.push(self);
         map_structured_asmlist_inner(try_asmlist,f,blockstack);
         blockstack.pop;
       end;
 
-    procedure tai_wasmstruc_try_delegate.ConvertToFlatList(l: TAsmList);
+    procedure tai_wasmstruc_legacy_try_delegate.ConvertToFlatList(l: TAsmList);
       begin
         inherited ConvertToFlatList(l);
         l.Concat(delegate_instr);
@@ -2037,6 +2125,15 @@ uses
        loadfunctype(0,_op1);
       end;
 
+    constructor taicpu.op_catch(op: tasmop; _op1: TCatchArray);
+      var
+        c: taicpu;
+      begin
+        create(op);
+        for c in _op1 do
+          try_table_catch_clauses.Concat(c);
+      end;
+
     procedure taicpu.loadfunctype(opidx: longint; ft: TWasmFuncType);
       begin
        allocate_oper(opidx+1);
@@ -2114,6 +2211,8 @@ uses
             until v=0;
           end;
 
+      var
+        hp: taicpu;
       begin
         result:=0;
         { Save the old offset and set the new offset }
@@ -2376,7 +2475,8 @@ uses
           a_block,
           a_loop,
           a_if,
-          a_legacy_try:
+          a_legacy_try,
+          a_try_table:
             begin
               if ops=0 then
                 result:=2
@@ -2396,6 +2496,58 @@ uses
                         end;
                       else
                         internalerror(2021092620);
+                    end;
+                end;
+              if opcode=a_try_table then
+                begin
+                  Inc(result,UlebSize(try_table_catch_clauses.Count));
+                  hp:=taicpu(try_table_catch_clauses.First);
+                  while Assigned(hp) do
+                    begin
+                      case hp.opcode of
+                        a_catch,
+                        a_catch_ref:
+                          begin
+                            Inc(result);
+                            if hp.ops<>2 then
+                              internalerror(2025100508);
+                            with hp.oper[0]^ do
+                              case typ of
+                                top_ref:
+                                  begin
+                                    if not assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
+                                      internalerror(2025100509);
+                                    Inc(result,5);
+                                  end;
+                                else
+                                  internalerror(2025100510);
+                              end;
+                            with hp.oper[1]^ do
+                              case typ of
+                                top_const:
+                                  Inc(result,UlebSize(val));
+                                else
+                                  internalerror(2025100511);
+                              end;
+                          end;
+                        a_catch_all,
+                        a_catch_all_ref:
+                          begin
+                            Inc(result);
+                            if hp.ops<>1 then
+                              internalerror(2025100512);
+                            with hp.oper[0]^ do
+                              case typ of
+                                top_const:
+                                  Inc(result,UlebSize(val));
+                                else
+                                  internalerror(2025100513);
+                              end;
+                          end;
+                        else
+                          internalerror(2025100514);
+                      end;
+                      hp:=taicpu(hp.Next);
                     end;
                 end;
             end;
@@ -2714,6 +2866,8 @@ uses
             until v=0;
           end;
 
+      var
+        hp: taicpu;
       begin
         { safety check }
         if objdata.currobjsec.size<>longword(insoffset) then
@@ -3161,7 +3315,8 @@ uses
           a_block,
           a_loop,
           a_if,
-          a_legacy_try:
+          a_legacy_try,
+          a_try_table:
             begin
               case opcode of
                 a_block:
@@ -3172,6 +3327,8 @@ uses
                   WriteByte($04);
                 a_legacy_try:
                   WriteByte($06);
+                a_try_table:
+                  WriteByte($1F);
                 else
                   internalerror(2021092626);
               end;
@@ -3198,6 +3355,62 @@ uses
                         end;
                       else
                         internalerror(2021092620);
+                    end;
+                end;
+              if opcode=a_try_table then
+                begin
+                  WriteUleb(try_table_catch_clauses.Count);
+                  hp:=taicpu(try_table_catch_clauses.First);
+                  while Assigned(hp) do
+                    begin
+                      case hp.opcode of
+                        a_catch:
+                          WriteByte($00);
+                        a_catch_ref:
+                          WriteByte($01);
+                        a_catch_all:
+                          WriteByte($02);
+                        a_catch_all_ref:
+                          WriteByte($03);
+                        else
+                          internalerror(2025100501);
+                      end;
+                      if hp.opcode in [a_catch,a_catch_ref] then
+                        begin
+                          if hp.ops<>2 then
+                            internalerror(2025100502);
+                          with hp.oper[0]^ do
+                            case typ of
+                              top_ref:
+                                begin
+                                  if not assigned(ref^.symbol) or (ref^.base<>NR_NO) or (ref^.index<>NR_NO) or (ref^.offset<>0) then
+                                    internalerror(2025100503);
+                                  objdata.writeReloc(0,5,TWasmObjData(ObjData).ExceptionTagRef(ref^.symbol),RELOC_TAG_INDEX_LEB);
+                                end;
+                              else
+                                internalerror(2025100504);
+                            end;
+                          with hp.oper[1]^ do
+                            case typ of
+                              top_const:
+                                WriteUleb(val);
+                              else
+                                internalerror(2025100505);
+                            end;
+                        end
+                      else
+                        begin
+                          if hp.ops<>1 then
+                            internalerror(2025100506);
+                          with hp.oper[0]^ do
+                            case typ of
+                              top_const:
+                                WriteUleb(val);
+                              else
+                                internalerror(2025100507);
+                            end;
+                        end;
+                      hp:=taicpu(hp.Next);
                     end;
                 end;
             end;
@@ -3750,8 +3963,11 @@ uses
                 a_loop:
                   result:=tai_wasmstruc_loop.create_from(taicpu(result),srclist);
                 a_legacy_try:
-                  result:=tai_wasmstruc_try.create_from(srclist);
-                a_else,a_end_if,a_end_block,a_end_loop,a_end_legacy_try,a_legacy_catch,a_legacy_catch_all,a_legacy_delegate:
+                  result:=tai_wasmstruc_legacy_try.create_from(srclist);
+                a_try_table:
+                  result:=tai_wasmstruc_try_table.create_from(taicpu(result),srclist);
+                a_else,a_end_if,a_end_block,a_end_loop,a_end_legacy_try,a_legacy_catch,a_legacy_catch_all,a_legacy_delegate,
+                a_end_try_table,a_catch,a_catch_ref,a_catch_all,a_catch_all_ref:
                   internalerror(2023100503);
                 else
                   ;

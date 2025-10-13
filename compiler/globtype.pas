@@ -476,8 +476,8 @@ interface
          (name: 'FARPROCSPUSHODDBP';   hasvalue: false; isglobal: false; define: 'FPC_FAR_PROCS_PUSH_ODD_BP'),
          (name: 'NOEXCEPTIONS';        hasvalue: false; isglobal: true ; define: 'FPC_WASM_NO_EXCEPTIONS'),
          (name: 'BFEXCEPTIONS';        hasvalue: false; isglobal: true ; define: 'FPC_WASM_BRANCHFUL_EXCEPTIONS'),
-         (name: 'EXNREFEXCEPTIONS';    hasvalue: false; isglobal: true ; define: 'FPC_WASM_EXNREF_EXCEPTIONS'),
-         (name: 'WASMEXCEPTIONS';      hasvalue: false; isglobal: true ; define: 'FPC_WASM_LEGACY_EXCEPTIONS'),
+         (name: 'WASMEXCEPTIONS';      hasvalue: false; isglobal: true ; define: 'FPC_WASM_EXNREF_EXCEPTIONS'),
+         (name: 'LEGACYEXCEPTIONS';    hasvalue: false; isglobal: true ; define: 'FPC_WASM_LEGACY_EXCEPTIONS'),
          (name: 'WASMTHREADS';         hasvalue: false; isglobal: true ; define: 'FPC_WASM_THREADS'),
          (name: 'SATURATINGFLOATTOINT';hasvalue: false; isglobal: false; define: 'FPC_WASM_SATURATING_FLOAT_TO_INT')
        );
@@ -834,7 +834,9 @@ interface
          { x86 only: subroutine uses ymm registers, requires vzeroupper call }
          pi_uses_ymm,
          { set if no frame pointer is needed, the rules when this applies is target specific }
-         pi_no_framepointer_needed
+         pi_no_framepointer_needed,
+         { procedure has been normalized so no expressions contain block nodes }
+         pi_normalized
        );
        tprocinfoflags=set of tprocinfoflag;
 

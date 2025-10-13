@@ -1752,12 +1752,12 @@ implementation
                    WriteTree(tai_wasmstruc_if(hp).else_asmlist);
                    writer.AsmWriteLn('.err } endif');
                  end
-               else if hp is tai_wasmstruc_try then
+               else if hp is tai_wasmstruc_legacy_try then
                  begin
                    writer.AsmWriteLn('.err try {');
-                   WriteTree(tai_wasmstruc_try(hp).try_asmlist);
-                   if hp is tai_wasmstruc_try_catch then
-                     with tai_wasmstruc_try_catch(hp) do
+                   WriteTree(tai_wasmstruc_legacy_try(hp).try_asmlist);
+                   if hp is tai_wasmstruc_legacy_try_catch then
+                     with tai_wasmstruc_legacy_try_catch(hp) do
                        begin
                          for i:=low(catch_list) to high(catch_list) do
                            begin
@@ -1771,7 +1771,7 @@ implementation
                            end;
                          writer.AsmWriteLn('.err } end try');
                        end
-                   else if hp is tai_wasmstruc_try_delegate then
+                   else if hp is tai_wasmstruc_legacy_try_delegate then
                      writer.AsmWriteLn('.err } delegate')
                    else
                      writer.AsmWriteLn('.err unknown try structured instruction: ' + hp.ClassType.ClassName);
