@@ -1658,7 +1658,6 @@ implementation
     function handle_specialize_inline_specialization(var srsym:tsym;enforce_unit:boolean;out srsymtable:tsymtable;out spezcontext:tspecializationcontext):boolean;
       var
         spezdef : tdef;
-        symname : tsymstr;
       begin
         result:=false;
         spezcontext:=nil;
@@ -1676,11 +1675,7 @@ implementation
                 spezdef:=tdef(tprocsym(srsym).procdeflist[0])
               else
                 spezdef:=nil;
-              if (not assigned(spezdef) or (spezdef.typ=errordef)) and (sp_generic_dummy in srsym.symoptions) then
-                symname:=srsym.RealName
-              else
-                symname:='';
-              spezdef:=generate_specialization_phase1(spezcontext,spezdef,enforce_unit,symname,srsym.owner);
+              spezdef:=generate_specialization_phase1(spezcontext,spezdef,enforce_unit,srsym.realname,srsym.owner);
               case spezdef.typ of
                 errordef:
                   begin
@@ -4510,6 +4505,9 @@ implementation
           inheriteddef : tabstractrecorddef;
           callflags : tcallnodeflags;
         begin
+          if not assigned(gensym) then
+            internalerror(2025103101);
+
           if n.nodetype=specializen then
             begin
               getaddr:=tspecializenode(n).getaddr;
@@ -4529,7 +4527,7 @@ implementation
           if assigned(parseddef) and assigned(gensym) and assigned(p2) then
             gendef:=generate_specialization_phase1(spezcontext,gendef,unitspecific,parseddef,gensym.realname,gensym.owner,p2.fileinfo)
           else
-            gendef:=generate_specialization_phase1(spezcontext,gendef,unitspecific);
+            gendef:=generate_specialization_phase1(spezcontext,gendef,unitspecific,gensym.realname,gensym.owner);
           case gendef.typ of
             errordef:
               begin
@@ -4860,7 +4858,7 @@ implementation
                          else
                            internalerror(2015072401);
 
-                       ptmp:=generate_inline_specialization(gendef,p2,filepos,nil,nil,nil);
+                       ptmp:=generate_inline_specialization(gendef,p2,filepos,nil,gensym,nil);
 
                        { we don't need the old p2 anymore }
                        p2.Free;

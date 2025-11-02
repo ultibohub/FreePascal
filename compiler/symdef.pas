@@ -4214,7 +4214,7 @@ implementation
 
     function tclassrefdef.GetTypeName : string;
       begin
-         GetTypeName:='Class Of '+pointeddef.typename;
+         GetTypeName:='Class Of '+pointeddef.typesymbolprettyname;
       end;
 
 
