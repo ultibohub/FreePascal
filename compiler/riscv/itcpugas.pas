@@ -148,6 +148,17 @@ unit itcpugas;
         'fcvt.d.l','fcvt.d.lu','fmv.d.x',
 {$endif RISCV64}
 
+        { Zfa extension }
+        'fli.s',
+        'fminm.s','fmaxm.s','fminm.d','fmaxm.d','fminm.h','fmaxm.h','fminm.q','fmaxm.q',
+        'fround.s','froundnx.s','fround.d','froundnx.d','fround.h','froundnx.h','fround.q','froundnx.q',
+        'fcvtmod.w.d',
+        'fmvh.x.d,','fmvp.d.x','fmvh.x.q','fmvp.q.x',
+        'fleq.s,','fltq.s',
+        'fleq.d,','fltq.d',
+        'fleq.h,','fltq.h',
+        'fleq.q,','fltq.q',
+
         { q-extension }
         'flq','fsq',
         'fmax.q','fmax.q',

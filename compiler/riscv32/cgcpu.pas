@@ -44,8 +44,6 @@ unit cgcpu;
         procedure a_mul_reg_reg_pair(list: TAsmList;size: tcgsize; src1,src2,dstlo,dsthi: tregister); override;
 
         procedure g_concatcopy(list : TAsmList;const source,dest : treference;len : tcgint);override;
-
-        procedure g_overflowcheck(list: TAsmList; const Loc: tlocation; def: tdef); override;
      end;
 
      tcg64frv = class(tcg64f32)
@@ -199,12 +197,12 @@ unit cgcpu;
         lab:      tasmlabel;
         Count, count2: aint;
 
-        function reference_is_reusable(const ref: treference): boolean;
-          begin
-            result:=(ref.base<>NR_NO) and (ref.index=NR_NO) and
-               (ref.symbol=nil) and
-               is_imm12(ref.offset);
-          end;
+      function reference_is_reusable(const ref: treference): boolean;
+        begin
+          result:=(ref.base<>NR_NO) and (ref.index=NR_NO) and
+             (ref.symbol=nil) and
+             is_imm12(ref.offset);
+        end;
 
       begin
         src2:=source;
@@ -301,12 +299,6 @@ unit cgcpu;
             a_load_reg_ref(list, OS_8, OS_8, hreg, dst);
           end;
         end;
-      end;
-
-
-    procedure tcgrv32.g_overflowcheck(list: TAsmList; const Loc: tlocation; def: tdef);
-      begin
-
       end;
 
 

@@ -158,6 +158,17 @@ uses
         A_FCVT_D_L,A_FCVT_D_LU,A_FMV_D_X,
 {$endif RISCV64}
 
+        { Zfa extension }
+        A_FLI_S,
+        A_FMINM_S,A_FMAXM_S,A_FMINM_D,A_FMAXM_D,A_FMINM_H,A_FMAXM_H,A_FMINM_Q,A_FMAXM_Q,
+        A_FROUND_S,A_FROUNDNX_S,A_FROUND_D,A_FROUNDNX_D,A_FROUND_H,A_FROUNDNX_H,A_FROUND_Q,A_FROUNDNX_Q,
+        A_FCVTMOD_W_D,
+        A_FMVH_X_D,A_FMVP_D_X,A_FMVH_X_Q,A_FMVP_Q_X,
+        A_FLEQ_S,A_FLTQ_S,
+        A_FLEQ_D,A_FLTQ_D,
+        A_FLEQ_H,A_FLTQ_H,
+        A_FLEQ_Q,A_FLTQ_Q,
+
         { Q-extension }
         A_FLQ,A_FSQ,
 //        A_FMADD_D,A_FMSUB_D,A_FNMSUB_D,A_FNMADD_D,
@@ -188,12 +199,6 @@ uses
       firstop = low(tasmop);
       { Last value of opcode enumeration  }
       lastop  = high(tasmop);
-
-      { Last value of opcode for TCommonAsmOps set below  }
-      LastCommonAsmOp = A_MRET;
-
-    Type
-      TCommonAsmOps = Set of A_None .. LastCommonAsmOp;
 
 {*****************************************************************************
                                   Registers

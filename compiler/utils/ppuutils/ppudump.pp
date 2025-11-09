@@ -1584,6 +1584,7 @@ end;
 
          packrecords     : shortint;
          maxfpuregisters : shortint;
+         verbosity       : longint;
 
          cputype,
          optimizecputype : tcputype;
@@ -2156,6 +2157,7 @@ var
 
             packrecords:=gettokenbufshortint;
             maxfpuregisters:=gettokenbufshortint;
+            verbosity:=gettokenbuflongint;
 
             cputype:=tcputype(tokenreadenum(sizeof(tcputype)));
             optimizecputype:=tcputype(tokenreadenum(sizeof(tcputype)));
@@ -2213,6 +2215,7 @@ var
 
          packrecords     : shortint;
          maxfpuregisters : shortint;
+         verbosity       : longint;
 
          cputype,
          optimizecputype,
