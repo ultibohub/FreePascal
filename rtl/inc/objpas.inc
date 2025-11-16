@@ -458,7 +458,7 @@ end;
 
         var
           ovmt: PVmt;
-          i: longint;
+          i: sizeuint;
           intftable: pinterfacetable;
           Res: pinterfaceentry;
         begin
@@ -484,10 +484,11 @@ end;
         var
            vmt  : PVmt;
            inittable : pointer;
+           Res : ^TRTTIRecordOpOffsetEntry;
 {$ifdef FPC_HAS_FEATURE_RTTI}
            mopinittable : PRTTIRecordOpOffsetTable;
 {$endif def FPC_HAS_FEATURE_RTTI}
-           i : longint;
+           i : longword;
         begin
            { the size is saved at offset 0 }
            fillchar(instance^, InstanceSize, 0);
@@ -522,8 +523,14 @@ end;
                        {$push}
                        { ensure that no range check errors pop up with the [0..0] array }
                        {$R-}
-                       for i:=0 to mopinittable^.Count-1 do
-                         TRTTIRecVarOp(mopinittable^.Entries[i].ManagmentOperator)(PByte(Instance)+mopinittable^.Entries[i].FieldOffset);
+                       i:=mopinittable^.Count;
+                       Res:=@mopinittable^.Entries[0];
+                       while i>0 do
+                         begin
+                           TRTTIRecVarOp(Res^.ManagmentOperator)(PByte(Instance)+Res^.FieldOffset);
+                           inc(Res);
+                           dec(i);
+                         end;
                        {$pop}
                      end;
                  end;
@@ -1060,7 +1067,7 @@ end;
 
       class function TObject.GetInterfaceEntry(const iid : tguid) : pinterfaceentry;
         var
-          i: longint;
+          i: sizeuint;
           intftable: pinterfacetable;
           ovmt: PVmt;
         begin
@@ -1068,11 +1075,14 @@ end;
           while Assigned(ovmt) and Assigned(ovmt^.vIntftable) do
           begin
             intftable:=ovmt^.vIntfTable;
-            for i:=0 to intftable^.EntryCount-1 do
+            i:=intftable^.EntryCount;
+            result:=@intftable^.Entries[0];
+            while i>0 do
             begin
-              result:=@intftable^.Entries[i];
               if assigned(Result^.iid) and IsGUIDEqual(Result^.iid^,iid) then
                 Exit;
+              inc(Result);
+              dec(i);
             end;
             ovmt := ovmt^.vParent;
           end;
@@ -1081,7 +1091,7 @@ end;
 
       class function TObject.GetInterfaceEntryByStr(const iidstr : shortstring) : pinterfaceentry;
         var
-          i: longint;
+          i: sizeuint;
           intftable: pinterfacetable;
           ovmt: PVmt;
         begin
@@ -1089,11 +1099,14 @@ end;
           while Assigned(ovmt) and Assigned(ovmt^.vIntfTable) do
           begin
             intftable:=ovmt^.vIntfTable;
-            for i:=0 to intftable^.EntryCount-1 do
+            i:=intftable^.EntryCount;
+            result:=@intftable^.Entries[0];
+            while i>0 do
             begin
-              result:=@intftable^.Entries[i];
               if assigned(result^.iidstr) and (result^.iidstr^ = iidstr) then
                 Exit;
+              inc(Result);
+              dec(i);
             end;
             ovmt := ovmt^.vParent;
           end;

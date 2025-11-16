@@ -1187,6 +1187,7 @@ Type
     FExamplesInstallDir : String;
     FSingleFPDocFile: Boolean;
     FSearchPath: TStrings;
+    FSkipAllPrograms: boolean;
     FSkipCrossPrograms: boolean;
     FThreadsAmount: integer;
     FRemoveTree: String;
@@ -1320,6 +1321,7 @@ Type
     // Installation optioms
     Property InstallExamples: Boolean read FInstallExamples write FInstallExamples;
     Property SkipCrossPrograms: boolean read FSkipCrossPrograms write FSkipCrossPrograms;
+    Property SkipAllPrograms: boolean read FSkipAllPrograms write FSkipAllPrograms;
   end;
 
   { TBasicDefaults }
@@ -2050,6 +2052,7 @@ ResourceString
   SHelpInteractive    = 'Allow to interact with child processes';
   SHelpInstExamples   = 'Install the example-sources.';
   SHelpSkipCrossProgs = 'Skip programs when cross-compiling/installing';
+  SHelpSkipAllProgs   = 'Skip all programs even if native-compiling/installing';
   SHelpIgnoreInvOpt   = 'Ignore further invalid options.';
   sHelpFpdocOutputDir = 'Use indicated directory as fpdoc output folder.';
   sHelpSingleFpdocFile = 'Create a single fpdoc project file for all projects';
@@ -2098,7 +2101,8 @@ Const
   KeyDocInstallDir      = 'DocInstallDir';
   KeyExamplesInstallDir = 'ExamplesInstallDir';
   KeyInstallExamples    = 'InstallExamples';
-  KeySkipCrossProdrams  = 'SkipCrossPrograms';
+  KeySkipCrossPrograms  = 'SkipCrossPrograms';
+  KeySkipAllPrograms    = 'SkipAllPrograms';
   // Keys for unit config
   KeyName     = 'Name';
   KeyVersion  = 'Version';
@@ -5855,7 +5859,9 @@ begin
       if FInstallExamples then
           Values[KeyInstallExamples]:='Y';
       if FSkipCrossPrograms then
-        Values[KeySkipCrossProdrams]:='Y';
+        Values[KeySkipCrossPrograms]:='Y';
+      if FSkipAllPrograms then
+        Values[KeySkipAllPrograms]:='Y';
       end;
     L.SaveToStream(S);
   Finally
@@ -5914,7 +5920,8 @@ begin
       FDocInstallDir:=Values[KeyDocInstallDir];
       FExamplesInstallDir:=Values[KeyExamplesInstallDir];
       FInstallExamples:=(Upcase(Values[KeyInstallExamples])='Y');
-      FSkipCrossPrograms:=(Upcase(Values[KeySkipCrossProdrams])='Y');
+      FSkipCrossPrograms:=(Upcase(Values[KeySkipCrossPrograms])='Y');
+      FSkipAllPrograms:=(Upcase(Values[KeySkipAllPrograms])='Y');
       FNoFPCCfg:=(Upcase(Values[KeyNoFPCCfg])='Y');
       FUseEnvironment:=(Upcase(Values[KeyUseEnv])='Y');
 
@@ -6371,6 +6378,8 @@ begin
       DefaultsFileName:=OptionArg(I)
     else if CheckOption(I,'ie','installexamples') then
       Defaults.InstallExamples:=true
+    else if CheckOption(I,'sap','skipallprograms') then
+      Defaults.SkipAllPrograms:=true
     else if CheckOption(I,'scp','skipcrossprograms') then
       Defaults.SkipCrossPrograms:=true
     else if CheckOption(I,'bu','buildunit') then
@@ -6458,6 +6467,7 @@ begin
 {$endif}
   LogOption('ie','installexamples',SHelpInstExamples);
   LogOption('bu','buildunit',SHelpUseBuildUnit);
+  LogOption('sap','skipallprograms',SHelpSkipAllProgs);
   LogOption('scp','skipcrossprograms',SHelpSkipCrossProgs);
   LogOption('io','ignoreinvalidoption',SHelpIgnoreInvOpt);
   LogArgOption('C','cpu',SHelpCPU);
@@ -8190,9 +8200,10 @@ function TBuildEngine.TargetOK(ATarget: TTarget; const aCompileTarget : TCompile
 
 
 begin
-  if Defaults.SkipCrossPrograms and
-     (ATarget.TargetType in ProgramTargets) and
-     IsDifferentFromBuild(aCOmpileTarget.CPU, aCOmpileTarget.OS) then
+  if (ATarget.TargetType in ProgramTargets) and
+     (Defaults.SkipAllPrograms or
+      (Defaults.SkipCrossPrograms and
+       IsDifferentFromBuild(aCOmpileTarget.CPU, aCOmpileTarget.OS))) then
     result := False
   else
     Result:=(aCompileTarget.CPU in ATarget.CPUs)

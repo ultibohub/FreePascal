@@ -1140,7 +1140,7 @@ BEGIN
    InitMsgBox;
    { init mouse and cursor }
    {$IFDEF FPC_DOTTEDUNITS}System.Console.Video.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleVideo.{$ELSE}Video.{$ENDIF}{$ENDIF}SetCursorType(crHidden);
-   {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}SetMouseXY(1,1);
+   {$IFDEF FPC_DOTTEDUNITS}System.Console.Mouse.{$ELSE}{$IFDEF OS_ULTIBO}ConsoleMouse.{$ELSE}Mouse.{$ENDIF}{$ENDIF}SetMouseXY(0,0);    { mouse is zero based, set to left upper corner }
 END;
 
 {--TApplication-------------------------------------------------------------}
