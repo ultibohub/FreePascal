@@ -5210,31 +5210,114 @@ unit aoptx86;
 
           end;
 
-        if (aoc_MovAnd2Mov_3 in OptsToCheck) and
-          (taicpu(p).oper[1]^.typ = top_reg) and
-          (taicpu(p).opsize = S_L) and
+        if (taicpu(p).oper[1]^.typ = top_reg) and
+          (
+{$ifndef x86_64}
+            (
+              { See if we can catch:
+                  mov ###,%ecx (or any of the ecx family)
+                  ...
+                  shl %cl,###  (or another shift or rotate instruction)
+
+                And change to...
+                  mov ###,%cl  (using only %cl)
+                  ...
+                  shl %cl,###
+              }
+              (taicpu(p).opsize <> S_B) and
+              (getsupreg(taicpu(p).oper[1]^.reg) = RS_ECX) and
+              (
+                (taicpu(p).oper[0]^.typ <> top_reg) or
+                (getsupreg(taicpu(p).oper[0]^.reg) in [RS_EAX, RS_EBX, RS_EDX])
+              )
+            ) or
+{$endif not x86_64}
+            (
+              { Tends to be a very slow operation that is rarely successful,
+                so only enable if it's definitely not impossible }
+              (aoc_MovAnd2Mov_3 in OptsToCheck) and
+              (taicpu(p).opsize = S_L)
+            )
+          ) and
           GetNextInstructionUsingRegTrackingUse(p,hp2,taicpu(p).oper[1]^.reg) and
-          (hp2.typ = ait_instruction) and
-          (taicpu(hp2).opcode = A_AND) and
-          (MatchOpType(taicpu(hp2),top_const,top_reg) or
-           (MatchOpType(taicpu(hp2),top_reg,top_reg) and
-            MatchOperand(taicpu(hp2).oper[0]^,taicpu(hp2).oper[1]^))
-           ) then
+          (hp2.typ = ait_instruction) then
           begin
-            if SuperRegistersEqual(taicpu(p).oper[1]^.reg,taicpu(hp2).oper[1]^.reg) then
+            if (taicpu(hp2).opcode = A_AND) then
               begin
-                if ((taicpu(hp2).oper[0]^.typ=top_const) and (taicpu(hp2).oper[0]^.val = $ffffffff)) or
-                  ((taicpu(hp2).oper[0]^.typ=top_reg) and (taicpu(hp2).opsize=S_L)) then
+                if (MatchOpType(taicpu(hp2),top_const,top_reg) or
+                   (MatchOpType(taicpu(hp2),top_reg,top_reg) and
+                    MatchOperand(taicpu(hp2).oper[0]^,taicpu(hp2).oper[1]^))
+                   ) then
                   begin
-                    { Optimize out:
-                        mov x, %reg
-                        and ffffffffh, %reg
-                    }
-                    DebugMsg(SPeepholeOptimization + 'MovAnd2Mov 3 done',p);
-                    RemoveInstruction(hp2);
-                    Result:=true;
-                    exit;
+                    if SuperRegistersEqual(taicpu(p).oper[1]^.reg,taicpu(hp2).oper[1]^.reg) then
+                      begin
+                        if ((taicpu(hp2).oper[0]^.typ=top_const) and (taicpu(hp2).oper[0]^.val = $ffffffff)) or
+                          ((taicpu(hp2).oper[0]^.typ=top_reg) and (taicpu(hp2).opsize=S_L)) then
+                          begin
+                            { Optimize out:
+                                mov x, %reg
+                                and ffffffffh, %reg
+                            }
+                            DebugMsg(SPeepholeOptimization + 'MovAnd2Mov 3 done',p);
+                            RemoveInstruction(hp2);
+                            Result:=true;
+                            exit;
+                          end;
+                      end;
                   end;
+{$ifndef x86_64} { This is handled during the code generation stage under x86_64 }
+              end
+            else if
+               { Need to check again in case we entered this block because aoc_MovAnd2Mov_3 was set }
+              (getsupreg(taicpu(p).oper[1]^.reg) = RS_ECX) and
+              MatchInstruction(hp2, [A_SHL, A_SHR, A_SHLD, A_SHRD, A_SAR, A_ROR, A_ROL, A_RCR, A_RCL], []) and
+              (taicpu(hp2).oper[0]^.typ = top_reg) { Will be %cl } and
+              (
+                (
+                  (taicpu(hp2).oper[1]^.typ = top_reg) and
+                  (getsupreg(taicpu(hp2).oper[1]^.reg) <> RS_ECX) and
+                  (
+                    (taicpu(hp2).ops = 2) or
+                    (
+                      { For SHLD/SHRD }
+                      (
+                        (taicpu(hp2).oper[2]^.typ = top_reg) and
+                        (getsupreg(taicpu(hp2).oper[2]^.reg) <> RS_ECX)
+                      ) or (
+                        (taicpu(hp2).oper[2]^.typ = top_ref) and
+                        not RegInRef(NR_ECX, taicpu(hp2).oper[2]^.ref^)
+                      )
+                    )
+                  )
+                ) or (
+                  (taicpu(hp2).oper[1]^.typ = top_ref) and
+                  not RegInRef(NR_ECX, taicpu(hp2).oper[1]^.ref^)
+                )
+              ) then
+              begin
+                TransferUsedRegs(TmpUsedRegs);
+                UpdateUsedRegsBetween(TmpUsedRegs, p, hp2);
+                if not RegUsedAfterInstruction(NR_ECX, hp2, TmpUsedRegs) then
+                  begin
+                    DebugMsg(SPeepholeOptimization + 'Resized mov' + debug_opsize2str(taicpu(p).opsize) + ' to 8-bit to match ' + debug_op2str(taicpu(hp2).opcode)+debug_opsize2str(taicpu(hp2).opsize) + ' instruction (MovOp2MovOp 1)', p);
+
+                    taicpu(p).opsize := S_B;
+
+                    setsubreg(taicpu(p).oper[1]^.reg, R_SUBL);
+                    case taicpu(p).oper[0]^.typ of
+                      top_reg:
+                        setsubreg(taicpu(p).oper[0]^.reg, R_SUBL);
+                      top_const:
+                        if (taicpu(p).oper[0]^.val < -128) or (taicpu(p).oper[0]^.val > 127) then
+                          taicpu(p).oper[0]^.val := taicpu(p).oper[0]^.val and $FF;
+                      else
+                        { i.e. a reference, which doesn't change };
+                    end;
+
+                    Result := True;
+                    Exit;
+                  end;
+{$endif not x86_64}
               end;
           end;
 
@@ -6856,6 +6939,14 @@ unit aoptx86;
                             else
                               taicpu(hp1).oper[0]^.ref^.scalefactor := taicpu(hp1).oper[0]^.ref^.scalefactor * max(taicpu(p).oper[0]^.ref^.scalefactor, 1);
 
+                            if (taicpu(p).oper[0]^.ref^.base<>NR_NO) and 
+                               (not RegInUsedRegs(taicpu(p).oper[0]^.ref^.base, TmpUsedRegs)) then
+                              AllocRegBetween(taicpu(p).oper[0]^.ref^.base , p, hp1, TmpUsedRegs);
+                            if (taicpu(p).oper[0]^.ref^.index<>NR_NO) and
+                               (not RegInUsedRegs(taicpu(p).oper[0]^.ref^.index, TmpUsedRegs)) then
+                              AllocRegBetween(taicpu(p).oper[0]^.ref^.index , p, hp1, TmpUsedRegs);
+                            UpdateUsedRegsBetween(TmpUsedRegs, p, hp1);
+
                             { Only remove the first LEA if we don't need the intermediate register's value as is }
                             if IntermediateRegDiscarded then
                               begin
@@ -6952,6 +7043,14 @@ unit aoptx86;
                                 else
                                   taicpu(hp1).oper[0]^.ref^.scalefactor := taicpu(p).oper[0]^.ref^.scalefactor;
                               end;
+
+                            if (taicpu(p).oper[0]^.ref^.base<>NR_NO) and 
+                               (not RegInUsedRegs(taicpu(p).oper[0]^.ref^.base, TmpUsedRegs)) then
+                              AllocRegBetween(taicpu(p).oper[0]^.ref^.base , p, hp1, TmpUsedRegs);
+                            if (taicpu(p).oper[0]^.ref^.index<>NR_NO) and
+                               (not RegInUsedRegs(taicpu(p).oper[0]^.ref^.index, TmpUsedRegs)) then
+                              AllocRegBetween(taicpu(p).oper[0]^.ref^.index , p, hp1, TmpUsedRegs);
+                            UpdateUsedRegsBetween(TmpUsedRegs, p, hp1);
 
                             { Only remove the first LEA if we don't need the intermediate register's value as is }
                             if IntermediateRegDiscarded then
@@ -12001,13 +12100,11 @@ unit aoptx86;
             )
           ) and
           MatchInstruction(hp1, [A_SHL, A_SHR, A_SAR, A_ROR, A_ROL, A_RCR, A_RCL], []) and
-          (taicpu(hp1).oper[0]^.typ = top_reg) { This is enough to determine that it's %cl } then
+          (taicpu(hp1).oper[0]^.typ = top_reg) { This is enough to determine that it's %cl } and
+          not RegInOp(NR_ECX, taicpu(hp1).oper[1]^) then
           begin
             TransferUsedRegs(TmpUsedRegs);
-            hp2 := p;
-            repeat
-              UpdateUsedRegs(TmpUsedRegs, tai(hp2.Next));
-            until not GetNextInstruction(hp2, hp2) or (hp2 = hp1);
+            UpdateUsedRegsBetween(TmpUsedRegs, p, hp1);
 
             if not RegUsedAfterInstruction(NR_CL, hp1, TmpUsedRegs) then
               begin

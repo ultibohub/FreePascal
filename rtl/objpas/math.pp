@@ -1405,26 +1405,32 @@ function tanh(x : Single) : Single;
   var
     tmp:ValReal;
   begin
-    if x < 0 then begin
-      tmp:=exp(2*x);
-      if tmp=1 then
-        exit(x);
+    if abs(x)>10 then
+      begin
+        result:=sign(x);
+        exit;
+      end;
+
+    if x < 0 then
+      begin
+        tmp:=exp(2*x);
+        if tmp=1 then
+          exit(x);
 {$push}
-{$checkfpuexceptions on}
 {$safefpuexceptions on}
-      result:=(tmp-1)/(1+tmp)
+        result:=(tmp-1)/(1+tmp)
 {$pop}
-    end
-    else begin
-      tmp:=exp(-2*x);
-      if tmp=1 then
-        exit(x);
+      end
+    else
+      begin
+        tmp:=exp(-2*x);
+        if tmp=1 then
+          exit(x);
 {$push}
-{$checkfpuexceptions on}
 {$safefpuexceptions on}
-      result:=(1-tmp)/(1+tmp)
+        result:=(1-tmp)/(1+tmp)
 {$pop}
-    end;
+      end;
   end;
 {$ENDIF}
 
@@ -1434,24 +1440,30 @@ function tanh(x : Double) : Double;
   var
     tmp:ValReal;
   begin
-    if x < 0 then begin
-      tmp:=exp(2*x);
-      if tmp=1 then
-        exit(x);
+    if abs(x)>20 then
+      begin
+        result:=sign(x);
+        exit;
+      end;
+
+    if x < 0 then
+      begin
+        tmp:=exp(2*x);
+        if tmp=1 then
+          exit(x);
 {$push}
-{$checkfpuexceptions on}
 {$safefpuexceptions on}
-      result:=(tmp-1)/(1+tmp)
+        result:=(tmp-1)/(1+tmp)
 {$pop}
-    end
-    else begin
-      tmp:=exp(-2*x);
-      if tmp=1 then
-        exit(x);
+      end
+    else
+      begin
+        tmp:=exp(-2*x);
+        if tmp=1 then
+          exit(x);
 {$push}
-{$checkfpuexceptions on}
 {$safefpuexceptions on}
-      result:=(1-tmp)/(1+tmp)
+        result:=(1-tmp)/(1+tmp)
 {$pop}
     end;
   end;
@@ -1463,18 +1475,26 @@ function tanh(x : Extended) : Extended;
   var
     tmp:Extended;
   begin
-    if x < 0 then begin
-      tmp:=exp(2*x);
-      if tmp=1 then
-        exit(x);
-      result:=(tmp-1)/(1+tmp)
-    end
-    else begin
-      tmp:=exp(-2*x);
-      if tmp=1 then
-        exit(x);
-      result:=(1-tmp)/(1+tmp)
-    end;
+    if abs(x)>25 then
+      begin
+        result:=sign(x);
+        exit;
+      end;
+
+    if x < 0 then
+      begin
+        tmp:=exp(2*x);
+        if tmp=1 then
+          exit(x);
+        result:=(tmp-1)/(1+tmp)
+      end
+    else
+      begin
+        tmp:=exp(-2*x);
+        if tmp=1 then
+          exit(x);
+        result:=(1-tmp)/(1+tmp)
+      end;
   end;
 {$ENDIF}
 

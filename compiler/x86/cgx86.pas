@@ -2316,8 +2316,8 @@ unit cgx86;
     procedure tcgx86.a_op_reg_reg(list : TAsmList; Op: TOpCG; size: TCGSize; src, dst: TRegister);
       const
 {$if defined(cpu64bitalu)}
-        REGCX=NR_RCX;
-        REGCX_Size = OS_64;
+        REGCX=NR_CL;
+        REGCX_Size = OS_8;
 {$elseif defined(cpu32bitalu)}
         REGCX=NR_ECX;
         REGCX_Size = OS_32;
@@ -2351,8 +2351,11 @@ unit cgx86;
               { Use ecx to load the value, that allows better coalescing }
               getcpuregister(list,REGCX);
               a_load_reg_reg(list,reg_cgsize(src),REGCX_Size,src,REGCX);
-              list.concat(taicpu.op_reg_reg(Topcg2asmop[op],tcgsize2opsize[size],NR_CL,dst));
+              { Deallocate right before the instruction - it will be corrected
+                later by the register allocator (not correcting it will cause
+                it to be deallocated one instruction too late) }
               ungetcpuregister(list,REGCX);
+              list.concat(taicpu.op_reg_reg(Topcg2asmop[op],tcgsize2opsize[size],NR_CL,dst));
             end;
           else
             begin
@@ -2406,8 +2409,8 @@ unit cgx86;
     procedure tcgx86.a_op_reg_ref(list : TAsmList; Op: TOpCG; size: TCGSize;reg: TRegister; const ref: TReference);
       const
 {$if defined(cpu64bitalu)}
-        REGCX=NR_RCX;
-        REGCX_Size = OS_64;
+        REGCX=NR_CL;
+        REGCX_Size = OS_8;
 {$elseif defined(cpu32bitalu)}
         REGCX=NR_ECX;
         REGCX_Size = OS_32;
@@ -2443,8 +2446,11 @@ unit cgx86;
               { Use ecx to load the value, that allows better coalescing }
               getcpuregister(list,REGCX);
               a_load_reg_reg(list,reg_cgsize(reg),REGCX_Size,reg,REGCX);
-              list.concat(taicpu.op_reg_ref(TOpCG2AsmOp[op],tcgsize2opsize[size],NR_CL,tmpref));
+              { Deallocate right before the instruction - it will be corrected
+                later by the register allocator (not correcting it will cause
+                it to be deallocated one instruction too late) }
               ungetcpuregister(list,REGCX);
+              list.concat(taicpu.op_reg_ref(TOpCG2AsmOp[op],tcgsize2opsize[size],NR_CL,tmpref));
             end;
           OP_IMUL:
             begin
