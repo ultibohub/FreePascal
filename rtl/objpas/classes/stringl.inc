@@ -422,11 +422,38 @@ end;
 Procedure TStrings.Reverse(aList : TStrings);
 
 Var
-  I : Integer;
+  I,J : Integer;
 
 begin
-  for I:=Count-1 downto 0 do
-    aList.Add(Strings[i]);
+  if aList=self then
+    begin
+    I:=0; 
+    J:=Count-1;
+    beginUpdate;
+    try
+      while I<J do 
+        begin
+        Exchange(I, J);
+        Inc(I);
+        Dec(J);
+        end;
+    finally
+      EndUpdate;
+    end;
+    end
+  else 
+    begin
+    aList.BeginUpdate;
+    try
+      aList.Clear;
+      if aList.Capacity<Self.Count then
+        aList.Capacity:=Self.Count;
+      for I:=Count-1 downto 0 do
+        aList.AddObject(Strings[i],Objects[i]);
+    finally
+      aList.EndUpdate;
+    end;      
+    end;  
 end;
 
 

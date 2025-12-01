@@ -12,3 +12,5 @@
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
  **********************************************************************}
+
+procedure fpc_aarch64_yield;[internproc:fpc_in_aarch64_yield];
