@@ -1318,7 +1318,7 @@ type
         parse_only:=false;
 
         { create static symbol table }
-        curr.localsymtable:=tstaticsymtable.create(curr.modulename^,curr.moduleid);
+        curr.localsymtable:=tstaticsymtable.create(curr.realmodulename^,curr.moduleid);
 
 
         { Insert _GLOBAL_OFFSET_TABLE_ symbol if system uses it }
@@ -1977,7 +1977,7 @@ type
 
          { insert after the unit symbol tables the static symbol table }
          { of the program                                             }
-         curr.localsymtable:=tstaticsymtable.create(curr.modulename^,curr.moduleid);
+         curr.localsymtable:=tstaticsymtable.create(curr.realmodulename^,curr.moduleid);
 
          { ensure that no packages are picked up from the options }
          packagelist.clear;
@@ -2946,7 +2946,7 @@ type
 
          { insert after the unit symbol tables the static symbol table
            of the program                                              }
-         curr.localsymtable:=tstaticsymtable.create(curr.modulename^,curr.moduleid);
+         curr.localsymtable:=tstaticsymtable.create(curr.realmodulename^,curr.moduleid);
 
          { load system unit }
          load_ok:=loadsystemunit(curr);
