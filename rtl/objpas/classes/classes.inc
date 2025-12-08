@@ -914,7 +914,7 @@ begin
     {$else}
     {$IF defined(CPUX86_64) or Defined(CPUI386)}
     fpc_x86_pause;
-    {$ELSEIF defined(CPUARM)}
+    {$ELSEIF defined(CPUARM) and not defined(CPUARMV6)}
     fpc_arm_yield;
     {$ELSEIF defined(CPUAARCH64)}
     fpc_aarch64_yield;
