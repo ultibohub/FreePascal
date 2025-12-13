@@ -42,6 +42,7 @@ procedure recordpendingsetalloc(alloc:shortint);
 procedure recordpendingpackenum(size:shortint);
 procedure recordpendingpackrecords(size:shortint);
 procedure recordpendingasmmode(asmmode:tasmmode);
+procedure recordpendingoptimizerswitches(optimizerswitches:toptimizerswitches);
 procedure flushpendingswitchesstate;
 
 implementation
@@ -388,6 +389,13 @@ procedure recordpendingpackrecords(size:shortint);
   end;
 
 
+procedure recordpendingoptimizerswitches(optimizerswitches:toptimizerswitches);
+  begin
+    pendingstate.nextoptimizerswitches:=optimizerswitches;
+    include(pendingstate.flags,psf_optimizerswitches_changed);
+  end;
+
+
 procedure flushpendingswitchesstate;
   var
     tmpproccal: tproccalloption;
@@ -432,6 +440,11 @@ procedure flushpendingswitchesstate;
         current_settings.asmmode:=pendingstate.nextasmmode;
         exclude(pendingstate.flags,psf_asmmode_changed);
       end;
+    if psf_optimizerswitches_changed in pendingstate.flags then
+      begin
+        current_settings.optimizerswitches:=pendingstate.nextoptimizerswitches;
+        exclude(pendingstate.flags,psf_optimizerswitches_changed);
+      end;
     { process pending verbosity changes (warnings on, etc) }
     if pendingstate.nextverbositystr<>'' then
       begin
@@ -463,6 +476,7 @@ procedure flushpendingswitchesstate;
         pendingstate.nextmessagerecord:=nil;
       end;
     msgset.free;
+    msgset := nil;
     { process pending calling convention changes (calling x) }
     if pendingstate.nextcallingstr<>'' then
       begin

@@ -200,6 +200,7 @@ implementation
                              end;
                             pl.addconst(sl_vec,idx,p.resultdef);
                             p.free;
+                            p := nil;
                             def:=tarraydef(def).elementdef;
                           end
                          else
@@ -306,6 +307,7 @@ implementation
                   else
                     Message(parser_e_dispid_must_be_ord_const);
                   pt.free;
+                  pt := nil;
                 end
               else
                 hdispid:=tobjectdef(astruct).get_next_dispid;
@@ -389,8 +391,7 @@ implementation
          { property parameters ? }
          if try_to_consume(_LECKKLAMMER) then
            begin
-              if (p.visibility=vis_published) and
-                not (m_delphi in current_settings.modeswitches) then
+              if (p.visibility=vis_published) then
                 Message(parser_e_cant_publish_that_property);
               { create a list of the parameters }
               p.parast:=tparasymtable.create(nil,0);
@@ -436,6 +437,7 @@ implementation
                   tparavarsym(sc[i]).vardef:=hdef;
               until not try_to_consume(_SEMICOLON);
               sc.free;
+              sc := nil;
               symtablestack.pop(p.parast);
               consume(_RECKKLAMMER);
 
@@ -493,6 +495,7 @@ implementation
                    { concat a longint to the para templates }
                    p.add_index_parameter(paranr,readprocdef,writeprocdef);
                    pt.free;
+                   pt := nil;
                 end;
            end
          else
@@ -705,6 +708,7 @@ implementation
                   { Error recovery }
                   pt:=comp_expr([ef_accept_equal]);
                   pt.free;
+                  pt := nil;
                 end
               else
                 begin
@@ -738,6 +742,7 @@ implementation
                       internalerror(2019050525);
                   end;
                   pt.free;
+                  pt := nil;
                 end;
            end
          else if not is_record(astruct) and try_to_consume(_NODEFAULT) then
@@ -871,22 +876,22 @@ implementation
              if readprocdef.proctypeoption=potype_propgetter then
                readprocdef.register_def
              else
-               readprocdef.free;
+               readprocdef.free; // no nil needed
              if writeprocdef.proctypeoption=potype_propsetter then
                writeprocdef.register_def
              else
-               writeprocdef.free;
+               writeprocdef.free; // no nil needed
            end
          else
            begin
              if readprocdef.proctypeoption=potype_propgetter then
                readprocdef.maybe_put_in_symtable_stack
              else
-               readprocdef.free;
+               readprocdef.free; // no nil needed
              if writeprocdef.proctypeoption=potype_propsetter then
                writeprocdef.maybe_put_in_symtable_stack
              else
-               writeprocdef.free;
+               writeprocdef.free; // no nil needed
            end;
 
          result:=p;
@@ -1153,6 +1158,7 @@ implementation
                     current_asmdata.asmlists[al_typedconsts].concatlist(templist);
                   end;
                 templist.free;
+                templist := nil;
               end;
             staticvarsym :
               begin
@@ -1339,6 +1345,7 @@ implementation
                 Message(parser_e_absolute_only_to_var_or_const);
             end;
           pt.free;
+          pt := nil;
           { replace old varsym with the new absolutevarsym }
           if assigned(abssym) then
             begin
@@ -1420,6 +1427,7 @@ implementation
                    and (token in [_PROCEDURE,_FUNCTION,_CLASS]) then
                  begin
                    vs.free;
+                   vs := nil;
                    sc.clear;
                    had_generic:=true;
                    break;
@@ -1636,6 +1644,7 @@ implementation
          block_type:=old_block_type;
          { free the list }
          sc.free;
+         sc := nil;
       end;
 
 
@@ -1769,7 +1778,7 @@ implementation
                    had_generic:=false;
                  end
                else
-                 vs.free;
+                 vs.free; // no nil needed
              until not try_to_consume(_COMMA);
              if m_delphi in current_settings.modeswitches then
                block_type:=bt_var_type
@@ -2064,6 +2073,7 @@ implementation
                         end;
                     end;
                   pt.free;
+                  pt := nil;
                   if token=_COMMA then
                     consume(_COMMA)
                   else
@@ -2139,6 +2149,7 @@ implementation
            end;
          { free the list }
          sc.free;
+         sc := nil;
 {$ifdef powerpc}
          is_first_type := false;
 {$endif powerpc}

@@ -252,6 +252,15 @@
        protected
           function GetDisposed : Boolean; inline;
           Property Disposed : Boolean Read GetDisposed;
+      {$IFDEF ENABLE_OBJECTHOOK}
+       public
+          Type
+             TObjectHook = procedure(aObject : TObject);
+          class var
+             AllocateObjectHook : TObjectHook;
+             DestroyObjectHook : TObjectHook;
+       {$ENDIF}
+
        public
           { please don't change the order of virtual methods, because
             their vmt offsets are used by some assembler code which uses
@@ -271,7 +280,13 @@
           class function ClassType : tclass;{$ifdef SYSTEMINLINE}inline;{$endif}
           class function ClassInfo : pointer;
           class function ClassName : shortstring;
-          class function ClassNameIs(const name : RTLString) : boolean;
+          {$IF SIZEOF(CHAR)=2}
+          class function ClassNameIs(const name : AnsiString) : boolean; overload; {$ifdef SYSTEMINLINE}inline;{$endif}
+          {$ENDIF}
+          {$ifdef FPC_HAS_FEATURE_ANSISTRINGS}
+	  class function ClassNameIs(const name : RTLString) : boolean; overload;  {$ifdef SYSTEMINLINE}inline;{$endif}
+          {$endif FPC_HAS_FEATURE_ANSISTRINGS}
+          class function ClassNameIs(const name : ShortString) : boolean; 
           class function ClassParent : tclass;{$ifdef SYSTEMINLINE}inline;{$endif}
           class function InstanceSize : SizeInt;// {$ifdef SYSTEMINLINE}inline;{$endif}
           class function InheritsFrom(aclass : tclass) : boolean;

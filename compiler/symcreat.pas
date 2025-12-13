@@ -180,7 +180,7 @@ implementation
     begin
       if sstate.valid then
         begin
-          sstate.new_scanner.free;
+          sstate.new_scanner.free; // no nil needed
           set_current_scanner(sstate.old_scanner);
           current_filepos:=sstate.old_filepos;
           token:=sstate.old_token;
@@ -724,6 +724,7 @@ implementation
             str:=str+'__fpc_ord2enum.put(JLInteger.valueOf('+tostr(enumsym.value)+'),'+enumname+');';
         end;
       orderedenums.free;
+      orderedenums := nil;
       str:=str+' end;';
       str_parse_method_impl(str,pd,true);
     end;
@@ -1884,7 +1885,11 @@ implementation
              (tprocdef(def).localst.symtabletype=localsymtable) then
             add_synthetic_method_implementations(tprocdef(def).localst)
           else if ((def.typ=objectdef) and
-                   not(oo_is_external in tobjectdef(def).objectoptions)) or
+                   not(oo_is_external in tobjectdef(def).objectoptions) and
+                   { we must not create duplicate synthetic methods for a unique
+                     type declaration as that simply shares the VMT of the aliased
+                     types }
+                   not(tobjectdef(def).is_unique_objpasdef)) or
                   (def.typ=recorddef) then
            begin
             { also complete nested types }

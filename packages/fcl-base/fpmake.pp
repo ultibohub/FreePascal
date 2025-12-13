@@ -116,7 +116,17 @@ begin
         begin
           AddUnit('wformat');
         end;
+    T:=P.Targets.AddUnit('wmarkdown.pp');
+      with T.Dependencies do
+        begin
+          AddUnit('wformat');
+        end;
     T:=P.Targets.AddUnit('wtex.pp');
+      with T.Dependencies do
+        begin
+          AddUnit('wformat');
+        end;
+    T:=P.Targets.AddUnit('wtext.pp');
       with T.Dependencies do
         begin
           AddUnit('wformat');
