@@ -59,11 +59,10 @@ implementation
       globtype,systems,
       cutils,verbose,globals,
       symconst,symdef,paramgr,
-      aasmbase,aasmtai,aasmdata,aasmcpu,defutil,htypechk,
+      aasmbase,aasmdata,aasmcpu,defutil,
       cgbase,cpuinfo,pass_1,pass_2,
-      cpupara,cgcpu,cgutils,procinfo,
-      ncon,nset,
-      ncgutil,tgobj,rgobj,rgcpu,cgobj,hlcgobj;
+      cpupara,cgutils,procinfo,
+      ncgutil,cgobj,hlcgobj;
 
 {$undef AVOID_OVERFLOW}
 {$ifopt Q+}
@@ -350,8 +349,12 @@ implementation
       var
         op    : TAsmOp;
         cmpop,
-        singleprec , inv: boolean;
+        singleprec , inv, doubleprec, quadprec: boolean;
+        l1, l2: TAsmLabel;
+        tmpreg1, tmpreg2: TRegister;
       begin
+        l1:=nil;
+        l2:=nil;
         pass_left_and_right;
         if (nf_swapped in flags) then
           swapleftright;
@@ -360,7 +363,9 @@ implementation
         hlcg.location_force_fpureg(current_asmdata.CurrAsmList,right.location,right.resultdef,true);
 
         cmpop:=false;
-        singleprec:=tfloatdef(left.resultdef).floattype=s32real;
+        singleprec:=is_single(left.resultdef);
+        doubleprec:=is_double(left.resultdef);
+        quadprec:=is_quad(left.resultdef);
         inv:=false;
         case nodetype of
           addn :
@@ -438,23 +443,51 @@ implementation
             internalerror(200403182);
         end;
 
-        // put both operands in a register
+        { put both operands in a register }
         hlcg.location_force_fpureg(current_asmdata.CurrAsmList,right.location,right.resultdef,true);
         hlcg.location_force_fpureg(current_asmdata.CurrAsmList,left.location,left.resultdef,true);
 
-        // initialize de result
+        { initialize the result and check floats for Nan}
         if not cmpop then
           begin
             location_reset(location,LOC_FPUREGISTER,def_cgsize(resultdef));
-            location.register := cg.getfpuregister(current_asmdata.CurrAsmList,location.size);
+            location.register:=cg.getfpuregister(current_asmdata.CurrAsmList,location.size);
           end
         else
-         begin
-           location_reset(location,LOC_REGISTER,OS_8);
-           location.register:=cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
-         end;
+          begin
+            location_reset(location,LOC_REGISTER,OS_8);
+            location.register:=cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
 
-        // emit the actual operation
+            if not(cs_opt_fastmath in current_settings.optimizerswitches) then
+              begin
+                tmpreg1:=cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
+                tmpreg2:=cg.getintregister(current_asmdata.CurrAsmList,OS_INT);
+                if singleprec then
+                  begin
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_FEQ_S,tmpreg1,right.location.register,right.location.register));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_FEQ_S,tmpreg2,left.location.register,left.location.register));
+                  end
+                else if doubleprec then
+                  begin
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_FEQ_D,tmpreg1,right.location.register,right.location.register));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_FEQ_D,tmpreg2,left.location.register,left.location.register));
+                  end
+                else if quadprec then
+                  begin
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_FEQ_Q,tmpreg1,right.location.register,right.location.register));
+                    current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_FEQ_Q,tmpreg2,left.location.register,left.location.register));
+                  end
+                else
+                  Internalerror(2025121401);
+
+                current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(A_AND,location.register,tmpreg1,tmpreg2));
+
+                current_asmdata.getjumplabel(l1);
+                current_asmdata.CurrAsmList.concat(taicpu.op_reg_sym(A_BEQZ,location.register,l1));
+              end;
+          end;
+
+        { emit the actual operation }
         if not cmpop then
           begin
             current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(op,location.register,left.location.register,right.location.register));
@@ -464,6 +497,9 @@ implementation
           begin
             current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_reg(op,location.register,left.location.register,right.location.register));
             cg.maybe_check_for_fpu_exception(current_asmdata.CurrAsmList);
+
+            if not(cs_opt_fastmath in current_settings.optimizerswitches) then
+              cg.a_label(current_asmdata.CurrAsmList,l1);
 
             if inv then
               current_asmdata.CurrAsmList.concat(taicpu.op_reg_reg_const(A_XORI,location.register,location.register,1));

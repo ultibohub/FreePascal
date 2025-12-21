@@ -2745,7 +2745,14 @@ begin
     tkBraceOpen:
       begin
       NextToken;
-      Last:=DoParseExpression(AParent);
+      // handle specializations like this: TA.X<B>()
+      if CurToken=tkBraceClose then
+        begin
+        Params:=TParamsExpr.Create( aParent,pekFuncParams);
+        Last:=Params;
+        end
+      else
+        Last:=DoParseExpression(AParent);
       if not Assigned(Last) then
         ParseExcSyntaxError;
       if (CurToken<>tkBraceClose) then
@@ -4807,6 +4814,11 @@ begin
                         (msAdvancedRecords in Scanner.CurrentModeSwitches)
                         and not (Parent is TProcedureBody)
                         and (RecordEl.Name<>''));
+       NextToken;
+       if CurTokenIsIdentifier('align') then
+         // ParseRecordAlign
+       else
+         UngetToken;
        CheckHint(RecordEl,True);
        Engine.FinishScope(stTypeDef,RecordEl);
        end;
@@ -7299,6 +7311,14 @@ begin
                  and not (Parent is TProcedureBody)
                  and (Result.Name<>'');
   ParseRecordMembers(Result,tkEnd,AllowAdvanced);
+  NextToken;
+  if CurTokenIsIdentifier('align') then
+    begin
+    ExpectToken(tkNumber);
+    Result.Align:=StrToInt(CurtokenString);
+    end
+  else
+    UngetToken;
   Engine.FinishScope(stTypeDef,Result);
 end;
 
