@@ -1138,7 +1138,7 @@ unit scandir;
                 current_namespacelist.Insert(s)
               else // copied when correct module is activated
                 premodule_namespacelist.Insert(s);
-              s:='';  
+              s:='';
               if c=',' then
                 begin
                   current_scanner.readchar;
@@ -2291,8 +2291,10 @@ unit scandir;
         AddDirective('PIC',directive_all, @dir_pic);
         AddDirective('POINTERMATH',directive_all, @dir_pointermath);
         AddDirective('POP',directive_all, @dir_pop);
+        AddDirective('POPOPT',directive_all, @dir_pop);
         AddDirective('PROFILE',directive_all, @dir_profile);
         AddDirective('PUSH',directive_all, @dir_push);
+        AddDirective('PUSHOPT',directive_all, @dir_push);
         AddDirective('R',directive_all, @dir_resource);
         AddDirective('RTTI',directive_all, @dir_rtti);
         AddDirective('RANGECHECKS',directive_all, @dir_rangechecks);

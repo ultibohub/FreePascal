@@ -111,11 +111,11 @@ uses
             (paramtype.owner=symtablestack.top) then
           begin
             { special handling for specializations inside generic function declarations }
-            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname(true)+tprocdef(symtablestack.top.defowner).procsym.prettyname;
+            prettynamepart:=tdef(symtablestack.top.defowner).fullownerhierarchyname(true,true)+tprocdef(symtablestack.top.defowner).procsym.prettyname;
           end
         else
           begin
-            prettynamepart:=paramtype.fullownerhierarchyname(true);
+            prettynamepart:=paramtype.fullownerhierarchyname(true,true);
           end;
         specializename:=specializename+namepart;
         if not first then
@@ -583,7 +583,7 @@ uses
               internalerror(2016112801);
             namepart:='_$'+hexstr(module.moduleid,8)+'$$'+parsedtype.unique_id_str;
             specializename:='$'+namepart;
-            prettyname:=parsedtype.fullownerhierarchyname(true)+parsedtype.typesym.prettyname;
+            prettyname:=parsedtype.fullownerhierarchyname(true,true)+parsedtype.typesym.prettyname;
             if assigned(poslist) then
               begin
                 New(parampos);
@@ -800,7 +800,7 @@ uses
                     same number of array elements of a particular type }
                   def:=carraydef.getreusable(tarraydef(def).elementdef,tarraydef(def).highrange-tarraydef(def).lowrange+1);
                 end;
-              newtype:=ctypesym.create(def.fullownerhierarchyname(false)+typName[def.typ]+'$'+def.unique_id_str,def);
+              newtype:=ctypesym.create(def.fullownerhierarchyname(false,true)+typName[def.typ]+'$'+def.unique_id_str,def);
               include(newtype.symoptions,sp_generic_unnamed_type);
               newtype.owner:=def.owner;
               { ensure that there's no warning }
@@ -1897,10 +1897,31 @@ uses
               end;
           end
         else
-          if current_module.is_unit and current_module.in_interface then
-            specializest:=current_module.globalsymtable
-          else
-            specializest:=current_module.localsymtable;
+          begin
+            { if one of the type parameters is owned by a local- or parasymtable
+              then use the localsymtable for specialization }
+            specializest:=nil;
+            for i:=0 to context.paramlist.count-1 do
+              begin
+                psym:=tsym(context.paramlist[i]);
+                if psym.owner.symtabletype in [localsymtable,parasymtable] then
+                  begin
+                    if (psym.owner.symtabletype=localsymtable) or (psym.owner.defowner.typ<>procdef) then
+                      specializest:=psym.owner
+                    else
+                      specializest:=tprocdef(psym.owner.defowner).getsymtable(gs_local);
+                    if not assigned(specializest) then
+                      internalerror(2025122402);
+                    break;
+                  end;
+              end;
+
+            if not assigned(specializest) then
+              if current_module.is_unit and current_module.in_interface then
+                specializest:=current_module.globalsymtable
+              else
+                specializest:=current_module.localsymtable;
+          end;
         if not assigned(specializest) then
           internalerror(2014050910);
 

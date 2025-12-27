@@ -754,10 +754,10 @@ implementation
               begin
                 comment(v_error,'Symbol '+realname+' from module '+tmod.mainsource+' registered with current module '+current_module.mainsource);
               end;
-	    if not assigned(tmod) then
+            if not assigned(tmod) then
               tmod:=current_module;
           end
-	else
+        else
           tmod:=current_module;
         { Register in current_module }
         if assigned(tmod) then
@@ -1049,7 +1049,9 @@ implementation
         for i:=0 to ProcdefList.Count-1 do
           begin
             pd:=tprocdef(ProcdefList[i]);
-            if (pd.owner=owner) and (pd.forwarddef) then
+            { Don't check for is_specialization, but whether it's somehow part
+              of a specialization }
+            if (pd.owner=owner) and (pd.forwarddef) and not (df_specialization in pd.defoptions) then
               begin
                 { For mode macpas. Make implicit externals (procedures declared in the interface
                   section which do not have a counterpart in the implementation)
@@ -1561,9 +1563,9 @@ implementation
 
     function tprocsym.could_be_implicitly_specialized:boolean;
       begin
-        result:=(m_implicit_function_specialization in current_settings.modeswitches) and 
+        result:=(m_implicit_function_specialization in current_settings.modeswitches) and
                 (sp_generic_dummy in symoptions) and
-                assigned(genprocsymovlds);          
+                assigned(genprocsymovlds);
       end;
 
 {****************************************************************************
