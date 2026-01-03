@@ -225,9 +225,9 @@ uses MacTypes,CoreAudioTypes;
 //#pragma mark Overview
 {!
     @header AudioHardwareBase
-    
+
     This file defines the HAL's object model including the properties and their needed types and
-    constants that describe the proeprty values.
+    constants that describe the property values.
 }
 
 //==================================================================================================
@@ -372,7 +372,7 @@ const
 	kAudioDevicePermissionsError = FourCharCode('!hog');
 
 {!
-    @enum           Predefined AudioObjectID values 
+    @enum           Predefined AudioObjectID values
     @abstract       ObjectIDs that are always the same
     @constant       kAudioObjectUnknown
                         This is the sentinel value. No object will have an ID whose value is 0.
@@ -409,7 +409,7 @@ const
 {!
     @enum           Wildcard Constants
     @abstract       Constants that are used as wildcards.
-    @discussion     Wildcards match any and all values for thier associated type. They are useful
+    @discussion     Wildcards match any and all values for their associated type. They are useful
                     when registering to receive notificationss.
     @constant       kAudioObjectPropertySelectorWildcard
                         The wildcard value for AudioObjectPropertySelectors.
@@ -449,7 +449,7 @@ const
     @discussion     The AudioObject class is the base class for all classes. As such, all classes
                     inherit this set of properties.
     @constant       kAudioObjectPropertyBaseClass
-                        An AudioClassID that identifies the class from which the clase of the
+                        An AudioClassID that identifies the class from which the class of the
                         AudioObject is derived. This value must always be one of the standard
                         classes.
     @constant       kAudioObjectPropertyClass
@@ -579,8 +579,8 @@ const
                         the caller as the property's data. Note that an error is not returned if the
                         UID doesn't refer to any AudioEndpoints. Rather, this property will return
                         kAudioObjectUnknown as the value of the property.
-    @constant       kAudioTransportManagerPorpertyTransportType
-                        A UInt32 whose value indicates how the transport manager's endpoints and 
+    @constant       kAudioTransportManagerPropertyTransportType
+                        A UInt32 whose value indicates how the transport manager's endpoints and
 						endpoint devices are connected to the CPU. Constants for some of the values
 						for this property can be found in the enum in the AudioDevice Constants
 						section of this file.
@@ -853,13 +853,13 @@ const
                     element structure.
     @constant       kAudioEndPointDevicePropertyComposition
                         A CFDictionary that describes the composition of the AudioEndPointDevice.
-                        The keys for this CFDicitionary are defined in the AudioEndPointDevice
+                        The keys for this CFDictionary are defined in the AudioEndPointDevice
                         Constants section. The caller is responsible for releasing the returned
                         CFObject.
     @constant       kAudioEndPointDevicePropertyEndPointList
                         An array of AudioObjectIDs for all the AudioEndPoints in the device.
     @constant       kAudioEndPointDevicePropertyIsPrivate
-                        A pid_t where a value of 0 idicates that the device is public and a non-zero
+                        A pid_t where a value of 0 indicates that the device is public and a non-zero
                         value indicates the pid of the process that owns the device.
 }
 const
@@ -876,7 +876,7 @@ const
     @abstract       Various constants related to the AudioEndPoint class.
     @discussion     The AudioEndPoint class is a subclass of AudioDevice class and has the same
                     scope and element structure. However, AudioEndPoint objects do not implement an
-                    IO path of their own and as such do not implmenent any  AudioDevice properties
+                    IO path of their own and as such do not implement any  AudioDevice properties
                     associated with the IO path.
     @constant       kAudioEndPointDeviceClassID
                         The AudioClassID that identifies the AudioEndPointDevice class.
@@ -931,13 +931,13 @@ const
     @abstract       This structure allows a specific sample rate range to be associated with an
                     AudioStreamBasicDescription that specifies it's sample rate as
                     kAudioStreamAnyRate.
-    @discussion     Note that this structure is only used to desicribe the the available formats
+    @discussion     Note that this structure is only used to describe the the available formats
                     for a stream. It is not used for the current format.
     @field          mFormat
                         The AudioStreamBasicDescription that describes the format of the stream.
                         Note that the mSampleRate field of the structure will be the same as the
                         the values in mSampleRateRange when only a single sample rate is supported.
-                        It will be kAudioStreamAnyRate when there is a range with more elements. 
+                        It will be kAudioStreamAnyRate when there is a range with more elements.
     @field          mSampleRateRange
                         The AudioValueRange that describes the minimum and maximum sample rate for
                         the stream. If the mSampleRate field of mFormat is kAudioStreamAnyRate the
@@ -988,7 +988,7 @@ const
     @constant       kAudioStreamTerminalTypeHeadsetMicrophone
                         The ID for a terminal type of a microphone attached to an headset.
     @constant       kAudioStreamTerminalTypeReceiverMicrophone
-                        The ID for a terminal type of a microhpone on a telephone handset recevier.
+                        The ID for a terminal type of a microhpone on a telephone handset receiver.
     @constant       kAudioStreamTerminalTypeTTY
                         The ID for a terminal type of a device providing a TTY signal.
     @constant       kAudioStreamTerminalTypeHDMI
@@ -1220,12 +1220,12 @@ const
                         or the current IO session stops and a new IO session starts.
     @constant       kAudioTalkbackControlClassID
                         An AudioBooleanControl where true means that the talkback channel is
-                        enabled. This control is for talkback channels that are handled outside of 
+                        enabled. This control is for talkback channels that are handled outside of
                         the regular IO channels. If the talkback channel is among the normal IO
                         channels, it will use AudioMuteControl.
     @constant       kAudioListenbackControlClassID
                         An AudioBooleanControl where true means that the listenback channel is
-                        audible. This control is for listenback channels that are handled outside of 
+                        audible. This control is for listenback channels that are handled outside of
                         the regular IO channels. If the listenback channel is among the normal IO
                         channels, it will use AudioMuteControl.
 }
@@ -1314,7 +1314,7 @@ const
 	kAudioSelectorControlPropertyItemKind = FourCharCode('clkk');
 
 {!
-    @enum           Constants for the value of the property, kAudioSelectorControlPropertyItemKind 
+    @enum           Constants for the value of the property, kAudioSelectorControlPropertyItemKind
                     for any selector control item
     @constant       kAudioSelectorControlItemKindSpacer
                         This ID represents an item in a selector control's range that represents a

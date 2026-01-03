@@ -3,7 +3,7 @@
  Copyright (c) 2000-2010 by Stefan Heymann
 
  See the file COPYING.FPC, included in this distribution,
- for details about the copyright. 
+ for details about the copyright.
 
  This program is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -46,7 +46,7 @@ TTarWriter Usage
 - Now your tar file is ready.
 
 
-Source 
+Source
 --------------------------
 The official site to get this code is http://www.destructor.de/
 
@@ -69,7 +69,7 @@ Date        Author Changes
 2001-11-13  HeySt  2.0.3 Bugfix: Take out ClearDirRec call from WriteTarHeader
                          Bug Reported by Tony BenBrahim
 2001-12-25  HeySt  2.0.4 WriteTarHeader: Fill Rec with zero bytes before filling it
-2002-05-18  HeySt  2.0.5 Kylix awareness: Thanks to Kerry L. Davison for the canges
+2002-05-18  HeySt  2.0.5 Kylix awareness: Thanks to Kerry L. Davison for the changes
 2005-09-03  HeySt  2.0.6 TTarArchive.FindNext: Don't access SourceStream.Size
                          (for compressed streams, which don't know their .Size)
 2006-03-13  HeySt  2.0.7 Bugfix in ReadFile (Buffer : POINTER)
@@ -81,7 +81,7 @@ Date        Author Changes
                          Still no support for filenames > 100 bytes. Sorry.
                          Support for Unicode Delphi versions (2009, 2010, XE, etc.)
                    MvdV 2.1.0 notes : not all of the Unicode changes have been made, decisions on this subject still pending on the FPC side.
-									Mostly rawbytestring and a couple of more hary typecasts.
+									Mostly rawbytestring and a couple of more harry typecasts.
 *)
 
 {$IFNDEF FPC_DOTTEDUNITS}
@@ -97,14 +97,14 @@ INTERFACE
      {$DEFINE Kylix}
      {$DEFINE LIBCUNIT}
   {$ENDIF}
-{$ENDIF} 
+{$ENDIF}
 
 {$IFDEF FPC_DOTTEDUNITS}
 USES
 {$IFDEF LIBCUNIT}
    Api.Libc,		// MvdV: Nothing is used from this???
 {$ENDIF}
-{$ifdef Unix} 
+{$ifdef Unix}
   UnixApi.Types, UnixApi.Base, UnixApi.Unix,
 {$endif}
 (*$IFDEF MSWINDOWS *)
@@ -116,7 +116,7 @@ USES
 {$IFDEF LIBCUNIT}
    Libc,		// MvdV: Nothing is used from this???
 {$ENDIF}
-{$ifdef Unix} 
+{$ifdef Unix}
   UnixType, BaseUnix, Unix,
 {$endif}
 (*$IFDEF MSWINDOWS *)
@@ -179,7 +179,7 @@ TYPE
                   FBytesToGo  : INT64;     // Bytes until the next Header Record
                 PUBLIC
                   CONSTRUCTOR Create (Stream   : TStream);                                OVERLOAD;
-                  CONSTRUCTOR Create (Filename : STRING;
+                  CONSTRUCTOR Create (const Filename : AnsiString;
                                       FileMode : WORD = fmOpenRead OR fmShareDenyWrite);  OVERLOAD;
                   DESTRUCTOR Destroy;                                       OVERRIDE;
                   PROCEDURE Reset;                                         // Reset File Pointer
@@ -210,9 +210,9 @@ TYPE
                  CONSTRUCTOR CreateEmpty;
                PUBLIC
                  CONSTRUCTOR Create (TargetStream   : TStream);                            OVERLOAD;
-                 CONSTRUCTOR Create (TargetFilename : STRING; Mode : INTEGER = fmCreate);  OVERLOAD;
+                 CONSTRUCTOR Create (const TargetFilename : AnsiString; Mode : INTEGER = fmCreate);  OVERLOAD;
                  DESTRUCTOR Destroy; OVERRIDE;                   // Writes End-Of-File Tag
-                 PROCEDURE AddFile   (Filename : STRING;  TarFilename : AnsiString = '');
+                 PROCEDURE AddFile   (const Filename : AnsiString;  TarFilename : AnsiString = '');
                  PROCEDURE AddStream (Stream   : TStream; TarFilename : AnsiString; FileDateGmt : TDateTime);
                  PROCEDURE AddString (Contents : Ansistring;  TarFilename : AnsiString; FileDateGmt : TDateTime);  // RawByteString
                  PROCEDURE AddDir          (Dirname            : AnsiString; DateGmt : TDateTime; MaxDirSize : INT64 = 0);
@@ -244,8 +244,8 @@ CONST
 
 
 FUNCTION  PermissionString      (Permissions : TTarPermissions) : STRING;
-FUNCTION  ConvertFilename       (Filename    : STRING)          : STRING;
-FUNCTION  FileTimeGMT           (FileName    : STRING)          : TDateTime;  OVERLOAD;
+FUNCTION  ConvertFilename       (const Filename    : AnsiString)          : AnsiString;
+FUNCTION  FileTimeGMT           (const FileName    : AnsiString)          : TDateTime;  OVERLOAD;
 FUNCTION  FileTimeGMT           (SearchRec   : TSearchRec)      : TDateTime;  OVERLOAD;
 PROCEDURE ClearDirRec           (VAR DirRec  : TTarDirRec);
 
@@ -273,9 +273,9 @@ BEGIN
 END;
 
 
-FUNCTION ConvertFilename  (Filename : STRING) : STRING;
+FUNCTION ConvertFilename  (const Filename : AnsiString) : AnsiString;
 // Converts the filename to Unix conventions
-// could be empty and inlined away for FPC. FPC I/O should be 
+// could be empty and inlined away for FPC. FPC I/O should be
 // forward/backward slash safe.
 BEGIN
   (*$IFDEF Unix *)
@@ -285,7 +285,7 @@ BEGIN
   (*$ENDIF *)
 END;
 
-FUNCTION FileTimeGMT (FileName: STRING): TDateTime;
+FUNCTION FileTimeGMT (const FileName: AnsiString): TDateTime;
          // Returns the Date and Time of the last modification of the given File
          // The Result is zero if the file could not be found
          // The Result is given in UTC (GMT) time zone
@@ -320,7 +320,7 @@ BEGIN
   (*$IFDEF Unix *)
      IF SearchRec.Attr AND faDirectory = 0 THEN BEGIN
        FillChar(TimeVal, SizeOf(TimeVal), #0);
-       FillChar(TimeZone, SizeOf(TimeZone), #0);      
+       FillChar(TimeZone, SizeOf(TimeZone), #0);
        Result := SearchRec.TimeStamp;
        {$IFDEF Kylix}
        GetTimeOfDay (TimeVal, TimeZone);
@@ -589,7 +589,7 @@ BEGIN
 END;
 
 
-CONSTRUCTOR TTarArchive.Create (Filename : STRING; FileMode : WORD);
+CONSTRUCTOR TTarArchive.Create (const Filename : Ansistring; FileMode : WORD);
 BEGIN
   INHERITED Create;
   FStream     := TFileStream.Create (Filename, FileMode);
@@ -801,7 +801,7 @@ BEGIN
 END;
 
 
-CONSTRUCTOR TTarWriter.Create (TargetFilename : STRING; Mode : INTEGER = fmCreate);
+CONSTRUCTOR TTarWriter.Create (const TargetFilename : AnsiString; Mode : INTEGER = fmCreate);
 BEGIN
   CreateEmpty;
   FStream     := TFileStream.Create (TargetFilename, Mode);
@@ -821,7 +821,7 @@ BEGIN
 END;
 
 
-PROCEDURE TTarWriter.AddFile   (Filename : STRING;  TarFilename : AnsiString = '');
+PROCEDURE TTarWriter.AddFile   (const Filename : AnsiString;  TarFilename : AnsiString = '');
 VAR
   S    : TFileStream;
   Date : TDateTime;

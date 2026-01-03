@@ -1,15 +1,15 @@
 {
  * Copyright (c) 2000-2004,2007 Apple Inc. All Rights Reserved.
- * 
+ *
  * @APPLE_LICENSE_HEADER_START@
- * 
+ *
  * This file contains Original Code and/or Modifications of Original Code
  * as defined in and that are subject to the Apple Public Source License
  * Version 2.0 (the 'License'). You may not use this file except in
  * compliance with the License. Please obtain a copy of the License at
  * http://www.opensource.apple.com/apsl/ and read it before using this
  * file.
- * 
+ *
  * The Original Code and all software distributed under the License are
  * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
@@ -17,7 +17,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
  * Please see the License for the specific language governing rights and
  * limitations under the License.
- * 
+ *
  * @APPLE_LICENSE_HEADER_END@
  }
 {  Pascal Translation:  Peter N Lewis, <peter@stairways.com.au>, 2004 }
@@ -249,14 +249,14 @@ uses MacTypes;
 	@header Authorization
 	Version 1.0 10/16/2000
 
-	The Authorization API contains all the APIs that a application or tool that need pre-authorization or need an authorization desision made.
-	
+	The Authorization API contains all the APIs that a application or tool that need pre-authorization or need an authorization decision made.
+
 	A typical use cases are a preference panel that would start off calling AuthorizationCreate() (without UI) to get an authorization object.  Then call AuthorizationCopyRights() to figure out what is currently allowed.
-	
+
 	If any of the operations that the preference panel wishes to perform are currently not allowed the lock icon in the window would show up in the locked state.  Otherwise it would show up unlocked.
-	
-	When the user locks the lock AuthorizationFree() is called with the kAuthorizationFlagDestroyRights to destroy any authorization rights that have been aquired.
-	
+
+	When the user locks the lock AuthorizationFree() is called with the kAuthorizationFlagDestroyRights to destroy any authorization rights that have been acquired.
+
 	When the user unlocks the lock AuthorizationCreate() is called with the kAuthorizationFlagInteractionAllowed and kAuthorizationFlagExtendRights flags to obtain all required rights.  The old authorization object can be freed by calling AuthorizationFree() with no flags.
 
 }
@@ -312,7 +312,7 @@ const
 	kAuthorizationFlagPartialRights = 1 shl 2;
 	kAuthorizationFlagDestroyRights = 1 shl 3;
 	kAuthorizationFlagPreAuthorize = 1 shl 4;
-	
+
 	// private bits (do not use)
 	kAuthorizationFlagNoData = 1 shl 20;
 
@@ -426,11 +426,11 @@ type AuthorizationEnvironmentPtr = ^AuthorizationEnvironment;
 
 {!
     @function AuthorizationCreate
-    Create a new autorization object which can be used in other authorization calls.  When the authorization is no longer needed AuthorizationFree should be called.
+    Create a new authorization object which can be used in other authorization calls.  When the authorization is no longer needed AuthorizationFree should be called.
 
 	When the kAuthorizationFlagInteractionAllowed flag is set, user interaction will happen when required.  Failing to set this flag will result in this call failing with a errAuthorizationInteractionNotAllowed status when interaction is required.
 
-	Setting the kAuthorizationFlagExtendRights flag will extend the currently available rights. If this flag is set the returned AuthorizationRef will grant all the rights requested when errAuthorizationSuccess is returned. If this flag is not set the operation will almost certainly succeed, but no attempt will be made to make the requested rights availible.
+	Setting the kAuthorizationFlagExtendRights flag will extend the currently available rights. If this flag is set the returned AuthorizationRef will grant all the rights requested when errAuthorizationSuccess is returned. If this flag is not set the operation will almost certainly succeed, but no attempt will be made to make the requested rights available.
 		Call AuthorizationCopyRights to figure out which of the requested rights are granted by the returned AuthorizationRef.
 
 	Setting the kAuthorizationFlagPartialRights flag will cause this call to succeed if only some of the requested rights are being granted by the returned AuthorizationRef. Unless this flag is set this API will fail if not all the requested rights could be obtained.
@@ -442,9 +442,9 @@ type AuthorizationEnvironmentPtr = ^AuthorizationEnvironment;
 		The reason for passing in this flag is to provide correct audit trail information and to avoid unnecessary user interaction.
 
     @param rights (input/optional) An AuthorizationItemSet containing rights for which authorization is being requested.  If none are specified the resulting AuthorizationRef will authorize nothing at all.
-    @param environment (input/optional) An AuthorizationItemSet containing enviroment state used when making the autorization decision.  See the AuthorizationEnvironment type for details.
+    @param environment (input/optional) An AuthorizationItemSet containing enviroment state used when making the authorization decision.  See the AuthorizationEnvironment type for details.
     @param flags (input) options specified by the AuthorizationFlags enum.  set all unused bits to zero to allow for future expansion.
-    @param authorization (output optional) A pointer to an AuthorizationRef to be returned.  When the returned AuthorizationRef is no longer needed AuthorizationFree should be called to prevent anyone from using the aquired rights.  If NULL is specified no new rights are returned, but the system will attempt to authorize all the requested rights and return the appropriate status.
+    @param authorization (output optional) A pointer to an AuthorizationRef to be returned.  When the returned AuthorizationRef is no longer needed AuthorizationFree should be called to prevent anyone from using the acquired rights.  If NULL is specified no new rights are returned, but the system will attempt to authorize all the requested rights and return the appropriate status.
 
     @result errAuthorizationSuccess 0 authorization or all requested rights succeeded.
 
@@ -459,14 +459,14 @@ function AuthorizationCreate( rights: AuthorizationRightsPtr; environment: Autho
 
 {!
     @function AuthorizationFree
-    Destroy an AutorizationRef object. If the kAuthorizationFlagDestroyRights flag is passed,
+    Destroy an AuthorizationRef object. If the kAuthorizationFlagDestroyRights flag is passed,
 	any rights associated with the authorization are lost. Otherwise, only local resources
 	are released, and the rights may still be available to other clients.
 
-	Setting the kAuthorizationFlagDestroyRights flag will prevent any rights that were obtained by the specified authorization object to be preserved after returning from this API.  This effectivaly locks down all potentially shared authorizations.
+	Setting the kAuthorizationFlagDestroyRights flag will prevent any rights that were obtained by the specified authorization object to be preserved after returning from this API.  This effectively locks down all potentially shared authorizations.
 
     @param authorization (input) The authorization object on which this operation is performed.
-	
+
 	@param flags (input) Bit mask of option flags to this call.
 
     @result errAuthorizationSuccess 0 No error.
@@ -497,7 +497,7 @@ function AuthorizationFree( authorization: AuthorizationRef; flags: Authorizatio
 
     @param authorization (input) The authorization object on which this operation is performed.
     @param rights (input) A rights set (see AuthorizationCreate).
-    @param environment (input/optional) An AuthorizationItemSet containing enviroment state used when making the autorization decision.  See the AuthorizationEnvironment type for details.
+    @param environment (input/optional) An AuthorizationItemSet containing enviroment state used when making the authorization decision.  See the AuthorizationEnvironment type for details.
     @param flags (input) options specified by the AuthorizationFlags enum.  set all unused bits to zero to allow for future expansion.
     @param authorizedRights (output/optional) A pointer to a newly allocated AuthorizationInfoSet in which the authorized subset of rights are returned (authorizedRights should be deallocated by calling AuthorizationFreeItemSet() when it is no longer needed).  If NULL the only information returned is the status.  Note that if the kAuthorizationFlagPreAuthorize flag was specified rights that could not be preauthorized are returned in authorizedRights, but their flags contains the kAuthorizationFlagCanNotPreAuthorize bit.
 
@@ -514,9 +514,9 @@ function AuthorizationCopyRights( authorization: AuthorizationRef; const (*var*)
 {!
 	@function AuthorizationCopyInfo
 	Returns sideband information (e.g. access credentials) obtained from a call to AuthorizationCreate.  The format of this data depends of the tag specified.
-	
+
     @param authorization (input) The authorization object on which this operation is performed.
-    @param tag (input/optional) An optional string tag specifing which sideband information should be returned.  When NULL is specified all available information is returned.
+    @param tag (input/optional) An optional string tag specifying which sideband information should be returned.  When NULL is specified all available information is returned.
     @param flags (input) options specified by the AuthorizationFlags enum.  set all unused bits to zero to allow for future expansion.
     @param info (output) A pointer to a newly allocated AuthorizationInfoSet in which the requested sideband infomation is returned (info should be deallocated by calling AuthorizationFreeItemSet() when it is no longer needed).
 
@@ -537,10 +537,10 @@ function AuthorizationCopyInfo( authorization: AuthorizationRef; tag: Authorizat
 	Note that *storing* the external form somewhere will probably not do what
 	you want, since authorizations are bounded by sessions, processes, and possibly
 	time limits. This is for online transmission of authorizations.
-	
+
 	@param authorization The (valid) authorization reference to externalize
 	@param extForm Pointer to an AuthorizationExternalForm variable to fill.
-	
+
         @result errAuthorizationSuccess 0 No error.
 
         errAuthorizationExternalizeNotAllowed -60009 Externalizing this authorization is not allowed.
@@ -555,10 +555,10 @@ function AuthorizationMakeExternalForm( authorization: AuthorizationRef; var ext
 {!
 	@function AuthorizationCreateFromExternalForm
 	Internalize the external "byte blob" form of an authorization reference.
-	
+
 	@param extForm Pointer to an AuthorizationExternalForm value.
 	@param authorization Will be filled with a valid AuthorizationRef on success.
-	
+
 	@result errAuthorizationInternalizeNotAllowed -60010 Internalizing this authorization is not allowed.
 }
 function AuthorizationCreateFromExternalForm( const (*var*) extForm: AuthorizationExternalForm; var authorization: AuthorizationRef ): OSStatus; external name '_AuthorizationCreateFromExternalForm';
@@ -568,7 +568,7 @@ function AuthorizationCreateFromExternalForm( const (*var*) extForm: Authorizati
 	@function AuthorizationFreeItemSet
 	Release the memory allocated for an AuthorizationItemSet that was allocated
 	by an API call.
-	
+
     @param set The AuthorizationItemSet to deallocate.
 
     @result errAuthorizationSuccess 0 No error.
@@ -582,7 +582,7 @@ function AuthorizationFreeItemSet( var setx: AuthorizationItemSet ): OSStatus; e
 	@function AuthorizationExecuteWithPrivileges
 	Run an executable tool with enhanced privileges after passing
 	suitable authorization procedures.
-	
+
 	@param authorization An authorization reference that is used to authorize
 	access to the enhanced privileges. It is also passed to the tool for
 	further access control.
@@ -596,7 +596,7 @@ function AuthorizationFreeItemSet( var setx: AuthorizationItemSet ): OSStatus; e
 	establish a communications pipe.
 
  	@discussion This function has been deprecated and should no longer be used.
- 	Use a launchd-launched helper tool and/or the Service Mangement framework
+ 	Use a launchd-launched helper tool and/or the Service Management framework
  	for this functionality.
  }
 type
@@ -614,9 +614,9 @@ function AuthorizationExecuteWithPrivileges( authorization: AuthorizationRef; pa
 	While AuthorizationExecuteWithPrivileges already verified the authorization to
 	launch your tool, the tool may want to avail itself of any additional pre-authorizations
 	the caller may have obtained through that reference.
- 
+
 	@discussion This function has been deprecated and should no longer be used.
-	Use a launchd-launched helper tool and/or the Service Mangement framework
+	Use a launchd-launched helper tool and/or the Service Management framework
 	for this functionality.
  }
 function AuthorizationCopyPrivilegedReference( var authorization: AuthorizationRef; flags: AuthorizationFlags ): OSStatus; external name '_AuthorizationCopyPrivilegedReference';

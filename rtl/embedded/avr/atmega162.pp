@@ -64,9 +64,9 @@ var
   SPDR : byte absolute $00+$2F; // SPI Data Register
   // CPU
   SREG : byte absolute $00+$5F; // Status Register
-  SP : word absolute $00+$5D; // Stack Pointer 
-  SPL : byte absolute $00+$5D; // Stack Pointer 
-  SPH : byte absolute $00+$5D+1; // Stack Pointer 
+  SP : word absolute $00+$5D; // Stack Pointer
+  SPL : byte absolute $00+$5D; // Stack Pointer
+  SPH : byte absolute $00+$5D+1; // Stack Pointer
   MCUCR : byte absolute $00+$55; // MCU Control Register
   MCUCSR : byte absolute $00+$54; // MCU Control And Status Register
   EMCUCR : byte absolute $00+$56; // Extended MCU Control Register
@@ -183,7 +183,7 @@ const
   ACIS = 0; // Analog Comparator Interrupt Mode Select bits
   // UCSR0A
   RXC0 = 7; // USART Receive Complete
-  TXC0 = 6; // USART Transmitt Complete
+  TXC0 = 6; // USART Transmit Complete
   UDRE0 = 5; // USART Data Register Empty
   FE0 = 4; // Framing Error
   DOR0 = 3; // Data overRun
@@ -208,7 +208,7 @@ const
   UCPOL0 = 0; // Clock Polarity
   // UCSR1A
   RXC1 = 7; // USART Receive Complete
-  TXC1 = 6; // USART Transmitt Complete
+  TXC1 = 6; // USART Transmit Complete
   UDRE1 = 5; // USART Data Register Empty
   FE1 = 4; // Framing Error
   DOR1 = 3; // Data overRun
@@ -289,7 +289,7 @@ const
   // SPMCR
   SPMIE = 7; // SPM Interrupt Enable
   RWWSB = 6; // Read While Write Section Busy
-  RWWSRE = 4; // Read While Write secion read enable
+  RWWSRE = 4; // Read While Write section read enable
   BLBSET = 3; // Boot Lock Bit Set
   PGWRT = 2; // Page Write
   PGERS = 1; // Page Erase

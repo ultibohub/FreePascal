@@ -665,7 +665,7 @@ procedure Win32Ansi2UnicodeMove(source:PAnsiChar;cp : TSystemCodePage;var dest:U
       end;
     destlen:=MultiByteToWideChar(cp, dwFlags, source, len, nil, 0);
     { destlen=0 means that Windows cannot convert, so call the default
-      handler. This is similiar to what unix does and is a good fallback
+      handler. This is similar to what unix does and is a good fallback
       if rawbyte strings are passed }
     if destlen=0 then
       begin
@@ -771,7 +771,7 @@ function Win32GetStandardCodePage(const stdcp: TStandardCodePageEnum): TSystemCo
     end;
   end;
 
-{ there is a similiar procedure in sysutils which inits the fields which
+{ there is a similar procedure in sysutils which inits the fields which
   are only relevant for the sysutils units }
 procedure InitWin32Widestrings;
   var
@@ -815,14 +815,14 @@ type
   WINBOOL = longbool;
   PHANDLER_ROUTINE = function (dwCtrlType:DWORD):WINBOOL; stdcall;
 
-function SetConsoleCtrlHandler(HandlerRoutine:PHANDLER_ROUTINE; Add:WINBOOL):WINBOOL; stdcall; 
+function SetConsoleCtrlHandler(HandlerRoutine:PHANDLER_ROUTINE; Add:WINBOOL):WINBOOL; stdcall;
   external 'kernel32' name 'SetConsoleCtrlHandler';
 
 function WinCtrlBreakHandler(dwCtrlType:DWORD): WINBOOL;stdcall;
 const
   CTRL_BREAK_EVENT = 1;
 begin
-  if Assigned(CtrlBreakHandler) then 
+  if Assigned(CtrlBreakHandler) then
     Result:=CtrlBreakHandler((dwCtrlType and CTRL_BREAK_EVENT > 0))
   else
     Result:=false;
@@ -831,7 +831,7 @@ end;
 function SysSetCtrlBreakHandler (Handler: TCtrlBreakHandler): TCtrlBreakHandler;
 begin
   (* Return either nil or previous handler *)
-  if (Assigned(CtrlBreakHandler)) and (not Assigned(Handler)) then   
+  if (Assigned(CtrlBreakHandler)) and (not Assigned(Handler)) then
     SetConsoleCtrlHandler(@WinCtrlBreakHandler, false)
   else if (not Assigned(CtrlBreakHandler)) and (Assigned(Handler)) then
     SetConsoleCtrlHandler(@WinCtrlBreakHandler, true);

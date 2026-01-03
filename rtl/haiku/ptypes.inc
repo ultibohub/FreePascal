@@ -78,11 +78,11 @@ type
     pPid     = ^pid_t;
 
 {$ifdef cpu64}
-    size_t   = cuint64;         { as definied in the C standard}
+    size_t   = cuint64;         { as defined in the C standard}
     ssize_t  = cint64;          { used by function for returning number of bytes }
     time_t   = cint64;           { used for returning the time  }
 {$else}
-    size_t   = cuint32;         { as definied in the C standard}
+    size_t   = cuint32;         { as defined in the C standard}
     ssize_t  = cint32;          { used by function for returning number of bytes }
     time_t   = clong;           { used for returning the time  }
 {$endif}
@@ -194,7 +194,7 @@ type
     __lockkind: cint;
     __pshared: cint;
   end;
-  
+
   sem_t = record
      __sem_lock: _pthread_fastlock;
      __sem_value: cint;
@@ -210,7 +210,7 @@ CONST
     _PTHREAD_MUTEX_RECURSIVE_NP  = 3;
     _PTHREAD_MUTEX_ERRORCHECK_NP = 2;
     _PTHREAD_MUTEX_ADAPTIVE_NP   = 3;
-  
+
     _PTHREAD_MUTEX_NORMAL     = 1;
     _PTHREAD_MUTEX_RECURSIVE  = _PTHREAD_MUTEX_RECURSIVE_NP;
     _PTHREAD_MUTEX_ERRORCHECK = _PTHREAD_MUTEX_ERRORCHECK_NP;

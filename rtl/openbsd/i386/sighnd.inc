@@ -29,9 +29,9 @@ begin
   if assigned(sigcontext) then
     begin
       if has_mmx_support then
-        getaltfpustate:=sigcontext^.sc_fpustate^.xmmState.fx_fsw 
+        getaltfpustate:=sigcontext^.sc_fpustate^.xmmState.fx_fsw
       else
-        getaltfpustate:=sigcontext^.sc_fpustate^.x87state.en_sw 
+        getaltfpustate:=sigcontext^.sc_fpustate^.x87state.en_sw
     end
   else
     getaltfpustate:=0;
@@ -56,7 +56,7 @@ begin
   case sig of
     SIGFPE :
           begin
-    { this is not allways necessary but I don't know yet
+    { this is not always necessary but I don't know yet
       how to tell if it is or not PM }
           res:=200;
 {$ifdef cpui386}

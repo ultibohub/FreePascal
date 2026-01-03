@@ -1623,7 +1623,7 @@ implementation
          end
         else
          Result:=Variables[IniVar];
-        { Substition asked ? }
+        { Substitution asked ? }
         if dosubst then
          Result:=SubstVariables(Result);
       end;

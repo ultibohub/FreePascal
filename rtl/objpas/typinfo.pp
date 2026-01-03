@@ -176,7 +176,7 @@ unit TypInfo;
         { Stack offset if Reference, ShiftVal if not }
         Offset: SizeInt;
         { if Reference then the register is the index register otherwise the
-          register in wihch (part of) the parameter resides }
+          register in which (part of) the parameter resides }
         property Reference: Boolean read GetReference;
         property RegType: TRegisterType read GetRegType;
         { if Reference, otherwise 0 }
@@ -1071,10 +1071,10 @@ unit TypInfo;
 
       PPropInfoEx = ^TPropInfoEx;
 
-      TPropDataEx = 
+      TPropDataEx =
       {$ifndef FPC_REQUIRES_PROPER_ALIGNMENT}
-      packed 
-      {$ENDIF FPC_REQUIRES_PROPER_ALIGNMENT}  
+      packed
+      {$ENDIF FPC_REQUIRES_PROPER_ALIGNMENT}
       record
       private
         function GetPropEx(Index: Word): PPropInfoEx;
@@ -1482,7 +1482,7 @@ begin
  else if TypeInfo^.Kind=tkInteger then
    Result:=IntToStr(Value)
  else
-   Result:='';  
+   Result:='';
 end;
 
 
@@ -1913,7 +1913,7 @@ begin
     begin
       // skip the name
       hp:=GetTypeData(Typeinfo);
-      // the class info rtti the property rtti follows immediatly
+      // the class info rtti the property rtti follows immediately
       pd := GetPropData(TypeInfo,hp);
       Result:=PPropInfo(@pd^.PropList);
       for i:=1 to pd^.PropCount do
@@ -2104,7 +2104,7 @@ begin
   TD:=PRecordData(GetTypeData(TypeInfo))^.ExRTTITable;
   Count:=TD^.PropCount;
   For I:=0 to Count-1 do
-  begin           
+  begin
     TP:=TD^.Prop[I];
     if ([]=Visibilities) or (TP^.Visibility in Visibilities) then
       begin
@@ -3278,7 +3278,7 @@ begin
 end;
 
 { ---------------------------------------------------------------------
-    Interface wrapprers
+    Interface wrappers
   ---------------------------------------------------------------------}
 
 
@@ -3364,7 +3364,7 @@ begin
 end;
 
 { ---------------------------------------------------------------------
-    RAW (Corba) Interface wrapprers
+    RAW (Corba) Interface wrappers
   ---------------------------------------------------------------------}
 
 

@@ -23,7 +23,7 @@ Type
   TMyModule = Class(TCustomHTTPModule)
     procedure HandleRequest(ARequest: TRequest; AResponse: TResponse); override;
   end;
-  
+
   { TMyIntf }
 
   TMyIntf = Class(TObject,IRouteInterface)
@@ -134,13 +134,13 @@ end;
 Procedure ParamPath(ARequest : TRequest; AResponse : TResponse);
 
 begin
-  RequestToResponse('Parametrized path (onepath/:param)',ARequest,AResponse,['param']);
+  RequestToResponse('Parameterized path (onepath/:param)',ARequest,AResponse,['param']);
 end;
 
 Procedure ParamPaths2(ARequest : TRequest; AResponse : TResponse);
 
 begin
-  RequestToResponse('Parametrized path (onepath/:param)',ARequest,AResponse,['param1','param2']);
+  RequestToResponse('Parameterized path (onepath/:param)',ARequest,AResponse,['param1','param2']);
 end;
 
 Procedure ComponentPath(AData : Pointer; ARequest : TRequest; AResponse : TResponse);

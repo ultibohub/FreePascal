@@ -253,13 +253,13 @@ const
 {!
     @enum           General Audio error codes
     @abstract       These are the error codes returned from the APIs found through Core Audio related frameworks.
-    @constant       kAudio_UnimplementedError 
+    @constant       kAudio_UnimplementedError
                         Unimplemented core routine.
-    @constant       kAudio_FileNotFoundError 
+    @constant       kAudio_FileNotFoundError
                         File not found.
-    @constant       kAudio_ParamError 
+    @constant       kAudio_ParamError
                         Error in user parameter list.
-    @constant       kAudio_MemFullError 
+    @constant       kAudio_MemFullError
                         Not enough room in heap zone.
 }
 
@@ -268,7 +268,7 @@ const
 	kAudio_FileNotFoundError = -43;
 	kAudio_ParamError = -50;
 	kAudio_MemFullError = -108;
-      
+
 //==================================================================================================
 
 {!
@@ -365,7 +365,7 @@ const
                     However, where applicable, the appropriate fields will be filled out correctly
                     for these kinds of formats (the extra data is provided via separate properties).
                     In all fields, a value of 0 indicates that the field is either unknown, not
-                    applicable or otherwise is inapproprate for the format and should be ignored.
+                    applicable or otherwise is inappropriate for the format and should be ignored.
                     Note that 0 is still a valid value for most formats in the mFormatFlags field.
 
                     In audio data a frame is one sample across all channels. In non-interleaved
@@ -486,7 +486,7 @@ const
     @constant       kAudioFormatMPEG4AAC_ELD_SBR
                         MPEG-4 AAC Enhanced Low Delay audio object with SBR extension layer, has no flags.
     @constant       kAudioFormatMPEG4AAC_HE_V2
-                        MPEG-4 High Efficiency AAC Version 2 audio object, has no flags. 
+                        MPEG-4 High Efficiency AAC Version 2 audio object, has no flags.
     @constant       kAudioFormatMPEG4AAC_Spatial
                         MPEG-4 Spatial Audio audio object, has no flags.
     @constant       kAudioFormatAMR
@@ -611,7 +611,7 @@ const
                         This constant indicates the bit position (counting from the right) of the
                         bitfield in mFormatFlags.
     @constant       kLinearPCMFormatFlagsSampleFractionMask
-                        number_fractional_bits = (mFormatFlags & 
+                        number_fractional_bits = (mFormatFlags &
                         kLinearPCMFormatFlagsSampleFractionMask) >>
                         kLinearPCMFormatFlagsSampleFractionShift
     @constant       kAppleLosslessFormatFlag_16BitSourceData
@@ -701,7 +701,7 @@ const
                 that this function does not support specifying sample formats that are either
                 unsigned integer or low-aligned.
     @param      inSampleRate
-                    
+
     @param      inValidBitsPerChannel
                     The number of valid bits in each sample.
     @param      inTotalBitsPerChannel
@@ -761,9 +761,9 @@ type
 //  SMPTETime is also defined in the CoreVideo headers.
 //#if !defined(__SMPTETime__)
 //#define __SMPTETime__
-{GRP translation note:  As far as MacOSX10.4u.sdk public headers is concerned, this 
+{GRP translation note:  As far as MacOSX10.4u.sdk public headers is concerned, this
   header/interface is the only place these declarations are made. }
-  
+
 {!
     @struct         SMPTETime
     @abstract       A structure for holding a SMPTE time.
@@ -966,7 +966,7 @@ type
 
 {!
     @typedef        AudioChannelLabel
-    @abstract       A tag idenitfying how the channel is to be used.
+    @abstract       A tag identifying how the channel is to be used.
 }
 type
 	AudioChannelLabel = UInt32;
@@ -1069,7 +1069,7 @@ const
 	kAudioChannelLabel_Mono = 42;
 	kAudioChannelLabel_DialogCentricMix = 43;
 	kAudioChannelLabel_CenterSurroundDirect = 44;           // back center, non diffuse
-    
+
 	kAudioChannelLabel_Haptic = 45;
 
     // first order ambisonic channels
@@ -1145,11 +1145,11 @@ const
                     AudioChannelDescription structure.
     @constant       kAudioChannelFlags_RectangularCoordinates
                         The channel is specified by the cartesioan coordinates of the speaker
-                        position. This flag is mutally exclusive with
+                        position. This flag is mutually exclusive with
                         kAudioChannelFlags_SphericalCoordinates.
     @constant       kAudioChannelFlags_SphericalCoordinates
                         The channel is specified by the spherical coordinates of the speaker
-                        position. This flag is mutally exclusive with
+                        position. This flag is mutually exclusive with
                         kAudioChannelFlags_RectangularCoordinates.
     @constant       kAudioChannelFlags_Meters
                         Set to indicate the units are in meters, clear to indicate the units are
@@ -1161,17 +1161,17 @@ const
 	kAudioChannelFlags_SphericalCoordinates = 1 shl 1;
 	kAudioChannelFlags_Meters = 1 shl 2;
 
-// these are indices for acessing the mCoordinates array in struct AudioChannelDescription
+// these are indices for accessing the mCoordinates array in struct AudioChannelDescription
 {!
     @enum           Channel Coordinate Index Constants
     @abstract       Constants for indexing the mCoordinates array in an AudioChannelDescription
                     structure.
     @constant       kAudioChannelCoordinates_LeftRight
-                        For rectangulare coordinates, negative is left and positive is right.
+                        For rectangular coordinates, negative is left and positive is right.
     @constant       kAudioChannelCoordinates_BackFront
-                        For rectangulare coordinates, negative is back and positive is front.
+                        For rectangular coordinates, negative is back and positive is front.
     @constant       kAudioChannelCoordinates_DownUp
-                        For rectangulare coordinates, negative is below ground level, 0 is ground
+                        For rectangular coordinates, negative is below ground level, 0 is ground
                         level, and positive is above ground level.
     @constant       kAudioChannelCoordinates_Azimuth
                         For spherical coordinates, 0 is front center, positive is right, negative is
@@ -1373,15 +1373,15 @@ const
 	kAudioChannelLayoutTag_DTS_6_1_B = (174 shl 16) or 7;                        // C L R Rls Rrs Ts LFE
 	kAudioChannelLayoutTag_DTS_6_1_C = (175 shl 16) or 7;                        // C Cs L R Rls Rrs LFE
 	kAudioChannelLayoutTag_DTS_7_0 = (176 shl 16) or 7;                        // Lc C Rc L R Ls Rs
-	kAudioChannelLayoutTag_DTS_7_1 = (177 shl 16) or 8;                        // Lc C Rc L R Ls Rs LFE    
+	kAudioChannelLayoutTag_DTS_7_1 = (177 shl 16) or 8;                        // Lc C Rc L R Ls Rs LFE
 	kAudioChannelLayoutTag_DTS_8_0_A = (178 shl 16) or 8;                        // Lc Rc L R Ls Rs Rls Rrs
 	kAudioChannelLayoutTag_DTS_8_0_B = (179 shl 16) or 8;                        // Lc C Rc L R Ls Cs Rs
 	kAudioChannelLayoutTag_DTS_8_1_A = (180 shl 16) or 9;                        // Lc Rc L R Ls Rs Rls Rrs LFE
 	kAudioChannelLayoutTag_DTS_8_1_B = (181 shl 16) or 9;                        // Lc C Rc L R Ls Cs Rs LFE
 	kAudioChannelLayoutTag_DTS_6_1_D = (182 shl 16) or 7;                        // C L R Ls Rs LFE Cs
 
-	kAudioChannelLayoutTag_DiscreteInOrder = (147 shl 16) or 0;                       // needs to be ORed with the actual number of channels  
-	kAudioChannelLayoutTag_Unknown = $FFFF0000;                           // needs to be ORed with the actual number of channels  
+	kAudioChannelLayoutTag_DiscreteInOrder = (147 shl 16) or 0;                       // needs to be ORed with the actual number of channels
+	kAudioChannelLayoutTag_Unknown = $FFFF0000;                           // needs to be ORed with the actual number of channels
 
 
 // Deprecated constants
@@ -1402,7 +1402,7 @@ const
 	kMPEG4Object_AAC_Scalable = 6;
 	kMPEG4Object_TwinVQ = 7;
 	kMPEG4Object_CELP = 8;
-	kMPEG4Object_HVXC = 9;    
+	kMPEG4Object_HVXC = 9;
 
 {$ifc not defined MACOSALLINCLUDE or not MACOSALLINCLUDE}
 

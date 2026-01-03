@@ -235,14 +235,14 @@ uses MacTypes,CFBase,CFString,CFUUID,CFDictionary,CFPlugIn,CFPlugInCOM,MDItem;
         @constant kMDImporterInterfaceID Importers must implement this
         Interface - 6EBC27C4-899C-11D8-84A3-0003936726FC
 
-        @constant kMDExporterInterfaceID Exporters can optionaly also implement this
+        @constant kMDExporterInterfaceID Exporters can optionally also implement this
         Interface - B41C6074-7DFB-4057-969D-31C8E861A8D4
 
-        @constant kMDImporterURLInterfaceID Importers can optionaly also implement this
+        @constant kMDImporterURLInterfaceID Importers can optionally also implement this
         Interface - B41C6074-7DFB-4057-969D-31C8E861A8D4
 }
 function kMDImporterTypeID: CFUUIDRef; inline;
-function kMDImporterInterfaceID: CFUUIDRef; inline; 
+function kMDImporterInterfaceID: CFUUIDRef; inline;
 function kMDExporterInterfaceID: CFUUIDRef; inline;
 function kMDImporterURLInterfaceID: CFUUIDRef; inline;
 
@@ -295,7 +295,7 @@ type
 		ImporterImportData : function(thisInterface: UnivPtr; attributes: CFMutableDictionaryRef; contentTypeUTI: CFStringRef; pathToFile: CFStringRef): Boolean;
 	end;
 	MDImporterInterfaceStructPtr = ^MDImporterInterfaceStruct;
-	
+
 	MDExporterInterfaceStruct = record
 		IUNKNOWN_C_GUTS	: IUnknownVTbl;
 		ImporterExportData : function(thisInterface: UnivPtr; attributes: CFDictionaryRef; contentTypeUTI: CFStringRef; pathToFile: CFStringRef): Boolean;

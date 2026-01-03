@@ -1,9 +1,9 @@
 {
      File:       CarbonCore/PEFBinaryFormat.h
- 
+
      Contains:   PEF Types and Macros
                  The contents of this header file are deprecated.
- 
+
      Copyright:  © 1993-2011 by Apple Inc. All rights reserved.
 }
 {
@@ -579,7 +579,7 @@ const
 {      (                                                                                       }
 {          SInt32  exponent;                                                                   }
 {          const SInt32    kExponentLimit      = 16;   // Arbitrary, but must not exceed 30.   }
-{          const SInt32    kAverageChainLimit  = 10;   // Arbitrary, for space/time tradeoff.  }
+{          const SInt32    kAverageChainLimit  = 10;   // Arbitrary, for space/time trade-off. }
 {          for ( exponent = 0; exponent < kExponentLimit; exponent += 1 ) (                    }
 {              if ( (exportCount / (1 << exponent)) < kAverageChainLimit ) break;              }
 {          )                                                                                   }

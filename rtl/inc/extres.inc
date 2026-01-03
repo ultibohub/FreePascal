@@ -16,7 +16,7 @@
   This file implements two kinds of external resource support:
    - one for systems that support the mmap call (usually unix-like oses)
    - one fallback implementation based on pascal files and GetMem/FreeMem
-   
+
   Be sure to define EXTRES_MMAP or EXTRES_GENERIC before including this file!
 }
 {$IF defined(EXTRES_MMAP) and defined(EXTRES_GENERIC)}
@@ -148,7 +148,7 @@ procedure FixResEndian;
 var ptr : plongword;
     blockend : plongword;
 begin
-  //all info nodes reside in a contiguos block of memory.
+  //all info nodes reside in a contiguous block of memory.
   //they are all 16 bytes long and made by longwords
   //so, simply swap each longword in the block
   ptr:=GetPtr(sizeof(TExtHeader));
@@ -283,7 +283,7 @@ begin
     FpClose(fd);
     exit;
   end;
-//  writeln('fpfstat suceeded');
+//  writeln('fpfstat succeeded');
   fd_size:=fdstat.st_size;
   ResHeader:=PExtHeader(Fpmmap(nil,fd_size,PROT_READ or PROT_WRITE,
     MAP_PRIVATE,fd,0));

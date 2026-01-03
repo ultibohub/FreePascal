@@ -1,4 +1,4 @@
-  
+
 type
   //Obsolete types, kept for backwards compatibility
   TResourceHandle = PtrUint;
@@ -15,13 +15,13 @@ type
   TFPResourceHGLOBAL = PtrUInt;
 {$ifndef Win16}
 {$ifdef FPC_OS_UNICODE}
-  {roozbeh : maybe it shoud be moved after ifndef mswindows,as there is one declared in wince,base.inc}
+  {roozbeh : maybe it should be moved after ifndef mswindows,as there is one declared in wince,base.inc}
   MAKEINTRESOURCE = pwidechar;
 {$else}
   MAKEINTRESOURCE = PAnsiChar;
-{$endif}  
+{$endif}
 {$endif not Win16}
-  
+
 {$ifndef MSWINDOWS }
 { windows has this in the windows unit. It probably would better
   fit into the classes/sysutils unit but because it is resource

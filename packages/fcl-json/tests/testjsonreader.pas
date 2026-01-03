@@ -12,7 +12,7 @@ Const
   DefaultOpts = [joUTF8,joStrict];
 
 type
-  
+
   { TMyJSONReader }
 
   TMyJSONReader = Class(TBaseJSONReader)
@@ -325,6 +325,9 @@ begin
   DoTestString('A string');
   DoTestString('');
   DoTestString('\"','"');
+  DoTestString('a\"','a"');
+  DoTestString('a\\','a\');
+  DoTestString('C:\\Windows','C:\Windows');
   DoTestString('\u00f8','ø'); // this is ø
   DoTestString('\u00f8\"','ø"'); // this is ø"
   DoTestString('\ud83c\udf1f',GlowingStar);
@@ -332,7 +335,7 @@ begin
   DoTestString('\u0041\u0042\u0043','ABC');
   DoTestString('\u0041\u0042\u0043\u0044','ABCD');
   DoTestString('\u95e8\u88ab\u8111\u5b50\u6324\u574f\u4e86',Utf8Encode(Chinese));
-  DoTestString('\u95e8\ud867\ude3d\u88ab\u8111\u5b50\u6324\u574f\u4e86',Utf8Encode(Chinese4b));   
+  DoTestString('\u95e8\ud867\ude3d\u88ab\u8111\u5b50\u6324\u574f\u4e86',Utf8Encode(Chinese4b));
 end;
 
 

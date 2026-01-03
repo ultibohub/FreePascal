@@ -281,9 +281,9 @@ var
   SPMCSR : byte absolute $00+$57; // Store Program Memory Control Register
   // CPU
   SREG : byte absolute $00+$5F; // Status Register
-  SP : word absolute $00+$5D; // Stack Pointer 
-  SPL : byte absolute $00+$5D; // Stack Pointer 
-  SPH : byte absolute $00+$5D+1; // Stack Pointer 
+  SP : word absolute $00+$5D; // Stack Pointer
+  SPL : byte absolute $00+$5D; // Stack Pointer
+  SPH : byte absolute $00+$5D+1; // Stack Pointer
   OSCCAL : byte absolute $00+$66; // Oscillator Calibration Value
   CLKPR : byte absolute $00+$61; // Clock Prescale Register
   SMCR : byte absolute $00+$53; // Sleep Mode Control Register
@@ -405,7 +405,7 @@ const
   // TCCR0B
   FOC0A = 7; // Force Output Compare A
   FOC0B = 6; // Force Output Compare B
-  WGM02 = 3; // 
+  WGM02 = 3; //
   CS0 = 0; // Clock Select
   // TCCR0A
   COM0A = 6; // Compare Match Output A Mode
@@ -1018,7 +1018,7 @@ procedure TRX24_RX_END_ISR; external name 'TRX24_RX_END_ISR'; // Interrupt 60 TR
 procedure TRX24_CCA_ED_DONE_ISR; external name 'TRX24_CCA_ED_DONE_ISR'; // Interrupt 61 TRX24 - CCA/ED done interrupt
 procedure TRX24_XAH_AMI_ISR; external name 'TRX24_XAH_AMI_ISR'; // Interrupt 62 TRX24 - XAH - AMI
 procedure TRX24_TX_END_ISR; external name 'TRX24_TX_END_ISR'; // Interrupt 63 TRX24 - TX_END interrupt
-procedure TRX24_AWAKE_ISR; external name 'TRX24_AWAKE_ISR'; // Interrupt 64 TRX24 AWAKE - tranceiver is reaching state TRX_OFF
+procedure TRX24_AWAKE_ISR; external name 'TRX24_AWAKE_ISR'; // Interrupt 64 TRX24 AWAKE - transceiver is reaching state TRX_OFF
 procedure SCNT_CMP1_ISR; external name 'SCNT_CMP1_ISR'; // Interrupt 65 Symbol counter - compare match 1 interrupt
 procedure SCNT_CMP2_ISR; external name 'SCNT_CMP2_ISR'; // Interrupt 66 Symbol counter - compare match 2 interrupt
 procedure SCNT_CMP3_ISR; external name 'SCNT_CMP3_ISR'; // Interrupt 67 Symbol counter - compare match 3 interrupt

@@ -25,7 +25,7 @@
   A thread is created using BeginThread, which in turn calls
   pthread_create. So the threads here are always posix threads.
   Posix doesn't define anything for suspending threads as this is
-  inherintly unsafe. Just don't suspend threads at points they cannot
+  inherently unsafe. Just don't suspend threads at points they cannot
   control. Therefore, I didn't implement .Suspend() if its called from
   outside the threads execution flow (except on Linux _without_ NPTL).
 
@@ -240,7 +240,7 @@ begin
     begin
       if FSuspended and
          { don't compare with ord(true) or ord(longbool(true)), }
-         { becaue a longbool's "true" value is anyting <> false }
+         { because a longbool's "true" value is anything <> false}
          (InterLockedExchange(longint(FSuspended),longint(false)) <> longint(longbool(false))) then
         begin
           WRITE_DEBUG('resuming ',ptruint(self));
@@ -253,13 +253,13 @@ end;
 function TThread.WaitFor: Integer;
 begin
   WRITE_DEBUG('waiting for thread ',ptruint(FHandle));
-  If (MainThreadID=GetCurrentThreadID) then 
+  If (MainThreadID=GetCurrentThreadID) then
     {
-     FFinished is set after DoTerminate, which does a synchronize of OnTerminate, 
-     so make sure synchronize works (or indeed any other synchronize that may be 
+     FFinished is set after DoTerminate, which does a synchronize of OnTerminate,
+     so make sure synchronize works (or indeed any other synchronize that may be
      in progress)
     }
-    While not FFinished do  
+    While not FFinished do
       CheckSynchronize(100);
   WaitFor := WaitForThreadTerminate(FHandle, 0);
   { should actually check for errors in WaitForThreadTerminate, but no }

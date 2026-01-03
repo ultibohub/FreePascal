@@ -77,7 +77,7 @@ type
 
 { We use static variable so almost no stack is required, and is thus
   more safe when an error has occurred in the program }
-{$WARNING This code is not thread-safe, and needs improvement }  
+{$WARNING This code is not thread-safe, and needs improvement }
 var
   e          : TExeFile;
   stabcnt,              { amount of stabs }
@@ -85,7 +85,7 @@ var
   stabofs,              { absolute stab section offset in executable }
   stabstrlen,
   stabstrofs : longint; { absolute stabstr section offset in executable }
-  dirlength  : longint; { length of the dirctory part of the source file }
+  dirlength  : longint; { length of the directory part of the source file }
   stabs      : array[0..maxstabs-1] of tstab;  { buffer }
   funcstab,             { stab with current function info }
   linestab,             { stab with current line info }

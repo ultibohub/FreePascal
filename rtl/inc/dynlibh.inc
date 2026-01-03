@@ -18,7 +18,7 @@
 type
   TLibHandle = THandle;
   HINST = TLibHandle;
-  
+
 const
   NilHandle = TLibHandle(0);
 {$endif FPC_SYSTEM_HAS_SYSDLH}
@@ -57,7 +57,7 @@ Function GetProcedureAddress(Lib : TLibHandle; Ordinal: TOrdinalEntry) : {$ifdef
 Function UnloadLibrary(Lib : TLibHandle) : Boolean;
 Function GetLoadErrorStr: AnsiString;
 
-// Kylix/Delphi compability
+// Kylix/Delphi compatibility
 
 Function FreeLibrary(Lib : TLibHandle) : Boolean; inline;
 Function GetProcAddress(Lib : TlibHandle; const ProcName : AnsiString) : {$ifdef cpui8086}FarPointer{$else}Pointer{$endif}; inline;
@@ -69,8 +69,8 @@ Procedure SetDynLibsManager (Const New : TDynLibsManager; out Old: TDynLibsManag
 // Delphi compatibility, needs to be expanded when packages arrive.
 Type
   TEnumModuleFuncLW = function (HInstance: THandle; Data: Pointer): Boolean;
-  
-procedure EnumModules(Func: TEnumModuleFuncLW; Data: Pointer); 
 
-  
-  
+procedure EnumModules(Func: TEnumModuleFuncLW; Data: Pointer);
+
+
+

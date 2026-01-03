@@ -63,7 +63,7 @@ var
   l_fpucw : longint;
 begin
 {$if defined(FPU68881) or defined(FPUCOLDFIRE)}
-  asm 
+  asm
     fmove.l fpcr,l_fpucw
   end;
   { Reset only exception based control bits in fpcr }
@@ -97,7 +97,7 @@ begin
   case sig of
     SIGFPE :
           begin
-    { this is not allways necessary but I don't know yet
+    { this is not always necessary but I don't know yet
       how to tell if it is or not PM }
           res:=200;
           fpustate:=GetFPUState(SigContext);

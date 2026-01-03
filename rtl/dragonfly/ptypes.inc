@@ -22,7 +22,7 @@
 {$I ctypes.inc}
 {$packrecords c}
 
-const 
+const
     SEM_SAFE=255;
 type
 
@@ -58,7 +58,7 @@ type
 {$ifdef CPU64}
     size_t   = cuint64;
 {$else}
-    size_t   = cuint32;         { as definied in the C standard}
+    size_t   = cuint32;         { as defined in the C standard}
 {$endif}
     TSize    = size_t;
     pSize    = ^size_t;
@@ -101,7 +101,7 @@ type
   TTimeVal = timeval;
 
   timespec = packed record
-    tv_sec   : time_t;                  // should be time_t, bug compability
+    tv_sec   : time_t;                  // should be time_t, bug compatibility
     tv_nsec  : clong;
   end;
   ptimespec= ^timespec;
@@ -125,7 +125,7 @@ type
    pthread_key_t        = cint;
    pthread_rwlock_t     = ^pthread_rwlock_t_rec;
    pthread_rwlockattr_t = ^pthread_rwlockattr_t_rec;
-  
+
    psem_t = ^sem_t;
    ppsem_t= ^psem_t;
    semid_t= pointer;
@@ -173,7 +173,7 @@ type
 
 Const
      MNAMELEN   = 80;
-     MFSNAMELEN = 16;	
+     MFSNAMELEN = 16;
 
 Type TStatFS = Record
         spare2       : clong;          { placeholder }
@@ -199,7 +199,7 @@ Type TStatFS = Record
         fspares2     : cshort;         { unused spare }
         fspares3     : clong;          { unused spare }
         fspares4     : clong;          { unused spare }
-     end; 
+     end;
      PStatFS=^TStatFS;
 
   mbstate_t = record

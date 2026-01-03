@@ -433,7 +433,7 @@ function CGWarpMouseCursorPosition( newCursorPosition: CGPoint ): CGError; exter
    dead" problems.
 
    Mouse-down conditions of arbitrary length may be produced deliberately,
-   as when scrolling through a lengthly document. }
+   as when scrolling through a lengthy document. }
 
 {$endc}
 
@@ -538,7 +538,7 @@ function CGInhibitLocalEvents( inhibit: boolean_t ): CGError; external name '_CG
    Pass true for `updateMouseCursorPosition' if the on-screen cursor should
    be moved to the location specified in the `mouseCursorPosition'
    parameter; otherwise, pass false.
-   
+
    The parameter `buttonCount' specifies the number of mouse buttons, up to
    a maximum of 32.
 

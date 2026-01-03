@@ -55,7 +55,7 @@ begin
       AddUnit('markdown.utils');
       AddUnit('markdown.elements');
       end;
-      
+
     T:=P.Targets.AddUnit('markdown.inlinetext.pas');
     with T.Dependencies do
       begin
@@ -74,14 +74,25 @@ begin
       AddUnit('markdown.inlinetext');
       AddUnit('markdown.htmlentities');
       end;
-        
+    T:=P.Targets.AddUnit('markdown.processors.pas');
+    with T.Dependencies do
+      begin
+      AddUnit('markdown.elements');
+      AddUnit('markdown.utils');
+      AddUnit('markdown.parser');
+      AddUnit('markdown.line');
+      AddUnit('markdown.inlinetext');
+      AddUnit('markdown.htmlentities');
+      end;
+
+
     T:=P.Targets.AddUnit('markdown.render.pas');
     with T.Dependencies do
       begin
       AddUnit('markdown.elements');
       AddUnit('markdown.utils');
       end;
-        
+
     T:=P.Targets.AddUnit('markdown.htmlrender.pas');
     with T.Dependencies do
       begin
@@ -105,7 +116,7 @@ begin
       AddUnit('markdown.utils');
       AddUnit('markdown.render');
       end;
-    
+
     P.ExamplePath.Add('demo');
     T:=P.Targets.AddExampleProgram('demomd.lpr');
     T:=P.Targets.AddExampleProgram('md2html.lpr');

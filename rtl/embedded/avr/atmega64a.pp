@@ -39,9 +39,9 @@ var
   UBRR1L : byte absolute $00+$99; // USART Baud Rate Register Low Byte
   // CPU
   SREG : byte absolute $00+$5F; // Status Register
-  SP : word absolute $00+$5D; // Stack Pointer 
-  SPL : byte absolute $00+$5D; // Stack Pointer 
-  SPH : byte absolute $00+$5D+1; // Stack Pointer 
+  SP : word absolute $00+$5D; // Stack Pointer
+  SPL : byte absolute $00+$5D; // Stack Pointer
+  SPH : byte absolute $00+$5D+1; // Stack Pointer
   MCUCR : byte absolute $00+$55; // MCU Control Register
   MCUCSR : byte absolute $00+$54; // MCU Control And Status Register
   XMCRA : byte absolute $00+$6D; // External Memory Control Register A
@@ -198,7 +198,7 @@ const
   TWGCE = 0; // TWI General Call Recognition Enable Bit
   // UCSR0A
   RXC0 = 7; // USART Receive Complete
-  TXC0 = 6; // USART Transmitt Complete
+  TXC0 = 6; // USART Transmit Complete
   UDRE0 = 5; // USART Data Register Empty
   FE0 = 4; // Framing Error
   DOR0 = 3; // Data overRun
@@ -222,7 +222,7 @@ const
   UCPOL0 = 0; // Clock Polarity
   // UCSR1A
   RXC1 = 7; // USART Receive Complete
-  TXC1 = 6; // USART Transmitt Complete
+  TXC1 = 6; // USART Transmit Complete
   UDRE1 = 5; // USART Data Register Empty
   FE1 = 4; // Framing Error
   DOR1 = 3; // Data overRun
@@ -367,8 +367,8 @@ const
   OCF2 = 7; // Output Compare Flag 2
   TOV2 = 6; // Timer/Counter2 Overflow Flag
   // TIMSK
-  OCIE2 = 7; // 
-  TOIE2 = 6; // 
+  OCIE2 = 7; //
+  TOIE2 = 6; //
   // ETIMSK
   TICIE3 = 5; // Timer/Counter3 Input Capture Interrupt Enable
   OCIE3A = 4; // Timer/Counter3 Output CompareA Match Interrupt Enable

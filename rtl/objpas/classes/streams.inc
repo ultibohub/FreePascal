@@ -122,7 +122,7 @@ end;
 
     begin
     // We do nothing. Pipe streams don't support this
-    // As wel as possible read-ony streams !!
+    // As wel as possible read-only streams !!
     end;
 
   procedure TStream.SetSize(const NewSize: Int64);
@@ -1354,7 +1354,7 @@ end;
 constructor TFileStream.Create(const AFileName: string; Mode: Word);
 
 begin
-  // 438 = 666 octal which is rw rw rw 
+  // 438 = 666 octal which is rw rw rw
   Create(AFileName,Mode,438);
 end;
 

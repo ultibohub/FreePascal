@@ -88,9 +88,9 @@ var
   BGCCR : byte absolute $00+$D0; // Bandgap Calibration Register
   // CPU
   SREG : byte absolute $00+$5F; // Status Register
-  SP : word absolute $00+$5D; // Stack Pointer 
-  SPL : byte absolute $00+$5D; // Stack Pointer 
-  SPH : byte absolute $00+$5D+1; // Stack Pointer 
+  SP : word absolute $00+$5D; // Stack Pointer
+  SPL : byte absolute $00+$5D; // Stack Pointer
+  SPH : byte absolute $00+$5D+1; // Stack Pointer
   MCUCR : byte absolute $00+$55; // MCU Control Register
   MCUSR : byte absolute $00+$54; // MCU Status Register
   FOSCCAL : byte absolute $00+$66; // Fast Oscillator Calibration Value
@@ -157,22 +157,22 @@ const
   WCOL = 6; // Write Collision Flag
   SPI2X = 0; // Double SPI Speed Bit
   // EECR
-  EEPM = 4; // 
+  EEPM = 4; //
   EERIE = 3; // EEProm Ready Interrupt Enable
   EEMPE = 2; // EEPROM Master Write Enable
   EEPE = 1; // EEPROM Write Enable
   EERE = 0; // EEPROM Read Enable
   // CADCSRA
   CADEN = 7; // When the CADEN bit is cleared (zero), the CC-ADC is disabled. When the CADEN bit is set (one), the CC-ADC will continuously measure the voltage drop over the external sense resistor RSENSE. In Power-down, only the Regular Current detection is active. In Power-off, the CC-ADC is always disabled.
-  CADPOL = 6; // 
+  CADPOL = 6; //
   CADUB = 5; // CC_ADC Update Busy
   CADAS = 3; // CC_ADC Accumulate Current Select Bits
   CADSI = 1; // The CADSI bits determine the current sampling interval for the Regular Current detection in Power-down mode. The actual settings remain to be determined.
   CADSE = 0; // When the CADSE bit is written to one, the ongoing CC-ADC conversion is aborted, and the CC-ADC enters Regular Current detection mode.
   // CADCSRB
-  CADACIE = 6; // 
+  CADACIE = 6; //
   CADRCIE = 5; // Regular Current Interrupt Enable
-  CADICIE = 4; // CAD Instantenous Current Interrupt Enable
+  CADICIE = 4; // CAD Instantaneous Current Interrupt Enable
   CADACIF = 2; // CC-ADC Accumulate Current Interrupt Flag
   CADRCIF = 1; // CC-ADC Accumulate Current Interrupt Flag
   CADICIF = 0; // CC-ADC Instantaneous Current Interrupt Flag
@@ -184,7 +184,7 @@ const
   TWBDT = 1; // TWI Bus Disconnect Time-out Period
   TWBCIP = 0; // TWI Bus Connect/Disconnect Interrupt Polarity
   // TWAMR
-  TWAM = 1; // 
+  TWAM = 1; //
   // TWCR
   TWINT = 7; // TWI Interrupt Flag
   TWEA = 6; // TWI Enable Acknowledge Bit
@@ -250,7 +250,7 @@ const
   SCIF = 4; // Short-circuit Protection Activated Interrupt Flag
   DOCIF = 3; // Discharge Over-current Protection Activated Interrupt Flag
   COCIF = 2; // Charge Over-current Protection Activated Interrupt Flag
-  DHCIF = 1; // Disharge High-current Protection Activated Interrupt
+  DHCIF = 1; // Discharge High-current Protection Activated Interrupt
   CHCIF = 0; // Charge High-current Protection Activated Interrupt
   // BPIMSK
   SCIE = 4; // Short-circuit Protection Activated Interrupt Enable
@@ -367,7 +367,7 @@ procedure TIMER1_COMPA_ISR; external name 'TIMER1_COMPA_ISR'; // Interrupt 13 Ti
 procedure TIMER1_COMPB_ISR; external name 'TIMER1_COMPB_ISR'; // Interrupt 14 Timer 1 Compare Match B
 procedure TIMER1_OVF_ISR; external name 'TIMER1_OVF_ISR'; // Interrupt 15 Timer 1 overflow
 procedure TIMER0_IC_ISR; external name 'TIMER0_IC_ISR'; // Interrupt 16 Timer 0 Input Capture
-procedure TIMER0_COMPA_ISR; external name 'TIMER0_COMPA_ISR'; // Interrupt 17 Timer 0 Comapre Match A
+procedure TIMER0_COMPA_ISR; external name 'TIMER0_COMPA_ISR'; // Interrupt 17 Timer 0 Compare Match A
 procedure TIMER0_COMPB_ISR; external name 'TIMER0_COMPB_ISR'; // Interrupt 18 Timer 0 Compare Match B
 procedure TIMER0_OVF_ISR; external name 'TIMER0_OVF_ISR'; // Interrupt 19 Timer 0 Overflow
 procedure TWIBUSCD_ISR; external name 'TWIBUSCD_ISR'; // Interrupt 20 Two-Wire Bus Connect/Disconnect

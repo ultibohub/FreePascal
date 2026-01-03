@@ -56,7 +56,7 @@ begin
         begin
           AddUnit('sqlite3');
         end;
- 
+
     P.ExamplePath.Add('tests/');
     P.Targets.AddExampleProgram('testapiv3x.pp');
     P.Targets.AddExampleProgram('test.pas');

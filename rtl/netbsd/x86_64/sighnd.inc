@@ -27,12 +27,12 @@ end;
 function getaltfpustate(sigcontext:psigcontextrec):longint; {inline;}
 begin
   if assigned(sigcontext) then
-    getaltfpustate:=sigcontext^.sc_fpustate^.en_sw 
+    getaltfpustate:=sigcontext^.sc_fpustate^.en_sw
   else
     getaltfpustate:=0;
 end;
 {$endif}
-  procedure signal_trampoline; cdecl; 
+  procedure signal_trampoline; cdecl;
   begin
     asm
       mov    %r15,%rdi
@@ -61,7 +61,7 @@ begin
   case sig of
     SIGFPE :
           begin
-    { this is not allways necessary but I don't know yet
+    { this is not always necessary but I don't know yet
       how to tell if it is or not PM }
           res:=200;
 {$ifdef cpui386}

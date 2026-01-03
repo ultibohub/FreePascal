@@ -2,7 +2,7 @@
     Copyright (c) 2002 by Marco van de Voort
 
     The base *BSD syscalls required to implement the system unit. These
-    are aliased for use in other units (to avoid poluting the system units
+    are aliased for use in other units (to avoid polluting the system units
     interface)
 
     See the file COPYING.FPC, included in this distribution,
@@ -83,7 +83,7 @@ begin
     Fplseek:=do_syscall(syscall_nr___syscall,syscall_nr_lseek,TSysParam(fd),0,Offset,whence);
     {$endif}
   {$else}
-    {$ifdef freebsd}    
+    {$ifdef freebsd}
     Fplseek:=do_syscall(syscall_nr___syscall,syscall_nr_lseek,0,TSysParam(fd),
     {$else}
     Fplseek:=do_syscall(syscall_nr___syscall,syscall_nr_lseek,0,TSysParam(fd),0,
@@ -130,7 +130,7 @@ begin
   Fpmmap:=pointer(ptruint(do_syscall(syscall_nr_mmap,TSysParam(Start),Len,Prot,Flags,fd,
  {$else}
   Fpmmap:=pointer(ptruint(do_syscall(syscall_nr_mmap,TSysParam(Start),Len,Prot,Flags,fd,0,
- {$endif} 
+ {$endif}
          {$ifdef FPC_BIG_ENDIAN}    hi(offst),lo(offst){$endif}
          {$ifdef FPC_LITTLE_ENDIAN} lo(offst),hi(offst){$endif}
          )));
@@ -322,7 +322,7 @@ begin
  if (dirp^.dd_loc=-1)   OR     {First readdir on this pdir. Initial fill of buffer}
    (dirp^.dd_rewind>=(ptrint(dirp^.dd_buf)+dirp^.dd_size)) then  {no more entries left?}
   Begin
-    if readbuffer=0 then        {succesful read?}
+    if readbuffer=0 then        {successful read?}
      Exit(NIL);                 {No more data}
   End;
  FinalEntry:=NIL;
@@ -345,7 +345,7 @@ begin
    begin {block entirely searched or reclen=0}
     Novalid:=True;
     if dirp^.dd_loc<>0 THEN             {blocks left?}
-     if readbuffer()<>0 then        {succesful read?}
+     if readbuffer()<>0 then        {successful read?}
       novalid:=false;
    end;
  until (FinalEntry<>nil) or novalid;

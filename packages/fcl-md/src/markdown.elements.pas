@@ -21,11 +21,11 @@ interface
 
 uses
 {$IFDEF FPC_DOTTEDUNITS}
-  System.Classes, System.SysUtils, System.Contnrs, System.Regexpr, System.CodePages.unicodedata, 
-{$ELSE}  
-  Classes, SysUtils, Contnrs, RegExpr, UnicodeData, 
+  System.Classes, System.SysUtils, System.Contnrs, System.Regexpr, System.CodePages.unicodedata,
+{$ELSE}
+  Classes, SysUtils, Contnrs, RegExpr, UnicodeData,
 {$ENDIF}
-  MarkDown.Utils, 
+  MarkDown.Utils,
   Markdown.HTMLEntities;
 
 const
@@ -206,10 +206,12 @@ Type
   private
     FFenced: boolean;
     FLang: AnsiString;
+    FIndent : Integer;
   public
     function WhiteSpaceMode : TWhitespaceMode; override;
     property Fenced : boolean read FFenced write FFenced;
     property Lang : AnsiString read FLang write FLang;
+    Property Indent : Integer Read FIndent Write FIndent;
   end;
 
 

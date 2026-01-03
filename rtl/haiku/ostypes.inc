@@ -67,7 +67,7 @@ Const
 CONST               // OS specific parameters for general<fd,sig>set behaviour
    BITSINWORD      = 8*sizeof(longint);
    FD_MAXFDSET     = 1024;
-   ln2bitsinword   = 5;         { 32bit : ln(32)/ln(2)=5 } 
+   ln2bitsinword   = 5;         { 32bit : ln(32)/ln(2)=5 }
    ln2bitmask	   = 2 shl ln2bitsinword - 1;
    wordsinfdset    = FD_MAXFDSET DIV BITSINWORD;        // words in fdset_t
    wordsinsigset   = SIG_MAXSIG  DIV BITSINWORD;
@@ -300,7 +300,7 @@ const B_SYMBOL_TYPE_DATA = $1;
 const B_SYMBOL_TYPE_TEXT = $2;
 const B_SYMBOL_TYPE_ANY  = $5;
 
-{ Constansts for MMAP }
+{ Constants for MMAP }
 const
 {$ifdef FPC_IS_SYSTEM}
   MAP_PRIVATE   =2;

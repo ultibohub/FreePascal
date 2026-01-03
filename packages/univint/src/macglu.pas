@@ -344,7 +344,7 @@ const GLU_NURBS_ERROR24                    = 100274;   { nurbscurve and pwlcurve
 const GLU_NURBS_ERROR25                    = 100275;   { nurbssurface referenced twice }
 const GLU_NURBS_ERROR26                    = 100276;   { invalid property }
 const GLU_NURBS_ERROR27                    = 100277;   { endsurface() must follow bgnsurface() }
-const GLU_NURBS_ERROR28                    = 100278;   { intersecting or misoriented trim curves }
+const GLU_NURBS_ERROR28                    = 100278;   { intersecting or disoriented trim curves }
 const GLU_NURBS_ERROR29                    = 100279;   { intersecting trim curves }
 const GLU_NURBS_ERROR30                    = 100280;   { UNUSED }
 const GLU_NURBS_ERROR31                    = 100281;   { unconnected trim curves }
@@ -407,7 +407,7 @@ const
 const
 	GLU_MAP1_TRIM_3 = 100211;
 
-{ QuadricDrawStyle } 
+{ QuadricDrawStyle }
 const
 	GLU_POINT = 100010;
 const
@@ -416,7 +416,7 @@ const
 	GLU_FILL = 100012;
 const
 	GLU_SILHOUETTE = 100013;
-  
+
 { QuadricCallback }
 {      GLU_ERROR }
 
@@ -427,7 +427,7 @@ const
 	GLU_FLAT = 100001;
 const
 	GLU_NONE = 100002;
- 
+
 { QuadricOrientation }
 const
 	GLU_OUTSIDE = 100020;
@@ -537,22 +537,22 @@ const
 type
   GLUnurbs = record end;
   PGLUnurbs = ^GLUnurbs;
-  
+
   GLUquadric = record end;
   PGLUquadric = ^GLUquadric;
-  
+
   GLUtesselator = record end;
   PGLUtesselator = ^GLUtesselator;
 
   GLUnurbsObj = GLUnurbs;
   PGLUnurbsObj = PGLUnurbs;
-  
+
   GLUquadricObj = GLUquadric;
   PGLUquadricObj = PGLUquadric;
-  
+
   GLUtesselatorObj = GLUtesselator;
   PGLUtesselatorObj = PGLUtesselator;
-  
+
   GLUtriangulatorObj = GLUtesselator;
   PGLUtriangulatorObj = PGLUtesselator;
 
@@ -591,7 +591,7 @@ procedure gluNextContour( tess: PGLUtesselator; typ: GLenum ); external name '_g
 
 type
 	GLUCallBackFunc = procedure;
-	
+
 procedure gluNurbsCallback(nurb : PGLUnurbs; which : GLenum; CallBackFunc : GLUCallBackFunc); external name '_gluNurbsCallback';
 procedure gluNurbsCallbackData( nurb: PGLUnurbs; userData: UnivPtr ); external name '_gluNurbsCallbackData';
 procedure gluNurbsCallbackDataEXT( nurb: PGLUnurbs; userData: UnivPtr ); external name '_gluNurbsCallbackDataEXT';

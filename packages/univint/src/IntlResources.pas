@@ -1,15 +1,15 @@
 {
      File:       CarbonCore/IntlResources.h
- 
+
      Contains:   International Resource definitions.
- 
+
      Copyright:  © 1983-2011 by Apple Inc. All rights reserved.
- 
+
      Bugs?:      For bug reports, consult the following page on
                  the World Wide Web:
- 
+
                      http://bugs.freepascal.org
- 
+
 }
 {
     Modified for use with Free Pascal
@@ -233,11 +233,11 @@ const
 
 const
 { One more flag in the itlcFlags byte }
-	itlcDisableKeyScriptSync = 3;     {Disable font and keyboard script synchrinozation}
+	itlcDisableKeyScriptSync = 3;     {Disable font and keyboard script synchronization}
 
 const
 { We should define masks, too. }
-	itlcDisableKeyScriptSyncMask = 1 shl itlcDisableKeyScriptSync; {Disable font and keyboard script synchrinozation mask}
+	itlcDisableKeyScriptSyncMask = 1 shl itlcDisableKeyScriptSync; {Disable font and keyboard script synchronization mask}
 
 
 const

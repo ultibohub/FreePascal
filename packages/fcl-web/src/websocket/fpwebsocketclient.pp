@@ -403,7 +403,7 @@ end;
 
 Function TCustomWebsocketClient.CheckHandShakeResponse(aHeaders : TStrings) : Boolean;
 
-Var 
+Var
   K : String;
   {%H-}hash : TSHA1Digest;
   B : TBytes;
@@ -721,6 +721,7 @@ constructor TWSThreadMessagePump.TMessageDriverThread.Create(aPump: TWSThreadMes
 begin
   FPump:=aPump;
   OnTerminate:=aTerminate;
+  FreeOnTerminate:=True;
   Inherited Create(False);
 end;
 

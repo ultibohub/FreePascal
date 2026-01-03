@@ -569,8 +569,8 @@ Type
 
 
 // from /usr/include/sys/iocomm.h
-  { parameter length, at most 13 bits } 
-  IOCPARM_MASK = $1fff; 
+  { parameter length, at most 13 bits }
+  IOCPARM_MASK = $1fff;
 
   {  max size of ioctl args  }
   IOCPARM_MAX = IOCPARM_MASK + 1;
@@ -584,7 +584,7 @@ Type
   { copy parameters in }
   IOC_IN = culong($80000000);
 
-  { copy paramters in and out }
+  { copy parameters in and out }
   IOC_INOUT = (IOC_IN or IOC_OUT);
 
   { mask for IN/OUT/VOID }

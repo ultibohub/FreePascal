@@ -23,12 +23,12 @@ Procedure DoParse(P : TJSONParser);
 
 Var
   J : TJSONData;
-  
+
 begin
   Try
     J:=P.Parse;
     Try
-      Writeln('Parse succesful. Dumping JSON data : ');
+      Writeln('Parse successful. Dumping JSON data : ');
       If Assigned(J) then
         begin
         Writeln('Returned JSON structure has class : ',J.ClassName);
@@ -121,7 +121,7 @@ end;
 
 Var
   I : Integer;
-  
+
 begin
   If (ParamCount=0) then
     DefaultParsing

@@ -64,7 +64,7 @@
     { UNICODE  }
 
     const
-    
+
        WM_USER = 1024;  //keep it first
        WM_APP  = $8000;
 
@@ -253,7 +253,7 @@
      EN_SAVECLIPBOARD = 1800;
      EN_SELCHANGE = 1794;
      EN_STOPNOUNDO = 1798;
-     
+
      { Header control  }
      HDM_DELETEITEM = 4610;
      HDM_GETITEMW = 4619;
@@ -1148,7 +1148,7 @@ const
       EM_SETINPUTMODE       = $00DE;
 
      // Sets symbols that are displayed when the user presses the 1 key in
-     // Multipress mode. lParam is a null-teminated string containing the symbols
+     // Multipress mode. lParam is a null-terminated string containing the symbols
      // or NULL to revert to standard symbols.
       EM_SETSYMBOLS         = $00DF;
 

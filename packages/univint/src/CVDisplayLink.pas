@@ -223,13 +223,13 @@ uses MacTypes, CFBase, CGDirectDisplay, CVBase, CVReturns, CGLTypes;
 
 {$ifc TARGET_OS_MAC}
 
- 
+
   {! @header CVDisplayLink.h
 	@copyright 2004 Apple Computer, Inc. All rights reserved.
 	@availability Mac OS X 10.4 or later
     @discussion The main purpose of the CoreVideo DisplayLink API is to provide a worker thread to the VideoUnit subsystem that is clocked based on the refresh rate of a CGDirectDisplay device. In the current implementation, these DisplayLinks are created automatically by the Video Unit display nodes, and the developer does not have to deal with them directly.
-		A CoreVideo DisplayLink is represented in code by a CVDisplayLinkRef. The CVDisplayLinkRef API uses the CoreFoundation class system internally to provide reference counting behaviour and other such goodies. There are three different ways to create a CVDisplayLinkRef in the current API. The first call is the most general case, and the other two are provided as a convenience (the third will probably go away, as it's only marginally useful). 
-		   
+		A CoreVideo DisplayLink is represented in code by a CVDisplayLinkRef. The CVDisplayLinkRef API uses the CoreFoundation class system internally to provide reference counting behaviour and other such goodies. There are three different ways to create a CVDisplayLinkRef in the current API. The first call is the most general case, and the other two are provided as a convenience (the third will probably go away, as it's only marginally useful).
+
 }
 
 
@@ -247,11 +247,11 @@ function CVDisplayLinkGetTypeID: CFTypeID; external name '_CVDisplayLinkGetTypeI
 {!
     @function   CVDisplayLinkCreateWithCGDisplays
     @abstract   General call to create a CVDisplayLink
-    @discussion Use this call to create a CVDisplayLink for a set of displays indentified by the CGDirectDisplayIDs.
+    @discussion Use this call to create a CVDisplayLink for a set of displays identified by the CGDirectDisplayIDs.
     @param      displayArray array of CGDirectDisplayIDs
     @param      count   number of displays in the displayArray
     @param      displayLisk The new display link will be returned here
-    @result	returns kCVReturnSuccesss on success.
+    @result	returns kCVReturnSuccess on success.
 }
 function CVDisplayLinkCreateWithCGDisplays( displayArray: {variable-size-array} CGDirectDisplayIDPtr; count: CFIndex; var displayLinkOut: CVDisplayLinkRef ): CVReturn; external name '_CVDisplayLinkCreateWithCGDisplays';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -262,7 +262,7 @@ function CVDisplayLinkCreateWithCGDisplays( displayArray: {variable-size-array} 
     @discussion Use this call to create a CVDisplayLink for a CGOpenGLDisplayMask.
     @param      mask CGOpenGLDisplayMask describing the display
     @param      displayLisk The new display link will be returned here
-    @result	returns kCVReturnSuccesss on success.
+    @result	returns kCVReturnSuccess on success.
 }
 function CVDisplayLinkCreateWithOpenGLDisplayMask( mask: CGOpenGLDisplayMask; var displayLinkOut: CVDisplayLinkRef ): CVReturn; external name '_CVDisplayLinkCreateWithOpenGLDisplayMask';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -273,7 +273,7 @@ function CVDisplayLinkCreateWithOpenGLDisplayMask( mask: CGOpenGLDisplayMask; va
     @discussion Use this call to create a CVDisplayLink for a single CGDirectDisplay.
     @param      displayID CGDirectDisplayID of the target display
     @param      displayLisk The new display link will be returned here
-    @result	returns kCVReturnSuccesss on success.
+    @result	returns kCVReturnSuccess on success.
 }
 function CVDisplayLinkCreateWithCGDisplay( displayID: CGDirectDisplayID; var displayLinkOut: CVDisplayLinkRef ): CVReturn; external name '_CVDisplayLinkCreateWithCGDisplay';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -294,7 +294,7 @@ function CVDisplayLinkCreateWithActiveCGDisplays( var displayLinkOut: CVDisplayL
                 discontinuity in the video time stamp
     @param      displayLink target CVDisplayLinkRef
     @param      displayID target CGDirectDisplayID
-    @result     CVReturn. kCVReturnSuccesss if successfull.
+    @result     CVReturn. kCVReturnSuccess if successfull.
 }
 function CVDisplayLinkSetCurrentCGDisplay( displayLink: CVDisplayLinkRef; displayID: CGDirectDisplayID ): CVReturn; external name '_CVDisplayLinkSetCurrentCGDisplay';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -321,12 +321,12 @@ function CVDisplayLinkGetCurrentCGDisplay( displayLink: CVDisplayLinkRef ): CGDi
 
 {!
     @function   CVDisplayLinkSetOutputCallback
-    @abstract   Set the renderer output callback function	
+    @abstract   Set the renderer output callback function
     @discussion The DisplayLink will invoke this callback whenever it wants you to output a frame.
     @param      displayLink target CVDisplayLinkRef
     @param	callback	CVDisplayLinkOutputCallback function
     @param	userInfo  User data for the callback to identify the context.
-    @result     CVReturn. kCVReturnSuccesss if successfull.
+    @result     CVReturn. kCVReturnSuccess if successfull.
 }
 function CVDisplayLinkSetOutputCallback( displayLink: CVDisplayLinkRef; callback: CVDisplayLinkOutputCallback; userInfo: UnivPtr ): CVReturn; external name '_CVDisplayLinkSetOutputCallback';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -336,8 +336,8 @@ function CVDisplayLinkSetOutputCallback( displayLink: CVDisplayLinkRef; callback
     @abstract   Start timer for DisplayLink
     @discussion (description)
     @param      displayLink target CVDisplayLinkRef
-    @result     CVReturn. kCVReturnSuccesss if successfull.
-                kCVReturnDisplayLinkCallbacksNotSet The DisplayLink cannot be started untill both callbacks are set.
+    @result     CVReturn. kCVReturnSuccess if successfull.
+                kCVReturnDisplayLinkCallbacksNotSet The DisplayLink cannot be started until both callbacks are set.
 }
 function CVDisplayLinkStart( displayLink: CVDisplayLinkRef ): CVReturn; external name '_CVDisplayLinkStart';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -347,7 +347,7 @@ function CVDisplayLinkStart( displayLink: CVDisplayLinkRef ): CVReturn; external
     @abstract   Stop timer for DisplayLink
     @discussion (description)
     @param      displayLink target CVDisplayLinkRef
-    @result     CVReturn. kCVReturnSuccesss if successfull.
+    @result     CVReturn. kCVReturnSuccess if successfull.
 }
 function CVDisplayLinkStop( displayLink: CVDisplayLinkRef ): CVReturn; external name '_CVDisplayLinkStop';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)
@@ -355,7 +355,7 @@ function CVDisplayLinkStop( displayLink: CVDisplayLinkRef ): CVReturn; external 
 {!
     @function   CVDisplayLinkGetNominalOutputVideoRefreshPeriod
     @abstract   Retrieves the nominal refresh period of a CVDisplayLink.
-    @discussion This call allows one to retrieve the device's "ideal" refresh period.   For example, an NTSC output device might report 1001/60000 to represent the exact NTSC vertial refresh rate.
+    @discussion This call allows one to retrieve the device's "ideal" refresh period.   For example, an NTSC output device might report 1001/60000 to represent the exact NTSC vertical refresh rate.
     @param      displayLink The CVDisplayLink to get the refresh period from.
     @result     A CVTime struct that holds the nominal refresh period.    This value may be indefinite.
 }
@@ -409,7 +409,7 @@ function CVDisplayLinkGetCurrentTime( displayLink: CVDisplayLinkRef; var outTime
                     another. Note that the device has to be running for this call to succeed.
     @param      displayLink The CVDisplayLink who's timebase should be used to do the translation.
     @param      inTime A CVTimeStamp containing the source time to be translated.
-    @param      outTime A CVTimeStamp into which the target time will be written. This struct's version field must currently be set correctly 
+    @param      outTime A CVTimeStamp into which the target time will be written. This struct's version field must currently be set correctly
                 (currently 0) to indicate which version of the timestamp struct is desired.  As well, the flags field should be used to specify
                 which representations to translate to.
     @result     kCVReturnSuccess if the time could be translated, otherwise an error indicating why the operation failed.
@@ -422,7 +422,7 @@ function CVDisplayLinkTranslateTime( displayLink: CVDisplayLinkRef; const (*var*
     @abstract   Retains the CVDisplayLink
     @discussion Use this call to retain a CVDisplayLink.
     @param      displayLink target CVDisplayLinkRef.   NULL safe.
-	@result		If successfull the passed in dislplayLink
+	@result		If successfull the passed in displayLink
 }
 function CVDisplayLinkRetain( displayLink: CVDisplayLinkRef ): CVDisplayLinkRef; external name '_CVDisplayLinkRetain';
 (* AVAILABLE_MAC_OS_X_VERSION_10_4_AND_LATER *)

@@ -391,10 +391,9 @@ implementation
          { property parameters ? }
          if try_to_consume(_LECKKLAMMER) then
            begin
-              // Published indexed properties are allowed in Delphi in interfaces compiled with {$M+}.
-              if (p.visibility=vis_published)
-                  and (astruct is tobjectdef)
-                  and not (tobjectdef(aStruct).objecttype in [odt_interfacecom,odt_dispinterface]) then
+              { Published indexed properties are allowed in Delphi in interfaces compiled with $M+. }
+              if (p.visibility=vis_published) and
+                not((m_delphi in current_settings.modeswitches) and is_interfacecom_or_dispinterface(astruct)) then
                 Message(parser_e_cant_publish_that_property);
               { create a list of the parameters }
               p.parast:=tparasymtable.create(nil,0);
@@ -575,7 +574,7 @@ implementation
                     sym:=p.propaccesslist[palt_write].firstsym^.sym;
                     if sym.typ=procsym then
                       begin
-                        { settter is a procedure with an extra value parameter
+                        { setter is a procedure with an extra value parameter
                           of the of the property }
                         writeprocdef.returndef:=voidtype;
                         inc(paranr);

@@ -86,11 +86,11 @@ var
   WDTCR : byte absolute $00+$41; // Watchdog Timer Control Register
   // CPU
   SREG : byte absolute $00+$5F; // Status Register
-  SP : word absolute $00+$5D; // Stack Pointer 
-  SPL : byte absolute $00+$5D; // Stack Pointer 
-  SPH : byte absolute $00+$5D+1; // Stack Pointer 
+  SP : word absolute $00+$5D; // Stack Pointer
+  SPL : byte absolute $00+$5D; // Stack Pointer
+  SPH : byte absolute $00+$5D+1; // Stack Pointer
   OSCCAL : byte absolute $00+$51; // Oscillator Calibration Value
-  SPMCR : byte absolute $00+$57; // 
+  SPMCR : byte absolute $00+$57; //
 
 const
   // ADMUX
@@ -130,7 +130,7 @@ const
   TWGCE = 0; // TWI General Call Recognition Enable Bit
   // UCSRA
   RXC = 7; // USART Receive Complete
-  TXC = 6; // USART Transmitt Complete
+  TXC = 6; // USART Transmit Complete
   UDRE = 5; // USART Data Register Empty
   FE = 4; // Framing Error
   DOR = 3; // Data overRun
@@ -261,7 +261,7 @@ const
   EXTRF = 1; // External Reset Flag
   PORF = 0; // Power-on reset flag
   // SFIOR
-  ACME = 3; // Anlog Comparator Multiplexer Enable
+  ACME = 3; // Analog Comparator Multiplexer Enable
   PUD = 2; // Pull-up Disable
   // SPMCR
   SPMIE = 7; // SPM Interrupt Enable

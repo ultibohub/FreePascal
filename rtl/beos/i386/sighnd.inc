@@ -24,13 +24,13 @@ begin
   case sig of
     SIGFPE :
       begin
-        { this is not allways necessary but I don't know yet
+        { this is not always necessary but I don't know yet
           how to tell if it is or not PM }
         res:=200;
         // fp_status always here under BeOS and x86 CPU
         // (fp_status is not behind a pointer in the BeOS context record)
         FpuState:=ucontext^.xregs.state.old_format.fp_status;
-            
+
         if (FpuState and FPU_ExceptionMask) <> 0 then
           begin
             { first check the more precise options }
@@ -86,7 +86,7 @@ begin
   if res<>0 then
   begin
     HandleErrorAddrFrame(res, pointer(ucontext^.eip),
-                              pointer(ucontext^.ebp));    
+                              pointer(ucontext^.ebp));
   end;
 end;
 

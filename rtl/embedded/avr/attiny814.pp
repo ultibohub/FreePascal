@@ -226,7 +226,7 @@ type
     VLMCFG_BELOW = $00;
     VLMCFG_ABOVE = $02;
     VLMCFG_CROSS = $04;
-    // voltage level monitor interrrupt enable
+    // voltage level monitor interrupt enable
     VLMIEbm = $01;
     // Voltage level monitor interrupt flag
     VLMIFbm = $01;
@@ -1317,7 +1317,7 @@ type
     INTFLAGS: byte;  //Interrupt Flags
     Reserved12: byte;
     Reserved13: byte;
-    DBGCTRL: byte;  //Degbug Control
+    DBGCTRL: byte;  //Debug Control
     TEMP: byte;  //Temporary data for 16-bit Access
     Reserved16: byte;
     Reserved17: byte;
@@ -1446,7 +1446,7 @@ type
     INTFLAGS: byte;  //Interrupt Flags
     Reserved12: byte;
     Reserved13: byte;
-    DBGCTRL: byte;  //Degbug Control
+    DBGCTRL: byte;  //Debug Control
     Reserved15: byte;
     Reserved16: byte;
     Reserved17: byte;
@@ -1770,7 +1770,7 @@ type
     CMPCbm = $04;
     // Compare C enable
     CMPCENbm = $40;
-    // Compare D vaule
+    // Compare D value
     CMPDbm = $08;
     // Compare D enable
     CMPDENbm = $80;
@@ -2163,7 +2163,7 @@ type
     WINDOW_8KCLK = $B0;
     // Lock enable
     LOCKbm = $80;
-    // Syncronization busy
+    // Synchronization busy
     SYNCBUSYbm = $01;
   end;
 
@@ -2218,34 +2218,34 @@ implementation
 {$define RELBRANCHES}
 {$i avrcommon.inc}
 
-procedure CRCSCAN_NMI_ISR; external name 'CRCSCAN_NMI_ISR'; // Interrupt 1 
-procedure BOD_VLM_ISR; external name 'BOD_VLM_ISR'; // Interrupt 2 
-procedure PORTA_PORT_ISR; external name 'PORTA_PORT_ISR'; // Interrupt 3 
-procedure PORTB_PORT_ISR; external name 'PORTB_PORT_ISR'; // Interrupt 4 
-procedure RTC_CNT_ISR; external name 'RTC_CNT_ISR'; // Interrupt 6 
-procedure RTC_PIT_ISR; external name 'RTC_PIT_ISR'; // Interrupt 7 
-procedure TCA0_LUNF_ISR; external name 'TCA0_LUNF_ISR'; // Interrupt 8 
-//procedure TCA0_OVF_ISR; external name 'TCA0_OVF_ISR'; // Interrupt 8 
-procedure TCA0_HUNF_ISR; external name 'TCA0_HUNF_ISR'; // Interrupt 9 
-procedure TCA0_LCMP0_ISR; external name 'TCA0_LCMP0_ISR'; // Interrupt 10 
-//procedure TCA0_CMP0_ISR; external name 'TCA0_CMP0_ISR'; // Interrupt 10 
-procedure TCA0_CMP1_ISR; external name 'TCA0_CMP1_ISR'; // Interrupt 11 
-//procedure TCA0_LCMP1_ISR; external name 'TCA0_LCMP1_ISR'; // Interrupt 11 
-procedure TCA0_CMP2_ISR; external name 'TCA0_CMP2_ISR'; // Interrupt 12 
-//procedure TCA0_LCMP2_ISR; external name 'TCA0_LCMP2_ISR'; // Interrupt 12 
-procedure TCB0_INT_ISR; external name 'TCB0_INT_ISR'; // Interrupt 13 
-procedure TCD0_OVF_ISR; external name 'TCD0_OVF_ISR'; // Interrupt 14 
-procedure TCD0_TRIG_ISR; external name 'TCD0_TRIG_ISR'; // Interrupt 15 
-procedure AC0_AC_ISR; external name 'AC0_AC_ISR'; // Interrupt 16 
-procedure ADC0_RESRDY_ISR; external name 'ADC0_RESRDY_ISR'; // Interrupt 17 
-procedure ADC0_WCOMP_ISR; external name 'ADC0_WCOMP_ISR'; // Interrupt 18 
-procedure TWI0_TWIS_ISR; external name 'TWI0_TWIS_ISR'; // Interrupt 19 
-procedure TWI0_TWIM_ISR; external name 'TWI0_TWIM_ISR'; // Interrupt 20 
-procedure SPI0_INT_ISR; external name 'SPI0_INT_ISR'; // Interrupt 21 
-procedure USART0_RXC_ISR; external name 'USART0_RXC_ISR'; // Interrupt 22 
-procedure USART0_DRE_ISR; external name 'USART0_DRE_ISR'; // Interrupt 23 
-procedure USART0_TXC_ISR; external name 'USART0_TXC_ISR'; // Interrupt 24 
-procedure NVMCTRL_EE_ISR; external name 'NVMCTRL_EE_ISR'; // Interrupt 25 
+procedure CRCSCAN_NMI_ISR; external name 'CRCSCAN_NMI_ISR'; // Interrupt 1
+procedure BOD_VLM_ISR; external name 'BOD_VLM_ISR'; // Interrupt 2
+procedure PORTA_PORT_ISR; external name 'PORTA_PORT_ISR'; // Interrupt 3
+procedure PORTB_PORT_ISR; external name 'PORTB_PORT_ISR'; // Interrupt 4
+procedure RTC_CNT_ISR; external name 'RTC_CNT_ISR'; // Interrupt 6
+procedure RTC_PIT_ISR; external name 'RTC_PIT_ISR'; // Interrupt 7
+procedure TCA0_LUNF_ISR; external name 'TCA0_LUNF_ISR'; // Interrupt 8
+//procedure TCA0_OVF_ISR; external name 'TCA0_OVF_ISR'; // Interrupt 8
+procedure TCA0_HUNF_ISR; external name 'TCA0_HUNF_ISR'; // Interrupt 9
+procedure TCA0_LCMP0_ISR; external name 'TCA0_LCMP0_ISR'; // Interrupt 10
+//procedure TCA0_CMP0_ISR; external name 'TCA0_CMP0_ISR'; // Interrupt 10
+procedure TCA0_CMP1_ISR; external name 'TCA0_CMP1_ISR'; // Interrupt 11
+//procedure TCA0_LCMP1_ISR; external name 'TCA0_LCMP1_ISR'; // Interrupt 11
+procedure TCA0_CMP2_ISR; external name 'TCA0_CMP2_ISR'; // Interrupt 12
+//procedure TCA0_LCMP2_ISR; external name 'TCA0_LCMP2_ISR'; // Interrupt 12
+procedure TCB0_INT_ISR; external name 'TCB0_INT_ISR'; // Interrupt 13
+procedure TCD0_OVF_ISR; external name 'TCD0_OVF_ISR'; // Interrupt 14
+procedure TCD0_TRIG_ISR; external name 'TCD0_TRIG_ISR'; // Interrupt 15
+procedure AC0_AC_ISR; external name 'AC0_AC_ISR'; // Interrupt 16
+procedure ADC0_RESRDY_ISR; external name 'ADC0_RESRDY_ISR'; // Interrupt 17
+procedure ADC0_WCOMP_ISR; external name 'ADC0_WCOMP_ISR'; // Interrupt 18
+procedure TWI0_TWIS_ISR; external name 'TWI0_TWIS_ISR'; // Interrupt 19
+procedure TWI0_TWIM_ISR; external name 'TWI0_TWIM_ISR'; // Interrupt 20
+procedure SPI0_INT_ISR; external name 'SPI0_INT_ISR'; // Interrupt 21
+procedure USART0_RXC_ISR; external name 'USART0_RXC_ISR'; // Interrupt 22
+procedure USART0_DRE_ISR; external name 'USART0_DRE_ISR'; // Interrupt 23
+procedure USART0_TXC_ISR; external name 'USART0_TXC_ISR'; // Interrupt 24
+procedure NVMCTRL_EE_ISR; external name 'NVMCTRL_EE_ISR'; // Interrupt 25
 
 procedure _FPC_start; assembler; nostackframe; noreturn; public name '_START'; section '.init';
  asm

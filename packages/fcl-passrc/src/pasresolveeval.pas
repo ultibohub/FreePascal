@@ -4640,7 +4640,7 @@ begin
       pekIdent:
         begin
         Result:=OnEvalIdentifier(Self,TPrimitiveExpr(Expr),Flags);
-        //writeln('TResExprEvaluator.Eval primitiv result=',Result<>nil,' ',dbgs(Result));
+        //writeln('TResExprEvaluator.Eval primitive result=',Result<>nil,' ',dbgs(Result));
         end;
       pekNumber:
         begin
@@ -4698,7 +4698,7 @@ begin
       RaiseNotYetImplemented(20170518200951,Expr);
     end;
     {$IFDEF VerbosePasResEval}
-    writeln('TResExprEvaluator.Eval primitiv end result=',Result<>nil,' ',dbgs(Result));
+    writeln('TResExprEvaluator.Eval primitive end result=',Result<>nil,' ',dbgs(Result));
     {$ENDIF}
     end
   else if C=TNilExpr then

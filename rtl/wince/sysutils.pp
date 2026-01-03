@@ -402,7 +402,7 @@ begin
   If GetFileTime(Handle,nil,nil,@ft) and
      WinToDosTime(FT, tmpdtime) then
      begin
-       Result:=tmpdtime;       
+       Result:=tmpdtime;
        exit;
      end;
   Result:=-1;
@@ -647,7 +647,7 @@ begin
          @MsgBuffer,    { This function allocs the memory (in this case you pass a PPwidechar)}
          0,
          nil);
-         
+
   if MsgBuffer <> nil then begin
     while (len > 0) and (MsgBuffer[len - 1] <= #32) do
       Dec(len);
@@ -720,7 +720,7 @@ begin
 end;
 
 function ExecuteProcess(Const Path: UnicodeString; Const ComLine: Array of UnicodeString;Flags:TExecuteFlags=[]):integer;
- 
+
 var
   CommandLine: UnicodeString;
   I: integer;
@@ -849,7 +849,7 @@ function WinCECompareWideString(const s1, s2 : WideString; Options : TCompareOpt
 begin
   if coIgnoreCase in Options then
     Result:=DoCompareString(PWideChar(s1), PWideChar(s2), Length(s1), Length(s2), NORM_IGNORECASE)
-  else  
+  else
     Result:=DoCompareString(PWideChar(s1), PWideChar(s2), Length(s1), Length(s2), 0);
 end;
 
@@ -864,7 +864,7 @@ function WinCECompareUnicodeString(const s1, s2 : UnicodeString; Options : TComp
 begin
    if coIgnoreCase in Options then
      Result:=DoCompareString(PWideChar(s1), PWideChar(s2), Length(s1), Length(s2), NORM_IGNORECASE)
-   else  
+   else
      Result:=DoCompareString(PWideChar(s1), PWideChar(s2), Length(s1), Length(s2), 0);
 end;
 
@@ -1008,7 +1008,7 @@ begin
 end;
 
 
-{ there is a similiar procedure in the system unit which inits the fields which
+{ there is a similar procedure in the system unit which inits the fields which
   are relevant already for the system unit }
 procedure InitWinCEWidestrings;
   begin

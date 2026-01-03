@@ -11,9 +11,9 @@
 
     You need a version of binutils compiled with netware-support. As of FreePascal 1.9.5 Nov 2004
     binutils needs to be named i386-netware-* (i.e. i386-netware-ld, i386-netware-nlmconv).
-    Unfortunately in the Linux distibutions this component of the binutils is not included
+    Unfortunately in the Linux distributions this component of the binutils is not included
     so you have to compile it. So download the latest stable binutils package from your
-    favourite GNU mirror, decompress it ('tar xfz binutils-x.yy.z.tar.gz' on unices
+    favourite GNU mirror, decompress it ('tar xfz binutils-x.yy.z.tar.gz' on unixes
     with GNU tar), change to the binutils-x.yy.z directory and configure:
 
       ./configure --prefix=/usr --enable-shared --enable-target=i386-netware
@@ -26,7 +26,7 @@
       make install
 
     to build and install binutils. To check that netware is supported by the version of binutils
-    installed, use i386-netware-ld --version. The emulation 'i386nw' must be present. Also check that 
+    installed, use i386-netware-ld --version. The emulation 'i386nw' must be present. Also check that
     i386-netware-nlmconv
     is present and can be started without specifying the complete path of i386-netware-nlmconv.
 
@@ -36,7 +36,7 @@
 
     Binutils for win32 and Fedora Core 2 are available from:
            ftp://ftp.freepascal.org/pub/fpc/contrib/cross
-	  
+
 
     Building the freepascal runtime-library for netware
     ===================================================
@@ -47,17 +47,17 @@
     Compile and install the rtl with
 
       make install
-      
+
     This will install the basic rtl files. To install all (packages,fcl and nlm's) do a
-    
+
     make OS_TARGET=netware build
-    
+
     and
-    
+
     make OS_TARGET=netware install
-    
+
     at the fpc source root dir.
-    
+
 
     Settings and needed files to compile for netware
     ================================================
@@ -104,7 +104,7 @@
 
     - Compiler Switches for Netware
       -----------------------------
-      The following compiler-swiches are supported for NetWare:
+      The following compiler-switches are supported for NetWare:
       $DESCRIPTION    : NLM-Description, will be displayed at load-time
       $M              : For Stack-Size. Heap-Size will be ignored
       $VERSION x.x.x  : Sets Major, Minor and Revision, Revision 0 is nothing, 1=a, 2=b ...
@@ -158,7 +158,7 @@
 
       Debugging is possible with gdb on Netware 4.11, 5, 6 and 6.5.
       See http://home.arcor.de/armin.diehl/fpcnw/gdbnw.html for details
-      
+
 
     - Netware SDK
       -----------
@@ -167,7 +167,7 @@
       http://developer.novell.com. You can download the sdk after registering
       as a developer.
       The files are designed for win32 so they will not work off the box.
-      I think changing the dll-name to the corrosponding nlm-name will work.
+      I think changing the dll-name to the corresponding nlm-name will work.
       i.e. in calwin32.imp the following declaration:
 
         function NWAbortServicingQueueJob2;  StdCall; external 'calwin32.dll' index 231;

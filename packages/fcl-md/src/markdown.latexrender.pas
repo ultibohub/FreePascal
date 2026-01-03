@@ -21,12 +21,12 @@ interface
 
 uses
 {$IFDEF FPC_DOTTEDUNITS}
-  System.Classes, System.SysUtils, System.StrUtils, System.Contnrs, 
+  System.Classes, System.SysUtils, System.StrUtils, System.Contnrs,
 {$ELSE}
-  Classes, SysUtils, strutils, contnrs, 
-{$ENDIF}  
-  MarkDown.Elements, 
-  MarkDown.Render, 
+  Classes, SysUtils,  contnrs,
+{$ENDIF}
+  MarkDown.Elements,
+  MarkDown.Render,
   MarkDown.Utils;
 
 type
@@ -47,6 +47,7 @@ type
     Procedure Append(const aContent : String);
     Procedure AppendNL(const aContent : String = '');
     Property Builder : TStringBuilder Read FBuilder;
+    function EscapeLaTeX(const S: String): String;
   public
     constructor Create(aOwner : TComponent); override;
     destructor destroy; override;
@@ -54,7 +55,9 @@ type
     Procedure RenderDocument(aDocument : TMarkDownDocument; aDest : TStrings); overload;
     procedure RenderChildren(aBlock : TMarkDownContainerBlock; aAppendNewLine : Boolean); overload;
     function RenderLaTeX(aDocument : TMarkDownDocument) : string;
-    function EscapeLaTeX(const S: String): String;
+    Procedure RenderToFile(aDocument : TMarkDownDocument; aFileName : string);
+    class procedure FastRenderToFile(aDocument : TMarkDownDocument; const aFileName : string; aOptions : TLaTeXOptions = []; const aTitle : String = ''; const aAuthor : string = '');
+    class function FastRender(aDocument : TMarkDownDocument; aOptions : TLaTeXOptions = []; const aTitle : String = ''; const aAuthor : string = '') : string;
   published
     Property Options : TLaTeXOptions Read FOptions Write FOptions;
     property Title : String Read FTitle Write FTitle;
@@ -317,6 +320,53 @@ begin
   FLaTeX:='';
 end;
 
+procedure TMarkDownLaTeXRenderer.RenderToFile(aDocument: TMarkDownDocument; aFileName: string);
+var
+  lTeX : String;
+  lFile : THandle;
+begin
+  lTeX:=RenderLaTex(aDocument);
+  lFile:=FileCreate(aFileName);
+  try
+    if lTex<>'' then
+      FileWrite(lFile,lTex[1],Length(lTex)*SizeOf(Char));
+  finally
+    FileClose(lFile);
+  end;
+end;
+
+class procedure TMarkDownLaTeXRenderer.FastRenderToFile(aDocument: TMarkDownDocument; const aFileName: string; aOptions: TLaTeXOptions;
+  const aTitle: String; const aAuthor: string);
+var
+  lRender : TMarkDownLaTexRenderer;
+begin
+  lRender:=TMarkDownLaTexRenderer.Create(Nil);
+  try
+    lRender.Options:=aOptions;
+    lRender.Title:=aTitle;
+    lRender.Author:=aAuthor;
+    lRender.RenderToFile(aDocument,aFileName);
+  finally
+    lRender.Free;
+  end;
+end;
+
+class function TMarkDownLaTeXRenderer.FastRender(aDocument: TMarkDownDocument; aOptions: TLaTeXOptions; const aTitle: String;
+  const aAuthor: string): string;
+var
+  lRender : TMarkDownLaTexRenderer;
+begin
+  lRender:=TMarkDownLaTexRenderer.Create(Nil);
+  try
+    lRender.Options:=aOptions;
+    lRender.Title:=aTitle;
+    lRender.Author:=aAuthor;
+    Result:=lRender.RenderLatex(aDocument);
+  finally
+    lRender.Free;
+  end;
+end;
+
 function TMarkDownLaTeXRenderer.EscapeLaTeX(const S: String): String;
 var
   i: Integer;
@@ -376,10 +426,10 @@ begin
         lUrl := '';
         if aElement.HasAttrs then
           aElement.Attrs.TryGet('href', lUrl);
-          
-        if Closing then 
-          Result := '}' 
-        else 
+
+        if Closing then
+          Result := '}'
+        else
           Result := '\href{' + lUrl + '}{';
       end;
     nkImg:
@@ -388,9 +438,9 @@ begin
         if aElement.HasAttrs then
           aElement.Attrs.TryGet('src', lUrl);
 
-        if Closing then 
-          Result := '}' 
-        else 
+        if Closing then
+          Result := '}'
+        else
           Result := '\includegraphics{' + lUrl + '}{';
       end;
   end;
@@ -478,7 +528,7 @@ begin
     lTag := Self.GetNodeTag(aElement, True);
     Append(lTag);
   end;
-  
+
   aElement.Active:=False;
 end;
 
@@ -556,9 +606,9 @@ begin
     AppendNl('\begin{itemize}')
   else
     AppendNl('\begin{enumerate}');
-    
+
   Renderer.RenderChildren(lNode);
-  
+
   if lNode.Ordered then
     AppendNl('\end{enumerate}')
   else
@@ -578,7 +628,7 @@ var
   lItemBlock : TMarkDownListItemBlock absolute aElement;
   lBlock : TMarkDownBlock;
   lPar : TMarkDownParagraphBlock absolute lBlock;
-  
+
   function IsPlainBlock(aBlock : TMarkDownBlock) : boolean;
   begin
     Result:=(aBlock is TMarkDownParagraphBlock)
@@ -660,11 +710,11 @@ begin
 
   AppendNl('\begin{tabular}{' + lCols + '}');
   AppendNl('\hline');
-  
+
   // Header
   Renderer.RenderBlock(lNode.blocks[0]);
   AppendNl('\hline');
-  
+
   if lNode.blocks.Count > 1 then
   begin
     for i := 1 to lNode.blocks.Count -1  do
@@ -717,7 +767,7 @@ begin
     5: lSection := 'subparagraph';
     else lSection := 'textbf'; // Fallback
   end;
-  
+
   if not lNumbered then
     lSection := lSection + '*';
 
@@ -746,23 +796,23 @@ begin
     AppendNL('\usepackage{graphicx}');
     AppendNL('\usepackage{hyperref}');
     AppendNL('\usepackage{ulem}'); // For strikethrough
-    
+
     if LaTeXRenderer.Title<>'' then
       AppendNL('\title{' + LaTeXRenderer.EscapeLaTeX(LaTeXRenderer.Title) + '}');
     if LaTeXRenderer.Author<>'' then
       AppendNL('\author{' + LaTeXRenderer.EscapeLaTeX(LaTeXRenderer.Author) + '}');
-      
+
     for H in LaTeXRenderer.Head do
       AppendNL(H);
-      
+
     AppendNL('\begin{document}');
-    
+
     if LaTeXRenderer.Title<>'' then
       AppendNL('\maketitle');
     end;
-    
+
   Renderer.RenderChildren(aElement as TMarkDownDocument);
-  
+
   if HasOption(loEnvelope) then
     begin
     AppendNL('\end{document}');

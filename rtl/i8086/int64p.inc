@@ -392,11 +392,11 @@ begin
       rcl    bx,1
       adc    ax,ax
 @@n4: jns    @@n3
-@@n5: mov    word [n],dx 
+@@n5: mov    word [n],dx
       mov    word [n+2],cx
       mov    word [n+4],bx
       mov    word [n+6],ax
-      // Adjust divident accordingly:
+      // Adjust dividend accordingly:
       //   u := uint128(z) shl lzv; lzv=si=0..47; di=0
       mov    dx,word [z]
       mov    cx,word [z+2]
@@ -512,7 +512,7 @@ begin
       mov    dx,word [n]
       mov    cx,word [n+2]
       mov    bx,word [n+4]
-      mov    ax,word [n+6] 
+      mov    ax,word [n+6]
 @@d2: dec    di
       add    ss:[si],dx
       adc    ss:[si+2],cx
@@ -623,12 +623,12 @@ begin
       rcl    bx,1
       adc    ax,ax
 @@n4: jns    @@n3
-@@n5: mov    word [n],dx 
+@@n5: mov    word [n],dx
       mov    word [n+2],cx
       mov    word [n+4],bx
       mov    word [n+6],ax
       mov    lzv,si
-      // Adjust divident accordingly:
+      // Adjust dividend accordingly:
       //   u := uint128(z) shl lzv; lzv=si=0..47; di=0
       mov    dx,word [z]
       mov    cx,word [z+2]

@@ -156,14 +156,14 @@ function LowerCase(const V: variant): string; overload;{$ifdef SYSUTILSINLINE}in
   begin
   {$IFDEF UNICODERTL}
     result:=LowerCase(widestring(V));
-  {ELSE}  
+  {ELSE}
     result:=LowerCase(ansistring(V));
-  {$ENDIF}  
+  {$ENDIF}
   end;
 
 
 {   CompareStr compares S1 and S2, the result is the based on
-    substraction of the ascii values of the characters in S1 and S2
+    subtraction of the ascii values of the characters in S1 and S2
     case     result
     S1 < S2  < 0
     S1 > S2  > 0
@@ -232,7 +232,7 @@ end;
 
 
 {   CompareText compares S1 and S2, the result is the based on
-    substraction of the ascii values of characters in S1 and S2
+    subtraction of the ascii values of characters in S1 and S2
     comparison is case-insensitive
     case     result
     S1 < S2  < 0
@@ -1047,7 +1047,7 @@ begin
 end;
 
 function TryStrToDWord(const s: string; Out D: DWord): boolean;
-var 
+var
   Error : word;
   lq : QWord;
 begin
@@ -1289,7 +1289,7 @@ Var
 
 Begin
   if S = '' then
-    exit(false);  
+    exit(false);
   //ThousandSeparator not allowed as by Delphi specs
   if (FormatSettings.ThousandSeparator <> FormatSettings.DecimalSeparator) and
      (Pos(FormatSettings.ThousandSeparator, S) <> 0) then

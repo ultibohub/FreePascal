@@ -1,17 +1,17 @@
 {
      File:       ATS/SFNTLayoutTypes.h
- 
+
      Contains:   SFNT file layout structures and constants.
- 
+
      Version:    ATS
- 
+
      Copyright:  © 1994-2012 by Apple Inc., all rights reserved.
- 
+
      Bugs?:      For bug reports, consult the following page on
                  the World Wide Web:
- 
+
                      http://bugs.freepascal.org
- 
+
 }
 
 {  Pascal Translation Updated: Gorazd Krosl <gorazd_1957@yahoo.ca>, October 2009 }
@@ -1271,7 +1271,7 @@ type
 		componentTableOffset: UInt16;
 		ligatureTableOffset: UInt16;
 	end;
-	
+
 	MortSwashSubtablePtr = ^MortSwashSubtable;
 	MortSwashSubtable = record
 		lookup: SFNTLookupTable;
@@ -1281,7 +1281,7 @@ type
 	MortInsertionSubtable = record
 		header: STHeader;
 	end;
-	
+
 	MortSpecificSubtablePtr = ^MortSpecificSubtable;
 	MortSpecificSubtable = record
 		case SInt16 of
@@ -1327,7 +1327,7 @@ type
 		featureEntries: array[0..0] of MortFeatureEntry;
                                               { the subtables follow }
 	end;
-	
+
 	MortTablePtr = ^MortTable;
 	MortTable = record
 		version: Fixed;
@@ -1372,7 +1372,7 @@ type
 		header: STXHeader;
 		insertionGlyphTableOffset: UInt32;
 	end;
-	
+
 	MorxSpecificSubtablePtr = ^MorxSpecificSubtable;
 	MorxSpecificSubtable = record
 		case SInt16 of
@@ -1449,9 +1449,9 @@ const
 	kPROPWSDirectionClass = 10;   { Whitespace }
 	kPROPONDirectionClass = 11;   { Other Neutral }
 	kPROPSENDirectionClass = 12;   { Special European Number (not a Unicode class) }
-	kPROPLREDirectionClass = 13;   { Left-to-Right Embeding }
+	kPROPLREDirectionClass = 13;   { Left-to-Right Embedding}
 	kPROPLRODirectionClass = 14;   { Left-to-Right Override }
-	kPROPRLEDirectionClass = 15;   { Right-to-Left Embeding }
+	kPROPRLEDirectionClass = 15;   { Right-to-Left Embedding}
 	kPROPRLODirectionClass = 16;   { Right-to-Left Override }
 	kPROPPDFDirectionClass = 17;   { Pop Directional Format }
 	kPROPNSMDirectionClass = 18;   { Non-Spacing Mark }
@@ -1533,7 +1533,7 @@ const
 	kKERNOrderedList = 0;    { ordered list of kerning pairs }
 	kKERNStateTable = 1;    { state table for n-way contextual kerning }
 	kKERNSimpleArray = 2;    { simple n X m array of kerning values }
-	kKERNIndexArray = 3;     { modifed version of SimpleArray }
+	kKERNIndexArray = 3;     { modified version of SimpleArray }
 
 { Message Type Flags }
 const
@@ -1572,10 +1572,10 @@ type
     F O R M A T   S P E C I F I C   D E F I N I T I O N S
 
     kernOrderedList:
-    
+
     The table is a sorted list of [left glyph, right glyph, value] triples.
     There's enough information in the header so that the list can be
-    efficiently binary searched. 
+    efficiently binary searched.
 }
 { defines a single kerning pair of Glyphcodes  }
 	KernKerningPairPtr = ^KernKerningPair;
@@ -1629,12 +1629,12 @@ type
 { Header information for accessing offset tables and kerning array }
 {
     KernSimpleArray:
-    
+
     The array is an nXm array of kenring values. Each row in the array
     represents one left-hand glyph, and each column one right-hand glyph.
     The zeroth row and column always represent glyphs that are out of bounds
     and will always contain zero.
-    
+
     A pair is looked up by indexing the left-hand glyph through the left
     offset table, the right-hand glyph through the right offset table,
     adding both offsets to the starting address of the kerning array,
@@ -1655,7 +1655,7 @@ type
 		firstTable: array[0..0] of UInt16;          { first offset table starts here... }
 	end;
 { Index Array }
-	
+
 	KernIndexArrayHeaderPtr = ^KernIndexArrayHeader;
 	KernIndexArrayHeader = record
 		glyphCount: UInt16;
@@ -1720,7 +1720,7 @@ const
 	kKERXOrderedList = 0;    { ordered list of kerning pairs }
 	kKERXStateTable = 1;    { state table for n-way contextual kerning }
 	kKERXSimpleArray = 2;    { simple n X m array of kerning values }
-	kKERXIndexArray = 3;    { modifed version of SimpleArray }
+	kKERXIndexArray = 3;    { modified version of SimpleArray }
 	kKERXControlPoint = 4;     { state table for control point positioning }
 
 { Message Type Flags }
@@ -1758,12 +1758,12 @@ type
 	KerxTableHeaderHandle = ^KerxTableHeaderPtr;
 {
  F O R M A T   S P E C I F I C   D E F I N I T I O N S
- 
+
  kerxOrderedList:
- 
+
  The table is a sorted list of [left glyph, right glyph, value] triples.
  There's enough information in the header so that the list can be
- efficiently binary searched. 
+ efficiently binary searched.
  }
 { defines a single kerning pair of Glyphcodes  }
 type
@@ -1846,12 +1846,12 @@ type
 { Header information for accessing offset tables and kerning array }
 {
  KerxSimpleArray:
- 
+
  The array is an nXm array of kenring values. Each row in the array
  represents one left-hand glyph, and each column one right-hand glyph.
  The zeroth row and column always represent glyphs that are out of bounds
  and will always contain zero.
- 
+
  A pair is looked up by indexing the left-hand glyph through the left
  offset table, the right-hand glyph through the right offset table,
  adding both offsets to the starting address of the kerning array,
@@ -1909,7 +1909,7 @@ type
 type
 	KerxSubtableHeader = record
 		length: UInt32;                 { length in bytes (including this header) }
-		stInfo: KerxSubtableCoverage;               { subtable converage }
+		stInfo: KerxSubtableCoverage;               { subtable converge }
 		tupleIndex: UInt32;             { tuple index for variation subtables }
 		fsHeader: KerxFormatSpecificHeader;         { format specific sub-header }
 	end;
@@ -1940,7 +1940,7 @@ const
 type
 	BslnBaselineClass = UInt32;
 	BslnBaselineClassPtr = ^BslnBaselineClass;
-	
+
 { The BslnBaselineRecord array defines the baseline deltas for the line. }
 	BslnBaselineRecord = array[0..31] of Fixed;
 	BslnBaselineRecordPtr = ^BslnBaselineRecord;

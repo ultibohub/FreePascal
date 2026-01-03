@@ -8,7 +8,7 @@ uses {$ifdef unix}cthreads,{$endif} fpmkunit;
 procedure add_rtl_console(const ADirectory: string);
 
 Const
-  // All Unices have full set of KVM+Crt in unix/ except QNX which is not
+  // All Unixes have full set of KVM+Crt in unix/ except QNX which is not
   // in workable state atm.
   UnixLikes = AllUnixOSes -[QNX];
 
@@ -69,6 +69,8 @@ begin
 
     T:=P.Targets.AddUnit('winevent.pp',WinEventOSes);
 
+    T:=P.Targets.AddUnit('fpansi.pp');
+    
     T:=P.Targets.AddUnit('keyboard.pp',KbdOSes);
     with T.Dependencies do
       begin

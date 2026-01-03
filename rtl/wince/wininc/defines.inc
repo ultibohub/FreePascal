@@ -734,10 +734,10 @@
 
 { Extended combo box styles }
     CBS_EX_CONSTSTRINGDATA  = $00000002;
-{ If you specify the CBS_EX_CONSTSTRINGDATA style when the application 
-  inserts a string into the list part of a combo box, the combo box 
-  stores the pointer passed to it by the application rather than copying 
-  the string. This saves RAM resources when you have a large table of 
+{ If you specify the CBS_EX_CONSTSTRINGDATA style when the application
+  inserts a string into the list part of a combo box, the combo box
+  stores the pointer passed to it by the application rather than copying
+  the string. This saves RAM resources when you have a large table of
   strings in ROM that you want to insert into a combo box. }
 
 
@@ -780,8 +780,8 @@
 
 { Extended list box styles }
      LBS_EX_CONSTSTRINGDATA   = $00000002;
-{ Windows CE supports the LBS_EX_CONSTSTRINGDATA style that saves RAM 
-  resources when you have a large table of strings in ROM that you want 
+{ Windows CE supports the LBS_EX_CONSTSTRINGDATA style that saves RAM
+  resources when you have a large table of strings in ROM that you want
   to insert into a list box. }
 
 { Scroll bar styles }
@@ -869,9 +869,9 @@
      WS_EX_NODRAG           = $40000000;
      WS_EX_CAPTIONOKBTN     = $80000000;
 
-     WS_EX_NOINHERITLAYOUT  = $00100000; // Disable inheritence of mirroring by children
+     WS_EX_NOINHERITLAYOUT  = $00100000; // Disable inheritance of mirroring by children
      WS_EX_LAYOUTRTL        = $00400000; // Right to left mirroring
-     
+
 
   { CreateWindowStation  }
      WINSTA_ACCESSCLIPBOARD = $4;
@@ -909,7 +909,7 @@
      DDD_RAW_TARGET_PATH = 1;
      DDD_REMOVE_DEFINITION = 2;
      DDD_EXACT_MATCH_ON_REMOVE = 4;
-  { DeviceCapbilities  }
+  { DeviceCapabilities  }
      DC_BINNAMES = 12;          //windef
      DC_BINS = 6;               //windef
      DC_COPIES = 18;            //windef
@@ -1233,7 +1233,7 @@
      CLRDTR = 6;          //winbase
      CLRRTS = 4;          //winbase
      SETDTR = 5;          //winbase
-     SETRTS = 3;          //winbase 
+     SETRTS = 3;          //winbase
      SETXOFF = 1;         //winbase
      SETXON = 2;          //winbase
      SETBREAK = 8;          //winbase
@@ -1365,7 +1365,7 @@
      { WinCE 5.0+}
      CP_UTF7 = 65000;
      CP_UTF8 = 65001;
-     
+
   { GetDateFormat  }
   { already defined above !!
   #define DATE_SHORTDATE        (1)
@@ -4199,7 +4199,7 @@
 #define PROCESSOR_INSTRUCTION_CODE(arch, core, feature)      \
     ((arch) << 24 | (core) << 16 | (feature))
 }
-     
+
      PROCESSOR_X86_32BIT_INSTRUCTION = (PROCESSOR_ARCHITECTURE_INTEL shl 24) or
                                        (PROCESSOR_X86_32BIT_CORE shl 16) or
                                        PROCESSOR_FEATURE_FP;
@@ -5543,7 +5543,7 @@ PROCESSOR_ARM_V4TFP_INSTRUCTION        PROCESSOR_ARM_V4TFP_INSTRUCTION
 {$ifdef i386}                              //+winnt
 
   { x86  }
-  { The doc refered me to winnt.h, so I had to look...  }
+  { The doc referred me to winnt.h, so I had to look...  }
 
   const
      SIZE_OF_80387_REGISTERS = 80;         //winnt
@@ -5827,7 +5827,7 @@ const
  *
  * Purpose: Resource manager definitions
  * The resource manager itself is part of the device manager (device.exe)
- * and its affliated entry points are declared in winbase.h.
+ * and its affiliated entry points are declared in winbase.h.
  *
  *}
 // Resource ids less than BASE_OEM are reserved by Microsoft;
@@ -6054,7 +6054,7 @@ const
 
 const
       SS_REALSIZEIMAGE    = $00000800;
-      
+
 // End-of-winuserm.h
 
 const

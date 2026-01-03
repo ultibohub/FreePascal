@@ -269,7 +269,7 @@ function CGConfigureDisplayFadeEffect( config: CGDisplayConfigRef; fadeOutSecond
    period of time that the program will be doing fades.
 
    Failing to release the hardware by the end of the reservation interval
-   will result in the reservation token becomingn invalid, and the hardware
+   will result in the reservation token becoming invalid, and the hardware
    being unfaded back to a normal state. The reservation interval is limited
    to a maximum of 15 seconds and should be greater than zero. }
 
@@ -283,7 +283,7 @@ function CGAcquireDisplayFadeReservation( seconds: CGDisplayReservationInterval;
 
 { Release a display fade reservation, and unfades the display if needed.
    The reservation token is no longer valid after this operation.
- 
+
    `CGReleaseDisplayFadeReservation' may be safely called while an
    asynchronous fade operation is running; if the ending blend value is
    `kCGDisplayBlendNormal', this will not disturb the running operation. The
@@ -306,7 +306,7 @@ function CGReleaseDisplayFadeReservation( token: CGDisplayFadeReservationToken )
    applying a nonlinear (sine-based) bias term, and blends the video output
    with the specified color based on the resulting value.
 
-   If the time interval is specifed as 0, then the ending state blend value
+   If the time interval is specified as 0, then the ending state blend value
    is applied at once and the function returns.
 
    The maximum allowable time interval is 15 seconds.
@@ -314,24 +314,24 @@ function CGReleaseDisplayFadeReservation( token: CGDisplayFadeReservationToken )
    If the `synchronous' is true, the function does not return until the fade
    operation is complete. If false, the function returns at once, and the
    fade operation runs asynchronously.
-   
+
    To perform a two-second fade-to-black, waiting until complete:
 
      CGDisplayFade(token,
-		   2,				// 2 seconds 
-		   kCGDisplayBlendNormal,	// Starting state 
-		   kCGDisplayBlendSolidColor,	// Ending state 
-		   0, 0, 0,			// black 
-		   true);			// Wait for completion 
+		   2,				// 2 seconds
+		   kCGDisplayBlendNormal,	// Starting state
+		   kCGDisplayBlendSolidColor,	// Ending state
+		   0, 0, 0,			// black
+		   true);			// Wait for completion
 
    To perform a two-second fade-from-black to normal, without waiting for
    completion:
 
      CGDisplayFade(token,
-		   2,				// 2 seconds 
-		   kCGDisplayBlendSolidColor,	// Starting state 
-		   kCGDisplayBlendNormal,	// Ending state 
-		   0, 0, 0,			// black 
+		   2,				// 2 seconds
+		   kCGDisplayBlendSolidColor,	// Starting state
+		   kCGDisplayBlendNormal,	// Ending state
+		   0, 0, 0,			// black
 		   false);			// Don't wait for completion }
 
 function CGDisplayFade( token: CGDisplayFadeReservationToken; duration: CGDisplayFadeInterval; startBlend: CGDisplayBlendFraction; endBlend: CGDisplayBlendFraction; redBlend: Float32; greenBlend: Float32; blueBlend: Float32; synchronous: boolean_t ): CGError; external name '_CGDisplayFade';

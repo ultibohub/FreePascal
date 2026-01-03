@@ -1008,7 +1008,7 @@ might be added here...or not ;-)
 *)
 
 (* Signalize unrecognized (untranslatable) MS Windows codepage *)
-    OSErrorWatch (Uls_Invalid);            
+    OSErrorWatch (Uls_Invalid);
    end;
 end;
 
@@ -1256,7 +1256,7 @@ end;
 function OS2CompareUnicodeString (const S1, S2: UnicodeString; Options : TCompareOptions): PtrInt;
 var
   HS1, HS2: UnicodeString;
-  
+
 begin
   { UniStrColl interprets null chars as end-of-string -> filter out }
   HS1 := NoNullsUnicodeString (S1);
@@ -1307,7 +1307,7 @@ begin
    Result := UpCase (S); { Use a fallback? }
 end;
 
-      
+
 function OS2LowerAnsiString (const S: AnsiString): AnsiString;
 var
   I: PtrUInt;
@@ -1603,7 +1603,7 @@ function CodePointLength(const Str: PAnsiChar; maxlookahead: ptrint): PtrInt;
 {$else beos}
     fillchar(mbstate,sizeof(mbstate),0);
     result:=ptrint(mbrlen(str,maxlookahead,@mbstate));
-    { mbrlen can also return -2 for "incomplete but potially valid character
+    { mbrlen can also return -2 for "incomplete but potentially valid character
       and data has been processed" }
     if result<0 then
       result:=-1;

@@ -329,7 +329,7 @@ TYPE
  TTms= tms;
  pTms= ^tms;
 
- TFDSetEl  = Cardinal; 
+ TFDSetEl  = Cardinal;
  TFDSet    = ARRAY[0..(FD_MAXFDSET div 32)-1] of TFDSetEl;
  pFDSet    = ^TFDSet;
 
@@ -554,7 +554,7 @@ Type
         TRLimit  = record
                      rlim_cur,               { current (soft) limit }
           	     rlim_max : TRLim;     { maximum value for rlim_cur }
-		    end;	
+		    end;
         PRLimit  = ^TRLimit;
 
   iovec = record
@@ -562,10 +562,10 @@ Type
 	    iov_len  : size_t;
 	   end;
   tiovec=iovec;
-  piovec=^tiovec;		
+  piovec=^tiovec;
 
 CONST
- { Constansts for MMAP }
+ { Constants for MMAP }
 {$ifdef FPC_IS_SYSTEM}
   MAP_PRIVATE   =2;
 {$endif}

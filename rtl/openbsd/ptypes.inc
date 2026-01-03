@@ -55,7 +55,7 @@ type
 {$ifdef CPU64}
     size_t   = cuint64;
 {$else}
-    size_t   = cuint32;         { as definied in the C standard}
+    size_t   = cuint32;         { as defined in the C standard}
 {$endif}
     TSize    = size_t;
     pSize    = ^size_t;
@@ -279,7 +279,7 @@ type
 
   { directory services }
    dirent_55  = record
-        d_fileno      : ino_t;                       
+        d_fileno      : ino_t;
 	d_off         : off_t;
         d_reclen      : cuint16;                        // length of this record
         d_type        : cuint8;                         // file type, see below

@@ -1,9 +1,9 @@
 {
      File:       CarbonCore/MacErrors.h
- 
+
      Contains:   OSErr codes.
                  The contents of this header file are deprecated.
- 
+
      Copyright:  © 1985-2011 by Apple Inc. All rights reserved.
 }
 {     Pascal Translation Updated:  Gale R Paeper, <gpaeper@empirenet.com>, June 2018 }
@@ -446,7 +446,7 @@ const
 	rgnTooBigErr = -500; { should have never been added! (cf. rgnTooBigError = 147) }
 	updPixMemErr = -125; {insufficient memory to update a pixmap}
 	pictInfoVersionErr = -11000; {wrong version of the PictInfo structure}
-	pictInfoIDErr = -11001; {the internal consistancy check for the PictInfoID is wrong}
+	pictInfoIDErr = -11001; {the internal consistency check for the PictInfoID is wrong}
 	pictInfoVerbErr = -11002; {the passed verb was invalid}
 	cantLoadPickMethodErr = -11003; {unable to load the custom pick proc}
 	colorsRequestedErr = -11004; {the number of colors requested was illegal}
@@ -545,14 +545,14 @@ const
 	smEmptySlot = -300; {No card in slot}
 	smCRCFail = -301; {CRC check failed for declaration data}
 	smFormatErr = -302; {FHeader Format is not Apple's}
-	smRevisionErr = -303; {Wrong revison level}
+	smRevisionErr = -303; {Wrong revision level}
 	smNoDir = -304; {Directory offset is Nil}
 	smDisabledSlot = -305; {This slot is disabled (-305 use to be smLWTstBad)}
 	smNosInfoArray = -306;  {No sInfoArray. Memory Mgr error.}
 
 
 const
-	smResrvErr = -307; {Fatal reserved error. Resreved field <> 0.}
+	smResrvErr = -307; {Fatal reserved error. Reserved field <> 0.}
 	smUnExBusErr = -308; {Unexpected BusError}
 	smBLFieldBad = -309; {ByteLanes field was bad.}
 	smFHBlockRdErr = -310; {Error occurred during _sGetFHeader.}
@@ -775,7 +775,7 @@ const
 	kFMFontContainerAccessErr = -985;
 
 const
-	noMaskFoundErr = -1000; {Icon Utilties Error}
+	noMaskFoundErr = -1000; {Icon Utilities Error}
 
 const
 	nbpBuffOvr = -1024; {Buffer overflow in LookupName}
@@ -860,7 +860,7 @@ const
 	errAERecordingIsAlreadyOn = -1732; { available only in version 1.0.1 or greater }
 	errAEReceiveTerminate = -1733; { break out of all levels of AEReceive to the topmost (1.1 or greater) }
 	errAEReceiveEscapeCurrent = -1734; { break out of only lowest level of AEReceive (1.1 or greater) }
-	errAEEventFiltered = -1735; { event has been filtered, and should not be propogated (1.1 or greater) }
+	errAEEventFiltered = -1735; { event has been filtered, and should not be propagated (1.1 or greater) }
 	errAEDuplicateHandler = -1736; { attempt to install handler in table for identical class and id (1.1 or greater) }
 	errAEStreamBadNesting = -1737; { nesting violation while streaming }
 	errAEStreamAlreadyConverted = -1738; { attempt to convert a stream that has already been converted }
@@ -1130,7 +1130,7 @@ const
 	tsmTSNotOpenErr = -2514; { text service is not open }
 	tsmComponentAlreadyOpenErr = -2515; { text service already opened for the document }
 	tsmInputMethodIsOldErr = -2516; { returned by GetDefaultInputMethod }
-	tsmScriptHasNoIMErr = -2517; { script has no imput method or is using old IM }
+	tsmScriptHasNoIMErr = -2517; { script has no input method or is using old IM }
 	tsmUnsupportedTypeErr = -2518; { unSupported interface type error }
 	tsmUnknownErr = -2519; { any other errors }
 	tsmInvalidContext = -2520; { Invalid TSMContext specified in call }
@@ -1182,7 +1182,7 @@ const
 	noIconDataAvailableErr = -2582; { The necessary icon data is not available }
 
 
-{        
+{
     Dynamic AppleScript errors:
 
     These errors result from data-dependent conditions and are typically
@@ -1204,14 +1204,14 @@ const
 	errOSACantGetTerminology = -2709;
 	errOSACantCreate = -2710;
 
-{        
+{
     Component-specific dynamic script errors:
 
     The range -2720 thru -2739 is reserved for component-specific runtime errors.
     (Note that error codes from different scripting components in this range will
     overlap.)
 }
-{        
+{
     Static AppleScript errors:
 
     These errors comprise what are commonly thought of as parse and compile-
@@ -1238,14 +1238,14 @@ const
 	OSAInconsistentDeclarations = -2754; { Signaled when a variable is declared inconsistently in the same scope, such as both local and global}
 	OSAControlFlowError = -2755; { Signaled when illegal control flow occurs in an application (no catcher for throw, non-lexical loop exit, etc.)}
 
-{        
+{
     Component-specific AppleScript static errors:
 
     The range -2760 thru -2779 is reserved for component-specific parsing and
     compile-time errors. (Note that error codes from different scripting
     components in this range will overlap.)
 }
-{        
+{
     Dialect-specific AppleScript errors:
 
     The range -2780 thru -2799 is reserved for dialect specific error codes for
@@ -1290,7 +1290,7 @@ const
 	cfragInitAtBootErr = -2816; { A boot library has an initialization function.  (System 7 only)}
 	cfragLibConnErr = -2817; { }
 	cfragCFMStartupErr = -2818; { Internal error during CFM initialization.}
-	cfragCFMInternalErr = -2819; { An internal inconstistancy has been detected.}
+	cfragCFMInternalErr = -2819; { An internal inconsistency has been detected.}
 	cfragFragmentCorruptErr = -2820; { A fragment's container was corrupt (known format).}
 	cfragInitFunctionErr = -2821; { A fragment's initialization routine returned an error.}
 	cfragNoApplicationErr = -2822; { No application member found in the cfrg resource.}
@@ -1650,7 +1650,7 @@ const
 	afpCatalogChanged = -5037;
 	afpSameObjectErr = -5038;
 	afpBadIDErr = -5039;
-	afpPwdSameErr = -5040; { Someone tried to change their password to the same password on a mantadory password change }
+	afpPwdSameErr = -5040; { Someone tried to change their password to the same password on a mandatory password change }
 	afpPwdTooShortErr = -5041; { The password being set is too short: there is a minimum length that must be met or exceeded }
 	afpPwdExpiredErr = -5042; { The password being used is too old: this requires the user to change the password before log-in can continue }
 	afpInsideSharedErr = -5043; { The folder being shared is inside a shared folder OR the folder contains a shared folder and is being moved into a shared folder }
@@ -1720,7 +1720,7 @@ const
 	errCannotUndo = -5253;
 
 
-{ HTMLRendering OSStaus codes}
+{ HTMLRendering OSStatus codes}
 const
 	hrHTMLRenderingLibNotInstalledErr = -5360;
 	hrMiscellaneousExceptionErr = -5361;
@@ -1881,16 +1881,16 @@ const
 	kUSBPending = 1;
 
 {
-   
-   USB Hardware Errors 
-   Note pipe stalls are communication 
-   errors. The affected pipe can not 
-   be used until USBClearPipeStallByReference  
+
+   USB Hardware Errors
+   Note pipe stalls are communication
+   errors. The affected pipe can not
+   be used until USBClearPipeStallByReference
    is used.
-   kUSBEndpointStallErr is returned in 
-   response to a stall handshake 
-   from a device. The device has to be 
-   cleared before a USBClearPipeStallByReference 
+   kUSBEndpointStallErr is returned in
+   response to a stall handshake
+   from a device. The device has to be
+   cleared before a USBClearPipeStallByReference
    can be used.
 }
 const
@@ -1913,8 +1913,8 @@ const
 
 
 {
-   
-   USB Manager Errors 
+
+   USB Manager Errors
 }
 const
 	kUSBQueueFull = -6948; { Internal queue maxxed  }
@@ -1926,7 +1926,7 @@ const
 {
    USB internal errors are in range -6960 to -6951
    please do not use this range
-   
+
 }
 const
 	kUSBInternalReserved10 = -6951;
@@ -2067,7 +2067,7 @@ const
 	kATSUFontsNotMatched = -8794; {    This value is returned by ATSUMatchFontsToText()    }
                                         {    when the text contains Unicode characters which    }
                                         {    cannot be represented by any installed font.  }
-	kATSUNoCorrespondingFontErr = -8795; {    This value is retrned by font ID conversion }
+	kATSUNoCorrespondingFontErr = -8795; {    This value is returned by font ID conversion }
                                         {    routines ATSUFONDtoFontID() and ATSUFontIDtoFOND() }
                                         {    to indicate that the input font ID is valid but }
                                         {    there is no conversion possible.  For example, }
@@ -2175,7 +2175,7 @@ const
 	kATSUOutputBufferTooSmallErr = -8903; {    An attempt was made to use an output buffer which was too small}
                                         {    for the requested operation.}
 	kATSUInvalidCallInsideCallbackErr = -8904; {    A call was made within the context of a callback that could}
-                                        {    potetially cause an infinite recursion}
+                                        {    potentially cause an infinite recursion}
 	kATSUNoFontNameErr = -8905; {    This error is returned when either ATSUFindFontName() or ATSUGetIndFontName() }
                                         {    function cannot find a corresponding font name given the input parameters}
 	kATSULastErr = -8959; {    The last ATSUI error code.}
@@ -2275,7 +2275,7 @@ const
 	kNoCardEnablersFoundErr = -9099; { No Enablers were found}
 	kNoEnablerForCardErr = -9100; { No Enablers were found that can support the card}
 	kNoCompatibleNameErr = -9101; { There is no compatible driver name for this device}
-	kClientRequestDenied = -9102; { CS Clients should return this code inorder to }
+	kClientRequestDenied = -9102; { CS Clients should return this code in order to }
                                         {   deny a request-type CS Event                }
 	kNotReadyErr = -9103; { PC Card failed to go ready }
 	kTooManyIOWindowsErr = -9104; { device requested more than one I/O window }
@@ -2408,7 +2408,7 @@ const
 	errTaskNotFound = -10780; { no task with that task id exists }
 
 
-{ Video driver Errorrs -10930 to -10959 }
+{ Video driver Errors -10930 to -10959 }
 { Defined in video.h. }
 
 const
@@ -2606,7 +2606,7 @@ const
 	kFNSMismatchErr = -29585; { reference didn't match or wasn't found in profile }
 	kFNSInsufficientDataErr = -29586; { insufficient data for the operation }
 	kFNSBadFlattenedSizeErr = -29587; { flattened size didn't match input or was too small }
-	kFNSNameNotFoundErr = -29589; { The name with the requested paramters was not found }
+	kFNSNameNotFoundErr = -29589; { The name with the requested parameters was not found }
 
 
 { MacLocales error codes}
@@ -2887,7 +2887,7 @@ const
 	errCantEmbedIntoSelf = -30594;
 
   {
-   * You called EmbedControl or a similiar API to embed the root
+   * You called EmbedControl or a similar API to embed the root
    * control in another control. You cannot embed the root control in
    * any other control.
    }
@@ -3061,9 +3061,9 @@ const
 	dsPCCardATASysError = 29205; {PCCard has been ejected while still in use. }
 
 {
-    System Errors that are used after MacsBug is loaded to put up dialogs since these should not 
-    cause MacsBug to stop, they must be in the range (30, 42, 16384-32767) negative numbers add 
-    to an existing dialog without putting up a whole new dialog 
+    System Errors that are used after MacsBug is loaded to put up dialogs since these should not
+    cause MacsBug to stop, they must be in the range (30, 42, 16384-32767) negative numbers add
+    to an existing dialog without putting up a whole new dialog
 }
 const
 	dsNoExtsMacsBug = -1;   {not a SysErr, just a placeholder }
@@ -3210,7 +3210,7 @@ const
 
 {
  *  SysError()
- *  
+ *
  *  Availability:
  *    Mac OS X:         in version 10.0 and later in CoreServices.framework
  *    CarbonLib:        in CarbonLib 1.0 and later

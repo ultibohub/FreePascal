@@ -1,15 +1,15 @@
 {
  * Copyright (c) 1999-2001,2004 Apple Computer, Inc. All Rights Reserved.
- * 
+ *
  * @APPLE_LICENSE_HEADER_START@
- * 
+ *
  * This file contains Original Code and/or Modifications of Original Code
  * as defined in and that are subject to the Apple Public Source License
  * Version 2.0 (the 'License'). You may not use this file except in
  * compliance with the License. Please obtain a copy of the License at
  * http://www.opensource.apple.com/apsl/ and read it before using this
  * file.
- * 
+ *
  * The Original Code and all software distributed under the License are
  * distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
  * EXPRESS OR IMPLIED, AND APPLE HEREBY DISCLAIMS ALL SUCH WARRANTIES,
@@ -17,7 +17,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR NON-INFRINGEMENT.
  * Please see the License for the specific language governing rights and
  * limitations under the License.
- * 
+ *
  * @APPLE_LICENSE_HEADER_END@
  *
  * cssmkrapi.h -- Application Programmers Interface for Key Recovery Modules
@@ -344,7 +344,7 @@ type
 	(* DEPRECATED_IN_MAC_OS_X_VERSION_10_7_AND_LATER *)
 
 
-{ Key Recovery Module Mangement Operations }
+{ Key Recovery Module Management Operations }
 
 function CSSM_KR_SetEnterpriseRecoveryPolicy( const (*var*) RecoveryPolicyFileName: CSSM_DATA; const (*var*) OldPassPhrase: CSSM_ACCESS_CREDENTIALS; const (*var*) NewPassPhrase: CSSM_ACCESS_CREDENTIALS ): CSSM_RETURN; external name '_CSSM_KR_SetEnterpriseRecoveryPolicy';
 (* DEPRECATED_IN_MAC_OS_X_VERSION_10_7_AND_LATER *)

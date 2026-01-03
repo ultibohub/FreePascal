@@ -59,9 +59,9 @@ var
   UBRR1H : byte absolute $00+$CC+1; // USART Baud Rate Register t Bytes
   // CPU
   SREG : byte absolute $00+$5F; // Status Register
-  SP : word absolute $00+$5D; // Stack Pointer 
-  SPL : byte absolute $00+$5D; // Stack Pointer 
-  SPH : byte absolute $00+$5D+1; // Stack Pointer 
+  SP : word absolute $00+$5D; // Stack Pointer
+  SPL : byte absolute $00+$5D; // Stack Pointer
+  SPH : byte absolute $00+$5D+1; // Stack Pointer
   XMCRA : byte absolute $00+$74; // External Memory Control Register A
   XMCRB : byte absolute $00+$75; // External Memory Control Register B
   OSCCAL : byte absolute $00+$66; // Oscillator Calibration Value
@@ -156,7 +156,7 @@ var
   DIDR0 : byte absolute $00+$7E; // Digital Input Disable Register 1
   // ANALOG_COMPARATOR
   ACSR : byte absolute $00+$50; // Analog Comparator Control And Status Register
-  DIDR1 : byte absolute $00+$7F; // 
+  DIDR1 : byte absolute $00+$7F; //
   // CAN
   CANGCON : byte absolute $00+$D8; // CAN General Control Register
   CANGSTA : byte absolute $00+$D9; // CAN General Status Register
@@ -227,7 +227,7 @@ const
   TWGCE = 0; // TWI General Call Recognition Enable Bit
   // UCSR0A
   RXC0 = 7; // USART Receive Complete
-  TXC0 = 6; // USART Transmitt Complete
+  TXC0 = 6; // USART Transmit Complete
   UDRE0 = 5; // USART Data Register Empty
   FE0 = 4; // Framing Error
   DOR0 = 3; // Data overRun
@@ -251,7 +251,7 @@ const
   UCPOL0 = 0; // Clock Polarity
   // UCSR1A
   RXC1 = 7; // USART Receive Complete
-  TXC1 = 6; // USART Transmitt Complete
+  TXC1 = 6; // USART Transmit Complete
   UDRE1 = 5; // USART Data Register Empty
   FE1 = 4; // Framing Error
   DOR1 = 3; // Data overRun
@@ -300,8 +300,8 @@ const
   XMBK = 7; // External Memory Bus Keeper Enable
   XMM = 0; // External Memory High Mask
   // CLKPR
-  CLKPCE = 7; // 
-  CLKPS = 0; // 
+  CLKPCE = 7; //
+  CLKPS = 0; //
   // SMCR
   SM = 1; // Sleep Mode Select bits
   SE = 0; // Sleep Enable
@@ -495,12 +495,12 @@ const
   SERG = 3; // Stuff Error General
   CERG = 2; // CRC Error General
   FERG = 1; // Form Error General
-  AERG = 0; // Ackknowledgement Error General
+  AERG = 0; // Acknowledgment Error General
   // CANGIE
   ENIT = 7; // Enable all Interrupts
   ENBOFF = 6; // Enable Bus Off INterrupt
   ENRX = 5; // Enable Receive Interrupt
-  ENTX = 4; // Enable Transmitt Interrupt
+  ENTX = 4; // Enable Transmit Interrupt
   ENERR = 3; // Enable MOb Error Interrupt
   ENBX = 2; // Enable Burst Receive Interrupt
   ENERG = 1; // Enable General Error Interrupt
@@ -526,7 +526,7 @@ const
   SERR = 3; // Stuff Error
   CERR = 2; // CRC Error
   FERR = 1; // Form Error
-  AERR = 0; // Ackknowledgement Error
+  AERR = 0; // Acknowledgment Error
   // CANCDMOB
   CONMOB = 6; // MOb Config Bits
   RPLV = 5; // Reply Valid

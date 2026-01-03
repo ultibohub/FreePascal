@@ -3,7 +3,7 @@ unit libhmd;
 interface
 uses libgte, libgs;
 const
-	GsUNIT_TERM	= $ffffffff;	// Primitive terminater
+	GsUNIT_TERM	= $ffffffff;	// Primitive terminator
 	GsUNIT_DIV1	= 1 shl 24;		//  2 x  2 divide
 	GsUNIT_DIV2	= 2 shl 24;		//  4 x  4 divide
 	GsUNIT_DIV3	= 3 shl 24;		//  8 x  8 divide
@@ -843,10 +843,10 @@ const
 	function GsU_07010200(arg: PGsARGUNIT): pdword; external;
 	function GsU_07020200(arg: PGsARGUNIT): pdword; external;
 	function GsU_07030200(arg: PGsARGUNIT): pdword; external;
-	
+
 	// update driver
 	function GsU_03000000(sp: PGsARGUNIT_ANIM): pdword; external;
-	
+
 	// interpolation driver
 	function GsU_03000001(sp: PGsARGUNIT_ANIM): longint; external;
 	function GsU_03000002(sp: PGsARGUNIT_ANIM): longint; external;

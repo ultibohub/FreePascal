@@ -34,7 +34,7 @@ var
   TCNT0 : byte absolute $00+$52; // Timer/Counter0
   TCCR0B : byte absolute $00+$53; // Timer/Counter Control Register B
   OCR0B : byte absolute $00+$49; // Timer/Counter0 Output Compare Register
-  GTCCR : byte absolute $00+$48; // General Timer Conuter Register
+  GTCCR : byte absolute $00+$48; // General Timer Counter Register
   // WATCHDOG
   WDTCR : byte absolute $00+$41; // Watchdog Timer Control Register
   // CPU
@@ -80,7 +80,7 @@ const
   AIN1D = 1; // AIN1 Digital Input Disable
   AIN0D = 0; // AIN0 Digital Input Disable
   // EECR
-  EEPM = 4; // 
+  EEPM = 4; //
   EERIE = 3; // EEProm Ready Interrupt Enable
   EEMWE = 2; // EEPROM Master Write Enable
   EEWE = 1; // EEPROM Write Enable

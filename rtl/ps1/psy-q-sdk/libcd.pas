@@ -6,15 +6,15 @@
  *
  * CD-ROM Primitive Command list:
  *
- *	Symbol		type	Contents			
+ *	Symbol		type	Contents
  *	------------------------------------------------------
- *	CdlNop		B	NOP		
- *	CdlSetloc	B	Set position	
+ *	CdlNop		B	NOP
+ *	CdlSetloc	B	Set position
  *	CdlPlay		B	CD-DA Play
  *	CdlForward	B	Forward
  *	CdlBackward	B	Backward
  *	CdlReadN	B	Read with retry
- *	CdlStanby	N	Standby
+ *	CdlStandby	N	Standby
  *	CdlStop		N	Stop
  *	CdlPause	N	Pause
  *	CdlMute		B	Mute on
@@ -22,14 +22,14 @@
  *	CdlSetfilter	B	Set SubHeader filter
  *	CdlSetmode	B	Set mode
  *	CdlGetlocL	B	Get logical position
- *	CdlGetlocP	B	Get phisycal position
+ *	CdlGetlocP	B	Get physical position
  *	CdlSeekL	N	Logical Seek
- *	CdlSeekP	N	Phisical Seek
+ *	CdlSeekP	N	Physical Seek
  *	CdlReadS	B	Read without retry
  *	------------------------------------------------------
  *			B: Blocking, N: Non-Blocking operation
- *		
- *	
+ *
+ *
  *	Symbol		arg		result
  *	--------------------------------------------------------------
  *	CdlNop		-		status
@@ -38,7 +38,7 @@
  *	CdlForward	-		status
  *	CdlBackward	-		status
  *	CdlReadN	-		status
- *	CdlStanby	-		status
+ *	CdlStandby	-		status
  *	CdlStop		-		status
  *	CdlPause	-		status
  *	CdlMute		-		status
@@ -167,7 +167,7 @@ type
 			 end;
 	PCdlATV = ^CdlATV;
 
-// Low Level File System for CdSearchFile() 
+// Low Level File System for CdSearchFile()
 const
 	CdlMAXFILE 	=	64;		// max number of files in a directory
 	CdlMAXDIR 	= 	128;	// max number of total directories
@@ -318,7 +318,7 @@ begin
 	CdControl(CdlMute, nil, nil);
 end;
 
-procedure CdDeMute;	
+procedure CdDeMute;
 begin
 	CdControl(CdlDemute, nil, nil);
 end;

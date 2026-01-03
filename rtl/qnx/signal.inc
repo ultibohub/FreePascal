@@ -4,7 +4,7 @@
 
     This file implements all the types/constants related
     to signal for QNX RTP
-    
+
     See the file COPYING.FPC, included in this distribution,
     for details about the copyright.
 
@@ -56,7 +56,7 @@ const
     SIGBUS     =10;     { Access to undefined memory        }
     { --------------- QNX specific signals ---------------  }
     SIGTRAP    = 5;     { trace trap (not reset when caught) }
-    SIGIOT     = 6;     { IOT instruction                    } 
+    SIGIOT     = 6;     { IOT instruction                    }
     SIGEMT     = 7;     { EMT instruction                    }
     SIGDEADLK  = 7; { Mutex deadlock                     }
     SIGSYS     =12;     { bad argument to system call        }
@@ -67,7 +67,7 @@ const
     SIGPOLL    =22;     { System V name for SIGIO            }
     SIGIO      =SIGPOLL;
     SIGVTALRM  =28;     { virtual timer expired              }
-    SIGPROF    =29;     { profileing timer expired           }
+    SIGPROF    =29;     { profiling timer expired            }
     SIGXCPU    =30;     { exceded cpu limit                  }
     SIGXFSZ    =31;     { exceded file size limit            }
 
