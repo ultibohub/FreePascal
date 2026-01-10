@@ -1,4 +1,4 @@
-{ Simple libtar test - creates a tar archive with a few entries }
+{ Simple libtar test - creates a (PAX) tar archive with a few entries }
 program libtar_simple_test;
 
 {$mode objfpc}{$H+}
@@ -7,13 +7,14 @@ uses
   SysUtils, libtar;
 
 const
-  TAR_FILENAME = 'tlibtar1.tar';
+  TAR_FILENAME = 'tlibtar3.tar';
   CONTENT_1 = 'Hello, World!';
   CONTENT_2 = 'Some data in a subdirectory';
   CONTENT_3 = 'hello.txt';
   CONTENT_4 = 'hello.txt';
+  CONTENT_5 = 'Content of file with long path';
 
-  TotalEntries = 4;
+  TotalEntries = 5;
 
 var
   TW: TTarWriter;
@@ -22,8 +23,13 @@ var
   Content: RawByteString;
   EntryCount: Integer;
   Errors: Integer;
+  LongName: AnsiString;
 begin
   Errors := 0;
+
+  { Create long filename for testing }
+  LongName := 'very/deep/directory/structure/with/many/levels/' +
+              StringOfChar('x', 100) + '/file.txt';
 
   WriteLn('Creating tar archive: ', TAR_FILENAME);
 
@@ -48,6 +54,10 @@ begin
         { Add a symbolic link }
         WriteLn('  Adding: link.txt -> hello.txt');
         TW.AddSymbolicLink('link.txt', CONTENT_3, Now);
+
+        { Add a file in a subdirectory with long name }
+        WriteLn('  Adding long name (', Length(LongName), ' chars)');
+        TW.AddString(CONTENT_5, LongName, Now);
 
         TW.Finalize;
     finally
@@ -105,25 +115,40 @@ begin
             Content := TA.ReadFile;
 
             if DirRec.Name = 'hello.txt' then
-            begin
-            if Content = CONTENT_1 then
-                WriteLn('  Content: verified OK')
-            else
-            begin
-                WriteLn('  Content: MISMATCH');
-                Inc(Errors);
-            end;
-            end
+              begin
+              if Content = CONTENT_1 then
+                  WriteLn('  Content: verified OK')
+              else
+                begin
+                    WriteLn('  Content: MISMATCH');
+                    Inc(Errors);
+                end;
+              end
             else if DirRec.Name = 'subdir/data.txt' then
-            begin
-            if Content = CONTENT_2 then
-                WriteLn('  Content: verified OK')
+              begin
+              if Content = CONTENT_2 then
+                  WriteLn('  Content: verified OK')
+              else
+                begin
+                    WriteLn('  Content: MISMATCH');
+                    Inc(Errors);
+                end;
+              end
+            else if DirRec.Name = LongName then
+              begin
+                if Content = CONTENT_5 then
+                  WriteLn('  Content: verified OK')
+                else
+                begin
+                  WriteLn('  Content: MISMATCH');
+                  Inc(Errors);
+                end;
+              end
             else
-            begin
-                WriteLn('  Content: MISMATCH');
+              begin
+                WriteLn('  Unexpected entry');
                 Inc(Errors);
-            end;
-            end;
+              end;
         end;
 
         WriteLn;
