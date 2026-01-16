@@ -212,14 +212,19 @@ end;
 
 procedure TTestRecompile.GetCompiler;
 begin
-  PP:=GetEnvironmentVariable(String('PP'));
-  if PP>'' then
+  PP:=GetEnvironmentVariable(String('TEST_FPC'));
+  if PP='' then
+    PP:=GetEnvironmentVariable(String('PP'));
+  if not FileExists(PP) then
+    PP:=ExeSearch(PP,'');
+
+  if PP<>'' then
   begin
     CheckCompiler;
     exit;
   end;
 
-  raise Exception.Create('I need environment var "PP"');
+  raise Exception.Create('I need environment var "TEST_FPC" or "PP"');
 end;
 
 procedure TTestRecompile.CheckCompiler;
