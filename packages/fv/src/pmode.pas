@@ -1,24 +1,36 @@
 {
-    This file is part of the Free Sockets Interface
-    Copyright (c) 1999 by Berczi Gabor
+   This file is part of the Free Sockets Interface
+   Copyright (c) 1999 by Berczi Gabor
 
-    Support routines for DPMI programs
+   Support routines for DPMI programs
 
-    See the file COPYING.FCL, included in this distribution,
-    for details about the copyright.
+   See the file COPYING.FPC, included in this distribution,
+   for details about the copyright.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   Library General Public License for more details.
+
+   You should have received a copy of the GNU Library General Public
+   License along with this library; if not, write to the Free
+   Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+   MA 02110-1301, USA.
 
  **********************************************************************}
-unit PMode;
 
+{$IFNDEF FPC_DOTTEDUNITS}
+unit PMode;
+{$ENDIF FPC_DOTTEDUNITS}
+{$mode objfpc}
 {$H-}
 
 interface
-
+{$IFDEF FPC_DOTTEDUNITS}
+uses TP.DOS;
+{$ELSE}
 uses Dos;
+{$ENDIF FPC_DOTTEDUNITS}
 
 type
     MemPtr = object
@@ -81,8 +93,11 @@ implementation
 {$ifdef GO32V2}
 
 { --------------------- GO32 --------------------- }
-
+{$IFDEF FPC_DOTTEDUNITS}
+uses DOSApi.GO32;
+{$ELSE}
 uses go32;
+{$ENDIF FPC_DOTTEDUNITS}
 
 function  GetDosMem(var M: MemPtr; Size: word): boolean;
 var L: longint;

@@ -390,6 +390,7 @@ procedure TFreeTypeFont.DrawChar (x,y:integer; data:PByteArray; pitch, width, he
   var
     pixelcolor: TFPColor;
   begin
+    if t = 0 then exit;
     case canv.DrawingMode of
       dmOpaque:
       begin

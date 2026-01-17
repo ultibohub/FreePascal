@@ -1082,15 +1082,15 @@ resourcestring  slCancel='Cancel';
 
 {$IFDEF FPC_DOTTEDUNITS}
 {$ifdef FV_UNICODE}
-USES FreeVision.Uapp,FreeVision.Uhistlist,FreeVision.Ufvclip;                            { Standard GFV unit }
+USES FreeVision.Uapp,FreeVision.Uhistlist,FreeVision.Ueditors;  { Standard FV unit }
 {$else FV_UNICODE}
-USES FreeVision.App,FreeVision.Histlist,FreeVision.Fvclip;                               { Standard GFV unit }
+USES FreeVision.App,FreeVision.Histlist,FreeVision.Editors;     { Standard FV unit }
 {$endif FV_UNICODE}
 {$ELSE FPC_DOTTEDUNITS}
 {$ifdef FV_UNICODE}
-USES UApp,UHistList,UFVClip;                            { Standard GFV unit }
+USES UApp,UHistList,UEditors;                         { Standard FV unit }
 {$else FV_UNICODE}
-USES App,HistList,FVClip;                               { Standard GFV unit }
+USES App,HistList,Editors;                            { Standard FV unit }
 {$endif FV_UNICODE}
 {$ENDIF FPC_DOTTEDUNITS}
 
@@ -1854,6 +1854,7 @@ Len, I: Integer;
     i : sw_integer;
     st: sw_string;
     wlen : sw_integer;
+    Event : TEvent;  { For new key event. Has to be local variable, can not reuse parent Event. M. }
    begin
      {$ifdef FV_UNICODE}
      wlen:=ASize*2+2;  { over estimate length }
@@ -1872,14 +1873,15 @@ Len, I: Integer;
        If not assigned(validator) or
           Validator^.IsValidInput(st,False)  then
          Begin
-           Event.What:=evKeyDown;
+           Event.What:=evKeyDown;                     { New key event }
+           Event.KeyShift:=0;                         { Clear shift state }
+           Event.KeyCode:=0;                          { Clear key }
            {$ifdef FV_UNICODE}
-           Event.UnicodeChar:=s[i];
+           Event.UnicodeChar:=s[i];                   { Set unicode char }
            {$else}
-           Event.CharCode:=s[i];
+           Event.CharCode:=s[i];                      { Set char }
            {$endif}
-           Event.Scancode:=0;
-           TInputLine.HandleEvent(Event);             { add pasted chars}
+           TInputLine.HandleEvent(Event);             { Add pasted chars }
          End;
        {$ifndef FV_UNICODE}
        if length(st)=255 then break;
@@ -1890,14 +1892,32 @@ Len, I: Integer;
 BEGIN
    Inherited HandleEvent(Event);                      { Call ancestor }
    If (State AND sfSelected <> 0) Then Begin          { View is selected }
+     If Event.What=evKeyDown Then Begin
+       Case Event.KeyCode Of
+         kbCtrlIns:; // COPY command
+         kbShiftDel:; // CUT command
+         kbShiftIns: Begin
+             Event.What:=evCommand;
+             Event.Command:=cmPaste;                  { Translate to Paste command }
+           End;
+       End;
+     End;
      Case Event.What Of
        evNothing: Exit;                               { Speed up exit }
        evCommand: Begin                               { Command event }
-         If (Event.Command=cmPasteText) then begin    { Bracketed paste or osc52 }
-           PasteText(Event.InfoPtr,Event.Id);
-           ClearEvent(Event);
-         end;
-       end;
+         Case (Event.Command) Of
+           cmPasteText: Begin                         { Bracketed paste or OSC 52 }
+               PasteText(Event.InfoPtr,Event.Id);
+               ClearEvent(Event);
+             End;
+           cmPaste: Begin                             { Paste from Clipboard }
+               If assigned(Clipboard) Then
+                 If Clipboard^.GetSelectedText(Event.InfoPtr,Event.Id) Then
+                   PasteText(Event.InfoPtr,Event.Id);
+               ClearEvent(Event);
+             End;
+         End;
+       End;
        evMouseDown: Begin                             { Mouse down event }
          Delta := MouseDelta;                         { Calc scroll value }
          If CanScroll(Delta) Then Begin               { Can scroll }
@@ -1941,24 +1961,22 @@ BEGIN
              begin
                if (Data <> Sw_PString_Empty) and (SelStart < SelEnd) then
                begin
-                 // Copy selected text to OSC 52 clipboard
+                 // Copy selected text to clipboard
                  SelectedTextAnsi := AnsiString(Copy(Data Sw_PString_DeRef, SelStart + 1, SelEnd - SelStart));
                  if Length(SelectedTextAnsi) > 0 then
-                 begin
-                   SetGlobalClipboardData(PAnsiChar(SelectedTextAnsi), Length(SelectedTextAnsi));
-                 end;
+                   if assigned(Clipboard) then
+                     Clipboard^.InsertText(Pointer(SelectedTextAnsi), Length(SelectedTextAnsi), True);
                end;
              end;
            kbShiftDel: // CUT command
              begin
                if (Data <> Sw_PString_Empty) and (SelStart < SelEnd) then
                begin
-                 // Copy selected text to OSC 52 clipboard
+                 // Copy selected text to clipboard
                  SelectedTextAnsi := AnsiString(Copy(Data Sw_PString_DeRef, SelStart + 1, SelEnd - SelStart));
                  if Length(SelectedTextAnsi) > 0 then
-                 begin
-                     SetGlobalClipboardData(PAnsiChar(SelectedTextAnsi), Length(SelectedTextAnsi));
-                 end;
+                   if assigned(Clipboard) then
+                     Clipboard^.InsertText(Pointer(SelectedTextAnsi), Length(SelectedTextAnsi), True);
                  DeleteSelect; // Then delete the selection
                  CheckValid(True); // Validate after deletion
                end;
@@ -2036,7 +2054,7 @@ BEGIN
 {$ifdef FV_UNICODE}
            Else Case Event.UnicodeChar Of
              ' '..#$FFFF:   { Character key }
-               if (NOT (GetShiftState AND $04 <> 0)) then { Only insert if Ctrl is not pressed }
+               If (Event.KeyShift AND $04 = 0) Then     { Only insert if Ctrl is not pressed }
                Begin
                  If (State AND sfCursorIns <> 0) Then
                    Delete(Data Sw_PString_DeRef, CurPos + 1, 1) Else    { Overwrite character }
@@ -2062,7 +2080,7 @@ BEGIN
 {$else FV_UNICODE}
            Else Case Event.CharCode Of
              ' '..#255:
-               If (NOT (GetShiftState AND $04 <> 0)) Then { Only insert if Ctrl is not pressed }
+               //If (Event.KeyShift AND $04 = 0) Then       { Only insert if Ctrl is not pressed }
                Begin
                  If Data <> Sw_PString_Empty Then Begin   { Character key }
                    If (State AND sfCursorIns <> 0) Then
