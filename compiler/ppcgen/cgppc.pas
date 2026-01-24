@@ -740,7 +740,7 @@ unit cgppc;
      case target_info.abi of
        abi_powerpc_aix:
          result:=LA_RTOC_AIX;
-{$ifdef powerpc64}
+{$if defined(powerpc64)}
        { no TOC on Linux/ppc32 }
        abi_powerpc_elfv1:
          result:=LA_RTOC_SYSV;
@@ -759,7 +759,7 @@ unit cgppc;
       l: tasmsymbol;
       ref: treference;
     begin
-      if target_info.system=system_powerpc64_linux then
+      if (target_info.system=system_powerpc64_freebsd) or (target_info.system=system_powerpc64_linux) then
         begin
           l:=current_asmdata.getasmsymbol(symbol);
           reference_reset_symbol(ref,l,0,sizeof(pint),[]);
@@ -1034,7 +1034,7 @@ unit cgppc;
           end;
 
         { if we have to create PIC, add the symbol to the TOC/GOT }
-        if (((target_info.system = system_powerpc64_linux) and
+        if ((((target_info.system=system_powerpc64_freebsd) or (target_info.system = system_powerpc64_linux)) and
              (cs_create_pic in current_settings.moduleswitches)) or
             (target_info.system in systems_aix+[system_powerpc_macosclassic])) and
            (assigned(ref.symbol) and

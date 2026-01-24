@@ -83,6 +83,36 @@ type
   end;
 {$endif cpuaarch64}
 
+{$ifdef CPUPOWERPC64}
+  mcontext_t = record
+    { version & flags }
+    mc_vers    : cint;
+    mc_flags   : cint;
+    { saved sigstack flag and total size of this structure }
+    mc_onstack : cint;
+    mc_len     : cint;
+
+    { general-purpose CPU state (matches trapframe layout) }
+    mc_gpr     : array[0..31] of cuint64;  { r0..r31 }
+    mc_lr      : cuint64;                  { link register }
+    mc_cr      : cuint64;                  { condition register }
+    mc_xer     : cuint64;                  { fixed-point exception }
+    mc_ctr     : cuint64;                  { count register }
+    mc_srr0    : cuint64;                  { PC at signal (NIP) }
+    mc_srr1    : cuint64;                  { MSR }
+
+    { floating-point state }
+    mc_fpscr   : cdouble;                     { saved FPSCR as double }
+    mc_fpreg   : array[0..31] of cdouble;     { FPR0..FPR31 }
+
+    { Altivec / VSX state }
+    { 32 vector registers, stored as 2x64-bit words each }
+    mc_avec    : array[0..(32*2)-1] of cuint64;
+    { misc Altivec control: VSCR / VRSAVE (32-bit) }
+    mc_av      : array[0..1] of cuint32;
+  end;
+{$endif}
+
   pucontext_t = ^ucontext_t;
   ucontext_t = record  // required for kse threads
     {*

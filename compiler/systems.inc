@@ -218,10 +218,11 @@
              system_mipsel_ps1,         { 123 }
              system_wasm32_wasip1threads, { 124 }
              system_wasm32_wasip2,      { 125 }
-             system_arm_ultibo,         { 126 }
-             system_i386_ultibo,        { 127 }
-             system_x86_64_ultibo,      { 128 }
-             system_aarch64_ultibo      { 129 }
+             system_powerpc64_freebsd,  { 126 }
+             system_arm_ultibo,         { 127 }
+             system_i386_ultibo,        { 128 }
+             system_x86_64_ultibo,      { 129 }
+             system_aarch64_ultibo      { 130 }
        );
 
      type

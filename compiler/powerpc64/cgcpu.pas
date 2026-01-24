@@ -1427,7 +1427,7 @@ var
   tempreg : TRegister;
 
 begin
-  if (target_info.system in [system_powerpc64_darwin,system_powerpc64_aix]) then
+  if (target_info.system in [system_powerpc64_darwin,system_powerpc64_freebsd,system_powerpc64_aix]) then
     begin
       inherited a_loadaddr_ref_reg(list,ref,r);
       exit;

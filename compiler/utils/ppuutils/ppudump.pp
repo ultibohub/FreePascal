@@ -252,10 +252,11 @@ const
   { 123 } 'PS1-mipsel',
   { 124 } 'WASIp1threads-WASM32',
   { 125 } 'WASIp2-WASM32',
-  { 126 } 'Ultibo-arm',
-  { 127 } 'Ultibo-i386',
-  { 128 } 'Ultibo-x86-64',
-  { 129 } 'Ultibo-AArch64'
+  { 126 } 'FreeBSD-powerpc64',
+  { 127 } 'Ultibo-arm',
+  { 128 } 'Ultibo-i386',
+  { 129 } 'Ultibo-x86-64',
+  { 130 } 'Ultibo-AArch64'
   );
 
 const
