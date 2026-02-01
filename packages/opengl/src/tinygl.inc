@@ -78,7 +78,12 @@ syscall sysvbase TinyGLBase 232;
 procedure _GLScalef(gcl: pointer; x, y, z: GLfloat);
 syscall sysvbase TinyGLBase 238;
 
-procedure _GLViewPort(gcl: pointer; x, y: GLint; width, height: GLsizei);
+{ Older (pre-V53, MorphOS v3.18) TinyGL's ABI for glViewport() did not respect OpenGL
+  conventions, and expected the viewport coordinates in floats. This was deprecated
+  and no longer present in the public C headers, but the library still respects the
+  old ABI, and will keep doing so. There was a new function added with the right
+  argument types, at offset 1912. See _GLViewport() below. }
+procedure _GLViewportOld(gcl: pointer; x, y: GLfloat; width, height: GLfloat);
 syscall sysvbase TinyGLBase 244;
 
 procedure _GLFrustum(gcl: pointer; left, right, bottom, top, zNear, zFar: GLdouble);
@@ -213,12 +218,6 @@ syscall sysvbase TinyGLBase 604;
 
 procedure _GLDepthFunc(gcl: pointer; func: GLenum);
 syscall sysvbase TinyGLBase 628;
-
-function _GLInit: Pointer;
-syscall sysvbase TinyGLBase 640;
-
-procedure _GLClose(gcl: pointer);
-syscall sysvbase TinyGLBase 646;
 {$ENDIF GL_UNIT}
 
 {$IFDEF GLU_UNIT}
@@ -274,6 +273,12 @@ syscall sysvbase TinyGLBase 760;
 
 procedure _GLUTMotionFunc(gcl: pointer; f: TGlut2IntCallback);
 syscall sysvbase TinyGLBase 766;
+
+procedure _GLUTPositionWindow(gcl: pointer; x, y: LongInt);
+syscall sysvbase TinyGLBase 790;
+
+procedure _GLUTReshapeWindow(gcl: pointer; width, height: LongInt);
+syscall sysvbase TinyGLBase 796;
 
 function _GLUTGet(gcl: pointer; t: GLenum): LongInt;
 syscall sysvbase TinyGLBase 802;
@@ -347,6 +352,11 @@ procedure _GLCopyTexImage2D(gcl: pointer; target: GLenum; level: GLint; internal
 syscall sysvbase TinyGLBase 1402;
 {$ENDIF GL_UNIT}
 
+{$IFDEF GL_UNIT}
+{ See the comment at _GLViewportOld() }
+procedure _GLViewport(gcl: pointer; x, y: GLint; width, height: GLsizei);
+syscall sysvbase TinyGLBase 1912;
+{$ENDIF GL_UNIT}
 
 { ****************************************************************************************************** }
 { ** GL functions                                                                                     ** }
@@ -760,7 +770,12 @@ end;
 
 procedure glViewport(x, y: GLint; width, height: GLsizei); inline;
 begin
-  _GLViewport(tglContext, x, x, width, height);
+  if PLibrary(TinyGLBase)^.lib_Version >= 53 then
+    _GLViewport(tglContext, x, y, width, height)
+  else
+    { we support calling _GLViewportOld() to work with older TinyGL
+    versions. See the comment there. }
+    _GLViewportOld(tglContext, x, y, width, height);
 end;
 {$ENDIF GL_UNIT}
 
@@ -875,6 +890,16 @@ end;
 procedure GLUTMotionFunc(f: TGlut2IntCallback); inline;
 begin
   _GLUTMotionFunc(tglContext, f);
+end;
+
+procedure GLUTPositionWindow(x, y: Integer); inline;
+begin
+  _GLUTPositionWindow(tglContext, x, y);
+end;
+
+procedure GLUTReshapeWindow(width, height: Integer); inline;
+begin
+  _GLUTReshapeWindow(tglContext, width, height);
 end;
 
 procedure GLUTPassiveMotionFunc(f: TGlut2IntCallback); inline;
