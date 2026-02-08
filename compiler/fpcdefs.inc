@@ -142,6 +142,7 @@
   {$define SUPPORT_GET_FRAME}
   {$define cpucapabilities}
   {$define fpucapabilities}
+  {$define support_rodata}
 {$endif x86_64}
 
 {$ifdef sparc}
@@ -184,6 +185,7 @@
   {$define SUPPORT_SAFECALL}
   {$define SUPPORT_GET_FRAME}
   {$define CPU_BC_HAS_SIZE_LIMIT}
+  {$define support_rodata}
 {$endif powerpc}
 
 {$ifdef powerpc64}
@@ -214,6 +216,7 @@
   {$define fpucapabilities}
   {$define SUPPORT_SAFECALL}
   {$define SUPPORT_GET_FRAME}
+  {$define support_rodata}
   { default to armel }
   {$if not(defined(CPUARM)) and not(defined(CPUARMEB)) and not(defined(FPC_OARM)) and not(defined(FPC_ARMEB)) and not(defined(FPC_ARMHF))}
     {$define FPC_ARMEL}
@@ -342,6 +345,7 @@
   {$define SUPPORT_SAFECALL}
   {$define cpucapabilities}
   {$define fpucapabilities}
+  {$define support_rodata}
 {$endif aarch64}
 
 {$ifdef riscv32}
@@ -385,6 +389,7 @@
   {$define cpucapabilities}
   {$define cpurequiresproperalignment}
   {$define SUPPORT_SAFECALL}
+  {$define support_rodata}
 {$endif riscv64}
 
 {$ifdef xtensa}
@@ -408,6 +413,7 @@
   {$define cputargethasfixedstack}
   {$define cpucapabilities}
   {$define SUPPORT_SAFECALL}
+  {$define support_rodata}
 {$endif loongarch64}
 
 { Stabs is not officially supported on 64 bit targets by gdb, except on Mac OS X
