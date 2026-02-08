@@ -1467,9 +1467,12 @@ implementation
           {Data} [oso_Data,oso_load,oso_write],
           { Readonly data with relocations must be initially writable for some targets.
             Moreover, e.g. for ELF it depends on whether the executable is linked statically or
-            dynamically. Here we declare it writable, target-specific descendants must provide
-            further handling. }
+            dynamically. }
+{$if defined(support_rodata)}
+          {roData} [oso_Data,oso_load],
+{$else defined(support_rodata)}
           {roData} [oso_Data,oso_load,oso_write],
+{$endif defined(support_rodata)}
           {roData_norel} [oso_Data,oso_load],
           {bss} [oso_load,oso_write],
           {threadvar} [oso_load,oso_write,oso_threadvar],

@@ -187,7 +187,6 @@ constructor taarch64tryfinallynode.create_implicit(l, r: TNode);
         include(finalizepi.flags,pi_do_call);
         { the init/final code is messing with asm nodes, so inform the compiler about this }
         include(finalizepi.flags,pi_has_assembler_block);
-        finalizepi.allocate_push_parasize(32);
       end;
   end;
 
@@ -198,15 +197,20 @@ function taarch64tryfinallynode.simplify(forinline: boolean): tnode;
       exit;
     if (result=nil) then
       begin
-        { generate a copy of the code }
-        finalizepi.code:=right.getcopy;
-        foreachnodestatic(right,@copy_parasize,finalizepi);
-        { For implicit frames, no actual code is available at this time,
-          it is added later in assembler form. So store the nested procinfo
-          for later use. }
-        if implicitframe then
+        { actually, this is not really the right place to do a node transformation like this }
+        if not(assigned(finalizepi.code)) then
           begin
-            current_procinfo.finalize_procinfo:=finalizepi;
+            finalizepi.code:=right;
+            foreachnodestatic(right,@copy_parasize,finalizepi);
+            right:=ccallnode.create(nil,tprocsym(finalizepi.procdef.procsym),nil,nil,[],nil);
+            firstpass(right);
+            { For implicit frames, no actual code is available at this time,
+              it is added later in assembler form. So store the nested procinfo
+              for later use. }
+            if implicitframe then
+              begin
+                current_procinfo.finalize_procinfo:=finalizepi;
+              end;
           end;
       end;
   end;
@@ -321,6 +325,12 @@ procedure taarch64tryfinallynode.pass_generate_code;
         current_asmdata.CurrAsmList.concat(Taicpu.op_none(A_NOP));
         cg.a_label(current_asmdata.CurrAsmList,endtrylabel);
       end;
+
+      { i32913 - if the try..finally block is also inside a try..finally or
+        try..except block, make a note of any Exit calls so all necessary labels
+        are generated. [Kit] }
+      if ((flowcontrol*[fc_exit,fc_break,fc_continue])<>[]) and (fc_inflowcontrol in oldflowcontrol) then
+        oldflowcontrol:=oldflowcontrol+(flowcontrol*[fc_exit,fc_break,fc_continue]);
 
     flowcontrol:=[fc_inflowcontrol];
     { store the tempflags so that we can generate a copy of the finally handler

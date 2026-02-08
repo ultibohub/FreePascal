@@ -68,6 +68,8 @@ type
   TOpenAPICodeGen = class(TComponent)
   private
     FAbstractServiceCalls: Boolean;
+    FReservedTypeBehaviour: TReservedTypeBehaviour;
+    FReservedTypes: TStrings;
     FAPI: TOpenAPI;
     FAsyncService: boolean;
     FBaseOutputFileName: string;
@@ -134,6 +136,8 @@ type
     procedure SaveConfig(aConfigFile: String);
     // Generate code.
     procedure Execute;
+    // Load type aliases from file (format: SchemaTypeName=AliasName per line)
+    procedure LoadTypeAliases(const aFileName: string);
     // The OpenAPI description to work with. Set before calling Execute
     property API: TOpenAPI read FAPI write FAPI;
     // Base unit filename
@@ -208,7 +212,10 @@ type
     Property ServiceNameSuffix : String Read FServiceNameSuffix Write FServiceNameSuffix;
     // Prefix for client/server service name
     Property ServiceNamePrefix : String Read FServiceNamePrefix Write FServiceNamePrefix;
-    // Prefix for client/server service name
+    // How to handle reserved type names that conflict with standard library types
+    Property ReservedTypeBehaviour : TReservedTypeBehaviour Read FReservedTypeBehaviour Write FReservedTypeBehaviour;
+    // List of reserved type names (one per line, without T prefix)
+    Property ReservedTypes : TStrings Read FReservedTypes;
   end;
 
 
@@ -253,6 +260,7 @@ begin
   FTypeAliases := TStringList.Create;
   FUUIDMap := TStringList.Create;
   FServiceMap := TStringList.Create;
+  FReservedTypes := TStringList.Create;
   DefaultSettings;
 end;
 
@@ -263,6 +271,7 @@ begin
   FreeAndNil(FTypeAliases);
   FreeAndNil(FUUIDMap);
   FreeAndNil(FServiceMap);
+  FreeAndNil(FReservedTypes);
   inherited Destroy;
 end;
 
@@ -438,6 +447,9 @@ end;
 function TOpenAPICodeGen.GetBaseOutputUnitName: string;
 begin
   Result := ExtractFileName(BaseOutputFileName);
+  // Escape unit name if it's a Pascal reserved word
+  if TSchemaData.IsKeyWord(Result) then
+    Result := Result + '_';
 end;
 
 function TOpenAPICodeGen.GetServerProxyModuleName: String;
@@ -561,6 +573,14 @@ begin
 end;
 
 
+procedure TOpenAPICodeGen.LoadTypeAliases(const aFileName: string);
+
+begin
+  if FileExists(aFileName) then
+    FTypeAliases.LoadFromFile(aFileName);
+end;
+
+
 procedure TOpenAPICodeGen.Execute;
 
 var
@@ -575,6 +595,11 @@ begin
     lAPIData.DelphiTypes := Self.DelphiCode;
     lAPIData.ServiceNamePrefix := ServiceNamePrefix;
     lAPIData.ServiceNameSuffix := ServiceNameSuffix;
+    lAPIData.ReservedTypeBehaviour := Self.ReservedTypeBehaviour;
+    if FReservedTypes.Count > 0 then
+      lAPIData.ReservedTypes := Self.FReservedTypes;
+    if FTypeAliases.Count > 0 then
+      lAPIData.TypeAliases := Self.FTypeAliases;
     PrepareAPIData(lAPIData);
     GenerateRecordDefs(lAPIData);
     GenerateSerializerDefs(lAPIData);

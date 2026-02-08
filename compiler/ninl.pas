@@ -4348,6 +4348,7 @@ implementation
          shiftconst: longint;
          objdef: tobjectdef;
          sym : tsym;
+         hdef: tdef;
 
       begin
          result:=nil;
@@ -4488,8 +4489,16 @@ implementation
               if (([cs_check_overflow,cs_check_range]*current_settings.localswitches)<>[]) and not(nf_internal in flags) then
 {$endif}
                 begin
-                  { create constant 1 }
-                  hp:=cordconstnode.create(1,left.resultdef,false);
+                  { create constant 1, ensure the data type is large enough }
+                  if (left.resultdef is tenumdef) then
+                    range_to_type(
+                      min(1,tenumdef(left.resultdef).min),
+                      max(1,tenumdef(left.resultdef).max),hdef)
+                   else
+                    range_to_type(
+                      min(1,torddef(left.resultdef).low),
+                      max(1,torddef(left.resultdef).high),hdef);
+                  hp:=cordconstnode.create(1,hdef,false);
                   typecheckpass(hp);
                   if not is_integer(hp.resultdef) then
                     inserttypeconv_internal(hp,sinttype);
@@ -5045,6 +5054,7 @@ implementation
          tempnode: ttempcreatenode;
          newstatement: tstatementnode;
          newblock: tblocknode;
+         hdef: tdef;
        begin
          newblock := internalstatements(newstatement);
          { extra parameter? }
@@ -5059,8 +5069,16 @@ implementation
            end
          else
            begin
-             { no, create constant 1 }
-             hpp := cordconstnode.create(1,tcallparanode(left).left.resultdef,false);
+             { no, create constant 1, ensure the data type is large enough }
+             if (left.resultdef is tenumdef) then
+               range_to_type(
+                 min(1,tenumdef(tcallparanode(left).left.resultdef).min),
+                 max(1,tenumdef(tcallparanode(left).left.resultdef).max),hdef)
+             else
+               range_to_type(
+                 min(1,torddef(tcallparanode(left).left.resultdef).low),
+                 max(1,torddef(tcallparanode(left).left.resultdef).high),hdef);
+             hpp:=cordconstnode.create(1,hdef,false)
            end;
          typecheckpass(hpp);
 

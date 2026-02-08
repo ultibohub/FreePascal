@@ -38,7 +38,7 @@ uses
 {$ENDIF FPC_DOTTEDUNITS}
 
 const
-  Version = '0.3';
+  Version = '0.5';
 
 type
   TFormat = (fPlain, fLatex, fXML, fPlainNoTiming, fJUnit);
@@ -104,6 +104,11 @@ const
   DefaultLongOpts: array[1..13] of string =
      ('all', 'list', 'progress', 'help', 'skiptiming',
       'suite:', 'format:', 'file:', 'stylesheet:','sparse','no-addresses','status','no-exitcode');
+
+const
+  DefaultsFileNameConst = 'testdefaults.ini';
+  DefaultsFileNameEnvVar = 'FPCUNITCONFIG';
+  DefaultsFileParamSection = 'defaults';
 
 Type
   TTestDecoratorClass = Class of TTestDecorator;
@@ -335,44 +340,54 @@ begin
     writeln(Title);
     writeln(Version);
     writeln;
-    writeln('Usage: ');
-    writeln('  --format=FMT        Select output format. FMT is one of:');
-    writeln('    latex            output as latex');
-    writeln('    plain            output as plain ASCII source');
-    writeln('    plainnotiming    output as plain ASCII source, skip timings');
-    writeln('    xml              output as XML source (default)');
-    writeln('    junit            output as JUnit compatible XML source');
-    writeln('  --skiptiming              Do not output timings (useful for diffs of testruns)');
-    writeln('  -r or --sparse            Produce Less output (errors/failures only)');
-    writeln('  -n or --no-addresses      Do not display address info');
-    writeln('  -y or --stylesheet=<reference>   add stylesheet reference');
-    writeln('  --file=<filename>         output results to file');
+    writeln('Commands:');
+    writeln('  -h or --help              Show help and version');
+    writeln('  -l or --list              Show a list of registered tests');
+    writeln('  -a or --all               Run all registered tests');
+    writeln('  -s or --suite=<name>      Run a test suite with the specified name, or all test suites');
+    writeln('                            of the specified class (a descendant of the TTestCase)');
     writeln;
-    writeln('  -l or --list              show a list of registered tests');
-    writeln('  -a or --all               run all tests');
-    writeln('  -p or --progress          show progress');
-    writeln('  -u or --status            show status messages on stderr');
-    writeln('  -s or --suite=MyTestSuiteName   run single test suite class');
-    writeln('  -x or --no-exitcode       do not set exit code on errors');
+    writeln('Options:');
+    writeln('  --format=<FMT>            Select output format, <FMT> is one of:');
+    writeln('    xml                       output as XML source (default)');
+    writeln('    plain                     output as plain ASCII source');
+    writeln('    plainnotiming             output as plain ASCII source, skip timings');
+    writeln('    latex                     output as latex');
+    writeln('    junit                     output as JUnit compatible XML source');
+    writeln('  --skiptiming              Do not output timings (useful for diffs of testruns)');
+    writeln('  -r or --sparse            Produce less output (errors/failures only)');
+    writeln('  -n or --no-addresses      Do not display address info');
+    writeln('  -y or --stylesheet=<ref>  Add stylesheet reference');
+    writeln('  -p or --progress          Show progress');
+    writeln('  -u or --status            Show status messages on stderr');
+    writeln('  -x or --no-exitcode       Do not set exit code on errors');
+    writeln('  --file=<filename>         Output results to file');
     WriteCustomHelp;
     writeln;
-    Writeln('Defaults for long options will be read from ini file ',DefaultsFileName);
-    writeln('The results can be redirected to a file,');
-    writeln('for example: ', ParamStr(0),' --all > results.xml');
+    writeln('Config file:');
+    writeln('  Defaults for long options can be specified in the "',DefaultsFileNameConst,'" file in the executable folder.');
+    writeln('  The path to this file can be overridden by the environment variable "',DefaultsFileNameEnvVar,'".');
+    writeln('  All values must be located in "[',DefaultsFileParamSection,']" section, the option names specified without the "--" sign.');
+    writeln('  The value of logical options indicated via "1"/"0". Example file contents:');
+    writeln('    [',DefaultsFileParamSection,']');
+    writeln('    all=1');
+    writeln('    format=plain');
+    writeln('    sparse=1');
+    writeln('  Command line options take precedence and override the values in this file.');
 end;
 
 Function TTestRunner.DefaultsFileName : String;
 
 begin
-  Result:=GetEnvironmentVariable('FPCUNITCONFIG');
+  Result:=GetEnvironmentVariable(DefaultsFileNameEnvVar);
   if (Result='') then
-    Result:=Location+'testdefaults.ini';
+    Result:=Location+DefaultsFileNameConst;
 end;
 
 procedure TTestRunner.ReadDefaults;
 
 Const
-  S = 'defaults';
+  S = DefaultsFileParamSection;
 
 Var
   Ini : TMemIniFile;
@@ -384,6 +399,9 @@ begin
     begin
     Ini:=TMemIniFile.Create(FN);
     try
+      Ini.SetBoolStringValues(true,['1','true','yes','on']);
+      Ini.SetBoolStringValues(false,['0','false','no','off']);
+      // Read options
       F:=Ini.ReadString(S,'format','');
       if (F<>'') then
         FormatParam:=StrToFormat(F);
@@ -393,7 +411,7 @@ begin
       FSkipTiming:=Ini.ReadBool(S,'skiptiming',FSKipTiming);
       FSparse:=Ini.ReadBool(S,'sparse',FSparse);
       FSkipAddressInfo:=Ini.ReadBool(S,'no-addresses',FSkipAddressInfo);
-      NoExitCodeOnError:=Ini.ReadBool(S,'no-exitocde',FNoExitCodeOnError);
+      NoExitCodeOnError:=Ini.ReadBool(S,'no-exitcode',FNoExitCodeOnError);
       // Determine runmode
       FSuite:=Ini.ReadString(S,'suite','');
       if (FSuite<>'') then
@@ -412,7 +430,7 @@ Function TTestRunner.ParseOptions : Boolean;
 
 begin
   Result:=True;
-  if HasOption('h', 'help') or ((ParamCount = 0) and (FRunMode<>rmAll)) then
+  if HasOption('h', 'help') or ((ParamCount = 0) and (FRunMode=rmUnknown)) then
     begin
     Usage;
     if not HasOption('h','help') then

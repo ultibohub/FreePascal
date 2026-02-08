@@ -4735,7 +4735,7 @@ begin
   else
 {$endif NODEBUG}
     R2.Move(0,2);
-  Insert(New(PStaticText, Init(R2, ^C'Copyright (C) 1998-2020 by')));
+  Insert(New(PStaticText, Init(R2, ^C'Copyright (C) 1998-2026 by')));
   R2.Move(0,2);
   Insert(New(PStaticText, Init(R2, ^C'B'#$82'rczi G'#$A0'bor')));
   R2.Move(0,1);
@@ -4752,12 +4752,21 @@ begin
   AddLine('');
   AddLine(^C'< Compiler development >');
   AddLine(^C'Carl-Eric Codere');
+  AddLine(^C'Charlie Balogh');
   AddLine(^C'Daniel Mantione');
   AddLine(^C'Florian Kl'#$84'mpfl');
   AddLine(^C'Jonas Maebe');
-  AddLine(^C'Mich'#$84'el Van Canneyt');
+  AddLine(^C'Joost van der Sluis');
+  AddLine(^C'Marco Van de Voort');
+  AddLine(^C'Mattias Gaertner');
+  AddLine(^C'Micha'#$89'l Van Canneyt');
+  AddLine(^C'Nikolay Nikolov');
   AddLine(^C'Peter Vreman');
   AddLine(^C'Pierre Muller');
+  AddLine(^C'Sergei Gorelkin');
+  AddLine(^C'Sven/Sarah Barth');
+  AddLine(^C'Tomas Hajny');
+  AddLine(^C'Yuriy Sydorov');
   AddLine('');
   AddLine(^C'< IDE development >');
   AddLine(^C'B'#$82'rczi G'#$A0'bor');
