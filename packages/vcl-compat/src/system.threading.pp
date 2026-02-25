@@ -573,6 +573,7 @@ type
   Private
     // Instance stuff
     FStateFlags : TOptionStateFlags;
+    FReplicaRoot : TTask;
     FStatus : TTaskStatus;
     FParams : TTaskParams;
     FTaskID : Integer;
@@ -617,6 +618,7 @@ type
     procedure InternalExecute(var aCurrentTaskVar: TTask);
     procedure Execute;
     procedure DoCancel(aDestroying: Boolean);
+    procedure ReplicaCallUserCode;
     procedure ExecuteReplicates(const aRoot: TTask);
     procedure CallUserCode; inline;
     procedure HandleException(const aChildTask: ITask; const aException: TObject);
@@ -958,14 +960,14 @@ type
     class function &For(aSender: TObject; aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TIteratorEvent; aPool: TThreadPool): TLoopResult; overload; static; inline;
     class function &For(aSender: TObject; aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TIteratorStateEvent): TLoopResult; overload; static; inline;
     class function &For(aSender: TObject; aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TIteratorStateEvent; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
     {$IFDEF THREAD64BIT}
     class function &For(aSender: TObject; aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TIteratorEvent64): TLoopResult; overload; static; inline;
     class function &For(aSender: TObject; aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TIteratorEvent64; aPool: TThreadPool): TLoopResult; overload; static; inline;
@@ -975,14 +977,14 @@ type
     class function &For(aSender: TObject; aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TIteratorEvent64; aPool: TThreadPool): TLoopResult; overload; static; inline;
     class function &For(aSender: TObject; aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TIteratorStateEvent64): TLoopResult; overload; static; inline;
     class function &For(aSender: TObject; aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TIteratorStateEvent64; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState): TLoopResult; overload; static; inline;
-    class function &For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64; aPool: TThreadPool): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState): TLoopResult; overload; static; inline;
-    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState): TLoopResult; overload; static; inline;
+    class function &For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64; aPool: TThreadPool): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState): TLoopResult; overload; static; inline;
+    class function &For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState; aPool: TThreadPool): TLoopResult; overload; static; inline;
     {$ENDIF}
     class function Join(aSender: TObject; aEvents: array of TNotifyEvent): ITask; overload; static;
     class function Join(aSender: TObject; aEvents: array of TNotifyEvent; aPool: TThreadPool): ITask; overload; static;
@@ -2878,6 +2880,7 @@ begin
   aParams.CreateFlags:=aCreateFlags;
   aParams.ParentControlFlag:=aParentControlFlag;
   Result:=CreateReplicaTask(aParams);
+  Result.FReplicaRoot:=aParent;
 end;
 
 procedure TTask.CheckFaulted;
@@ -3147,10 +3150,22 @@ begin
     FParams.Proc;
 end;
 
+procedure TTask.ReplicaCallUserCode;
+begin
+  try
+    FReplicaRoot.CallUserCode;
+  except
+    FReplicaRoot.HandleException(CurrentTask, TObject(AcquireExceptionObject));
+    Complete(False);
+  end;
+end;
+
 procedure TTask.Execute;
 begin
   if IsReplicating then
     ExecuteReplicates(Self)
+  else if Assigned(FReplicaRoot) then
+    ReplicaCallUserCode
   else
     try
       CallUserCode;
@@ -3161,32 +3176,20 @@ end;
 
 procedure TTask.ExecuteReplicates(const aRoot: TTask);
 
- procedure DoCallUserCode;
-
- begin
-   try
-     aRoot.CallUserCode;
-   except
-     aRoot.HandleException(CurrentTask, TObject(AcquireExceptionObject));
-     Complete(False);
-   end;
- end;
-
 var
   Sub : ITask;
-  P : TProcRef;
 
 begin
-  P:=@DoCallusercode;
+  FReplicaRoot:=aRoot;
   While aRoot.ShouldCreateReplica do
     begin
     {$IFDEF USE_THREADLOG}ThreadLog('TTask.ExecuteReplicates','Creating replica');{$ENDIF USE_THREADLOG}
-    Sub:=aRoot.CreateReplicaTask(P,aRoot,[TCreateFlag.Replicating, TCreateFlag.Replica],FParams.ParentControlFlag);
+    Sub:=aRoot.CreateReplicaTask(nil,aRoot,[TCreateFlag.Replicating, TCreateFlag.Replica],FParams.ParentControlFlag);
     {$IFDEF USE_THREADLOG}ThreadLog('TTask.ExecuteReplicates','Starting replica');{$ENDIF USE_THREADLOG}
     Sub.Start;
     {$IFDEF USE_THREADLOG}ThreadLog('TTask.ExecuteReplicates','Started replica');{$ENDIF USE_THREADLOG}
     end;
-  DoCallUserCode;
+  ReplicaCallUserCode;
 end;
 
 
@@ -3340,7 +3343,7 @@ function TTask.Start: ITask;
 begin
   if IsComplete then
     raise EInvalidOperation.Create(SCannotStartCompletedTask);
-  Result:=Self;flush(output);
+  Result:=Self;
   if Not MarkAsStarted then
     Exit;
   try
@@ -4054,7 +4057,7 @@ begin
 end;
 
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger; aPool: TThreadPool
+class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger; aPool: TThreadPool
   ): TLoopResult;
 var
   aLoop: TInt32LoopProc;
@@ -4063,13 +4066,13 @@ begin
   Result:=Parallelize32(aLoop,aPool);
 end;
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger): TLoopResult;
+class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger): TLoopResult;
 begin
   Result:=&For(aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState;
+class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState;
   aPool: TThreadPool): TLoopResult;
 var
   aLoop: TInt32LoopProc;
@@ -4078,13 +4081,13 @@ begin
   Result:=Parallelize32(aLoop,aPool);
 end;
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState): TLoopResult;
+class function TParallel.&For(aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState): TLoopResult;
 begin
   Result:=&For(aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger; aPool: TThreadPool): TLoopResult;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger; aPool: TThreadPool): TLoopResult;
 
 var
   aLoop: TInt32LoopProc;
@@ -4095,13 +4098,13 @@ begin
   Result:=Parallelize32(aLoop,aPool);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcInteger): TLoopResult;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcInteger): TLoopResult;
 
 begin
   Result:=&For(aStride, aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState;
   aPool: TThreadPool): TLoopResult;
 var
   aLoop: TInt32LoopProc;
@@ -4112,7 +4115,7 @@ begin
   Result:=Parallelize32(aLoop,aPool);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; const aIteratorEvent: TProcIntegerLoopState): TLoopResult;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Integer; aIteratorEvent: TProcIntegerLoopState): TLoopResult;
 begin
   Result:=&For(aStride, aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
@@ -4233,7 +4236,7 @@ begin
   Result:=&For(aSender,aStride,aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64; aPool: TThreadPool
+class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64; aPool: TThreadPool
   ): TLoopResult;
 var
   aLoop: TInt64LoopProc;
@@ -4242,12 +4245,12 @@ begin
   Result:=Parallelize64(aLoop,aPool);
 end;
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64): TLoopResult;
+class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64): TLoopResult;
 begin
   Result:=&For(aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState; aPool: TThreadPool
+class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState; aPool: TThreadPool
   ): TLoopResult;
 var
   aLoop: TInt64LoopProc;
@@ -4256,12 +4259,12 @@ begin
   Result:=Parallelize64(aLoop,aPool);
 end;
 
-class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState): TLoopResult;
+class function TParallel.&For(aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState): TLoopResult;
 begin
   Result:=&For(aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64; aPool: TThreadPool): TLoopResult;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64; aPool: TThreadPool): TLoopResult;
 
 var
   aLoop: TInt64LoopProc;
@@ -4271,12 +4274,12 @@ begin
   Result:=Parallelize64(aLoop,aPool);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64): TLoopResult;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64): TLoopResult;
 begin
   Result:=&For(aStride,aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState;
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState;
   aPool: TThreadPool): TLoopResult;
 var
   aLoop: TInt64LoopProc;
@@ -4286,7 +4289,7 @@ begin
   Result:=Parallelize64(aLoop,aPool);
 end;
 
-class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; const aIteratorEvent: TProcInt64LoopState
+class function TParallel.&For(aStride, aLowInclusive, aHighInclusive: Int64; aIteratorEvent: TProcInt64LoopState
   ): TLoopResult;
 begin
   Result:=&For(aStride,aLowInclusive,aHighInclusive,aIteratorEvent,TThreadPool.Default);

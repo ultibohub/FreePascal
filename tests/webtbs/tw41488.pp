@@ -4,10 +4,15 @@ type
    TTest = 10..20;
 var
    A: TTest;
+   S: String;
 begin
    A := 10;
    Inc(A);
-   Writeln(Succ(A)); // 12
-   Writeln(Pred(A)); // 10
+   Str(Succ(A), S); // 12
+   if S <> '12' then
+     halt(1);
+   Str(Pred(A), S); // 10
+   if S <> '10' then
+     halt(2);
    Dec(A);
 end.

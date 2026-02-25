@@ -473,7 +473,7 @@ begin
        end else if (optind<>nrargs) then
        begin
         optarg:=strpas(argv[optind]);
-        if optarg[1]='-' then
+        if (length(optarg)>0) and (optarg[1]='-') then
           optarg:=''
          else
           inc(optind);

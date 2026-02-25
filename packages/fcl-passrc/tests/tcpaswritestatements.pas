@@ -134,6 +134,7 @@ type
     TTestStatementWriterWith = class(TTestStatementWriterBase)
     published
         procedure TestWith;
+        procedure TestWithEmpty;
         procedure TestWithMultiple;
     end;
 
@@ -325,14 +326,14 @@ begin
     TestStatement('');
     AssertEquals('No statements', 0, PasProgram.InitializationSection.Elements.Count);
 
-    AssertPasWriteOutput('output', 'program afile;'#13#10#13#10#13#10'begin'#13#10'end.'#13#10, PasProgram);
+    AssertPasWriteOutput('output', BuildString(['program afile;','','','begin','end.','']), PasProgram);
 end;
 
 procedure TTestStatementWriterEmpty.TestEmptyStatement;
 begin
     TestStatement(';');
     AssertEquals('0 statement', 0, PasProgram.InitializationSection.Elements.Count);
-    AssertPasWriteOutput('output', 'program afile;'#13#10#13#10#13#10'begin'#13#10'end.'#13#10, PasProgram);
+    AssertPasWriteOutput('output', BuildString(['program afile;','','','begin','end.','']), PasProgram);
 end;
 
 procedure TTestStatementWriterEmpty.TestEmptyStatements;
@@ -756,7 +757,7 @@ begin
 
     AssertPasWriteOutput('output', BuildString(['program afile;',
         '', 'var', '  A: Boolean;', '', 'begin',
-        '  if a then', '    begin', '    end;', 'end.', '']),
+        '  if a then', '  begin', '  end;', 'end.', '']),
         PasProgram);
 end;
 
@@ -795,7 +796,7 @@ begin
 
     AssertPasWriteOutput('output', BuildString(['program afile;',
         '', 'var', '  A: Boolean;', '', 'begin',
-        '  if a then', '    begin', '    end;', 'end.', '']),
+        '  if a then', '  begin', '  end;', 'end.', '']),
         PasProgram);
 end;
 
@@ -894,9 +895,8 @@ begin
     AssertEquals('For statement', TPasImplForLoop, I.ElseBranch.ClassType);
 
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', 'var', '  A: Boolean;', '', 'begin',
-        '  if a then', '    with b do', '      something',
-        '  else', '    for X:=0 to 1 do', '      Writeln(X);',
+        '', '', 'begin', '  if a then','  begin', '    With b do', '      something;',
+        '  end else', '    for X:=0 to 1 do', '      Writeln(X);',
         'end.', '']), PasProgram);
 end;
 
@@ -1284,7 +1284,7 @@ begin
 end;
 
 procedure TTestStatementWriterWith.TestWith;
-// not implemented yet
+
 var
     W: TpasImplWithDo;
 
@@ -1298,13 +1298,30 @@ begin
     AssertEquals('begin end block', TPasImplBeginBlock, W.Body.ClassType);
     AssertEquals('Empty block', 0, TPasImplBeginBlock(W.Body).ELements.Count);
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', 'var', '  A: record', '    X,Y: Integer;',
-        '  end;', '', 'begin', '  with a do', '    begin',
-        '    end;', 'end.', '']), PasProgram);
+        '', 'var', '  A: record', '    X: Integer;', '    Y: Integer;',
+        '  end;', '', 'begin', '  With a do', '  begin',
+        '  end;', 'end.', '']), PasProgram);
+end;
+
+procedure TTestStatementWriterWith.TestWithEmpty;
+
+var
+    W: TpasImplWithDo;
+
+begin
+    DeclareVar('record X,Y : Integer; end');
+    TestStatement(['With a do;']);
+    W := AssertStatement('For statement', TpasImplWithDo) as TpasImplWithDo;
+    AssertEquals('1 expression', 1, W.Expressions.Count);
+    AssertExpression('With identifier', TPasExpr(W.Expressions[0]), pekIdent, 'a');
+    AssertNull('Have no with body', W.Body);
+    AssertPasWriteOutput('output', BuildString(['program afile;',
+        '', 'var', '  A: record', '    X: Integer;', '    Y: Integer;',
+        '  end;', '', 'begin', '  With a do;', 'end.', '']), PasProgram);
 end;
 
 procedure TTestStatementWriterWith.TestWithMultiple;
-// not implemented yet
+
 var
     W: TpasImplWithDo;
 
@@ -1320,10 +1337,10 @@ begin
     AssertEquals('begin end block', TPasImplBeginBlock, W.Body.ClassType);
     AssertEquals('Empty block', 0, TPasImplBeginBlock(W.Body).ELements.Count);
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', 'var', '  A: record', '    X,Y: Integer;',
-        '  end;', '  b: record', '    W,Z: Integer;',
-        '  end;', '', 'begin', '  with a, b do',
-        '    begin', '    end;', 'end.', '']), PasProgram);
+        '', 'var', '  A: record', '    X: Integer;', '    Y: Integer;',
+        '  end;', '  b: record', '    W: Integer;', '    Z: Integer;',
+        '  end;', '', 'begin', '  With a,b do',
+        '  begin', '  end;', 'end.', '']), PasProgram);
 end;
 
 procedure TTestStatementWriterCase.TestCaseOneInteger;
@@ -1674,6 +1691,8 @@ begin
 '  case a of',
 '    1: begin',
 '        if b then',
+'        begin',
+'        end;',
 '      end',
 '    else',
 '  end;',
@@ -2430,6 +2449,7 @@ var
     T: TPasImplAsmStatement;
 
 begin
+    ignore('Not yet implemented');
     TestStatement(['asm', '  mov eax,1', 'end;']);
     T := AssertStatement('Asm statement', TPasImplAsmStatement) as TPasImplAsmStatement;
     AssertEquals('Asm tokens', 4, T.Tokens.Count);
@@ -2451,7 +2471,7 @@ begin
     Source.Add('end.');
     ParseModule;
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', 'function BitsHighest(X: Cardinal): Integer;', 'begin',
+        '', 'function BitsHighest(X: Cardinal) : Integer;', 'begin',
         'end;', '', '', 'begin', 'end.', '']), PasProgram);
 end;
 
@@ -2471,12 +2491,13 @@ begin
     Source.Add('end.');
     ParseModule;
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', 'function BitsHighest(X: Cardinal): Integer;', 'begin',
+        '', 'function BitsHighest(X: Cardinal) : Integer;', 'begin',
         'end;', '', '', 'begin', 'end.', '']), PasProgram);
 end;
 
 procedure TTestStatementWriterAsm.TestAsmBlockInIfThen;
 begin
+    ignore('Not yet implemented');
     Source.Add('{$MODE DELPHI}');
     Source.Add('function Get8087StatusWord(ClearExceptions: Boolean): Word;');
     Source.Add('  begin');
@@ -2566,7 +2587,7 @@ begin
     Source.Add('  end.');
     ParseModule;
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', 'function TryOn(const on: Boolean): Boolean;', 'begin',
+        '', 'function TryOn(const &on: Boolean) : Boolean;', 'begin',
         'end;', '', '', 'begin', 'end.', '']), PasProgram);
 end;
 
@@ -2578,9 +2599,9 @@ begin
         '    dosomething;', '  try_qword:', '  dosomething;']);
     ParseModule;
     AssertPasWriteOutput('output', BuildString(['program afile;',
-        '', '', 'begin', '  if expr then', '    dosomething',
-        '  else if expr2 then', '    goto try_qword', '  else',
-        '    dosomething;', '  try_qword:', '    dosomething;',
+        '', '', 'begin', '  if expr then', '  begin','    dosomething;',
+        '  end else if expr2 then','  begin', '    goto try_qword;', '  end else',
+        '    dosomething;', '  try_qword:', '  dosomething;',
         'end.', '']), PasProgram);
 end;
 

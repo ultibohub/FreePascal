@@ -64,7 +64,7 @@ unit optutils;
   implementation
 
     uses
-      cutils,
+      cutils,cdynset,
       verbose,
       optbase,
       ncal,nbas,nflw,nutils,nset,ncon;
@@ -136,17 +136,17 @@ unit optutils;
         if assigned(n.optinfo) and ((n.optinfo^.life<>nil) or (n.optinfo^.use<>nil) or (n.optinfo^.def<>nil)) then
           begin
             write(text(arg^),nodetype2str[n.nodetype],'(',n.fileinfo.line,',',n.fileinfo.column,') Life: ');
-            PrintDFASet(text(arg^),n.optinfo^.life);
+            PrintDynSet(text(arg^),n.optinfo^.life);
             write(text(arg^),' Def: ');
-            PrintDFASet(text(arg^),n.optinfo^.def);
+            PrintDynSet(text(arg^),n.optinfo^.def);
             write(text(arg^),' Use: ');
-            PrintDFASet(text(arg^),n.optinfo^.use);
+            PrintDynSet(text(arg^),n.optinfo^.use);
             if assigned(n.successor) then
               write(text(arg^),' Successor: ',nodetype2str[n.successor.nodetype],'(',n.successor.fileinfo.line,',',n.successor.fileinfo.column,')')
             else
               write(text(arg^),' Successor: nil');
             write(text(arg^),' DefSum: ');
-            PrintDFASet(text(arg^),n.optinfo^.defsum);
+            PrintDynSet(text(arg^),n.optinfo^.defsum);
             writeln(text(arg^));
           end;
         result:=fen_false;
@@ -403,12 +403,12 @@ unit optutils;
       begin
         if assigned(n.optinfo) then
           begin
-            DFASetIncludeSet(defsum^,n.optinfo^.def);
+            DynSetIncludeSet(defsum^,n.optinfo^.def);
             { for nodes itself do not necessarily expose the definition of the counter as
               the counter might be undefined after the for loop, so include here the counter
               explicitly }
             if (n.nodetype=forn) and assigned(tfornode(n).left.optinfo) then
-              DFASetInclude(defsum^,tfornode(n).left.optinfo^.index);
+              DynSetInclude(defsum^,tfornode(n).left.optinfo^.index);
           end;
         Result:=fen_false;
       end;
@@ -476,7 +476,7 @@ unit optutils;
         usesum : PDFASet absolute arg;
       begin
         if assigned(n.optinfo) then
-          DFASetIncludeSet(usesum^,n.optinfo^.use);
+          DynSetIncludeSet(usesum^,n.optinfo^.use);
         Result:=fen_false;
       end;
 

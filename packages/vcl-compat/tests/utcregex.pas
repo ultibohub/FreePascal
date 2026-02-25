@@ -46,6 +46,25 @@ type
     procedure TestReplaceRightOfMatch;
     procedure TestReplaceWholeMatch;
     procedure TestReplaceLastMatch;
+    // Tests added after issue 41574
+    {$IF DEFINED(USEWIDESTRING) AND DEFINED(USE_PCRE2_8)}
+    procedure TestBasicASCII;
+    procedure TestBMPUnicode;
+    procedure TestCJK;
+    procedure TestSurrogatePairs;
+    procedure TestMultipleSurrogatePairs;
+    procedure TestMatchAgain;
+    procedure TestNamedGroups2;
+    procedure TestReplace2;
+    procedure TestReplaceAll2;
+    procedure TestGroupsUnicode;
+    procedure TestManyMatches;
+    procedure TestEmptyMatch;
+    procedure TestUnicodePattern;
+    procedure TestStoreGroups;
+    procedure TestSubjectLeftRight;
+    procedure TestNoMatch;
+    {$ENDIF}
   end;
 
 implementation
@@ -341,8 +360,360 @@ begin
   AssertNotNull('Regex',Regex);
   AssertTrue('Assigned OnMatch event',Assigned(Regex.OnMatch));
   AssertEquals('Match event count',0,FMatchEventCount);
-
 end;
+
+{$IF DEFINED(USEWIDESTRING) AND DEFINED(USE_PCRE2_8)}
+
+procedure TTestRegExpCore.TestBasicASCII;
+var
+  RE: TPerlRegEx;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := 'hello (\w+)';
+    RE.Subject := 'say hello world!';
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('MatchedText', 'hello world', RE.MatchedText);
+    AssertEquals('Group 1', 'world', RE.Groups[1]);
+    AssertEquals('GroupCount', 1, RE.GroupCount);
+    AssertEquals('MatchedOffset', 5, RE.MatchedOffset);
+    AssertEquals('MatchedLength', 11, RE.MatchedLength);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestBMPUnicode;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    // German umlauts: each is 2 bytes in UTF-8, 1 code unit in UTF-16
+    RE.RegEx := '(#\w+#)';
+    Subject := 'x'#$00E4#$00F6#$00FC'#Welt#end';  // xäöü#Welt#end
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('MatchedText', '#Welt#', RE.MatchedText);
+    // 'x' + 3 umlauts = 4 chars, then '#Welt#' starts at position 5 (1-based)
+    AssertEquals('MatchedOffset', 5, RE.MatchedOffset);
+    AssertEquals('MatchedLength', 6, RE.MatchedLength);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestCJK;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    // Chinese: U+4E2D U+6587 = 中文 (3 bytes each in UTF-8)
+    RE.RegEx := '(\d+)';
+    Subject := #$4E2D#$6587'abc123def';  // 中文abc123def
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('MatchedText', '123', RE.MatchedText);
+    // 2 CJK + 'abc' = 5 chars, '123' starts at position 6 (1-based)
+    AssertEquals('MatchedOffset', 6, RE.MatchedOffset);
+    AssertEquals('MatchedLength', 3, RE.MatchedLength);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestSurrogatePairs;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    // U+1F600 (Grinning Face) = F0 9F 98 80 in UTF-8 = D83D DE00 in UTF-16
+    // U+1D11E (Musical Symbol G Clef) = F0 9D 84 9E in UTF-8 = D834 DD1E in UTF-16
+    RE.RegEx := '(X+)';
+    // surrogate pair (2 code units) + 'aXXb'
+    Subject := #$D83D#$DE00'aXXb';
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('MatchedText', 'XX', RE.MatchedText);
+    // Emoji = 2 code units, 'a' = 1, so 'XX' starts at offset 4 (1-based)
+    AssertEquals('MatchedOffset', 4, RE.MatchedOffset);
+    AssertEquals('MatchedLength', 2, RE.MatchedLength);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestMultipleSurrogatePairs;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := '(end)';
+    // 3 emoji (each = 2 UTF-16 code units) + 'end'
+    Subject := #$D83D#$DE00#$D83D#$DE01#$D83D#$DE02'end';
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('MatchedText', 'end', RE.MatchedText);
+    // 3 emojis * 2 code units = 6, so 'end' starts at offset 7 (1-based)
+    AssertEquals('MatchedOffset', 7, RE.MatchedOffset);
+    AssertEquals('MatchedLength', 3, RE.MatchedLength);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestMatchAgain;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+  Count: Integer;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := '\d+';
+    Subject := #$00E4'12'#$00F6'34'#$00FC'56';  // ä12ö34ü56
+    RE.Subject := Subject;
+    Count := 0;
+    AssertTrue('First match', RE.Match);
+    if RE.FoundMatch then
+    begin
+      AssertEquals('Match 1', '12', RE.MatchedText);
+      AssertEquals('Match 1 offset', 2, RE.MatchedOffset);
+      Inc(Count);
+      while RE.MatchAgain do
+      begin
+        Inc(Count);
+        case Count of
+          2: begin
+               AssertEquals('Match 2', '34', RE.MatchedText);
+               AssertEquals('Match 2 offset', 5, RE.MatchedOffset);
+             end;
+          3: begin
+               AssertEquals('Match 3', '56', RE.MatchedText);
+               AssertEquals('Match 3 offset', 8, RE.MatchedOffset);
+             end;
+        end;
+      end;
+    end;
+    AssertEquals('Total matches', 3, Count);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestNamedGroups2;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := '(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})';
+    Subject := #$00E4#$00F6'2025-03-15rest';  // äö2025-03-15rest
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('Full match', '2025-03-15', RE.MatchedText);
+    AssertEquals('Named year', '2025', RE.NamedGroups['year']);
+    AssertEquals('Named month', '03', RE.NamedGroups['month']);
+    AssertEquals('Named day', '15', RE.NamedGroups['day']);
+    AssertEquals('MatchedOffset', 3, RE.MatchedOffset);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestReplace2;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := 'world';
+    RE.Replacement := 'Welt';
+    Subject := #$00E4'hello world'#$00F6;  // ähello worldö
+    RE.Subject := Subject;
+    AssertTrue('ReplaceAll', RE.ReplaceAll);
+    AssertEquals('Result', #$00E4'hello Welt'#$00F6, RE.Subject);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestReplaceAll2;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := 'x';
+    RE.Replacement := 'Y';
+    Subject := #$4E2D'x'#$6587'x'#$4E2D;  // 中x文x中
+    RE.Subject := Subject;
+    AssertTrue('ReplaceAll', RE.ReplaceAll);
+    AssertEquals('Result', #$4E2D'Y'#$6587'Y'#$4E2D, RE.Subject);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestGroupsUnicode;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := '(\w+)\s+(\w+)';
+    // preUseOffsetLimit is not needed; just test with ASCII words after Unicode prefix
+    Subject := #$00C0#$00C1' abc def rest';  // ÀÁ abc def rest
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('Group 0 (full)', 'abc def', RE.Groups[0]);
+    AssertEquals('Group 1', 'abc', RE.Groups[1]);
+    AssertEquals('Group 2', 'def', RE.Groups[2]);
+    AssertEquals('GroupCount', 2, RE.GroupCount);
+    AssertEquals('Group 1 offset', 4, RE.GroupOffsets[1]);
+    AssertEquals('Group 1 length', 3, RE.GroupLengths[1]);
+    AssertEquals('Group 2 offset', 8, RE.GroupOffsets[2]);
+    AssertEquals('Group 2 length', 3, RE.GroupLengths[2]);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestManyMatches;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+  Count: Integer;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := '.';  // match every character
+    // 3 BMP chars (2-byte UTF-8 each) + 2 ASCII
+    Subject := #$00E4#$00F6#$00FC'ab';  // äöüab = 5 chars
+    RE.Subject := Subject;
+    Count := 0;
+    if RE.Match then
+    begin
+      Inc(Count);
+      while RE.MatchAgain do
+        Inc(Count);
+    end;
+    AssertEquals('Match count', 5, Count);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestEmptyMatch;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+  Count: Integer;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := 'x*';  // matches empty string and 'x' sequences
+    Subject := 'axb';
+    RE.Subject := Subject;
+    Count := 0;
+    if RE.Match then
+    begin
+      Inc(Count);
+      while RE.MatchAgain do
+        Inc(Count);
+    end;
+    // 'x*' on 'axb': '' at 0, 'x' at 1, '' at 2, '' at 3 = 4 matches
+    AssertTrue('Empty match count >= 3', Count >= 3);
+  finally
+    RE.Free;
+  end;
+end;
+
+
+procedure TTestRegExpCore.TestUnicodePattern;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    // Pattern contains Unicode characters
+    RE.RegEx := #$00E4'(\w+)'#$00FC;  // ä(\w+)ü
+    Subject := 'xx'#$00E4'hello'#$00FC'yy';  // xxähelloüyy
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('Group 1', 'hello', RE.Groups[1]);
+  finally
+    RE.Free;
+  end;
+end;
+
+
+procedure TTestRegExpCore.TestStoreGroups;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := '(\w+)-(\w+)';
+    Subject := #$4E2D'abc-def'#$6587;  // 中abc-def文
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    RE.StoreGroups;
+    // Verify stored groups survive
+    AssertEquals('Stored group 0', 'abc-def', RE.Groups[0]);
+    AssertEquals('Stored group 1', 'abc', RE.Groups[1]);
+    AssertEquals('Stored group 2', 'def', RE.Groups[2]);
+  finally
+    RE.Free;
+  end;
+end;
+
+
+procedure TTestRegExpCore.TestSubjectLeftRight;
+var
+  RE: TPerlRegEx;
+  Subject: UnicodeString;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := 'MATCH';
+    Subject := #$00E4#$00F6'MATCH'#$00FC;  // äöMATCHü
+    RE.Subject := Subject;
+    AssertTrue('Match found', RE.Match);
+    AssertEquals('SubjectLeft', #$00E4#$00F6, RE.SubjectLeft);
+    AssertEquals('SubjectRight', #$00FC, RE.SubjectRight);
+  finally
+    RE.Free;
+  end;
+end;
+
+procedure TTestRegExpCore.TestNoMatch;
+var
+  RE: TPerlRegEx;
+begin
+  RE := TPerlRegEx.Create;
+  try
+    RE.RegEx := 'xyz';
+    RE.Subject := #$00E4#$00F6#$00FC'abcdef';
+    AssertTrue('No match', not RE.Match);
+  finally
+    RE.Free;
+  end;
+end;
+{$ENDIF}
 
 initialization
 

@@ -822,8 +822,8 @@ Function CreateJSON(const Data : TJSONStringType) : TJSONString;
 Function CreateJSON(const Data : TJSONUnicodeStringType) : TJSONString;
 {$ENDIF}
 Function CreateJSONArray(const Data : Array of {$IFDEF PAS2JS}jsvalue{$else}Const{$ENDIF}) : TJSONArray;
-Function CreateJSONObject : TJSONObject;
-Function CreateJSONObject(const Data : Array of {$IFDEF PAS2JS}jsvalue{$else}Const{$ENDIF}) : TJSONObject;
+Function CreateJSONObject : TJSONObject; overload;
+Function CreateJSONObject(const Data : Array of {$IFDEF PAS2JS}jsvalue{$else}Const{$ENDIF}) : TJSONObject; overload;
 
 // These functions rely on a callback. If the callback is not set, they will raise an error.
 // When the jsonparser unit is included in the project, the callback is automatically set.

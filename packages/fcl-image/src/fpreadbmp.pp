@@ -500,21 +500,36 @@ end;
 function  TFPReaderBMP.InternalCheck (Stream:TStream) : boolean;
 // NOTE: Does not rewind the stream!
 var
-  BFH:TBitMapFileHeader;
+  lBFH:TBitMapFileHeader;
+  lBFI:TBitMapInfoHeader;
   n: Int64;
 begin
   Result:=False;
   if Stream=nil then
     exit;
-  n:=SizeOf(BFH);
-  Result:=Stream.Read(BFH,n)=n;
-  if Result then
-    begin
-   {$IFDEF ENDIAN_BIG}
-    SwapBMPFileHeader(BFH);
-   {$ENDIF}
-    Result := BFH.bfType = BMmagic; // Just check magic number
-    end;
+  n:=SizeOf(lBFH);
+  if Stream.Read(lBFH,n)<>n then
+    exit;
+  {$IFDEF ENDIAN_BIG}
+  SwapBMPFileHeader(lBFH);
+  {$ENDIF}
+  if lBFH.bfType<>BMmagic then
+    exit;
+  if lBFH.bfReserved<>0 then
+    exit;
+  n:=SizeOf(lBFI);
+  if Stream.Read(lBFI,n)<>n then
+    exit;
+  {$IFDEF ENDIAN_BIG}
+  SwapBMPInfoHeader(lBFI);
+  {$ENDIF}
+  if not (lBFI.Size in [12, 40, 52, 56, 108, 124]) then
+    exit;
+  if not (lBFI.BitCount in [1, 4, 8, 16, 24, 32]) then
+    exit;
+  if not (lBFI.Compression in [BI_RGB..BI_ALPHABITFIELDS]) then
+    exit;
+  Result:=True;
 end;
 
 class function TFPReaderBMP.InternalSize (Stream: TStream): TPoint;

@@ -30,7 +30,9 @@ begin
   s2:=pi/2;
 
   s1:=sin(s2);
-  if s1<>1.0 then
+  { In genmath.inc this case be non-zero }
+  s0:=s1-1.0;
+  if abs(s0)> 1E-7 then
     do_error(100);
 
   s1:=cos(s2);

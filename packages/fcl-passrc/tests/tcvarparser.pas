@@ -147,6 +147,7 @@ begin
   IsThreadVar:=True;
   ParseVar('b','');
   AssertVariableType('b');
+  AssertTrue('Thread variable',(vmThread in Thevar.VarModifiers));
 end;
 
 procedure TTestVarParser.TestSimpleVarAbsoluteName;

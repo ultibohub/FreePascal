@@ -148,10 +148,6 @@ implementation
          InitScannerDirectives;
 
          { scanner }
-         c:=#0;
-         pattern:='';
-         orgpattern:='';
-         cstringpattern:='';
          set_current_scanner(nil);
          switchesstatestackpos:=0;
 
@@ -346,53 +342,52 @@ implementation
          repeat
            current_scanner.readtoken(true);
            preprocfile.AddSpace;
-           case token of
+           case current_scanner.token of
              _ID :
                begin
-                 preprocfile.Add(orgpattern);
+                 preprocfile.Add(current_scanner.orgpattern);
                end;
              _REALNUMBER,
              _INTCONST :
-               preprocfile.Add(pattern);
+               preprocfile.Add(current_scanner.pattern);
              _CSTRING :
                begin
                  i:=0;
-                 while (i<length(cstringpattern)) do
+                 while (i<length(current_scanner.cstringpattern)) do
                   begin
                     inc(i);
-                    if cstringpattern[i]='''' then
+                    if current_scanner.cstringpattern[i]='''' then
                      begin
-                       insert('''',cstringpattern,i);
+                       insert('''',current_scanner.cstringpattern,i);
                        inc(i);
                      end;
                   end;
-                 preprocfile.Add(''''+cstringpattern+'''');
+                 preprocfile.Add(''''+current_scanner.cstringpattern+'''');
                end;
              _CCHAR :
                begin
-                 case pattern[1] of
+                 case current_scanner.pattern[1] of
                    #39 :
-                     pattern:='''''''';
+                     current_scanner.pattern:='''''''';
                    #0..#31,
                    #128..#255 :
                      begin
-                       str(ord(pattern[1]),pattern);
-                       pattern:='#'+pattern;
+                       str(ord(current_scanner.pattern[1]),current_scanner.pattern);
+                       current_scanner.pattern:='#'+current_scanner.pattern;
                      end;
                    else
-                     pattern:=''''+pattern[1]+'''';
+                     current_scanner.pattern:=''''+current_scanner.pattern[1]+'''';
                  end;
-                 preprocfile.Add(pattern);
+                 preprocfile.Add(current_scanner.pattern);
                end;
              _EOF :
                break;
              else
-               preprocfile.Add(tokeninfo^[token].str)
+               preprocfile.Add(tokeninfo^[current_scanner.token].str)
            end;
          until false;
        { free scanner }
          current_scanner.free;
-         current_scanner := nil;
          set_current_scanner(nil);
        { close }
          preprocfile.free;
@@ -492,18 +487,18 @@ implementation
            message if we are trying to use a program as unit.}
          try
            try
-             if (token=_UNIT) or (not module.is_initial) then
+             if (current_scanner.token=_UNIT) or (not module.is_initial) then
                begin
                  module.is_unit:=true;
                  finished:=proc_unit(module);
                end
-             else if (token=_ID) and (idtoken=_PACKAGE) then
+             else if (current_scanner.token=_ID) and (current_scanner.idtoken=_PACKAGE) then
                begin
                  module.IsPackage:=true;
                  finished:=proc_package(module);
                end
              else
-               finished:=proc_program(module,token=_LIBRARY);
+               finished:=proc_program(module,current_scanner.token=_LIBRARY);
            except
              on ECompilerAbort do
                raise;

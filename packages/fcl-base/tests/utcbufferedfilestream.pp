@@ -284,12 +284,106 @@ begin
   end;
 end;
 
+
+procedure TTestBufferedFileStream_TestSetSize;
+var
+  Filename: string;
+  Stream: TStream;
+begin
+  Stream := nil;
+  Filename := ExpandFileName('~/66E9541B9C0D482BBDB98D911E6E3415.tst');
+  try
+    Stream := TBufferedFileStream.Create(Filename, fmCreate);
+    Stream.Size := 1024;
+  finally
+    Stream.Free;
+    DeleteFile(Filename);
+  end;
+end;
+
+procedure TTestBufferedFileStream_TestWriteBeyondEOF;
+var
+  testfile : string;
+  fs: TBufferedFileStream;
+  buf: array[0..15] of byte;
+  i: integer;
+  readback: array[0..15] of byte;
+  ok: boolean;
+begin
+  for i := 0 to High(buf) do
+    buf[i] := i + 1;
+  // Create a small file (8 bytes)
+  TestFile := ExpandFileName('66E9541B9C0D482BBDB98D911E6E3415.tst');
+  fs := TBufferedFileStream.Create(TestFile, fmCreate);
+  try
+    fs.Write(buf[0], 8);
+  finally
+    fs.Free;
+  end;
+  // Re-open and write beyond EOF - this triggers bug 40391
+  fs := TBufferedFileStream.Create(TestFile, fmOpenReadWrite);
+  try
+    // Seek past EOF and write there
+    fs.Seek(16384, soBeginning);  // well beyond the 8-byte file
+    fs.Write(buf[0], 16);
+
+    // Verify: read back what we wrote
+    fs.Seek(16384, soBeginning);
+    FillChar(readback, SizeOf(readback), 0);
+    fs.Read(readback[0], 16);
+
+    ok := true;
+    for i := 0 to 15 do
+      if not AssertEquals(Format('FAIL: mismatch at offset %d ',[i]), buf[i], readback[i]) then
+        exit;
+
+  finally
+    DeleteFile(TestFile);
+    fs.Free;
+  end;
+end;
+
+procedure TTestBufferedFileStream_TestWriteExtendFile;
+var
+  fs: TBufferedFileStream;
+  val: longint;
+  readval: longint;
+  TestFile : string;
+begin
+  // Create an empty file, write at offset 0 (file has size 0,
+  // so even offset 0 means ReadPageBeforeWrite reads 0 bytes)
+  fs:=nil;
+  TestFile := ExpandFileName('66E9541B9C0D482BBDB98D911E6E3415.tst');
+  try
+    fs := TBufferedFileStream.Create(TestFile, fmCreate);
+    fs.Free;
+
+    fs := TBufferedFileStream.Create(TestFile, fmOpenReadWrite);
+    val := $DEADBEEF;
+    fs.Write(val, SizeOf(val));
+
+    fs.Seek(0, soBeginning);
+    readval := 0;
+    fs.Read(readval, SizeOf(readval));
+
+    AssertEquals('Write to empty file succeeded',val,readval);
+  finally
+    DeleteFile(TestFile);
+    fs.Free;
+  end;
+
+end;
+
+
 procedure RegisterTests;
 begin
   AddSuite('TBufferedFileStreamTests', @Setup, @TearDown);
   AddTest('TestCacheRead', @TBufferedFileStream_TestCacheRead, 'TBufferedFileStreamTests');
   AddTest('TestCacheWrite', @TBufferedFileStream_TestCacheWrite, 'TBufferedFileStreamTests');
   AddTest('TestCacheSeek', @TBufferedFileStream_TestCacheSeek, 'TBufferedFileStreamTests');
+  AddTest('TestSetSize', @TTestBufferedFileStream_TestSetSize,'TBufferedFileStreamTests');
+  AddTest('TestWriteBeyondEOF', @TTestBufferedFileStream_TestWriteBeyondEOF,'TBufferedFileStreamTests');
+  AddTest('TestWriteExtendFile', @TTestBufferedFileStream_TestWriteExtendFile,'TBufferedFileStreamTests');
 end;
 
 end.

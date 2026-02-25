@@ -1393,7 +1393,7 @@ begin
     if DoBeginEnd then
       AddLn('begin');
     IncIndent;
-    if AIfElse.IfBranch is TPasImplBeginBlock then
+    if DoBeginEnd and (AIfElse.IfBranch is TPasImplBeginBlock) then
        WriteImplBlock(TPasImplBeginBlock(AIfElse.IfBranch))
      else
        WriteImplElement(AIfElse.IfBranch, False);

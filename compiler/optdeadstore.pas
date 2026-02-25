@@ -36,7 +36,7 @@ unit optdeadstore;
   implementation
 
     uses
-      verbose,globtype,globals,
+      verbose,globtype,cdynset,globals,
       procinfo,pass_1,
       nutils,
       nbas,nld,
@@ -81,7 +81,7 @@ unit optdeadstore;
                     ((cs_opt_dead_values in current_settings.optimizerswitches) and not(might_have_sideeffects(a.right,[mhs_exceptions])))
                    ) then
                   begin
-                    redundant:=not(assigned(a.successor)) or not(DFASetIn(a.successor.optinfo^.life,a.left.optinfo^.index));
+                    redundant:=not(assigned(a.successor)) or not(DynSetIn(a.successor.optinfo^.life,a.left.optinfo^.index));
 
                     if redundant then
                       begin

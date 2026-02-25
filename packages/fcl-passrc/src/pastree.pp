@@ -1020,7 +1020,7 @@ type
   end;
 
   { TPasVariable }
-  TVariableModifier = (vmCVar, vmExternal, vmPublic, vmExport, vmClass, vmStatic, vmfar);
+  TVariableModifier = (vmCVar, vmExternal, vmPublic, vmExport, vmClass, vmStatic, vmfar, vmThread);
   TVariableModifiers = set of TVariableModifier;
 
   TPasVariable = class(TPasElement)
@@ -1168,8 +1168,8 @@ type
     procedure FreeChildren(Prepare: boolean); override;
     function ElementTypeName: TPasTreeString; override;
     function TypeName: TPasTreeString; override;
-    function GetDeclaration(full: Boolean): TPasTreeString; override; overload;
-    function GetDeclaration(full, AddArgs, AddModifiers, AddParent: Boolean): TPasTreeString; virtual; overload;
+    function GetDeclaration(full: Boolean): TPasTreeString; overload; override;
+    function GetDeclaration(full, AddArgs, AddModifiers, AddParent: Boolean): TPasTreeString; overload; virtual;
     procedure GetModifiers(List: TStrings);
     procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
       const Arg: Pointer); override;
@@ -1891,7 +1891,7 @@ const
                    'section','rtlproc','internproc','weakexternal');
 
   VariableModifierNames : Array[TVariableModifier] of TPasTreeString
-     = ('cvar', 'external', 'public', 'export', 'class', 'static','far');
+     = ('cvar', 'external', 'public', 'export', 'class', 'static','far','thread');
 
 procedure FreeProcNameParts(var NameParts: TProcedureNameParts);
 procedure FreePasExprArray(Parent: TPasElement; var A: TPasExprArray; Prepare: boolean);

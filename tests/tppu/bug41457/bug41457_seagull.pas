@@ -4,6 +4,6 @@ interface
 
 implementation
 
-uses bug41457_ant;
+uses bug41457_bird;
 
 end.

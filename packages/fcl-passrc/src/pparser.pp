@@ -3839,6 +3839,7 @@ var
   MustBeGeneric: Boolean;
   Proc: TPasProcedure;
   CurEl: TPasElement;
+  isThreadVar : boolean;
 begin
   CurBlock := declNone;
   HadTypeSection:=false;
@@ -4015,6 +4016,7 @@ begin
           end;
         declVar, declThreadVar:
           begin
+            isThreadVar:=CurBlock=declThreadvar;
             List := TFPList.Create;
             try
               ParseVarDecl(Declarations, List);
@@ -4025,7 +4027,12 @@ begin
                 if CurEl.ClassType=TPasAttributes then
                   Declarations.Attributes.Add(CurEl)
                 else
+                  begin
+                  if isThreadVar then
+                    Include(TPasVariable(CurEl).VarModifiers,vmThread);
                   Declarations.Variables.Add(TPasVariable(CurEl));
+
+                  end;
                 Engine.FinishScope(stDeclaration,CurEl);
               end;
               if (CurToken<>tkSemicolon) then

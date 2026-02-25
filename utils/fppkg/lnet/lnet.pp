@@ -801,8 +801,14 @@ begin
 end;
 
 function TLSocket.GetLocalPort: Word;
+var
+  a: TSockAddr;
+  l: Integer;
 begin
-  Result := ntohs(FAddress.IPv4.sin_port);
+  Result := 0;
+  l := SizeOf(a);
+  if fpGetSockName(FHandle, @a, @l) = 0 then
+    Result := ntohs(a.sin_port);
 end;
 
 function TLSocket.GetPeerPort: Word;

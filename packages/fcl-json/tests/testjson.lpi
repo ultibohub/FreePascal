@@ -13,6 +13,11 @@
       </Flags>
       <SessionStorage Value="InProjectDir"/>
     </General>
+    <CustomData Count="3">
+      <Item0 Name="OpenAPIBase"/>
+      <Item1 Name="OpenAPIConfig"/>
+      <Item2 Name="OpenAPIFile"/>
+    </CustomData>
     <BuildModes Count="1">
       <Item1 Name="default" Default="True"/>
     </BuildModes>
@@ -21,14 +26,14 @@
     </PublishOptions>
     <RunParams>
       <local>
-        <CommandLineParams Value="--suite=TTestJSONDeStreamer.TestDateTime"/>
+        <CommandLineParams Value="--suite=TTestJSONStreamer.TestQwordProp"/>
         <LaunchingApplication PathPlusParams="/usr/X11R6/bin/xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)/tools/runwait.sh $(TargetCmdLine)"/>
       </local>
       <FormatVersion Value="2"/>
       <Modes Count="1">
         <Mode0 Name="default">
           <local>
-            <CommandLineParams Value="--suite=TTestJSONDeStreamer.TestDateTime"/>
+            <CommandLineParams Value="--suite=TTestJSONStreamer.TestQwordProp"/>
             <LaunchingApplication PathPlusParams="/usr/X11R6/bin/xterm -T &apos;Lazarus Run Output&apos; -e $(LazarusDir)/tools/runwait.sh $(TargetCmdLine)"/>
           </local>
         </Mode0>
@@ -68,13 +73,11 @@
     </SearchPaths>
     <Linking>
       <Debugging>
+        <DebugInfoType Value="dsDwarf3"/>
         <UseHeaptrc Value="True"/>
         <TrashVariables Value="True"/>
       </Debugging>
     </Linking>
-    <Other>
-      <CustomOptions Value="-tunicodertl"/>
-    </Other>
   </CompilerOptions>
   <Debugging>
     <Exceptions Count="2">

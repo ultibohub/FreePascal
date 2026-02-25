@@ -84,7 +84,18 @@ begin
   FSSLLastErrorString:=AValue;
 end;
 
+function NormalizeHostNameForSNI(const AHostName: AnsiString): AnsiString;
+begin
+  Result:=LowerCase(AHostName);
+  if (Length(Result)>0) and (Result[Length(Result)]='.') then
+    Delete(Result,Length(Result),1);
+end;
+
 function TOpenSSLSocketHandler.Connect: Boolean;
+
+var
+  SNIHostName: AnsiString;
+
 begin
   Result:=Inherited Connect;
   Result := Result and InitContext(False);
@@ -94,9 +105,12 @@ begin
     if Result then
      begin
      if SendHostAsSNI  and (Socket is TInetSocket) then
-       FSSL.Ctrl(SSL_CTRL_SET_TLSEXT_HOSTNAME,TLSEXT_NAMETYPE_host_name,PAnsiChar(AnsiString((Socket as TInetSocket).NetworkAddress.Address)));
+       begin
+       SNIHostName:=NormalizeHostNameForSNI(AnsiString((Socket as TInetSocket).NetworkAddress.Address));
+       FSSL.Ctrl(SSL_CTRL_SET_TLSEXT_HOSTNAME,TLSEXT_NAMETYPE_host_name,PAnsiChar(SNIHostName));
+       end;
      if VerifyPeerCert and (Socket is TInetSocket) then
-       FSSL.Set1Host((Socket as TInetSocket).Host);
+       FSSL.Set1Host(NormalizeHostNameForSNI(AnsiString((Socket as TInetSocket).Host)));
      Result:=CheckSSL(FSSL.Connect);
      //if Result and VerifyPeerCert then
      //  Result:=(FSSL.VerifyResult<>0) or (not DoVerifyCert);

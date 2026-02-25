@@ -55,7 +55,7 @@ unit optconstprop;
   implementation
 
     uses
-      globtype, globals,
+      globtype,cdynset,globals,
       pass_1,procinfo,compinnr,
       symsym, symconst,
       nutils, nbas, ncnv, nld, nflw, ncal, ninl,
@@ -146,7 +146,7 @@ unit optconstprop;
                     { if it is a temprefn or its address is not taken in case of loadn }
                       ((tassignmentnode(arg).left.nodetype=temprefn) or not(tabstractvarsym(tloadnode(tassignmentnode(arg).left).symtableentry).addr_taken)) and
                       { and no definition in the loop? }
-                      not(DFASetIn(tfornode(n).t2.optinfo^.defsum,tassignmentnode(arg).left.optinfo^.index)) then
+                      not(DynSetIn(tfornode(n).t2.optinfo^.defsum,tassignmentnode(arg).left.optinfo^.index)) then
                       begin
                         result:=replaceBasicAssign(tfornode(n).t2, arg, tree_modified3);
                         tree_modified:=tree_modified or tree_modified3;

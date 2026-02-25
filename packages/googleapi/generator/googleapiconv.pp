@@ -586,7 +586,6 @@ begin
   {$if declared(Heaptrc)}
   printleakedblock:=true;
   printfaultyblock:=true;
-  add_tail:=true;
   SetHeapTraceOutput('heaptrc.txt');
   {$endif}
   Application:=TGoogleAPIConverter.Create(Nil);

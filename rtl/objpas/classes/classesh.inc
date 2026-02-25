@@ -642,8 +642,8 @@ Type
   TThreadList = class
   private
     FList: TList;
-    FDuplicates: TDuplicates;
     FLock: TRTLCriticalSection;
+    FDuplicates: TDuplicates;
   public
     constructor Create;
     destructor Destroy; override;

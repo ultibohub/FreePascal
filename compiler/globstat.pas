@@ -40,12 +40,7 @@ type
 
   tglobalstate = class
   { scanner }
-    oldidtoken,
-    oldtoken       : ttoken;
     oldtokenpos    : tfileposinfo;
-    oldc           : char;
-    oldpattern,
-    oldorgpattern  : string;
     old_block_type : tblock_type;
   { symtable }
     oldsymtablestack,
@@ -67,16 +62,16 @@ type
     old_debuginfo : tdebuginfo;
     old_scanner : tscannerfile;
     old_parser_file : string;
-    constructor create(savefull : boolean);
+    constructor create;
     destructor destroy; override;
     procedure clearscanner;
     class procedure remove_scanner_from_states(scanner : tscannerfile); static;
-    procedure save(full : boolean);
-    procedure restore(full : boolean);
+    procedure save;
+    procedure restore;
   end;
 
-procedure save_global_state(state:tglobalstate;full:boolean);
-procedure restore_global_state(state:tglobalstate;full:boolean);
+procedure save_global_state(state:tglobalstate);
+procedure restore_global_state(state:tglobalstate);
 
 implementation
 
@@ -130,18 +125,18 @@ var
     Dec(Statecount);
   end;
 
-  procedure save_global_state(state:tglobalstate;full:boolean);
+  procedure save_global_state(state:tglobalstate);
     begin
-      state.save(full);
+      state.save;
     end;
 
-  procedure restore_global_state(state:tglobalstate;full:boolean);
+  procedure restore_global_state(state:tglobalstate);
 
   begin
-    state.restore(full);
+    state.restore;
   end;
 
-  procedure tglobalstate.save(full: boolean);
+  procedure tglobalstate.save;
 
     begin
       old_current_module:=current_module;
@@ -152,11 +147,6 @@ var
       oldcurrent_procinfo:=current_procinfo;
 
       { save scanner state }
-      oldc:=c;
-      oldpattern:=pattern;
-      oldorgpattern:=orgpattern;
-      oldtoken:=token;
-      oldidtoken:=idtoken;
       old_block_type:=block_type;
       oldtokenpos:=current_tokenpos;
       {
@@ -179,24 +169,16 @@ var
       old_settings:=current_settings;
       old_verbosity:=status.verbosity;
 
-      if full then
-        begin
-          old_asmdata:=current_asmdata;
-          old_debuginfo:=current_debuginfo;
-          old_parser_file:=parser_current_file;
-          old_scanner:=current_scanner;
-        end;
+      old_asmdata:=current_asmdata;
+      old_debuginfo:=current_debuginfo;
+      old_parser_file:=parser_current_file;
+      old_scanner:=current_scanner;
     end;
 
-  procedure tglobalstate.restore(full: boolean);
+  procedure tglobalstate.restore;
 
     begin
       { restore scanner }
-      c:=oldc;
-      pattern:=oldpattern;
-      orgpattern:=oldorgpattern;
-      token:=oldtoken;
-      idtoken:=oldidtoken;
       current_tokenpos:=oldtokenpos;
       block_type:=old_block_type;
       switchesstatestack:=old_switchesstatestack;
@@ -216,20 +198,17 @@ var
 
       RestoreLocalVerbosity(current_settings.pmessage);
 
-      if full then
-        begin
-          set_current_module(old_current_module);
-          // These can be different
-          current_asmdata:=old_asmdata;
-          current_debuginfo:=old_debuginfo;
-        end;
+      set_current_module(old_current_module);
+      // These can be different
+      current_asmdata:=old_asmdata;
+      current_debuginfo:=old_debuginfo;
     end;
 
-    constructor tglobalstate.create(savefull: boolean);
+    constructor tglobalstate.create;
 
     begin
       addstate(self);
-      save(savefull);
+      save;
     end;
 
   destructor tglobalstate.destroy;
@@ -243,12 +222,7 @@ var
 
   begin
     old_scanner:=nil;
-    oldidtoken:=NOTOKEN;
-    oldtoken:=NOTOKEN;
     oldtokenpos:=Default(tfileposinfo);
-    oldc:=#0;
-    oldpattern:='';
-    oldorgpattern:='';
     old_block_type:=bt_none;
   end;
 

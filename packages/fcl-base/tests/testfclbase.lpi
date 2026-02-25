@@ -13,6 +13,11 @@
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
     </General>
+    <CustomData Count="3">
+      <Item0 Name="OpenAPIBase"/>
+      <Item1 Name="OpenAPIConfig"/>
+      <Item2 Name="OpenAPIFile"/>
+    </CustomData>
     <BuildModes>
       <Item Name="Default" Default="True"/>
     </BuildModes>
@@ -125,6 +130,7 @@
       <Unit>
         <Filename Value="utcbufferedfilestream.pp"/>
         <IsPartOfProject Value="True"/>
+        <UnitName Value="utcBufferedFileStream"/>
       </Unit>
       <Unit>
         <Filename Value="utcclasslist.pp"/>
@@ -154,6 +160,8 @@
       <Filename Value="testfclbase"/>
     </Target>
     <SearchPaths>
+      <IncludeFiles Value="../src/linux;$(ProjOutDir)"/>
+      <OtherUnitFiles Value="../src"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <Linking>

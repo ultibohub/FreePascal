@@ -47,7 +47,7 @@ unit optcse;
   implementation
 
     uses
-      globtype,globals,
+      globtype,cdynset,globals,
       systems,
       cutils,cclasses,
       nutils,compinnr,
@@ -252,11 +252,11 @@ unit optcse;
             plists(arg)^.refs.Add(nil);
             plists(arg)^.equalto.Add(pointer(-1));
 
-            DFASetInclude(plists(arg)^.avail,plists(arg)^.nodelist.count-1);
+            DynSetInclude(plists(arg)^.avail,plists(arg)^.nodelist.count-1);
 
             for i:=0 to plists(arg)^.nodelist.count-2 do
               begin
-                if tnode(plists(arg)^.nodelist[i]).isequal(n) and DFASetIn(plists(arg)^.avail,i) then
+                if tnode(plists(arg)^.nodelist[i]).isequal(n) and DynSetIn(plists(arg)^.avail,i) then
                   begin
                     { use always the first occurrence }
                     if plists(arg)^.equalto[i]<>pointer(-1) then
@@ -282,7 +282,7 @@ unit optcse;
             firstleftend:=high(longint);
             recurseintobooleanchain(n.nodetype,n);
             for i:=firstleftend to plists(arg)^.nodelist.count-1 do
-              DFASetExclude(plists(arg)^.avail,i);
+              DynSetExclude(plists(arg)^.avail,i);
             result:=fen_norecurse_false;
           end;
 {$ifdef cpuhighleveltarget}

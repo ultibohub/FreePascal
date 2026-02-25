@@ -5686,7 +5686,7 @@ begin
     if Assigned(t) then begin
       FString := FString + ': ';
       if pfArray in flags then
-        FString := 'array of ';
+        FString := FString + 'array of ';
       FString := FString + t.Name;
     end;
   end;

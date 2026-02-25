@@ -34,12 +34,31 @@ interface
 {$DEFINE USEWIDESTRING}
 {$ENDIF}
 
+// Determine which pcre2 library to use.
+// On Darwin (macOS), only libpcre2-8 is available, even when using wide strings.
+// USE_PCRE2_8 can also be forced externally via -dUSE_PCRE2_8.
+{$IFNDEF USE_PCRE2_8}
+  {$IFDEF DARWIN}
+    {$DEFINE USE_PCRE2_8}
+  {$ELSE}
+    {$IFDEF USEWIDESTRING}
+      {$DEFINE USE_PCRE2_16}
+    {$ELSE}
+      {$DEFINE USE_PCRE2_8}
+    {$ENDIF}
+  {$ENDIF}
+{$ENDIF}
+
+// When strings are wide (UTF-16) but library is 8-bit (UTF-8), we need conversion.
+{$IF DEFINED(USEWIDESTRING) AND DEFINED(USE_PCRE2_8)}
+  {$DEFINE NEED_UTF_CONVERSION}
+{$ENDIF}
 
 uses
 {$IFDEF FPC_DOTTEDUNITS}
   System.SysUtils, System.Classes, System.Contnrs, System.CTypes,
   {$IFNDEF CPUWASM}
-    {$IFNDEF USEWIDESTRING}
+    {$IFDEF USE_PCRE2_8}
       Api.PCRE2_8
     {$ELSE}
       Api.PCRE2_16
@@ -51,7 +70,7 @@ uses
 {$ELSE}
   SysUtils, Classes, Contnrs,ctypes,
   {$IFNDEF CPUWASM}
-    {$IFNDEF USEWIDESTRING}
+    {$IFDEF USE_PCRE2_8}
       libpcre2_8
     {$ELSE}
       libpcre2_16
@@ -95,7 +114,7 @@ type
       TMatchResult = (mrFound,mrNotFound,mrAfterStop);
     class function TransForm(aTransform: TTransformation; const S: TREString): TREString;
   private
-  {$IFDEF USEWIDESTRING}
+  {$IFDEF USE_PCRE2_16}
     FCode : Ppcre2_code_16;
   {$ELSE}
     FCode : Ppcre2_code_8;
@@ -122,6 +141,9 @@ type
     FStoredGroups: array of TREString;
     FCrLFIsNewLine,
     FIsUtf : Boolean;
+  {$IFDEF NEED_UTF_CONVERSION}
+    FUTF8Subject : RawByteString;
+  {$ENDIF}
     Procedure CheckMatch; inline;
     function DoMatch(Opts: CUInt32): TMatchResult;
     function GetBackRefIndex(const Ref: TREString; var I: Integer): Integer;
@@ -294,22 +316,7 @@ Function InitialCaps(const S : TREString) : TREString;
 
 implementation
 
-{$IFNDEF USEWIDESTRING}
-function GetStrLen(p : PAnsiChar; len : Integer) : AnsiString;
-
-var
-  L : Integer;
-
-begin
-  Result:='';
-  L:=StrLen(P);
-  if L>Len then
-    L:=Len;
-  SetLength(Result,L);
-  if L>0 then
-    Move(P^,Result[1],L);
-end;
-{$ELSE}
+{$IFDEF USE_PCRE2_16}
 function GetStrLen(p : PWideChar; len : Integer) : UnicodeString;
 
 var
@@ -323,6 +330,83 @@ begin
   SetLength(Result,L);
   if Len>0 then
     Move(P^,Result[1],L*2);
+end;
+{$ELSE}
+function GetStrLen(p : PAnsiChar; len : Integer) : TREString;
+
+var
+  L{$IFDEF NEED_UTF_CONVERSION}, I{$ENDIF} : Integer;
+
+begin
+  Result:='';
+  L:=StrLen(P);
+  if L>Len then
+    L:=Len;
+  SetLength(Result,L);
+  if L>0 then
+  {$IFDEF NEED_UTF_CONVERSION}
+    // PCRE2 group names are ASCII, widen each byte to WideChar
+    for I:=1 to L do
+      Result[I]:=WideChar(Ord(P[I-1]));
+  {$ELSE}
+    Move(P^,Result[1],L);
+  {$ENDIF}
+end;
+{$ENDIF}
+
+{$IFDEF NEED_UTF_CONVERSION}
+// Convert a 0-based UnicodeString code-unit offset to a 0-based UTF-8 byte offset.
+function CharOffsetToUTF8Offset(const AUTF8: RawByteString; ACharOffset: SizeInt): SizeInt;
+var
+  Chars, BytePos, Len: SizeInt;
+  B: Byte;
+begin
+  Chars := 0;
+  BytePos := 0;
+  Len := Length(AUTF8);
+  while (BytePos < Len) and (Chars < ACharOffset) do
+  begin
+    B := Ord(AUTF8[BytePos + 1]);
+    if B < $80 then
+      Inc(BytePos)
+    else if (B and $E0) = $C0 then
+      Inc(BytePos, 2)
+    else if (B and $F0) = $E0 then
+      Inc(BytePos, 3)
+    else
+    begin
+      Inc(BytePos, 4);
+      Inc(Chars); // 4-byte UTF-8 = surrogate pair = 2 UTF-16 code units
+    end;
+    Inc(Chars);
+  end;
+  Result := BytePos;
+end;
+
+// Convert a 0-based UTF-8 byte offset to a 0-based UnicodeString code-unit offset.
+function UTF8OffsetToCharOffset(const AUTF8: RawByteString; AByteOffset: SizeInt): SizeInt;
+var
+  BytePos: SizeInt;
+  B: Byte;
+begin
+  Result := 0;
+  BytePos := 0;
+  while BytePos < AByteOffset do
+  begin
+    B := Ord(AUTF8[BytePos + 1]);
+    if B < $80 then
+      Inc(BytePos)
+    else if (B and $E0) = $C0 then
+      Inc(BytePos, 2)
+    else if (B and $F0) = $E0 then
+      Inc(BytePos, 3)
+    else
+    begin
+      Inc(BytePos, 4);
+      Inc(Result); // 4-byte sequence = surrogate pair = 2 UTF-16 code units
+    end;
+    Inc(Result);
+  end;
 end;
 {$ENDIF}
 
@@ -520,6 +604,9 @@ begin
   FSubject:=aValue;
   FSubjectLength:=Length(FSubject);
   FModifiedSubject:=aValue;
+{$IFDEF NEED_UTF_CONVERSION}
+  FUTF8Subject:=UTF8Encode(FSubject);
+{$ENDIF}
   CleanUp;
   FStart:=0;
   FStop:=Length(FSubject);
@@ -655,12 +742,20 @@ procedure TPerlRegEx.Compile;
 var
   ErrorNr: Integer;
   ErrorPos: Integer;
+{$IFDEF NEED_UTF_CONVERSION}
+  UTF8Regex: RawByteString;
+{$ENDIF}
 
 begin
   if (FRegEx='') then
     raise ERegularExpressionError.CreateRes(@SRegExMissingExpression);
   CleanUp;
+{$IFDEF NEED_UTF_CONVERSION}
+  UTF8Regex:=UTF8Encode(FRegEx);
+  FCode:=pcre2_compile(TPCRE2_SPTR8(PAnsiChar(UTF8Regex)),Length(UTF8Regex),MakeOptions(FOptions),@ErrorNr,@ErrorPos,Nil);
+{$ELSE}
   FCode:=pcre2_compile(TPCRE2_SPTR8(FRegEx),Length(FRegEx),MakeOptions(FOptions),@ErrorNr,@ErrorPos,Nil);
+{$ENDIF}
   if (FCode=nil) then
     raise ERegularExpressionError.CreateFmt(SRegExExpressionError,[ErrorPos+1,GetPCREErrorMsg(ErrorNr)]);
   FMatchData:=pcre2_match_data_create_from_pattern(FCode,Nil);
@@ -687,7 +782,7 @@ end;
 procedure TPerlRegEx.FreeCodeData;
 
 var
-  {$IFDEF USEWIDESTRING}
+  {$IFDEF USE_PCRE2_16}
   Data : Ppcre2_code_16;
   {$ELSE}
   Data : Ppcre2_code_8;
@@ -734,7 +829,7 @@ begin
     Raise ERegularExpressionError.CreateFmt(SErrInvalidNameIndex,[aIndex,FNameCount]);
   for i:=0 to aIndex-1 do
     Inc(Ptr,FNameEntrySize);
-{$IFDEF USEWIDESTRING}
+{$IFDEF USE_PCRE2_16}
   Result:=GetStrLen((Ptr+1),FNameEntrySize-2);
 {$ELSE}
   Result:=GetStrLen((Ptr+2),FNameEntrySize-3);
@@ -770,9 +865,24 @@ function TPerlRegEx.DoMatch(Opts : CUInt32): TMatchResult;
 var
   len,rc : cInt;
   S : TREString;
+{$IFDEF NEED_UTF_CONVERSION}
+  UTF8Start : SizeInt;
+  I : Integer;
+{$ENDIF}
 
 begin
   Result:=mrNotFound;
+{$IFDEF NEED_UTF_CONVERSION}
+  UTF8Start:=CharOffsetToUTF8Offset(FUTF8Subject, FStart);
+  rc:=pcre2_match(
+    FCode,                           (* the compiled pattern *)
+    TPCRE2_SPTR8(PAnsiChar(FUTF8Subject)), (* UTF-8 encoded subject *)
+    Length(FUTF8Subject),            (* byte length of UTF-8 subject *)
+    UTF8Start,                       (* start offset in UTF-8 bytes *)
+    Opts,                            (* default options *)
+    FMatchData,                      (* block for storing the result *)
+    Nil);
+{$ELSE}
 {$IF SIZEOF(CHAR)=2}
   rc:=pcre2_match_w(
 {$ELSE}
@@ -785,13 +895,17 @@ begin
     Opts,                    (* default options *)
     FMatchData,              (* block for storing the result *)
     Nil);
+{$ENDIF}
   if (rc <= 0) then
     begin
+    if (rc=PCRE2_ERROR_NOMATCH) then
+      begin
+      FreeMatchData;
+      Exit(mrNotFound);
+      end;
     FreeMatchData;
     FreeCodeData;
-    if (rc=PCRE2_ERROR_NOMATCH) then
-      Exit(mrNotFound)
-    else if (rc = 0) then
+    if (rc = 0) then
       raise ERegularExpressionError.CreateFmt(SRegExMatchError,[SErrRegexOvectorTooSmall])
     else
       raise ERegularExpressionError.CreateFmt(SRegExMatchError,[GetPCREErrorMsg(rc)]);
@@ -799,6 +913,12 @@ begin
   Result:=mrFound;
   FResultCount:=rc;
   FResultVector:=pcre2_get_ovector_pointer(FMatchData);
+{$IFDEF NEED_UTF_CONVERSION}
+  // Convert all UTF-8 byte offsets to UnicodeString code-unit offsets
+  for I:=0 to FResultCount*2-1 do
+    if FResultVector[I] <> High(SizeUInt) then // High(SizeUInt) = PCRE2_UNSET
+      FResultVector[I]:=UTF8OffsetToCharOffset(FUTF8Subject, FResultVector[I]);
+{$ENDIF}
   if FResultVector[0]>FStop then
     Exit(mrAfterStop);
   {For i:=0 to FResultCount-1 do
@@ -835,7 +955,11 @@ begin
   else
     begin
     // Check whether start empty
+{$IFDEF NEED_UTF_CONVERSION}
+    Startchar:=UTF8OffsetToCharOffset(FUTF8Subject, pcre2_get_startchar(FMatchData));
+{$ELSE}
     Startchar:=pcre2_get_startchar(FMatchData);
+{$ENDIF}
     if (FStart<=Startchar) then
       begin
       (* Reached end of subject.   *)
@@ -843,13 +967,19 @@ begin
         Exit;
       (* Advance by one character. *)
       FStart:=StartChar+1;
-      (* If UTF-8, it may be more than one code unit. *)
+      (* If UTF, it may be more than one code unit. *)
       if FIsUtf then
         begin
         While (FStart<FSubjectLength) do
           begin
+{$IFDEF NEED_UTF_CONVERSION}
+          // For UTF-16: skip past low surrogates (second half of a surrogate pair)
+          if (Ord(FSubject[FStart+1]) < $DC00) or (Ord(FSubject[FStart+1]) > $DFFF) then
+            Break;
+{$ELSE}
           if ((Ord(Subject[FStart+1]) and $c0)<>$80) then
             Exit;
+{$ENDIF}
           Inc(FStart);
           end;
         end;
@@ -879,21 +1009,42 @@ begin
     begin
     if Opts=0 then
       Break;
+    // After a failed DoMatch, FResultVector is nil (freed by DoMatch on NOMATCH).
+    // Re-create match data so we can use FResultVector for the retry.
+    if FResultVector=Nil then
+      begin
+      if not Compiled then
+        Break;
+      FMatchData:=pcre2_match_data_create_from_pattern(FCode,Nil);
+      FResultVector:=pcre2_get_ovector_pointer(FMatchData);
+      end;
     FResultVector[1]:=FStart+1;             (* Advance one code unit *)
     if FCrLFIsNewLine and                   (* If CRLF is a newline & *)
        (FStart<FSubjectLength-2) and        (* we are at CRLF *)
        (FSubject[FStart+1]=#13) and
        (FSubject[Fstart+2]=#10) then
        inc(FResultVector[1])                (* Advance by one more. *)
-    else if (FIsUtf) then                     (* Otherwise, ensure we advance a whole UTF-8 character. *)
+    else if (FIsUtf) then                     (* Otherwise, ensure we advance a whole UTF character. *)
       begin
       while (FResultVector[1]<FSubjectLength-1) do
         begin
+{$IFDEF NEED_UTF_CONVERSION}
+        // For UTF-16: skip past low surrogates
+        if (Ord(FSubject[FResultVector[1]+1]) < $DC00) or (Ord(FSubject[FResultVector[1]+1]) > $DFFF) then
+          break;
+{$ELSE}
         if ((Ord(subject[FResultVector[1]]) and $c0) <> $80) then
           break;
+{$ENDIF}
         inc(FResultVector[1]);
         end;
       end;
+    // Advance start position and reset options for the next attempt.
+    // This matches the pcre2demo.c algorithm: after failing with
+    // PCRE2_NOTEMPTY_ATSTART|PCRE2_ANCHORED, advance past the empty match
+    // position and try again with normal (no special) options.
+    FStart:=FResultVector[1];
+    Opts:=0;
     Case DoMatch(Opts) of
       mrAfterStop :
         begin
@@ -1209,7 +1360,7 @@ begin
   Ptr:=FNameTable;
   for i:=0 to FNameCount-1 do
     begin
-{$IFDEF USEWIDESTRING}
+{$IFDEF USE_PCRE2_16}
     n:=ord(ptr[0]);
     tblName:=GetStrLen((Ptr+1),FNameEntrySize-2);
 {$ELSE}

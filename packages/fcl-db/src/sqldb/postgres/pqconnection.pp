@@ -1350,13 +1350,11 @@ begin
               Handled:=true;
               bd:= AParams[i].AsBlob;
               l:=length(BD);
+              GetMem(ar[i],l+1);
+              ar[i][l]:=#0;
               if l>0 then
-                begin
-                GetMem(ar[i],l+1);
-                ar[i][l]:=#0;
                 Move(BD[0],ar[i]^, L);
-                lengths[i]:=l;
-                end;
+              lengths[i]:=l;
               end
             else
               s := GetAsString(AParams[i]);
@@ -1853,13 +1851,22 @@ procedure TPQConnection.LoadBlobIntoBuffer(FieldDef: TFieldDef;
 var
   x             : integer;
   li            : Longint;
+  v             : PAnsiChar;
 begin
   with cursor as TPQCursor do
     begin
     x := FieldBinding[FieldDef.FieldNo-1].Index;
     li := pqgetlength(res,curtuple,x);
+    v := pqgetvalue(res,CurTuple,x);
+    if PQftype(res, x)=Oid_JSONB then
+    begin
+      // postgres returns the version for the JSONB binary encoding in the first byte (currently it is 0x1) - we don't want to have it in the result
+      //  jump over the first byte
+      inc(v);
+      dec(li);
+    end;
     ReAllocMem(ABlobBuf^.BlobBuffer^.Buffer,li);
-    Move(pqgetvalue(res,CurTuple,x)^, ABlobBuf^.BlobBuffer^.Buffer^, li);
+    Move(v^, ABlobBuf^.BlobBuffer^.Buffer^, li);
     ABlobBuf^.BlobBuffer^.Size := li;
     end;
 end;

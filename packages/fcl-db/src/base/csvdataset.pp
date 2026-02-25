@@ -109,6 +109,7 @@ Type
     function GetPacketReader(const Format: TDataPacketFormat; const AStream: TStream): TDataPacketReader; override;
     procedure LoadBlobIntoBuffer(FieldDef: TFieldDef;ABlobBuf: PBufBlobField); override;
     procedure InternalInitFieldDefs; override;
+    procedure DoBeforeClose; override;
   Public
     Constructor Create(AOwner : TComponent); override;
     Destructor Destroy; override;
@@ -281,6 +282,8 @@ Var
   I : integer;
 
 begin
+  if (rsvDeleted in ARowState) or (rsvOriginal in ARowState) then
+    Exit;
   For I:=0 to Dataset.Fields.Count-1 do
     FBuilder.AppendCell(Dataset.Fields[i].AsString);
   FBuilder.AppendRow;
@@ -400,6 +403,12 @@ begin
   finally
     F.Free;
   end;
+end;
+
+procedure TCustomCSVDataset.DoBeforeClose;
+begin
+  MergeChangeLog;
+  inherited DoBeforeClose;
 end;
 
 procedure TCustomCSVDataset.SaveToCSVStream(AStream: TStream);

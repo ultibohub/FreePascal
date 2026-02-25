@@ -1289,6 +1289,10 @@ const
     * }
   FUNCARRAY_32BIT_D0D1A0A1SR_NATIVE    = $fff2fff2;
 
+{*
+ * Useful macro for checking minimum library version/revision
+ *}
+function LIB_MINVER(lib: PLibrary; ver: Word; rev: Word): boolean;
 
 
 { * exec device definitions (V50)
@@ -2540,6 +2544,13 @@ begin
     System.FreeMem(ioReq);
   end;
 end;
+
+function LIB_MINVER(lib: PLibrary; ver: Word; rev: Word): boolean;
+begin
+  LIB_MINVER:=(lib^.lib_Version > ver) or
+              ((lib^.lib_Version = ver) and (lib^.lib_Revision >= rev));
+end;
+
 
 begin
   ExecBase:=MOS_ExecBase;

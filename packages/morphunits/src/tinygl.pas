@@ -16,7 +16,7 @@
 
  **********************************************************************}
 
-{$MODE FPC} { fsck Delphi mode }
+{$MODE FPC}
 {$INLINE ON}
 {$IFNDEF FPC_DOTTEDUNITS}
 unit tinygl;
@@ -42,6 +42,35 @@ type
 var
   TinyGLBase: Pointer = nil;
   tglContext: PGLContext = nil;
+
+{* The comment below comes from the C original header and explains how these
+   constant and associated functions work. In Free Pascal however, we do not
+   need to link against libgl.a, because TLGSetAutomaticContextVersion() is
+   reimpemented here in the TinyGL unit with permission from Mark Olsen.
+   See below. (KB) *}
+
+{* Constants to pass to TGLSetContextVersion(). Note that passing a higher
+ * version than the running tinygl.library supports will cause the value to
+ * be ignored, so you have to check the version of tinygl.library before
+ * deciding on which context version to use.
+ *
+ * libgl.a contains a function, TGLSetAutomaticContextVersion(), which will
+ * choose the newest context version supported by both the SDK and the running
+ * tinygl.library. Using this function is the preferred way to handle TinyGL
+ * context versions.
+ *
+ * Calling TGLSetContextVersion() or TGLSetAutomaticContextVersion() is only
+ * required if you open tinygl.library manually. When tinygl.library is being
+ * automatically opened, then TGLSetAutomaticContextVersion() is also called
+ * automatically. *}
+const
+  TGL_CONTEXT_VERSION_53_0  = 0;
+  TGL_CONTEXT_VERSION_53_1  = 1;
+  TGL_CONTEXT_VERSION_53_9  = 2;
+  TGL_CONTEXT_VERSION_53_11 = 3;
+
+  TGL_CORRECT_NORMALS_HINT     = $1105;
+  TGL_LOWQUALITY_TEXTURES_HINT = $1104;
 
 const
   {* with these you can specify type of context (using window, screen or bitmap.
@@ -122,7 +151,14 @@ syscall sysvbase TinyGLBase 4498;
 function TGLGetContextVersion(GLContext: PGLContext): DWord;
 syscall sysvbase TinyGLBase 4504;
 
+{ Free Pascal specific function that allows an inline taglist }
+function GLAInitializeContextTags(context: PGLContext; const tags: array of longword): longbool;
+
+
 function InitTinyGLLibrary : boolean;
+
+function TGLGetMaximumContextVersion(TinyGLBase: PLibrary): dword;
+procedure TGLSetAutomaticContextVersion(TinyGLBase: PLibrary; __tglContext: PGLContext);
 
 implementation
 
@@ -131,15 +167,56 @@ const
   VERSION : string[2] = '50';
   LIBVERSION : longword = 50;
 
+function GLAInitializeContextTags(context: PGLContext; const tags: array of longword): longbool;
+begin
+  GLAInitializeContextTags:=GLAInitializeContext(context, @tags) > 0;
+end;
+
 function InitTinyGLLibrary : boolean;
 begin
   InitTinyGLLibrary := Assigned(tglContext) and Assigned(TinyGLBase);
 end;
 
+function TGLGetMaximumContextVersion(TinyGLBase: PLibrary): dword;
+var
+  ret: dword;
+begin
+  if LIB_MINVER(TinyGLBase, 53, 11) then
+    ret:=TGL_CONTEXT_VERSION_53_11
+  else if LIB_MINVER(TinyGLBase, 53, 9) then
+    ret:=TGL_CONTEXT_VERSION_53_9
+  else if LIB_MINVER(TinyGLBase, 53, 1) then
+    ret:=TGL_CONTEXT_VERSION_53_1
+  else
+    ret:=TGL_CONTEXT_VERSION_53_0;
+
+  TGLGetMaximumContextVersion:=ret;
+end;
+
+procedure TGLSetAutomaticContextVersion(TinyGLBase: PLibrary; __tglContext: PGLContext);
+var
+  contextversion: dword;
+begin
+  contextversion := TGLGetMaximumContextVersion(TinyGLBase);
+  if contextversion = TGL_CONTEXT_VERSION_53_1 then
+    TGLEnableNewExtensions(__tglContext, 0)
+  else
+    if contextversion >= TGL_CONTEXT_VERSION_53_9 then
+      TGLSetContextVersion(__tglContext, contextversion);
+end;
+
 initialization
   TinyGLBase := OpenLibrary(TINYGLNAME,LIBVERSION);
   if Assigned(TinyGLBase) then
-    tglContext := GLInit;
+    begin
+      tglContext := GLInit;
+      if assigned(tglContext) then
+        begin
+          if LIB_MINVER(TinyGLBase, 53, 0) then
+            TGLSetAutomaticContextVersion(TinyGLBase,tglContext);
+        end;
+    end;
+
 finalization
   if Assigned(tglContext) then
     GLClose(tglContext);

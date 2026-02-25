@@ -9,7 +9,7 @@ uses
   //MemCheck,
   Classes, consoletestrunner, tcscanner,  tctypeparser, tcstatements,
   tcbaseparser, tcmoduleparser, tconstparser, tcvarparser, tcclasstype,
-  tcexprparser, tcprocfunc, tcpassrcutil, TCGenerics, paswrite,
+  tcexprparser, tcprocfunc, tcpassrcutil, TCGenerics, paswrite, tcPasWriteStatements,
   TCResolver, TCResolveGenerics, TCResolveMultiErrors,
   TCUseAnalyzer;
 

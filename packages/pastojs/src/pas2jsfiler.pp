@@ -348,7 +348,8 @@ const
     'Export',
     'Class',
     'Static',
-    'Far'
+    'Far',
+    'ThreadVar'
     );
 
   PCUDefaultExprKind = pekIdent;

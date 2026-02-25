@@ -351,8 +351,6 @@ unit aoptx86;
         procedure Process(out new_p: tai);
         property State: TCMovTrackingState read fState;
       end;
-
-      PCMOVTracking = ^TCMOVTracking;
 {$endif 8086}
 
 
@@ -14089,35 +14087,10 @@ unit aoptx86;
         fOptimizer := Optimizer;
         fLabel := AFirstLabel;
 
-        CMOVScore := 0;
-        ConstCount := 0;
-
-        { Initialise RegWrites, ConstRegs, ConstVals, ConstSizes, ConstWriteSizes and ConstMovs }
-        FillChar(RegWrites[0], MAX_CMOV_INSTRUCTIONS * 2 * SizeOf(TRegister), 0);
-        FillChar(ConstRegs[0], MAX_CMOV_REGISTERS * SizeOf(TRegister), 0);
-        FillChar(ConstVals[0], MAX_CMOV_REGISTERS * SizeOf(TCGInt), 0);
-        FillChar(ConstSizes[0], MAX_CMOV_REGISTERS * SizeOf(TSubRegister), 0);
-        FillChar(ConstWriteSizes[0], first_int_imreg * SizeOf(TOpSize), 0);
-        FillChar(ConstMovs[0], MAX_CMOV_REGISTERS * SizeOf(taicpu), 0);
-
+        { ...Object constructor supposedly zeroes fields so don’t bother with manual zeroing... }
         fInsertionPoint := p_initialjump;
-        fCondition := nil;
         fInitialJump := p_initialjump;
         fFirstMovBlock := p_initialmov;
-        fFirstMovBlockStop := nil;
-
-        fSecondJump := nil;
-        fSecondMovBlock := nil;
-        fSecondMovBlockStop := nil;
-
-        fMidLabel := nil;
-
-        fSecondJump := nil;
-        fSecondMovBlock := nil;
-
-        fEndLabel := nil;
-
-        fAllocationRange := nil;
 
         { Assume it all goes horribly wrong! }
         fState := tsInvalid;
@@ -14715,7 +14688,7 @@ unit aoptx86;
         symbol: TAsmSymbol;
         increg, tmpreg: TRegister;
 {$ifndef i8086}
-        CMOVTracking: PCMOVTracking;
+        CMOVTracking: TCMOVTracking;
         hp3,hp4,hp5: tai;
 {$endif i8086}
         TempBool: Boolean;
@@ -15007,15 +14980,15 @@ unit aoptx86;
                         <several cmovs with inverted condition>
                         jmp   xxx  (only for the 2nd case)
                   }
-                  CMOVTracking := New(PCMOVTracking, Init(Self, p, hp1, TAsmLabel(symbol)));
+                  CMOVTracking.Init(Self, p, hp1, TAsmLabel(symbol));
 
-                  if CMOVTracking^.State <> tsInvalid then
+                  if CMOVTracking.State <> tsInvalid then
                     begin
-                      CMovTracking^.Process(p);
+                      CMovTracking.Process(p);
                       Result := True;
                     end;
 
-                  CMOVTracking^.Done;
+                  CMOVTracking.Done;
 {$endif i8086}
               end;
           end;

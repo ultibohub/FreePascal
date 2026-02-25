@@ -572,7 +572,7 @@ begin
     tkBool :
       SetOrdProp(AObject,PI,Ord(PropData.AsBoolean));
     tkQWord :
-      SetOrdProp(AObject,PI,Trunc(PropData.AsFloat));
+      SetOrdProp(AObject,PI,Int64(PropData.AsQWord));
     tkObject,
     tkArray,
     tkRecord,
@@ -924,8 +924,9 @@ begin
     varlongword,
     varint64 :
       Result:=TJSONInt64Number.Create(Data);
+    varqword :
+      Result:=TJSONQWordNumber.Create(Data);
     vardecimal,
-    varqword,
     varsingle,
     vardouble,
     varCurrency :
@@ -1206,7 +1207,7 @@ begin
     tkInt64 :
       Result:=TJSONInt64Number.Create(GetOrdProp(AObject,PropertyInfo));
     tkQWord :
-      Result:=TJSONFloatNumber.Create(GetOrdProp(AObject,PropertyInfo));
+      Result:=TJSONQWordNumber.Create(QWord(GetOrdProp(AObject,PropertyInfo)));
     tkObject :
       Result:=ObjectToJSON(GetObjectProp(AObject,PropertyInfo));
     tkArray,

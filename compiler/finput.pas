@@ -116,7 +116,7 @@ interface
      type
         tmodulestate = (ms_unknown,
           ms_registered, // tmodule created
-          ms_load,       // loading ppu
+          ms_load,
           ms_compile,    // parsing and compiling
           ms_compiling_wait,      // waiting for used units of program/library/package
           ms_compiling_waitintf,  // waiting for used units of interface section

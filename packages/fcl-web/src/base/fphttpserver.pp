@@ -81,6 +81,7 @@ Type
     FBusy: Boolean;
     FConnectionID: String;
     FEmptyDetected: Boolean;
+    FLastRequestTime: QWord;
     FIsUpgraded: Boolean;
     FOnRequestError: TRequestErrorHandler;
     FOnUnexpectedError: TRequestErrorHandler;
@@ -657,7 +658,17 @@ end;
 
 procedure TFPPooledConnectionHandler.CheckRequest(aConnection: TFPHTTPConnection; var aContinue: Boolean);
 begin
-  if Server.Active and aConnection.AllowNewRequest and aConnection.RequestPending then
+  if not Server.Active or not aConnection.AllowNewRequest then
+    exit;
+  // Enforce keep-alive timeout, matching tmThread behavior
+  if (aConnection.KeepConnectionTimeout > 0)
+     and (GetTickCount64 > aConnection.FLastRequestTime + QWord(aConnection.KeepConnectionTimeout)) then
+  begin
+    RemoveConnection(aConnection);
+    exit;
+  end;
+  // Use non-blocking check (timeout=0) to avoid blocking the accept thread
+  if (Not aConnection.IsUpgraded) and aConnection.Socket.CanRead(0) then
     ScheduleRequest(aConnection);
 end;
 
@@ -1343,6 +1354,7 @@ begin
       end;
   end;
   FBusy:=False;
+  FLastRequestTime:=GetTickCount64;
 end;
 
 { TFPHTTPConnectionThread }

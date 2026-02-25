@@ -1647,7 +1647,15 @@ begin
       if (FKeepConnectionReconnectLimit>=0) and (ACount>=KeepConnectionReconnectLimit) then
         break; // reconnect limit is reached -> exit
       If Not SkipReconnect and Not Terminated Then
+        begin
+        // Restore request cookies before retry (bug #40813): (similar to redirect)
+        if (not Assigned(FCookies)) and Assigned(FSentCookies) then
+          begin
+          FCookies:=FSentCookies;
+          FSentCookies:=Nil;
+          end;
         ReconnectToServer(CHost,CPort,AIsHttps);
+        end;
       Inc(ACount);
     Finally
       // On terminate, we close the request
