@@ -465,11 +465,12 @@ Type
     FOSes   : TOSes;
     FCPUs   : TCPUs;
     FValue  : String;
+    procedure SetValue(const Value: String);
   Public
     Procedure Assign(aSource : TPersistent); override;
     Function Match (aCPU : TCPU; aOS : TOS) : Boolean;
     Function Match (const aValue : String; aCPU : TCPU; aOS : TOS) : Boolean;
-    Property Value : String Read FValue Write FValue;
+    Property Value : String Read FValue Write SetValue;
     Property OSes  : TOSes Read FOSes Write FOSes;
     Property CPUs : TCPUs Read FCPUS Write FCPUs;
   end;
@@ -5211,7 +5212,7 @@ begin
       Continue;
     aPath:=aLine[2];
     aOp:=aLine[3];
-    aDir:=Copy(aLine,5,P-5);
+    aDir:= ExtractFileDir(Copy(aLine, 5, P - 5));
     P:=Pos('=',aLine);
     if (P>0) then
       aDest:=Copy(aLine,P+1);
@@ -5239,7 +5240,7 @@ begin
         '+':
             begin
             CS:=CSL.Find(aDir,aTarget.Cpu,aTarget.OS);
-            if not Assigned(CS) then
+            if Assigned(CS) then
               CSL.Add(aDir,[aTarget.Cpu],[aTarget.OS]);
             end;
       end;
@@ -5253,17 +5254,26 @@ Var
   N,V : String;
 
 begin
+{$IFDEF WINDOWS}
+  for I := 0 to Pred(Aliases.Count) do
+    Aliases[I] := FixPath(Aliases[I]);
+{$ENDIF}
+
   For I:=Aliases.Count-1 downto 0 do
     if pos('=',Aliases[i])>0 then
-      begin
+    begin
       Aliases.GetNameValue(I,N,V);
-      N:=ExtractFileName(N);
-      V:=ExtractFileName(V);
-      Aliases.Add(N+'='+V);
-      N:=ChangeFileExt(N,'');
-      V:=ChangeFileExt(V,'');
-      Aliases.Add(N+'='+V);
+
+      if not N.StartsWith('{') then
+      begin
+        N:=ExtractFileName(N);
+        V:=ExtractFileName(V);
+        Aliases.Add(N+'='+V);
+        N:=ChangeFileExt(N,'');
+        V:=ChangeFileExt(V,'');
+        Aliases.Add(N+'='+V);
       end;
+    end;
 end;
 
 procedure TPackage.ApplyNameSpaces(aEngine: TBuildEngine; aFileName: string; aTarget : TCompileTarget);
@@ -10725,6 +10735,11 @@ begin
   Result:=Match(aCPU,aOS) and (aValue=Value)
 end;
 
+
+procedure TConditionalString.SetValue(const Value: String);
+begin
+  FValue := FixPath(Value);
+end;
 
 {****************************************************************************
                            TConditionalStrings
