@@ -26,7 +26,7 @@ type
     procedure CleanOutputDir; overload;
     procedure CleanOutputDir(Dir: string); overload;
     procedure Compile;
-    procedure CheckCompiled(const Expected: TStringArray);
+    procedure CheckCompiled(const Must: TStringArray; const Optional: TStringArray = []);
     procedure TouchFile(const aFilename: string);
     procedure MakeDateDiffer(const File1, File2: string);
     property PP: string read FPP write FPP;
@@ -44,11 +44,14 @@ type
     procedure TestTwoUnits; // 2 units, recompile first
     procedure TestChangeLeaf1; // prog->ant->bird, change bird, recompile ant as well
     procedure TestChangeInner1; // prog->ant->bird, change ant, keep bird.ppu
-    procedure TestTouchLeaf1; // TODO prog->ant->bird, touch bird, keep ant.ppu
 
-    procedure TestCycle2_ChangeB; // prog->ant->bird, bird.impl->ant, change bird
-    procedure TestCycle3_ChangeC; // prog->ant->bird->cat, cat.impl->ant, change cat
+    procedure TestCycle2_ChangeB; // prog->ant->bird, bird.impl->ant, change bird, same crc
+    procedure TestCycle3_ChangeC; // prog->ant->bird->cat, cat.impl->ant, change cat same crc
+    procedure TestCycle3_ChangeC_Intf; // prog->ant->bird->cat, cat.impl->ant, change cat interface crc
     procedure TestCycleImpl3_ChangeC; // prog->ant.impl->bird.impl->cat, cat.impl->ant, change cat
+    procedure TestCycle2_ChangeB_CRC; // prog->ant->bird, bird.impl->ant, change bird crc
+    procedure TestCycle22_ChangeC_CRC; // prog->ant->bird->cat, bird.impl->ant, cat.impl->bird, change cat crc
+    procedure TestCycle32_ChangeC_CRC; // prog->ant->bird->cat, bird.impl->ant, cat.impl->bird+ant, change cat crc
 
     // -Ur Generate release unit files (never automatically recompiled)
     procedure TestUr_cycle2;
@@ -56,6 +59,9 @@ type
     procedure TestChangeInlineBodyBug; // Bug: prog+1 unit plus a package of 2 units, change of inline body should change crc, but does not
 
     procedure TestBug41457; // two cycles of size 2 and 3
+
+    // inline
+    procedure TestInline1; // ant->bird->cat, cat inline body changes
 
     // inline modifier in implementation (not in interface)
     procedure TestImplInline1; // 2 units, cycle, impl inline
@@ -70,6 +76,8 @@ type
 
     // generics
     procedure TestGeneric_IndirectUses; // specialization of an inherited class in an indirectly used unit
+    procedure TestGeneric_Cycle1; // prg->ant->bird, bird.impl->ant, TAnt->TBird
+    procedure TestGeneric_Cycle2; // prg->ant.impl->bird, bird.impl->ant, TAnt->TBird
   end;
 
 
@@ -188,17 +196,23 @@ begin
   end;
 end;
 
-procedure TTestRecompile.CheckCompiled(const Expected: TStringArray);
+procedure TTestRecompile.CheckCompiled(const Must: TStringArray; const Optional: TStringArray);
 var
   i, j: Integer;
 begin
-  for i:=0 to length(Expected)-1 do
-    if (Compiled=nil) or (Compiled.IndexOf(Expected[i])<0) then
-      Fail('missing compiling "'+Expected[i]+'", Step='+Step);
+  // check that all Must are compiled
+  for i:=0 to length(Must)-1 do
+    if (Compiled=nil) or (Compiled.IndexOf(Must[i])<0) then
+      Fail('missing compiling "'+Must[i]+'", Step='+Step);
+
+  // check that only Must and Optional are compiled
   for i:=0 to Compiled.Count-1 do
   begin
-    j:=length(Expected)-1;
-    while (j>=0) and (Expected[j]<>Compiled[i]) do dec(j);
+    j:=length(Must)-1;
+    while (j>=0) and (Must[j]<>Compiled[i]) do dec(j);
+    if j>=0 then continue;
+    j:=length(Optional)-1;
+    while (j>=0) and (Optional[j]<>Compiled[i]) do dec(j);
     if j<0 then
       Fail('unexpected compiling "'+Compiled[i]+'", Step='+Step);
   end;
@@ -285,7 +299,7 @@ begin
 end;
 
 procedure TTestRecompile.TestChangeLeaf1;
-// prog->ant->bird, change bird, recompile ant
+// prog->ant->bird, change bird
 var
   Dir: String;
 begin
@@ -305,7 +319,7 @@ begin
   Step:='Second compile';
   UnitPath:=Dir+';'+Dir+PathDelim+'src2';
   Compile;
-  // the main src is always compiled, bird changed, ant is only reloaded, not recompiled
+  // the main src is always compiled, bird changed
   CheckCompiled(['changeleaf1_prg.pas','changeleaf1_bird.pas']);
 end;
 
@@ -334,32 +348,8 @@ begin
   CheckCompiled(['changeinner1_prg.pas','changeinner1_ant.pas']);
 end;
 
-procedure TTestRecompile.TestTouchLeaf1;
-// prog->ant->bird, touch bird, keep ant.ppu
-var
-  Dir: String;
-begin
-  exit; // TODO
-
-  Dir:='touchleaf1';
-  UnitPath:=Dir;
-  OutDir:=Dir+PathDelim+'ppus';
-  MainSrc:=Dir+PathDelim+'touchleaf1_prg.pas';
-
-  Step:='First compile';
-  CleanOutputDir;
-  Compile;
-  CheckCompiled(['touchleaf1_prg.pas','touchleaf1_ant.pas','touchleaf1_bird.pas']);
-
-  Step:='Second compile';
-  TouchFile(Dir+PathDelim+'touchleaf1_bird.pas');
-  Compile;
-  // the main src is always compiled, bird changed but same CRC, so ant.ppu must be kept
-  CheckCompiled(['touchleaf1_prg.pas','touchleaf1_bird.pas']);
-end;
-
 procedure TTestRecompile.TestCycle2_ChangeB;
-// prog->ant->bird, bird.impl->ant, change bird
+// prog->ant->bird, bird.impl->ant, change bird same crc
 var
   Dir: String;
 begin
@@ -379,12 +369,12 @@ begin
   Step:='Second compile';
   UnitPath:=Dir+';'+Dir+PathDelim+'src2';
   Compile;
-  // the main src is always compiled, bird changed, so ant must be recompiled as well
-  CheckCompiled(['cycle2_changeb_prg.pas','cycle2_changeb_ant.pas','cycle2_changeb_bird.pas']);
+  // the main src is always compiled, bird changed same crc, so ant is kept
+  CheckCompiled(['cycle2_changeb_prg.pas','cycle2_changeb_bird.pas']);
 end;
 
 procedure TTestRecompile.TestCycle3_ChangeC;
-// prog->ant->bird->cat, cat.impl->ant, change cat
+// prog->ant->bird->cat, cat.impl->ant, change cat same crc
 var
   Dir: String;
 begin
@@ -405,9 +395,33 @@ begin
   UnitPath:=Dir+';'+Dir+PathDelim+'src2';
   Compile;
   // the main src is always compiled, cat changed but not crc,
-  // because a ppu needs the crc, bird waits in intf, so ant waits in intf, creating a waiting loop
-  // triggering a recompile of all the ppus of the whole cycle
-  CheckCompiled(['cycle3_changec_prg.pas','cycle3_changec_ant.pas','cycle3_changec_bird.pas','cycle3_changec_cat.pas']);
+  CheckCompiled(['cycle3_changec_prg.pas','cycle3_changec_cat.pas']);
+end;
+
+procedure TTestRecompile.TestCycle3_ChangeC_Intf;
+// prog->ant->bird->cat, cat.impl->ant, change cat interface crc
+var
+  Dir: String;
+begin
+  Dir:='cycle3_changec_intf';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src1';
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'cycle3_changec_intf_prg.pas';
+  MakeDateDiffer(
+    Dir+PathDelim+'src1'+PathDelim+'cycle3_changec_intf_cat.pas',
+    Dir+PathDelim+'src2'+PathDelim+'cycle3_changec_intf_cat.pas');
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['cycle3_changec_intf_prg.pas','cycle3_changec_intf_ant.pas',
+    'cycle3_changec_intf_bird.pas','cycle3_changec_intf_cat.pas']);
+
+  Step:='Second compile';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src2';
+  Compile;
+  // the main src is always compiled, cat changed interface crc, so bird must be recompiled
+  CheckCompiled(['cycle3_changec_intf_prg.pas','cycle3_changec_intf_bird.pas','cycle3_changec_intf_cat.pas']);
 end;
 
 procedure TTestRecompile.TestCycleImpl3_ChangeC;
@@ -431,8 +445,89 @@ begin
   Step:='Second compile';
   UnitPath:=Dir+';'+Dir+PathDelim+'src2';
   Compile;
-  // the main src is always compiled, cat changed but not crc
+  // the main src is always compiled, cat changed but same crc
   CheckCompiled(['cycleimpl3_changec_prg.pas','cycleimpl3_changec_cat.pas']);
+end;
+
+procedure TTestRecompile.TestCycle2_ChangeB_CRC;
+// prog->ant->bird, bird.impl->ant, change bird
+var
+  Dir: String;
+begin
+  Dir:='cycle2_changeb_crc';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src1';
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'cycle2_changeb_crc_prg.pas';
+  MakeDateDiffer(
+    Dir+PathDelim+'src1'+PathDelim+'cycle2_changeb_crc_bird.pas',
+    Dir+PathDelim+'src2'+PathDelim+'cycle2_changeb_crc_bird.pas');
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['cycle2_changeb_crc_prg.pas','cycle2_changeb_crc_ant.pas','cycle2_changeb_crc_bird.pas']);
+
+  Step:='Second compile';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src2';
+  Compile;
+  // the main src is always compiled, bird's crc changed, so ant must be recompiled as well
+  CheckCompiled(['cycle2_changeb_crc_prg.pas','cycle2_changeb_crc_ant.pas','cycle2_changeb_crc_bird.pas']);
+end;
+
+procedure TTestRecompile.TestCycle22_ChangeC_CRC;
+// prog->ant->bird->cat, bird.impl->ant, cat.impl->bird, change cat crc
+var
+  Dir: String;
+begin
+  Dir:='cycle22_changec';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src1';
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'cycle22_changec_prg.pas';
+  MakeDateDiffer(
+    Dir+PathDelim+'src1'+PathDelim+'cycle22_changec_cat.pas',
+    Dir+PathDelim+'src2'+PathDelim+'cycle22_changec_cat.pas');
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['cycle22_changec_prg.pas','cycle22_changec_ant.pas',
+                 'cycle22_changec_bird.pas','cycle22_changec_cat.pas']);
+
+  Step:='Second compile';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src2';
+  Compile;
+  // the main src is always compiled, cat changed crc, so bird must be recompiled same crc,
+  // so ant is kept
+  CheckCompiled(['cycle22_changec_prg.pas',
+                 'cycle22_changec_bird.pas','cycle22_changec_cat.pas']);
+end;
+
+procedure TTestRecompile.TestCycle32_ChangeC_CRC;
+// prog->ant->bird->cat, bird.impl->ant, cat.impl->bird+ant, change cat crc
+var
+  Dir: String;
+begin
+  Dir:='cycle32_changec';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src1';
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'cycle32_changec_prg.pas';
+  MakeDateDiffer(
+    Dir+PathDelim+'src1'+PathDelim+'cycle32_changec_cat.pas',
+    Dir+PathDelim+'src2'+PathDelim+'cycle32_changec_cat.pas');
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['cycle32_changec_prg.pas','cycle32_changec_ant.pas',
+                 'cycle32_changec_bird.pas','cycle32_changec_cat.pas']);
+
+  Step:='Second compile';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src2';
+  Compile;
+  // the main src is always compiled, cat changed crc, so bird must be recompiled same crc,
+  // so ant either needs a reload or a recompile
+  CheckCompiled(['cycle32_changec_prg.pas','cycle32_changec_ant.pas',
+                 'cycle32_changec_bird.pas','cycle32_changec_cat.pas']);
 end;
 
 procedure TTestRecompile.TestUr_cycle2;
@@ -510,10 +605,7 @@ begin
   OutDir:=ProgDir+'lib';
   MainSrc:=ProgDir+'testcib_prog.pas';
   Compile;
-  // fpc should compile elk:
-  //CheckCompiled(['testcib_prog.pas','testcib_elk.pas']);
-  // But it does not:
-  CheckCompiled(['testcib_prog.pas']);
+  CheckCompiled(['testcib_prog.pas','testcib_elk.pas']);
 end;
 
 procedure TTestRecompile.TestBug41457;
@@ -539,6 +631,31 @@ begin
   Step:='Second compile';
   Compile;
   CheckCompiled(['bug41457_ant.pas']);
+end;
+
+procedure TTestRecompile.TestInline1;
+// ant->bird->cat, cat inline body changes
+var
+  Dir: String;
+begin
+  Dir:='inline1';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src1';
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'inline1_ant.pas';
+  MakeDateDiffer(
+    Dir+PathDelim+'src1'+PathDelim+'inline1_cat.pas',
+    Dir+PathDelim+'src2'+PathDelim+'inline1_cat.pas');
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['inline1_ant.pas','inline1_bird.pas','inline1_cat.pas']);
+
+  Step:='Second compile';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src2';
+  Compile;
+  // the main src is always compiled, ant impl changed, so bird is also compiled
+  CheckCompiled(['inline1_ant.pas','inline1_bird.pas','inline1_cat.pas']);
 end;
 
 procedure TTestRecompile.TestImplInline1;
@@ -676,6 +793,48 @@ begin
   Compile;
   // the main src is always compiled, cat impl of the generic changed, so specialization in ant changed
   CheckCompiled(['generic_indirectuses_prg.pas','generic_indirectuses_ant.pas','generic_indirectuses_cat.pas']);
+end;
+
+procedure TTestRecompile.TestGeneric_Cycle1;
+// prg->ant->bird, bird.impl->ant, TAnt->TBird
+var
+  Dir: String;
+begin
+  Dir:='generic_cycle1';
+  UnitPath:=Dir;
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'generic_cycle1_prg.pas';
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['generic_cycle1_prg.pas','generic_cycle1_ant.pas','generic_cycle1_bird.pas']);
+
+  Step:='Second compile';
+  Compile;
+  // the main src is always compiled
+  CheckCompiled(['generic_cycle1_prg.pas']);
+end;
+
+procedure TTestRecompile.TestGeneric_Cycle2;
+// prg->ant.impl->bird, bird.impl->ant, TAnt->TBird
+var
+  Dir: String;
+begin
+  Dir:='generic_cycle1';
+  UnitPath:=Dir;
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'generic_cycle1_prg.pas';
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['generic_cycle1_prg.pas','generic_cycle1_ant.pas','generic_cycle1_bird.pas']);
+
+  Step:='Second compile';
+  Compile;
+  // the main src is always compiled
+  CheckCompiled(['generic_cycle1_prg.pas']);
 end;
 
 initialization
