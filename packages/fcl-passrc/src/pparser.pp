@@ -347,6 +347,7 @@ type
   private
     FCurModule: TPasModule;
     FCurTokenEscaped: Boolean;
+    FEndExprTokenExtra: set of TToken;
     FFailOnModuleErors: Boolean;
     FFileResolver: TBaseFileResolver;
     FIdentifierPos: TPasSourcePos;
@@ -2373,7 +2374,9 @@ const
     tkdo, tkdownto, tkelse, tkend, tkof, tkthen, tkto, tkotherwise
   ];
 begin
-  if (CurToken in EndExprToken) or (CheckHints and IsCurTokenHint) then
+  if (CurToken in EndExprToken)
+      or (CurToken in FEndExprTokenExtra)
+      or (CheckHints and IsCurTokenHint) then
     exit(true);
   if AllowEqual and (CurToken=tkEqual) then
     exit(true);
@@ -2730,8 +2733,10 @@ begin
       ProcExpr:=TProcedureExpr(CreateElement(TProcedureExpr,'',AParent,visPublic));
       ProcExpr.Proc:=TPasAnonymousProcedure(ParseProcedureOrFunctionDecl(ProcExpr,ProcType,false));
       Engine.FinishScope(stProcedure,ProcExpr.Proc);
-      Result:=ProcExpr;
-      exit; // do not allow postfix operators . ^. [] ()
+      Last:=ProcExpr;
+      // ParseProcBeginBlock already called NextToken after 'end',
+      // so UngetToken to let the NextToken below re-read it for postfix handling
+      UngetToken;
       end;
     tkCaret:
       begin
@@ -3003,7 +3008,7 @@ Var
   SrcPos: TPasSourcePos;
 
 begin
-  AllowedBinaryOps:=BinaryOP;
+  AllowedBinaryOps:=BinaryOP-FEndExprTokenExtra;
   if Not AllowEqual then
     Exclude(AllowedBinaryOps,tkEqual);
   {$ifdef VerbosePasParserWriteln}
@@ -4499,11 +4504,24 @@ Var
   T : TPasGenericTemplateType;
   Expr: TPasExpr;
   TypeEl: TPasType;
+  GroupIsConst: Boolean;
 begin
   ExpectToken(tkLessThan);
+  GroupIsConst:=False;
   repeat
-    N:=ExpectIdentifier;
+    NextToken;
+    if CurToken=tkconst then
+      begin
+      GroupIsConst:=True;
+      N:=ExpectIdentifier;
+      end
+    else
+      begin
+      CheckToken(tkIdentifier);
+      N:=CurTokenString;
+      end;
     T:=TPasGenericTemplateType(CreateElement(TPasGenericTemplateType,N,Parent));
+    T.IsConst:=GroupIsConst;
     List.Add(T);
     NextToken;
     if Curtoken = tkColon then
@@ -4531,6 +4549,8 @@ begin
         end;
       until CurToken<>tkComma;
     Engine.FinishScope(stTypeDef,T);
+    if CurToken=tkSemicolon then
+      GroupIsConst:=False;
   until not (CurToken in [tkSemicolon,tkComma]);
   if Not (CurToken in [tkGreaterThan,tkGreaterEqualThan]) then
     ParseExcExpectedAorB(TokenInfos[tkComma], TokenInfos[tkGreaterThan])
@@ -4546,14 +4566,37 @@ procedure TPasParser.ReadSpecializeArguments(Parent: TPasElement;
 // after parsing CurToken is on tkGreaterThan
 Var
   TypeEl: TPasType;
+  Expr: TPasExpr;
+  OldExtra: set of TToken;
 begin
   //writeln('START TPasParser.ReadSpecializeArguments ',CurTokenText,' ',CurTokenString);
   CheckToken(tkLessThan);
   repeat
     //writeln('ARG TPasParser.ReadSpecializeArguments ',CurTokenText,' ',CurTokenString);
-    TypeEl:=ParseType(Parent,CurTokenPos,'');
-    Params.Add(TypeEl);
     NextToken;
+    case CurToken of
+      tkNumber, tkString, tkChar, tktrue, tkfalse, tknil,
+      tkSquaredBraceOpen, tkMinus, tkPlus, tknot:
+        begin
+        // Const generic argument - parse as expression
+        OldExtra:=FEndExprTokenExtra;
+        FEndExprTokenExtra:=FEndExprTokenExtra+[tkGreaterThan,tkshr];
+        try
+          Expr:=DoParseExpression(Parent);
+          Params.Add(Expr);
+        finally
+          FEndExprTokenExtra:=OldExtra;
+        end;
+        end;
+    else
+      begin
+      // Type argument or identifier - existing behavior
+      UngetToken;
+      TypeEl:=ParseType(Parent,CurTokenPos,'');
+      Params.Add(TypeEl);
+      NextToken;
+      end;
+    end;
     if CurToken=tkComma then
       continue
     else if CurToken=tkshr then
@@ -4944,7 +4987,7 @@ begin
   Result:=Result+';'+CurTokenText;
 
   NextToken;
-  if not (CurToken in [tkString,tkIdentifier]) then
+  if not (CurToken in [tkString,tkStringMultiLine,tkIdentifier]) then
     begin
     if (CurToken=tkSemicolon) and (ExtMod in [vmExternal,vmPublic,vmExport]) then
       exit;
@@ -4957,7 +5000,7 @@ begin
   // external libname;
   // external libname name exportname;
   // external name exportname;
-  if (ExtMod=vmExternal) and (CurToken in [tkString,tkIdentifier])
+  if (ExtMod=vmExternal) and (CurToken in [tkString,tkStringMultiLine,tkIdentifier])
       and Not (CurTokenIsIdentifier('name')) then
     begin
     Result := Result + ' ' + CurTokenText;
@@ -4968,7 +5011,7 @@ begin
   if not CurTokenIsIdentifier('name') then
     ParseExcSyntaxError;
   NextToken;
-  if not (CurToken in [tkChar,tkString,tkIdentifier]) then
+  if not (CurToken in [tkChar,tkString,tkStringMultiLine,tkIdentifier]) then
     ParseExcTokenError(TokenInfos[tkString]);
   Result := Result + ' ' + CurTokenText;
   ExportName:=DoParseExpression(Parent);
@@ -5575,7 +5618,7 @@ begin
   pmExternal:
     begin
     NextToken;
-    if CurToken in [tkChar,tkString,tkIdentifier] then
+    if CurToken in [tkChar,tkString,tkStringMultiLine,tkIdentifier] then
       begin
       // external libname
       // external libname name XYZ
@@ -5591,7 +5634,7 @@ begin
       if CurTokenIsIdentifier('NAME') then
         begin
         NextToken;
-        if not (CurToken in [tkChar,tkString,tkIdentifier]) then
+        if not (CurToken in [tkChar,tkString,tkStringMultiLine,tkIdentifier]) then
           ParseExcTokenError(TokenInfos[tkString]);
         E:=DoParseExpression(Parent);
         if Assigned(P) then
@@ -5648,7 +5691,7 @@ begin
       begin
       AddModifier;
       NextToken;  // Should be "public name string".
-      if not (CurToken in [tkString,tkIdentifier]) then
+      if not (CurToken in [tkString,tkStringMultiLine,tkIdentifier]) then
         ParseExcTokenError(TokenInfos[tkString]);
       E:=DoParseExpression(Parent);
       if Parent is TPasProcedure then
@@ -5675,7 +5718,7 @@ begin
       case E.Kind of
         pekNumber, pekUnary:
           TPasProcedure(Parent).Messagetype:=pmtInteger;
-        pekString:
+        pekString, pekStringMultiLine:
           TPasProcedure(Parent).Messagetype:=pmtString;
         pekIdent : ; // unknown at this time
       else
@@ -6637,6 +6680,16 @@ begin
           end
         else
           Params.ParseExpr;
+        end;
+      tkProcedure, tkFunction:
+        begin
+        if msAnonymousFunctions in CurrentModeswitches then
+          begin
+          CheckStatementCanStart;
+          Params.ParseExpr;
+          end
+        else
+          ParseExcSyntaxError;
         end;
       else
         ParseExcSyntaxError;

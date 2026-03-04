@@ -186,7 +186,7 @@ implementation
         CheckResourcesUsed:=found;
       end;
 
-    function AddUnit(curr : tmodule; const s:string;addasused:boolean): tppumodule;
+    function AddUnit(curr : tmodule; const s:string; addasused:boolean = true): tppumodule;
       var
         hp : tppumodule;
         unitsym : tunitsym;
@@ -198,8 +198,9 @@ implementation
         hp:=registerunit(curr,s,'',isnew);
         if isnew then
           usedunits.concat(tused_unit.create(hp,true,addasused,nil));
+        hp.adddependency(curr,curr.in_interface); { adddependency before loadppu for invalid cycle test }
         hp.loadppu(curr);
-        hp.adddependency(curr,curr.in_interface);
+        tmodule.finish_module(hp);
 
         { add to symtable stack }
         if assigned(hp.globalsymtable) then
@@ -219,13 +220,6 @@ implementation
         end;
         result:=hp;
       end;
-
-
-    function AddUnit(curr :tmodule; const s:string):tppumodule;
-      begin
-        result:=AddUnit(curr,s,true);
-      end;
-
 
     function maybeloadvariantsunit(curr : tmodule) : boolean;
       var
@@ -381,7 +375,8 @@ implementation
       end;
 
 
-    { Return true if all units were loaded, no recompilation needed. }
+    { load default units, like language mode units
+      Return true if all units were loaded, no recompilation needed. }
     function loaddefaultunits(curr :tmodule) : boolean;
 
       Procedure CheckAddUnit(s: string);
@@ -581,8 +576,8 @@ implementation
 {$endif RISCV32}
       end;
 
-
-    { Return true if all units were loaded, no recompilation needed. }
+    { Load units provided on the command line
+      Return true if all units were loaded, no recompilation needed. }
     function loadautounits(curr: tmodule) : boolean;
 
       Procedure CheckAddUnit(s: string);
@@ -728,6 +723,12 @@ implementation
             if pu.in_uses and
                (pu.in_interface=frominterface) then
              begin
+               { adddependency before loadppu for invalid cycle test }
+               if not pu.dependent_added then
+               begin
+                 pu.dependent_added:=true;
+                 lu.adddependency(curr,frominterface);
+               end;
                { always call loadppu for the cycle test }
                tppumodule(lu).loadppu(curr);
                if not (curr.state in [ms_compile,ms_compiling_wait,ms_compiling_waitintf,ms_compiling_waitimpl]) then
@@ -738,16 +739,14 @@ implementation
                  Result:=false;
                  break;
                end;
-               if not pu.dependent_added then
-               begin
-                 pu.dependent_added:=true;
-                 lu.adddependency(curr,frominterface);
-               end;
                if not lu.interface_compiled or lu.do_reload or tmodule.ctask_fast_backtrack then
                begin
                  { an used unit is delayed
                    Important: do not break, load the remaining uses section, so the scheduler
                               has more information about cycles }
+                 {$IFDEF DEBUG_PPU_CYCLES}
+                 writeln('PPUALGO loadunits ',curr.modulename^,' ',curr.statestr,' ',BoolToStr(pu.in_interface,'interface','implementation'),' uses "',pu.u.modulename^,'", state=',pu.u.statestr,', waiting ...');
+                 {$ENDIF}
                  tmodule.ctask_fast_backtrack:=true;
                  Result:=false;
                end;
@@ -2046,7 +2045,7 @@ type
                  def_system_macro('FPC_HAS_FEATURE_'+featurestr[feature]);
            end;
 
-         {Load the units used by the program we compile.}
+         { Load the units used by the program we compile. }
          if (current_scanner.token=_ID) and (current_scanner.idtoken=_CONTAINS) then
            begin
              { consume _CONTAINS word }
@@ -2363,6 +2362,9 @@ type
               linker.AddModuleFiles(sysinitmod);
             { Does any unit use checkpointer function }
             program_uses_checkpointer:=false;
+            { before freeing modules, free used_units }
+            curr.used_units.free;
+            curr.used_units:=TLinkedList.Create;
             { insert all .o files from all loaded units and
               unload the units, we don't need them anymore.
               Keep the curr because that is still needed }
@@ -2412,7 +2414,6 @@ type
       var
         sysinitmod, hp,hp2 : tmodule;
         resources_used : boolean;
-
 
       begin
         sysinitmod:=nil;
@@ -3018,8 +3019,11 @@ type
              load_ok:=loadunits(curr,false) and load_ok;
              curr.consume_semicolon_after_uses:=true;
            end
-         else
+         else begin
            curr.consume_semicolon_after_uses:=false;
+           if tmodule.ctask_fast_backtrack then
+             load_ok:=false; { some used units are not fully compiled }
+         end;
 
          if curr.is_initial then
            load_ok:=false; { delay program, so ctask can finish all units }

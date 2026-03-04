@@ -115,7 +115,7 @@ interface
       end;
       tderefmaparray = array of tderefmaprec;
 
-      tqueue_module_event = procedure(m: tmodule) of object;
+      tfinish_module_event = procedure(m: tmodule) of object;
       trename_module_event = procedure(m: tmodule; const oldname: TSymStr) of object;
 
       { tused_unit }
@@ -243,13 +243,15 @@ interface
                                  all circular connected modules have the same lowindex }
         scc_onstack: boolean;  { dont use. used in ttask_handler.update_circular_unit_groups }
         class var
-          ctask_fast_backtrack: boolean;
+          ctask_fast_backtrack: boolean; { true if some cycle was detected and returning fast to ctask scheduler }
           cycle_stamp: dword;
         var
         cycle_search_stamp: dword;
         scc_tree_unfinished: boolean; { only valid for scc roots }
         other_scc_unfinished: boolean; { only valid for scc roots }
         scc_tree_crc_wait: tmodule;
+
+        task: TObject;         { ctask ttask }
 
         localunitsearchpath,           { local searchpaths }
         localobjectsearchpath,
@@ -316,13 +318,12 @@ interface
         procedure adddependency(callermodule:tmodule; frominterface : boolean);
         procedure removedependency(callermodule:tmodule);
         function hasdependency(callermodule:tmodule): boolean;
-        procedure flagdependent(callermodule:tmodule);
+        procedure flagdependent;
         class procedure increase_cycle_stamp;
         procedure disconnect_depending_modules; virtual;
         function is_reload_needed(du: tdependent_unit): boolean; virtual; // true if reload needed after self changed
         function are_all_used_units_compiled: boolean;
-        class var queue_module: tqueue_module_event;
-        class var rename_module: trename_module_event;
+        class var finish_module: tfinish_module_event;
         procedure addimportedsym(sym:TSymEntry; check_if_exists: boolean = true);
         procedure derefimportedsymbols;
         function  addusedunit(hp:tmodule;inuses:boolean;usym:tunitsym):tused_unit;
@@ -331,6 +332,7 @@ interface
         function usedunitsloaded(interface_units: boolean; out firstwaiting : tmodule): boolean;
         function nowaitingforunits(out firstwaiting : tmodule) : Boolean;
         function usedunitsfinalcrc(out firstwaiting : tmodule): boolean;
+        procedure check_releaseppu_checksum_changed(uu: tused_unit);
         procedure updatemaps;
         function  derefidx_unit(id:longint):longint;
         function  resolve_unit(id:longint):tmodule;
@@ -885,6 +887,9 @@ implementation
         globalmacrosymtable := nil;
         localmacrosymtable.free;
         localmacrosymtable := nil;
+
+        task:=nil;
+        all_modules[moduleid]:=nil;
 {$ifdef MEMDEBUG}
         memsymtable.stop;
 {$endif}
@@ -1116,11 +1121,12 @@ implementation
 
     procedure tmodule.adddependency(callermodule: tmodule; frominterface: boolean);
       begin
-        { This is not needed for programs }
-        if not callermodule.is_unit then
-          exit;
         if hasdependency(callermodule) then exit;
-        Message2(unit_u_add_depend_to,callermodule.modulename^,modulename^);
+        if is_unit then
+          Message2(unit_u_add_depend_to,callermodule.modulename^,modulename^);
+
+        { dependent_units is needed by the invalid cycle test,
+          using the program is an invalid cycle as well }
         dependent_units.concat(tdependent_unit.create(callermodule,frominterface));
 
         if callermodule.scc_finished then
@@ -1155,7 +1161,7 @@ implementation
         Result:=false;
       end;
 
-    procedure tmodule.flagdependent(callermodule:tmodule);
+    procedure tmodule.flagdependent;
       var
         dm : tdependent_unit;
         m : tmodule;
@@ -1192,7 +1198,7 @@ implementation
               must also be re-resolved, because they will also contain
               pointers to procdefs in the old trgobj (in case of a
               recompile, all old defs are freed) }
-            m.flagdependent(self);
+            m.flagdependent;
           end;
           dm:=tdependent_unit(dm.next);
         end;
@@ -1413,6 +1419,20 @@ implementation
       Result:=True;
     end;
 
+    procedure tmodule.check_releaseppu_checksum_changed(uu: tused_unit);
+      begin
+        if not (mf_release in moduleflags) or not fromppu then
+          exit;
+
+        if (uu.u.interface_crc<>uu.interface_checksum) then
+          writeln('Error: -Ur ppu ',realmodulename^,' interface checksum changed for ',uu.u.realmodulename^)
+        else if (uu.u.indirect_crc<>uu.indirect_checksum) then
+          writeln('Error: -Ur ppu ',realmodulename^,' indirect checksum changed for ',uu.u.realmodulename^)
+        else
+          writeln('Error: -Ur ppu ',realmodulename^,' implementation checksum changed for ',uu.u.realmodulename^);
+        Internalerror(2026030311);
+      end;
+
     function tmodule.usesmodule_in_interface(m: tmodule): boolean;
 
       var
@@ -1627,7 +1647,6 @@ implementation
         stringdispose(realmodulename);
         modulename:=stringdup(upper(s));
         realmodulename:=stringdup(s);
-        rename_module(self,oldname);
         { also update asmlibrary names }
         current_asmdata.name:=modulename;
       end;

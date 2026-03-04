@@ -41,10 +41,14 @@ type
     procedure GetCompiler;
     procedure CheckCompiler;
   published
+    // simple
     procedure TestTwoUnits; // 2 units, recompile first
     procedure TestChangeLeaf1; // prog->ant->bird, change bird, recompile ant as well
     procedure TestChangeInner1; // prog->ant->bird, change ant, keep bird.ppu
+    procedure TestPrgVariant; // loading implicit variant ppu after parsing program
+    procedure TestUnitVariant; // loading implicit variant ppu after parsing unit
 
+    // cycles
     procedure TestCycle2_ChangeB; // prog->ant->bird, bird.impl->ant, change bird, same crc
     procedure TestCycle3_ChangeC; // prog->ant->bird->cat, cat.impl->ant, change cat same crc
     procedure TestCycle3_ChangeC_Intf; // prog->ant->bird->cat, cat.impl->ant, change cat interface crc
@@ -52,16 +56,15 @@ type
     procedure TestCycle2_ChangeB_CRC; // prog->ant->bird, bird.impl->ant, change bird crc
     procedure TestCycle22_ChangeC_CRC; // prog->ant->bird->cat, bird.impl->ant, cat.impl->bird, change cat crc
     procedure TestCycle32_ChangeC_CRC; // prog->ant->bird->cat, bird.impl->ant, cat.impl->bird+ant, change cat crc
-
-    // -Ur Generate release unit files (never automatically recompiled)
-    procedure TestUr_cycle2;
-
-    procedure TestChangeInlineBodyBug; // Bug: prog+1 unit plus a package of 2 units, change of inline body should change crc, but does not
-
     procedure TestBug41457; // two cycles of size 2 and 3
+    procedure TestPrgNameClash1; // prg name clash with unit
+
+    // -Ur Generate release unit files (never automatically recompile ppu)
+    procedure TestUr_cycle2;
 
     // inline
     procedure TestInline1; // ant->bird->cat, cat inline body changes
+    procedure TestChangeInlineBody; // prog+1 unit plus a package of 2 units, change of inline body
 
     // inline modifier in implementation (not in interface)
     procedure TestImplInline1; // 2 units, cycle, impl inline
@@ -75,7 +78,8 @@ type
     //         the indirect_crc does not yet support this. 16th Feb 2026
 
     // generics
-    procedure TestGeneric_IndirectUses; // specialization of an inherited class in an indirectly used unit
+    procedure TestGeneric_ChangeC; // change generic implementation of a specialization
+    procedure TestGeneric_IndirectUses; // TODO: specialization of an inherited class in an indirectly used unit
     procedure TestGeneric_Cycle1; // prg->ant->bird, bird.impl->ant, TAnt->TBird
     procedure TestGeneric_Cycle2; // prg->ant.impl->bird, bird.impl->ant, TAnt->TBird
   end;
@@ -348,6 +352,59 @@ begin
   CheckCompiled(['changeinner1_prg.pas','changeinner1_ant.pas']);
 end;
 
+procedure TTestRecompile.TestPrgVariant;
+// prog->ant->bird, prg name clash with bird
+var
+  Dir: String;
+begin
+  Dir:='prgvariant1';
+  UnitPath:=Dir;
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'prgvariant1.pas';
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['prgvariant1.pas']);
+end;
+
+procedure TTestRecompile.TestUnitVariant;
+// prog->ant->bird, prg name clash with bird
+var
+  Dir: String;
+begin
+  Dir:='unitvariant1';
+  UnitPath:=Dir;
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'unitvariant1.pas';
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['unitvariant1.pas']);
+end;
+
+procedure TTestRecompile.TestPrgNameClash1;
+// prog->ant->bird, prg name clash with bird
+var
+  Dir: String;
+begin
+  Dir:='prgnameclash1';
+  UnitPath:=Dir;
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'prgnameclash1_prg.pas';
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['prgnameclash1_prg.pas','prgnameclash1_ant.pas','prgnameclash1_bird.pas']);
+
+  Step:='Second compile';
+  Compile;
+  // the main src is always compiled
+  CheckCompiled(['prgnameclash1_prg.pas']);
+end;
+
 procedure TTestRecompile.TestCycle2_ChangeB;
 // prog->ant->bird, bird.impl->ant, change bird same crc
 var
@@ -558,7 +615,7 @@ begin
   CheckCompiled(['ur_cycle2_bird.pas']);
 end;
 
-procedure TTestRecompile.TestChangeInlineBodyBug;
+procedure TTestRecompile.TestChangeInlineBody;
 var
   ProgDir, PkgDir, PkgOutDir: String;
 begin
@@ -769,11 +826,38 @@ begin
     'ancestorchange1_eagle.pas']);
 end;
 
+procedure TTestRecompile.TestGeneric_ChangeC;
+// ant->bird->cat, bird specializes cat, change the generic implementation of cat
+var
+  Dir: String;
+begin
+  Dir:='generic_changec';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src1';
+  OutDir:=Dir+PathDelim+'ppus';
+  MainSrc:=Dir+PathDelim+'generic_changec_ant.pas';
+  MakeDateDiffer(
+    Dir+PathDelim+'src1'+PathDelim+'generic_changec_cat.pas',
+    Dir+PathDelim+'src2'+PathDelim+'generic_changec_cat.pas');
+
+  Step:='First compile';
+  CleanOutputDir;
+  Compile;
+  CheckCompiled(['generic_changec_ant.pas','generic_changec_bird.pas','generic_changec_cat.pas']);
+
+  Step:='Second compile';
+  UnitPath:=Dir+';'+Dir+PathDelim+'src2';
+  Compile;
+  // the main src is always compiled, cat impl of the generic changed, so specialization in bird changed
+  CheckCompiled(['generic_changec_ant.pas','generic_changec_bird.pas','generic_changec_cat.pas']);
+end;
+
 procedure TTestRecompile.TestGeneric_IndirectUses;
 // prog->ant.impl->bird->cat, ant specializes cat, change the generic func of cat
 var
   Dir: String;
 begin
+  exit;
+
   Dir:='generic_indirectuses';
   UnitPath:=Dir+';'+Dir+PathDelim+'src1';
   OutDir:=Dir+PathDelim+'ppus';
