@@ -155,12 +155,26 @@ var
       old_current_module:=current_module;
 
       { save symtable state }
-      oldsymtablestack:=symtablestack;
-      if for_module_switch then
-        save_symtable_stack(oldsymtablestack,stsk_global);
-      oldmacrosymtablestack:=macrosymtablestack;
-      if for_module_switch then
-        save_symtable_stack(oldmacrosymtablestack,stsk_macro);
+      if current_module.fromppu then
+        begin
+          { a ppu does not use the symbolstacks
+            they might have been set by a pas module loading this ppu
+            => do not store them in the the ppu state }
+          oldsymtablestack:=nil;
+          oldmacrosymtablestack:=nil;
+        end
+      else
+        begin
+          { a pas module has symbolstacks, which contain references to other modules
+            when switching between modules, the references must be updated as the
+            used module might have been recompiled }
+          oldsymtablestack:=symtablestack;
+          if for_module_switch then
+            save_symtable_stack(oldsymtablestack,stsk_global);
+          oldmacrosymtablestack:=macrosymtablestack;
+          if for_module_switch then
+            save_symtable_stack(oldmacrosymtablestack,stsk_macro);
+        end;
       oldcurrent_procinfo:=current_procinfo;
 
       { save scanner state }
@@ -184,6 +198,8 @@ var
       { handle the postponed case first }
       oldcurrent_filepos:=current_filepos;
       old_settings:=current_settings;
+      if current_module.fromppu then
+        old_settings.pmessage:=nil; { ppu do not have own message state }
       old_verbosity:=status.verbosity;
 
       old_asmdata:=current_asmdata;
