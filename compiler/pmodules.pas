@@ -713,6 +713,11 @@ implementation
         Result:=true;
         current_scanner.tempcloseinputfile;
         state:=tglobalstate.create(false);
+
+        { reset verbosity (otherwise the used units would use curr's pmessage) }
+        current_settings.pmessage:=nil;
+        RestoreLocalVerbosity(nil);
+
         { Load the units }
         pu:=tused_unit(curr.used_units.first);
         while assigned(pu) do
@@ -1893,6 +1898,8 @@ type
           WriteLn(DStr(hstatus.CurrHeapUsed shr 10),'/',DStr(hstatus.CurrHeapSize shr 10),' Kb Used');
         end;
 
+        module.state:=ms_compiled;
+
         set_current_module(old_module);
       end;
 
@@ -2575,7 +2582,7 @@ type
            status.skip_error:=true;
          end;
 
-        curr.state:=ms_processed;
+        curr.state:=ms_compiled;
 
       end;
 

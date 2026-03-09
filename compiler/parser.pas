@@ -44,7 +44,7 @@ implementation
       fksysutl,
 {$ENDIF}
       cclasses,
-      globtype,tokens,systems,globals,verbose,switches,globstat,
+      globtype,tokens,systems,globals,verbose,globstat,
       symbase,symtable,symdef,
       finput,fppu,
       aasmdata,
@@ -60,15 +60,12 @@ implementation
        hp,hp2 :  tmodule;
 
     begin
-
-       module.end_of_parsing;
-
        if (module.is_initial) and
           (status.errorcount=0) then
          { Write Browser Collections }
          do_extractsymbolinfo;
 
-       // olddata.restore(false);
+       module.end_of_parsing;
 
        { Restore all locally modified warning messages }
        RestoreLocalVerbosity(current_settings.pmessage);
@@ -407,6 +404,7 @@ implementation
 
        begin
          Result:=True;
+
          { parsing a procedure or declaration should be finished }
          if assigned(current_procinfo) then
            internalerror(200811121);
@@ -414,11 +412,6 @@ implementation
            internalerror(200811122);
          inc(module.compilecount);
          parser_current_file:=module.mainsource;
-         { Uses heap memory instead of placing everything on the
-           stack. This is needed because compile() can be called
-           recursively }
-         { handle the postponed case first }
-         flushpendingswitchesstate;
 
        { reset parser, a previous fatal error could have left these variables in an unreliable state, this is
          important for the IDE }

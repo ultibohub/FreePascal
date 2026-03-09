@@ -1831,7 +1831,13 @@ begin
     end
   else
     UngetToken;
-  if CodePageAsText <> '' then
+  // Use unique names so AddType won't collide on bare 'string':
+  //   string[N]      -> 'string$_N'    (length-qualified)
+  //   string(CP)     -> 'string$CP'    (codepage-qualified, existing convention)
+  //   plain string   -> 'string'
+  if LengthAsText <> '' then
+    Result.DestType:=TPasStringType(CreateElement(TPasStringType,'string$_'+LengthAsText,Result))
+  else if CodePageAsText <> '' then
     Result.DestType:=TPasStringType(CreateElement(TPasStringType,'string$'+CodePageAsText,Result))
   else
     Result.DestType:=TPasStringType(CreateElement(TPasStringType,'string',Result));
@@ -1872,7 +1878,14 @@ begin
     NextToken;
     while CurToken=tkDot do
       begin
-      ExpectIdentifier;
+      NextToken;
+      if CurToken=tkspecialize then
+        begin
+        MustBeSpecialize:=true;
+        ExpectIdentifier;
+        end
+      else if CurToken<>tkIdentifier then
+        ParseExcTokenError(TokenInfos[tkIdentifier]);
       Name := Name+'.'+CurTokenString;
       NextToken;
       end;
@@ -2482,7 +2495,8 @@ function TPasParser.ParseParams(AParent: TPasElement; ParamsKind: TPasExprKind;
   AllowFormatting: Boolean = False): TParamsExpr;
 var
   Params  : TParamsExpr;
-  Expr    : TPasExpr;
+  ValueExpr, Expr    : TPasExpr;
+  NamedArg : TNamedArgExpr;
   PClose  : TToken;
 
 begin
@@ -2499,7 +2513,6 @@ begin
       ParseExc(nParserExpectTokenError,SParserExpectTokenError,['(']);
     PClose:=tkBraceClose;
     end;
-
   Params:=TParamsExpr(CreateElement(TParamsExpr,'',AParent,CurTokenPos));
   Params.Kind:=ParamsKind;
   NextToken;
@@ -2510,7 +2523,19 @@ begin
       if not Assigned(Expr) then
         ParseExcSyntaxError;
       Params.AddParam(Expr);
-      if (CurToken=tkColon) then
+      // ActiveX calls: Arg.DoIt(X:=13);
+      if (CurToken=tkAssign) then
+        begin
+        // Named parameter: Identifier := Value
+        if (not (Expr is TPrimitiveExpr)) or (Expr.Kind<>pekIdent) then
+          ParseExcSyntaxError;
+        NextToken;
+        ValueExpr:=DoParseExpression(Params);
+        NamedArg:=TNamedArgExpr.Create(Params, TPrimitiveExpr(Expr), ValueExpr);
+        // Replace the last param (the bare identifier) with the named arg
+        Params.Params[Length(Params.Params)-1]:=NamedArg;
+        end
+      else if (CurToken=tkColon) then
         if Not AllowFormatting then
           ParseExc(nParserExpectTokenError,SParserExpectTokenError,[','])
         else
@@ -5959,7 +5984,7 @@ begin
       ResultEl:=TPasFunctionType(Element).ResultEl;
       if (CurToken=tkIdentifier) then
         begin
-        ResultEl.Name := CurTokenName;
+        ResultEl.Name := CurTokenString;
         ExpectToken(tkColon);
         ResultEl.ResultType := ParseType(ResultEl,CurSourcePos);
         end
@@ -7056,7 +7081,9 @@ begin
             OT:=TPasOperator.TokenToOperatorType(CurTokenText)
           else
             OT:=TPasOperator.NameToOperatorType(CurTokenString);
-          end;
+          end
+        else
+          OperatorTypeName:='';
         end;
       if (ot=otUnknown) then
         ParseExc(nErrUnknownOperatorType,SErrUnknownOperatorType,[CurTokenString]);
