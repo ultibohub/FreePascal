@@ -2447,7 +2447,7 @@ else
 all : rtl fpcunit packages extra
 endif
 STAMPFILES=$(wildcard *stamp*)
-TEMPDIRS=$(wildcard $(MAKEFILETARGETS) tmp)
+TEMPDIRS=$(wildcard $(MAKEFILETARGETS) $(LIMIT83fs) tmp)
 clean : cleanrtl cleanall cleanfpcunit cleanpackages
 distclean : clean distcleanrtl distcleanfpcunit distcleanpackages
 	-$(DELTREE) $(TEMPDIRS)
