@@ -1202,6 +1202,7 @@ Type
     FUseEnvironment: Boolean;
     FZipPrefix: String;
     FExplicitOSNone: Boolean;
+    FUnitOutputDirectory: String;
     function GetTarget: String;
     function SafeExpandFileName(const AFileName: string): string;
     function GetBuildCPU: TCpu;
@@ -1291,6 +1292,7 @@ Type
     // paths etc.
     Property LocalUnitDir : String Read GetLocalUnitDir Write SetLocalUnitDir;
     Property GlobalUnitDir : String Read GetGlobalUnitDir Write SetGlobalUnitDir;
+    property UnitOutputDirectory: String read FUnitOutputDirectory write FUnitOutputDirectory;
     // The SearchPath contains a list of directories in which packages are
     // installed. Packages are searched for in order of this list.
     Property SearchPath: TStrings read GetSearchPath write SetSearchPath;
@@ -2053,6 +2055,7 @@ ResourceString
   SHelpNoFPCCfg       = 'Compiler will not use fpc.cfg';
   SHelpBaseInstallDir = 'Use indicated directory as base install dir.';
   SHelpLocalUnitDir   = 'Use indicated directory as local (user) unit dir.';
+  SHelpOutpuUnitDir   = 'Use indicated directory to save the compiled units.';
   SHelpGlobalUnitDir  = 'Use indicated directory as global unit dir.';
   SHelpSearchPath     = 'Add search directory for packages.';
   SHelpUnitInstallDir = 'Use indicated directory to install units into.';
@@ -6140,6 +6143,9 @@ function TCustomInstaller.AddPackage(const AName: String): TPackage;
 begin
   result:=Packages.AddPackage(AName);
   AddAutoPackageVariantsToPackage(result);
+
+  if Defaults.UnitOutputDirectory <> '' then
+    Result.FUnitsOutputDir := IncludeTrailingPathDelimiter(Defaults.UnitOutputDirectory) + Result.FUnitsOutputDir;
 end;
 
 function TCustomInstaller.AddPackageVariant(AName: string;
@@ -6434,6 +6440,8 @@ begin
           Log(vlWarning,SWarnCombinedPathAndUDir);
         Defaults.GlobalUnitDir:=OptionArg(I)
       end
+    else if CheckOption(I,'UO','unitoutputdir') then
+      Defaults.UnitOutputDirectory := OptionArg(I)
     else if CheckOption(I,'sp','searchpath') then
       begin
         SearchPathSet:=true;
@@ -6554,6 +6562,7 @@ begin
   LogArgOption('BI','bininstalldir',SHelpBaseInstalldir);
   LogArgOption('LI','libinstalldir',SHelpBaseInstalldir);
   LogArgOption('UL','localunitdir',SHelpLocalUnitdir);
+  LogArgOption('UO','unitoutputdir',SHelpOutpuUnitDir);
   LogArgOption('UG','globalunitdir',SHelpGlobalUnitdir);
   LogArgOption('sp','searchpath',SHelpSearchPath);
   LogArgOption('U','unitinstalldir',SHelpUnitInstallDir);
