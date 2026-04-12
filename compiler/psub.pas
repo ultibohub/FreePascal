@@ -51,7 +51,7 @@ interface
         procedure maybe_add_constructor_wrapper(var tocode: tnode; withexceptblock: boolean);
         procedure add_entry_exit_code;
         procedure setup_tempgen;
-        procedure OptimizeNodeTree;
+        procedure TransformNodeTree;
         procedure convert_captured_syms;
       protected
         procedure generate_code_exceptfilters;
@@ -163,6 +163,7 @@ implementation
        optconstprop,
        optdeadstore,
        optloadmodifystore,
+       optcall,
        optutils
 {$if defined(arm) or defined(m68k)}
        ,cpuinfo
@@ -1170,12 +1171,16 @@ implementation
       end;
 
 
-    procedure tcgprocinfo.OptimizeNodeTree;
+    procedure tcgprocinfo.TransformNodeTree;
       var
         i : integer;
         UserCode : TNode;
+        updated,
         RedoDFA : boolean;
       begin
+       { inlining is a heuristics, so we do this very early }
+       do_optinline(code,updated);
+
        { do this before adding the entry code else the tail recursion recognition won't work,
          if this causes troubles, it must be if'ed
        }
@@ -1988,6 +1993,7 @@ implementation
         { Print out nodes as they appear after the first pass }
         XMLPrintProc(True);
 {$endif DEBUG_NODE_XML}
+
         { firstpass everything }
         flowcontrol:=[];
         do_firstpass(code);
@@ -2001,7 +2007,7 @@ implementation
         if paraprintnodetree <> 0 then
           printproc( 'after the firstpass');
 
-        OptimizeNodeTree;
+        TransformNodeTree;
 
         { unit static/global symtables might contain threadvars which are not explicitly used but which might
           require a tls register, so check for such variables }
