@@ -583,6 +583,7 @@ Const
    { target cpu string (used by compiler options) }
    target_cpu_string = 'arm';
 
+var
    { calling conventions supported by the code generator }
    supported_calling_conventions : tproccalloptions = [
      pocall_internproc,
@@ -603,6 +604,7 @@ Const
      pocall_hardfloat
    ];
 
+const
    cputypestr : array[tcputype] of string[8] = ('',
      'ARMV2',
      'ARMV3',
@@ -1193,7 +1195,7 @@ Const
         FPUARM_HAS_FMA                 { fpu has fused multiply/add instructions                                               }
       );
 
- const
+ var
    cpu_capabilities : array[tcputype] of set of tcpuflags =
      ( { cpu_none     } [],
        { cpu_armv2    } [],
@@ -1216,6 +1218,7 @@ Const
        { cpu_armv7em  } [CPUARM_HAS_THUMB,CPUARM_HAS_ALL_MEM,CPUARM_HAS_BX,CPUARM_HAS_BLX,CPUARM_HAS_CLZ,CPUARM_HAS_EDSP,CPUARM_HAS_REV,CPUARM_HAS_RBIT,CPUARM_HAS_LDREX,CPUARM_HAS_THUMB_IDIV,CPUARM_HAS_DMB,CPUARM_HAS_THUMB2,CPUARM_HAS_UMULL,CPUARM_HAS_MP_INSTRUCTIONS]
      );
 
+ const
      fpu_capabilities : array[tfputype] of set of tfpuflags =
        ( { fpu_none         } [],
          { fpu_soft         } [],

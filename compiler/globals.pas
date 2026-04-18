@@ -119,9 +119,11 @@ interface
        CP_UTF16BE = 1201;
        CP_NONE  = 65535;
 
+    var
        { by default no local variable trashing }
        localvartrashing: longint = -1;
 
+    const
        nroftrashvalues = 4;
        trashintvalues: array[0..nroftrashvalues-1] of int64 = ($5555555555555555,$AAAAAAAAAAAAAAAA,$EFEFEFEFEFEFEFEF,0);
 
@@ -463,7 +465,6 @@ Const
 
        cgbackend: tcgbackend;
 
-    const
        Inside_asm_statement : boolean = false;
 
        global_unit_count : word = 0;
@@ -486,16 +487,20 @@ Const
        sinclairql_vlink_experimental: boolean = true; { temporary }
 {$endif defined(m68k)}
 
+    const
        { default name of the C-style "main" procedure of the library/program }
        { (this will be prefixed with the target_info.cprefix)                }
        defaultmainaliasname = 'main';
+
+    var
        mainaliasname : string = defaultmainaliasname;
 
+    const
        custom_attribute_suffix = 'ATTRIBUTE';
 
+    var
       LTOExt: TCmdStr = '';
 
-    const
       default_settings : TSettings = (
         alignment : (
           procalign : 0;
@@ -708,7 +713,6 @@ Const
 {$endif defined(LLVM) and not defined(GENERIC_CPU)}
       );
 
-    var
       starttime  : real;
       startsystime : TSystemTime;
 
@@ -1664,7 +1668,7 @@ implementation
      pinitdoneentry=^tinitdoneentry;
 
 
-   const
+   var
      initdoneprocs : TFPList = nil;
 
 

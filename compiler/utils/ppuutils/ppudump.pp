@@ -266,6 +266,8 @@ const
   thus widecharsize seems to always be 2 bytes }
 
   widecharsize : longint = 2;
+
+var
   cpu : tsystemcpu = cpu_no;
 
 { This type is defined in scanner.pas unit }
@@ -616,9 +618,10 @@ const
   end;
 {$POP}
 
-const has_errors : boolean = false;
-      has_warnings : boolean = false;
-      has_more_infos : boolean = false;
+var
+  has_errors : boolean = false;
+  has_warnings : boolean = false;
+  has_more_infos : boolean = false;
 
 procedure SetHasErrors;
 begin
@@ -5351,7 +5354,6 @@ var
   startpara,
   nrfile,i  : longint;
   para      : string;
-const
   error_on_more : boolean = false;
 begin
   if paramcount<1 then

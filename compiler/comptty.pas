@@ -56,7 +56,7 @@ implementation
    dos;
 {$endif defined(GO32V2) or defined(WATCOM)}
 
-const
+var
   CachedIsATTY : Boolean = false;
   IsATTYValue : Boolean = false;
 
@@ -72,9 +72,10 @@ const
   ENABLE_VIRTUAL_TERMINAL_PROCESSING = $0004;
 
 function WindowsIsATTY(var t : text) : Boolean; inline;
-const
-  dwMode: dword = 0;
+var 
+  dwMode: dword;
 begin
+  dwMode:=0;
   WindowsIsATTY := false;
   if GetConsoleMode(TextRec(t).handle, dwMode) then
    begin
