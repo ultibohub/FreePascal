@@ -210,13 +210,14 @@ type
     function MaxSupport : double; virtual;
   end;
 
-  { TMitchelInterpolation }
+  { TMitchellInterpolation }
 
-  TMitchelInterpolation = class (TFPBaseInterpolation)
+  TMitchellInterpolation = class (TFPBaseInterpolation)
   protected
     function Filter (x : double) : double; override;
     function MaxSupport : double; override;
   end;
+  TMitchelInterpolation = TFPBaseInterpolation deprecated 'Use TMitchellInterpolation';
 
   TFPCustomRegion = class
   public
@@ -235,6 +236,7 @@ type
 
   TFPDrawingMode = (dmOpaque, dmAlphaBlend, dmCustom);
   TFPCanvasCombineColors = function(const color1, color2: TFPColor): TFPColor of object;
+  TFPGradientDirection = (gdVertical, gdHorizontal);
 
   { TFPCustomCanvas }
 
@@ -377,6 +379,7 @@ type
     procedure StretchDraw (x,y,w,h:integer; source:TFPCustomImage); virtual;
     procedure Erase;virtual;
     procedure DrawPixel(const x, y: integer; const newcolor: TFPColor);
+    procedure GradientFill(const ARect: TRect; AStartColor, AEndColor: TFPColor; ADirection: TFPGradientDirection); virtual;
     // properties
     property LockCount: Integer read FLocks;
     property Font : TFPCustomFont read GetFont write SetFont;

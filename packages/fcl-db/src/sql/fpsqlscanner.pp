@@ -44,7 +44,7 @@ type
    tsqlIntegerNumber,tsqlFloatNumber,tsqlComment,
    tsqlBraceOpen,tsqlBraceClose,tsqlSquareBraceOpen,tsqlSquareBraceClose,
    tsqlPlaceHolder {question mark},
-   tsqlCOMMA,tsqlCOLON,tsqlDOT,tsqlSEMICOLON,tsqlTerminator,
+   tsqlCOMMA,tsqlCOLON,tsqlDOT,tsqlDotDot,tsqlSEMICOLON,tsqlTerminator,
    tsqlGT,tsqlLT,tsqlPLUS,tsqlMINUS,tsqlMUL,tsqlDIV,tsqlConcatenate,
    tsqlEQ,tsqlGE,tsqlLE,tsqlNE,
    { Reserved words/keywords start here. They must be last }
@@ -90,7 +90,7 @@ const
        'symbol string',
        'integer number','float number', 'comment',
        '(',')', '[',']',
-       '?',',',':','.',';','',
+       '?',',',':','.','..',';','',
        '>','<',
        '+','-','*','/','||',
        '=','>=','<=','<>',
@@ -584,10 +584,9 @@ Var
 
 begin
   TokenStart := TokenStr;
-  IsFloat:=False;
+  IsFloat := false;
   while true do
     begin
-    Inc(TokenStr);
     case TokenStr[0] of
       'x':
         If (TokenStart[0]='0') and ((TokenStr-TokenStart)=1) then
@@ -624,6 +623,7 @@ begin
       else
         break;
     end;
+    Inc(TokenStr);
   end;
   Len:=TokenStr-TokenStart;
   Setlength(FCurTokenString, Len);
@@ -727,68 +727,68 @@ begin
     FCurTokenColumn:=CurColumn;
     FCurTokenString := '';
     case TokenStr[0] of
-      #0:         // Empty line
-        begin
-        FetchLine;
-        Result := tsqlWhitespace;
-        end;
-      '/' :
-         Result:=CommentDiv;
-      #9, ' ',#10,#13:
-         Result := DoWhiteSpace;
-      '''':
-        begin
-        Result:=DoStringLiteral;
-        if (soSingleQuoteIdentifier in Options) then
-          result:=tsqlIdentifier;
-        end;
-      '"':
-        begin
-        Result:=DoStringLiteral;
-        If (soDoubleQuoteStringLiteral in options) then
-          Result:=tsqlString
-        else
-          Result:=tsqlIdentifier;
-        end;
-      '`':
-        begin
-        Result:=DoStringLiteral;
-        If (soBackQuoteIdentifier in options) then
-          Result:=tsqlIdentifier
-        else
-          Error(SErrUnknownToken,['`']);
-        end;
-      '0'..'9':
-         Result:=DoNumericLiteral;
-      '?':
-         begin
-         Inc(TokenStr);
-         Result:=tsqlPlaceHolder;
-         end;
-      '!':
+    #0:         // Empty line
+      begin
+      FetchLine;
+      Result := tsqlWhitespace;
+      end;
+    '/' :
+      Result:=CommentDiv;
+    #9, ' ',#10,#13:
+      Result := DoWhiteSpace;
+    '''':
+      begin
+      Result:=DoStringLiteral;
+      if (soSingleQuoteIdentifier in Options) then
+        Result:=tsqlIdentifier;
+      end;
+    '"':
+      begin
+      Result:=DoStringLiteral;
+      If (soDoubleQuoteStringLiteral in options) then
+        Result:=tsqlString
+      else
+        Result:=tsqlIdentifier;
+      end;
+    '`':
+      begin
+      Result:=DoStringLiteral;
+      If (soBackQuoteIdentifier in options) then
+        Result:=tsqlIdentifier
+      else
+        Error(SErrUnknownToken,['`']);
+      end;
+    '0'..'9':
+      Result:=DoNumericLiteral;
+    '?':
+      begin
+      Inc(TokenStr);
+      Result:=tsqlPlaceHolder;
+      end;
+    '!':
+      begin
+      Inc(TokenStr);
+      If TokenStr[0]='>' then
+        Result:=tsqlLE
+      else if (TokenStr[0]='<') then
+        Result:=tsqlGE
+      else if (TokenStr[0]='=') then
+        Result:=tsqlNE
+      else
+        Result:=tsqlUnknown;
+      Inc(TokenStr);
+      end;
+    '|':
+      begin
+      Inc(TokenStr);
+      If Tokenstr[0]='|' then
         begin
         Inc(TokenStr);
-        If TokenStr[0]='>' then
-          Result:=tsqlLE
-        else if (TokenStr[0]='<') then
-          Result:=tsqlGE
-        else if (TokenStr[0]='=') then
-          Result:=tsqlNE
-        else
-          Result:=tsqlUnknown;
-        Inc(TokenStr);
-        end;
-     '|':
-         begin
-         Inc(TokenStr);
-         If Tokenstr[0]='|' then
-           begin
-           Inc(TokenStr);
-           Result := tsqlConcatenate
-           end
-         else
-           Error(SBarExpected);
-         end;
+        Result := tsqlConcatenate
+        end
+      else
+        Error(SBarExpected);
+      end;
     '(':
       begin
       Inc(TokenStr);
@@ -835,12 +835,13 @@ begin
     '-':
       begin
       Inc(TokenStr);
-      If (TokenStr[0]='-') then
+      If (TokenStr^='-') then
         begin
         Inc(TokenStr);
         Result:=DoSingleLineComment
         end
-      else if (TokenStr[0] in ['0'..'9']) then
+      else if (TokenStr^ in ['0'..'9'])
+          or ((TokenStr^='.') and (TokenStr[1] in ['0'..'9'])) then
         begin
         Result:=DoNumericLiteral;
         If (Result in [tsqlIntegerNumber,tsqlFloatNumber]) then
@@ -850,9 +851,17 @@ begin
         Result := tsqlMinus;
       end;
     '.':
-      begin
-      Inc(TokenStr);
-      Result := tsqlDot;
+      case TokenStr[1] of
+      '.':
+        begin
+        Inc(TokenStr,2);
+        Result := tsqlDotDot;
+        end;
+      '0'..'9':
+        Result := DoNumericLiteral;
+      else
+        inc(TokenStr);
+        Result := tsqlDot;
       end;
     ':':
       begin
@@ -899,11 +908,11 @@ begin
    'a'..'z',
    'A'..'Z', '_':
      Result:=DoIdentifier;
-   else
-     // Symbol of some sort
-     Result:=DoSymbolString;
-     //Error(SErrUnknownToken,[TokenStr[0]]);
-   end; // Case
+  else
+    // Symbol of some sort
+    Result:=DoSymbolString;
+    //Error(SErrUnknownToken,[TokenStr[0]]);
+  end; // Case
   Until (Not (Result in [tsqlComment,tsqlWhitespace])) or
         ((Result=tsqlComment) and (soReturnComments in options)) or
         ((Result=tsqlWhiteSpace) and (soReturnWhiteSpace in Options));
