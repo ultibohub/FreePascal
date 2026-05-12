@@ -193,7 +193,7 @@ endif
 endif
 ifeq ($(CPU_OS_TARGET),aarch64-embedded)
 endif
-ifdef SUB_TARGET
+ifdef SUB_TARGET 
 FPCOPT+=-t$(SUB_TARGET)
 FPMAKE_OPT+=--subtarget=$(SUB_TARGET)
 endif
@@ -418,9 +418,6 @@ override TARGET_PROGRAMS+=dotest fptime fail testfail digest concat $(DBDIGEST)
 endif
 ifeq ($(CPU_OS_TARGET),i386-qnx)
 override TARGET_PROGRAMS+=dotest fptime fail testfail digest concat $(DBDIGEST)
-endif
-ifeq ($(CPU_OS_TARGET),i386-qnx)
-override TARGET_PROGRAMS+=dotest fptime fail testfail digest concat $(DBDIGEST) $(MSDOSPROG)
 endif
 ifeq ($(CPU_OS_TARGET),i386-netware)
 override TARGET_PROGRAMS+=dotest fptime fail testfail digest concat $(DBDIGEST)
@@ -785,9 +782,6 @@ endif
 ifeq ($(CPU_OS_TARGET),i386-qnx)
 override CLEAN_FILES+=dosbox/exitcode$(OEXT)
 endif
-ifeq ($(CPU_OS_TARGET),i386-qnx)
-override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper
-endif
 ifeq ($(CPU_OS_TARGET),i386-netware)
 override CLEAN_FILES+=dosbox/exitcode$(OEXT)
 endif
@@ -1193,6 +1187,9 @@ endif
 ifeq ($(CPU_OS_TARGET),i386-aros)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
+ifeq ($(CPU_OS_TARGET),i386-ultibo)
+override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
+endif
 ifeq ($(CPU_OS_TARGET),m68k-linux)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
@@ -1298,6 +1295,9 @@ endif
 ifeq ($(CPU_OS_TARGET),x86_64-dragonfly)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
+ifeq ($(CPU_OS_TARGET),x86_64-ultibo)
+override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
+endif
 ifeq ($(CPU_OS_TARGET),arm-linux)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
@@ -1332,6 +1332,9 @@ ifeq ($(CPU_OS_TARGET),arm-freertos)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
 ifeq ($(CPU_OS_TARGET),arm-ios)
+override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
+endif
+ifeq ($(CPU_OS_TARGET),arm-ultibo)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
 ifeq ($(CPU_OS_TARGET),powerpc64-linux)
@@ -1416,6 +1419,9 @@ ifeq ($(CPU_OS_TARGET),aarch64-android)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
 ifeq ($(CPU_OS_TARGET),aarch64-ios)
+override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
+endif
+ifeq ($(CPU_OS_TARGET),aarch64-ultibo)
 override CLEAN_PROGRAMS+=dbdigest dbconfig dosbox/dosbox_wrapper dosbox/exitcode
 endif
 ifeq ($(CPU_OS_TARGET),wasm32-embedded)
@@ -2866,7 +2872,7 @@ dbdigest$(SRCEXEEXT): dbdigest.pp digestanalyst$(PPUEXT) tsstring$(PPUEXT) tsuti
 	$(COMPILER) $<
 digest$(SRCEXEEXT): digest.pp tsstring$(PPUEXT)
 	$(COMPILER) $<
-dosbox/dosbox_wrapper$(SRCEXEEXT): dosbox/dosbox_wrapper.pas
+dosbox/dosbox_wrapper$(SRCEXEEXT): dosbox/dosbox_wrapper.pas  
 	$(COMPILER) -FE./dosbox $<
 dosbox/exitcode$(EXEEXT): dosbox/exitcode.pas
 	$(TEST_FPC) $(TEST_OPT) -FE./dosbox $<

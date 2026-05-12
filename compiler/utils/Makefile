@@ -1179,6 +1179,9 @@ endif
 ifeq ($(CPU_OS_TARGET),i386-aros)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
+ifeq ($(CPU_OS_TARGET),i386-ultibo)
+override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
+endif
 ifeq ($(CPU_OS_TARGET),m68k-linux)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
@@ -1284,6 +1287,9 @@ endif
 ifeq ($(CPU_OS_TARGET),x86_64-dragonfly)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
+ifeq ($(CPU_OS_TARGET),x86_64-ultibo)
+override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
+endif
 ifeq ($(CPU_OS_TARGET),arm-linux)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
@@ -1318,6 +1324,9 @@ ifeq ($(CPU_OS_TARGET),arm-freertos)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
 ifeq ($(CPU_OS_TARGET),arm-ios)
+override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
+endif
+ifeq ($(CPU_OS_TARGET),arm-ultibo)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
 ifeq ($(CPU_OS_TARGET),powerpc64-linux)
@@ -1402,6 +1411,9 @@ ifeq ($(CPU_OS_TARGET),aarch64-android)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
 ifeq ($(CPU_OS_TARGET),aarch64-ios)
+override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
+endif
+ifeq ($(CPU_OS_TARGET),aarch64-ultibo)
 override CLEAN_PROGRAMS+=fpc ppufiles ppudump ppumove mka64ins mkarmins mkx86ins msg2inc mkx86inl mkz80ins gppc386 vppcx64
 endif
 ifeq ($(CPU_OS_TARGET),wasm32-embedded)
