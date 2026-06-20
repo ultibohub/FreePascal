@@ -126,7 +126,8 @@ type
     nikPseudoFunction, // e.g. "is" of ":is()"
     nikType,
     nikKeyword,
-    nikAttrFunction // e.g. "calc" of "calc()"
+    nikAttrFunction, // e.g. "calc" of "calc()"
+    nikClassName // e.g. "row" of ".row"
     );
   TCSSNumericalIDs = set of TCSSNumericalIDKind;
 
@@ -140,7 +141,8 @@ const
     'PseudoFunction',
     'Attribute',
     'Keyword',
-    'AttributeFunction'
+    'AttributeFunction',
+    'ClassName'
     );
 
 type
@@ -293,7 +295,7 @@ const
     (Name: 'teal'; Color: TCSSAlphaColor($ff008080)),
     (Name: 'thistle'; Color: TCSSAlphaColor($ffd8bfd8)),
     (Name: 'tomato'; Color: TCSSAlphaColor($ffff6347)),
-    (Name: 'transparent'; Color: TCSSAlphaColor($ff0)),
+    (Name: 'transparent'; Color: TCSSAlphaColor(0)),
     (Name: 'turquoise'; Color: TCSSAlphaColor($ff40e0d0)),
     (Name: 'violet'; Color: TCSSAlphaColor($ffee82ee)),
     (Name: 'wheat'; Color: TCSSAlphaColor($fff5deb3)),
@@ -314,13 +316,16 @@ type
     Index: TCSSNumericalID;
   end;
 
+type
+  TCSSRegistry = class;
+
   { TCSSAttributeKeyData }
 
   TCSSAttributeKeyData = class(TCSSElementOwnedData)
   public
-    Invalid: boolean;
-    Complete: boolean;
     Value: TCSSString;
+    Invalid: boolean; // value is invalid, resolver skips it
+    function GetValue: TCSSString;
   end;
   TCSSAttributeKeyDataClass = class of TCSSAttributeKeyData;
 
@@ -488,6 +493,14 @@ type
     Kind: TCSSNumericalIDKind;
   end;
 
+  { TCSSResolvedClassNameElement }
+
+  TCSSResolvedClassNameElement = class(TCSSClassNameElement)
+  public
+    NumericalID: TCSSNumericalID;
+    Kind: TCSSNumericalIDKind;
+  end;
+
   { TCSSNthChildParams }
 
   TCSSNthChildParams = class
@@ -539,6 +552,8 @@ type
     StartP, EndP: PCSSChar;
     function AsString: TCSSString;
     function FloatAsString: TCSSString;
+    function IsInteger: boolean;
+    function IsIntegerValue(v: Integer): boolean;
     case longint of
     1: (Float: Double; FloatUnit: TCSSUnit);
     2: (KeywordID: TCSSNumericalID);
@@ -580,7 +595,8 @@ type
     CurDesc: TCSSAttributeDesc;
     CurValue: TCSSString;
     CurComp: TCSSResCompValue;
-    function InitParseAttr(Desc: TCSSAttributeDesc; AttrData: TCSSAttributeKeyData; const Value: TCSSString): boolean; virtual; // true if parsing can start
+    function InitParseAttr(Desc: TCSSAttributeDesc; AttrData: TCSSAttributeKeyData): boolean; virtual; // true if parsing can start
+    function InitParseAttr(Desc: TCSSAttributeDesc; const Value: TCSSString): boolean; virtual; // true if parsing can start
     procedure InitParseAttr(const Value: TCSSString); virtual;
     // check whole attribute, skipping invalid values, emit warnings:
     function CheckAttribute_Keyword(const AllowedKeywordIDs: TCSSNumericalIDArray): boolean; virtual;
@@ -614,6 +630,8 @@ type
     function GetAttributeDesc(AttrID: TCSSNumericalID): TCSSAttributeDesc; virtual;
     function GetTypeID(const aName: TCSSString): TCSSNumericalID; virtual;
     function GetPseudoClassID(const aName: TCSSString): TCSSNumericalID; virtual;
+    function GetCSSClassID(const aCSSClassName: TCSSString): TCSSNumericalID; virtual; // lookup only, CSSIDNone if unknown
+    function AddCSSClassID(const aCSSClassName: TCSSString): TCSSNumericalID; virtual; // get or create, used while parsing selectors
     function GetPseudoElementID(const aName: TCSSString): TCSSNumericalID; virtual;
     function GetPseudoElFuncID(const aName: TCSSString): TCSSNumericalID; virtual;
     function GetPseudoFunctionID(const aName: TCSSString): TCSSNumericalID; virtual;
@@ -637,6 +655,7 @@ type
     function ResolveAttribute(El: TCSSResolvedIdentifierElement): TCSSNumericalID; virtual;
     function ResolveType(El: TCSSResolvedIdentifierElement): TCSSNumericalID; virtual;
     function ResolvePseudoClass(El: TCSSResolvedPseudoClassElement): TCSSNumericalID; virtual;
+    function ResolveClassName(El: TCSSResolvedClassNameElement): TCSSNumericalID; virtual;
     function ResolvePseudoElement(El: TCSSResolvedIdentifierElement): TCSSNumericalID; virtual;
     function ResolvePseudoElementFunction(El: TCSSResolvedCallElement): TCSSNumericalID; virtual;
     function ResolvePseudoFunction(El: TCSSResolvedCallElement): TCSSNumericalID; virtual;
@@ -666,6 +685,8 @@ type
     property OnLog: TCSSValueParserLogEvent read FOnLog write FOnLog;
   end;
 
+function HasCSSValueVarCall(const s: TCSSString): boolean; // true if a case insensitive "var(" is in s
+
 implementation
 
 Const
@@ -678,6 +699,20 @@ Const
   //WhitespaceZ = Whitespace+[#0];
   Hex = ['0'..'9','a'..'z','A'..'Z'];
   ValEnd = [#0,#10,#13,#9,' ',';',',','}',')',']']; // used for skipping a component value
+
+function HasCSSValueVarCall(const s: TCSSString): boolean;
+var
+  i, l: SizeInt;
+begin
+  l:=length(s);
+  for i:=1 to l-3 do
+    if (s[i] in ['v','V'])
+        and (s[i+1] in ['a','A'])
+        and (s[i+2] in ['r','R'])
+        and (s[i+3]='(') then
+      exit(true);
+  Result:=false;
+end;
 
 { TCSSRegistry }
 
@@ -1580,6 +1615,17 @@ begin
   Result:=FloatToCSSStr(Float)+CSSUnitNames[FloatUnit];
 end;
 
+function TCSSResCompValue.IsInteger: boolean;
+begin
+  Result:=(Kind=rvkFloat) and (FloatUnit=cuNone);
+end;
+
+function TCSSResCompValue.IsIntegerValue(v: Integer): boolean;
+begin
+  if (Kind<>rvkFloat) or (FloatUnit<>cuNone) then exit(false);
+  Result:=SameValue(Float,v);
+end;
+
 { TCSSCheckAttrParams_Dimension }
 
 function TCSSCheckAttrParams_Dimension.Fits(const ResValue: TCSSResCompValue): boolean;
@@ -1604,6 +1650,13 @@ begin
   end;
 end;
 
+{ TCSSAttributeKeyData }
+
+function TCSSAttributeKeyData.GetValue: TCSSString;
+begin
+  Result:=Value;
+end;
+
 { TCSSBaseResolver }
 
 procedure TCSSBaseResolver.SetCSSRegistry(const AValue: TCSSRegistry);
@@ -1612,33 +1665,60 @@ begin
   FCSSRegistry:=AValue;
 end;
 
-function TCSSBaseResolver.InitParseAttr(Desc: TCSSAttributeDesc; AttrData: TCSSAttributeKeyData;
-  const Value: TCSSString): boolean;
+function TCSSBaseResolver.InitParseAttr(Desc: TCSSAttributeDesc; AttrData: TCSSAttributeKeyData
+  ): boolean;
 var
   p: PCSSChar;
+  IsSingleComp: boolean;
 begin
   Result:=false;
   CurAttrData:=AttrData;
   CurDesc:=Desc;
-  CurValue:=Value;
   CurComp:=Default(TCSSResCompValue);
+
+  if AttrData.Invalid then
+  begin
+    CurComp.Kind:=rvkInvalid;
+    exit;
+  end;
+
+  CurValue:=AttrData.Value;
   CurComp.EndP:=PCSSChar(CurValue);
   if not ReadNext then
     exit;
-  if (CurAttrData<>nil) and (CurComp.Kind=rvkKeyword)
-      and IsBaseKeyword(CurComp.KeywordID) then
+
+  // check if the value consists of a single component
+  IsSingleComp:=false;
+  if CurComp.Kind in [rvkKeyword,rvkFloat] then
   begin
     p:=CurComp.EndP;
     while (p^ in Whitespace) do inc(p);
-    if p^>#0 then
+    IsSingleComp:=p^=#0;
+  end;
+
+  if (CurAttrData<>nil) and (CurComp.Kind=rvkKeyword)
+      and IsBaseKeyword(CurComp.KeywordID) then
+  begin
+    if not IsSingleComp then
     begin
       // "inherit" must be alone
       CurAttrData.Invalid:=true;
       exit;
     end;
-    CurAttrData.Complete:=true;
   end;
+
   Result:=true;
+end;
+
+function TCSSBaseResolver.InitParseAttr(Desc: TCSSAttributeDesc; const Value: TCSSString): boolean;
+begin
+  Result:=false;
+  CurAttrData:=nil;
+  CurDesc:=Desc;
+  CurValue:=Value;
+  CurComp:=Default(TCSSResCompValue);
+  CurComp.EndP:=PCSSChar(CurValue);
+  Result:=ReadNext;
 end;
 
 procedure TCSSBaseResolver.InitParseAttr(const Value: TCSSString);
@@ -1652,12 +1732,23 @@ end;
 function TCSSBaseResolver.CheckAttribute_Keyword(const AllowedKeywordIDs: TCSSNumericalIDArray
   ): boolean;
 var
-  Invalid: Boolean;
+  i: Integer;
 begin
-  if CurAttrData<>nil then
-    Result:=ReadAttribute_Keyword(CurAttrData.Invalid,AllowedKeywordIDs)
-  else
-    Result:=ReadAttribute_Keyword(Invalid,AllowedKeywordIDs);
+  case CurComp.Kind of
+  rvkKeyword:
+    for i:=0 to length(AllowedKeywordIDs)-1 do
+      if CurComp.KeywordID=AllowedKeywordIDs[i] then
+      begin
+        if not ReadNext and (CurComp.Kind=rvkNone) then
+          exit(true);
+      end;
+  rvkFunction:
+    if CurComp.FunctionID=CSSAttrFuncVar then
+      // maybe
+      exit(true);
+  end;
+
+  Result:=false;
 end;
 
 function TCSSBaseResolver.CheckAttribute_Keyword_List(
@@ -1693,10 +1784,9 @@ function TCSSBaseResolver.CheckAttribute_Dimension(const Params: TCSSCheckAttrPa
 var
   Invalid: boolean;
 begin
-  if CurAttrData<>nil then
-    Result:=ReadAttribute_Dimension(CurAttrData.Invalid,Params)
-  else
-    Result:=ReadAttribute_Dimension(Invalid,Params);
+  Result:=ReadAttribute_Dimension(Invalid,Params);
+  if (not Result) and (CurAttrData<>nil) then
+    CurAttrData.Invalid:=true;
 end;
 
 function TCSSBaseResolver.CheckAttribute_Color(const AllowedKeywordIDs: TCSSNumericalIDArray
@@ -1704,10 +1794,9 @@ function TCSSBaseResolver.CheckAttribute_Color(const AllowedKeywordIDs: TCSSNume
 var
   Invalid: boolean;
 begin
-  if CurAttrData<>nil then
-    Result:=ReadAttribute_Color(CurAttrData.Invalid,AllowedKeywordIDs)
-  else
-    Result:=ReadAttribute_Color(Invalid,AllowedKeywordIDs);
+  Result:=ReadAttribute_Color(Invalid,AllowedKeywordIDs);
+  if (not Result) and (CurAttrData<>nil) then
+    CurAttrData.Invalid:=true;
 end;
 
 function TCSSBaseResolver.ReadNext: boolean;
@@ -2298,6 +2387,17 @@ begin
   Result:=CSSRegistry.IndexOfPseudoClassName(aName);
 end;
 
+function TCSSBaseResolver.GetCSSClassID(const aCSSClassName: TCSSString): TCSSNumericalID;
+begin
+  if aCSSClassName='' then ;
+  Result:=CSSIDNone;
+end;
+
+function TCSSBaseResolver.AddCSSClassID(const aCSSClassName: TCSSString): TCSSNumericalID;
+begin
+  Result:=GetCSSClassID(aCSSClassName);
+end;
+
 function TCSSBaseResolver.GetPseudoElementID(const aName: TCSSString): TCSSNumericalID;
 begin
   Result:=CSSRegistry.IndexOfPseudoElementName(aName);
@@ -2375,6 +2475,17 @@ begin
     Log(etWarning,20240822172826,'unknown pseudo class "'+aName+'"',El);
   end else
     El.NumericalID:=Result;
+end;
+
+function TCSSResolverParser.ResolveClassName(El: TCSSResolvedClassNameElement
+  ): TCSSNumericalID;
+begin
+  if El.NumericalID<>CSSIDNone then
+    raise ECSSParser.Create('20260620120000');
+  El.Kind:=nikClassName;
+  // class names are case sensitive and registered on first use
+  Result:=Resolver.AddCSSClassID(El.Name);
+  El.NumericalID:=Result;
 end;
 
 function TCSSResolverParser.ResolvePseudoElement(El: TCSSResolvedIdentifierElement
@@ -2523,6 +2634,7 @@ var
   Desc: TCSSAttributeDesc;
   AttrData: TCSSAttributeKeyData;
   i, ChildCnt: Integer;
+  ValueStr: TCSSString;
 begin
   Result:=inherited ParseDeclaration(aIsAt);
   if Result.KeyCount<>1 then
@@ -2550,26 +2662,29 @@ begin
       AttrData.Invalid:=true;
       exit;
     end;
+
+    ValueStr:='';
     for i:=0 to ChildCnt-1 do
     begin
       if (i>0) then
-        AttrData.Value+=', ';
-      AttrData.Value+=Result.Children[i].AsString;
+        ValueStr+=', ';
+      ValueStr+=Result.Children[i].AsString;
     end;
+    AttrData.Value:=ValueStr;
 
     if AttrId>=CSSAttributeID_All then
     begin
       Desc:=Resolver.GetAttributeDesc(AttrId);
 
-      if Pos('var(',AttrData.Value)>0 then
+      if HasCSSValueVarCall(ValueStr) then
       begin
         // cannot be parsed yet
       end else if AttrId<Resolver.CSSRegistry.AttributeCount then
       begin
-        if Resolver.InitParseAttr(Desc,AttrData,AttrData.Value) then
+        if Resolver.InitParseAttr(Desc,AttrData) then
         begin
-          if Assigned(Desc.OnCheck) then
-            AttrData.Invalid:=not Desc.OnCheck(Resolver);
+          if Assigned(Desc.OnCheck) and not Desc.OnCheck(Resolver) then
+            AttrData.Invalid:=true;
         end;
       end;
       {$IFDEF VerboseCSSResolver}
@@ -2609,8 +2724,9 @@ begin
     ResolveType(TCSSResolvedIdentifierElement(El))
   else if C=TCSSHashIdentifierElement then
     // e.g. #id {}
-  else if C=TCSSClassNameElement then
+  else if C=TCSSResolvedClassNameElement then
     // e.g. .classname {}
+    ResolveClassName(TCSSResolvedClassNameElement(El))
   else if C=TCSSResolvedPseudoClassElement then
     // e.g. :pseudoclass {}
     ResolvePseudoClass(TCSSResolvedPseudoClassElement(El))
@@ -2730,6 +2846,11 @@ begin
   case aUnary.Operation of
   uoDoubleColon:
     ; // right side was done in ParsePseudoElement
+  uoGT,
+  uoPlus,
+  uoTilde:
+    // nested rule combinator with implicit &, e.g. "> .class" -> resolve operand
+    CheckSelector(aUnary.Right);
   else
     Log(etWarning,20250225103443,'Invalid CSS unary selector '+UnaryOperators[aUnary.Operation],aUnary);
   end;
@@ -2968,6 +3089,8 @@ begin
       FloatEl:=TCSSFloatElement(El);
       Result:=FloatEl.AsString;
     end;
+    if El.CustomData<>nil then
+      raise ECSSParser.Create('20260416220050');
     ElData:=TCSSValueData.Create;
     TCSSValueData(ElData).NormValue:=Result;
     El.CustomData:=ElData;
@@ -2981,6 +3104,7 @@ begin
   inherited Create(AScanner);
   CSSIdentifierElementClass:=TCSSResolvedIdentifierElement;
   CSSPseudoClassElementClass:=TCSSResolvedPseudoClassElement;
+  CSSClassNameElementClass:=TCSSResolvedClassNameElement;
   CSSCallElementClass:=TCSSResolvedCallElement;
   CSSNthChildParamsClass:=TCSSNthChildParams;
   CSSAttributeKeyDataClass:=TCSSAttributeKeyData;
