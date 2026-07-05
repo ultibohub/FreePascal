@@ -46,6 +46,13 @@ Type
     FCurrentTokenString : TCSSString;
     FPeekToken : TCSSToken;
     FPeekTokenString : TCSSString;
+    // end location (row,col right after the last character) of tokens.
+    FCurrentTokenEndRow, FCurrentTokenEndCol : Integer; // current token
+    FPeekTokenEndRow, FPeekTokenEndCol : Integer;       // peeked token
+    // end of the current/previous significant token (skipping whitespace and comments),
+    // used to determine where a value ends without counting trailing whitespace.
+    FCurSigTokenEndRow, FCurSigTokenEndCol : Integer;
+    FPrevSigTokenEndRow, FPrevSigTokenEndCol : Integer;
     FFreeScanner : Boolean;
     FRuleLevel : Integer;
     FInvalidDeclarationValue : Boolean;
@@ -116,6 +123,7 @@ Type
     CSSIdentifierElementClass: TCSSIdentifierElementClass;
     CSSIntegerElementClass: TCSSIntegerElementClass;
     CSSListElementClass: TCSSListElementClass;
+    CSSParenthesisElementClass: TCSSParenthesisElementClass;
     CSSPseudoClassElementClass: TCSSPseudoClassElementClass;
     CSSRuleElementClass: TCSSRuleElementClass;
     CSSStringElementClass: TCSSStringElementClass;
@@ -379,6 +387,7 @@ begin
   CSSIdentifierElementClass:=TCSSIdentifierElement;
   CSSIntegerElementClass:=TCSSIntegerElement;
   CSSListElementClass:=TCSSListElement;
+  CSSParenthesisElementClass:=TCSSParenthesisElement;
   CSSPseudoClassElementClass:=TCSSPseudoClassElement;
   CSSRuleElementClass:=TCSSRuleElement;
   CSSStringElementClass:=TCSSStringElement;
@@ -971,6 +980,8 @@ begin
     begin
     FCurrent:=FPeekToken;
     FCurrentTokenString:=FPeekTokenString;
+    FCurrentTokenEndRow:=FPeekTokenEndRow;
+    FCurrentTokenEndCol:=FPeekTokenEndCol;
     FPeekToken:=ctkUNKNOWN;
     FPeekTokenString:='';
     end
@@ -978,6 +989,16 @@ begin
     begin
     FCurrent:=FScanner.FetchToken;
     FCurrentTokenString:=FScanner.CurTokenString;
+    FCurrentTokenEndRow:=FScanner.CurRow;
+    FCurrentTokenEndCol:=FScanner.CurColumn;
+    end;
+  if not (FCurrent in [ctkWhitespace,ctkComment]) then
+    begin
+    // remember the end of the significant token before this one
+    FPrevSigTokenEndRow:=FCurSigTokenEndRow;
+    FPrevSigTokenEndCol:=FCurSigTokenEndCol;
+    FCurSigTokenEndRow:=FCurrentTokenEndRow;
+    FCurSigTokenEndCol:=FCurrentTokenEndCol;
     end;
   Result:=FCurrent;
   {$ifdef VerboseCSSParser}
@@ -995,6 +1016,8 @@ begin
     begin
     FPeekToken:=FScanner.FetchToken;
     FPeekTokenString:=FScanner.CurTokenString;
+    FPeekTokenEndRow:=FScanner.CurRow;
+    FPeekTokenEndCol:=FScanner.CurColumn;
     end;
   {$ifdef VerboseCSSParser}Writeln('PeekNextToken : ',GetEnumName(TypeInfo(TCSSToken),Ord(FPeekToken)), ' As TCSSString: ',FPeekTokenString);{$endif VerboseCSSParser}
   Result:=FPeekToken;
@@ -1032,7 +1055,15 @@ end;
 function TCSSParser.CreateElement(aClass : TCSSElementClass): TCSSElement;
 
 begin
-  Result:=aClass.Create(CurrentSource,CurrentLine,CurrentPos);
+  // Use the start of the current token, so the element position points at the
+  // first character of the token (e.g. the start of a declaration's attribute name).
+  if Assigned(FScanner) then
+    begin
+    Result:=aClass.Create(CurrentSource,FScanner.CurTokenRow,FScanner.CurTokenColumn);
+    Result.SourcePos:=FScanner.CurTokenPos;
+    end
+  else
+    Result:=aClass.Create(CurrentSource,CurrentLine,CurrentPos);
 end;
 
 function TCSSParser.ParseIdentifier: TCSSIdentifierElement;
@@ -1140,33 +1171,35 @@ end;
 function TCSSParser.ParseParenthesis: TCSSElement;
 
 var
+  aParen : TCSSParenthesisElement;
   aList: TCSSElement;
 begin
-  Consume(ctkLPARENTHESIS);
-  if CurrentToken in [ctkEOF, ctkSEMICOLON, ctkRBRACE] then
-    begin
-    FInvalidDeclarationValue:=True;
-    DoWarn(SErrUnexpectedEndOfFile,['(']);
-    Result:=TCSSElement(CreateElement(TCSSElement));
-    exit;
-    end;
-  aList:=ParseComponentValueList;
+  // Create the parenthesis node while the '(' is current, so it points at the opening bracket.
+  aParen:=TCSSParenthesisElement(CreateElement(CSSParenthesisElementClass));
   try
+    Consume(ctkLPARENTHESIS);
+    if CurrentToken in [ctkEOF, ctkSEMICOLON, ctkRBRACE] then
+      begin
+      FInvalidDeclarationValue:=True;
+      DoWarn(SErrUnexpectedEndOfFile,['(']);
+      Result:=aParen;
+      aParen:=nil;
+      exit;
+      end;
+    aList:=ParseComponentValueList;
     if CurrentToken<>ctkRPARENTHESIS then
       begin
       FInvalidDeclarationValue:=True;
       DoWarn(SErrUnexpectedEndOfFile,['(']);
-      Result:=aList;
-      aList:=nil;
       end
     else
-      begin
       GetNextToken;
-      Result:=aList;
-      aList:=nil;
-      end;
+    if Assigned(aList) then
+      aParen.AddChild(aList);
+    Result:=aParen;
+    aParen:=nil;
   finally
-    aList.Free;
+    aParen.Free;
   end;
 end;
 
@@ -1352,18 +1385,27 @@ var
   Un : TCSSUnaryElement;
   Op : TCSSUnaryOperation;
   El: TCSSElement;
+  aRow, aCol, aPos : Integer;
+  aFileName : TCSSString;
 
 begin
   Result:=nil;
   if not (CurrentToken in [ctkDOUBLECOLON, ctkMinus, ctkPlus, ctkDiv, ctkGT, ctkTILDE]) then
     Raise ECSSParser.CreateFmt(SUnaryInvalidToken,[CurrentTokenString]);
   op:=TokenToUnaryOperation(CurrentToken);
+  // Remember the operator location, so the element position points at the start of the unary value.
+  aRow:=FScanner.CurTokenRow;
+  aCol:=FScanner.CurTokenColumn;
+  aPos:=FScanner.CurTokenPos;
+  aFileName:=CurrentSource;
   GetNextToken;
   if CurrentToken=ctkWHITESPACE then
     Raise ECSSParser.CreateFmt(SUnaryInvalidToken,['white space']);
   El:=ParseComponentValue;
 
   Un:=TCSSUnaryElement(CreateElement(CSSUnaryElementClass));
+  Un.SetLocation(aRow,aCol,aFileName);
+  Un.SourcePos:=aPos;
   Un.Operation:=op;
   Un.Right:=El;
   Result:=Un;
@@ -1829,11 +1871,21 @@ begin
         if aValue=nil then break;
         aList.AddChild(aValue);
         end;
+      // Store the end of the value: the significant token before the current
+      // terminator (';', '}', EOF or !important), skipping trailing whitespace.
+      aDecl.EndRow:=FPrevSigTokenEndRow;
+      aDecl.EndCol:=FPrevSigTokenEndCol;
       if CurrentToken=ctkImportant then
         begin
         GetNextToken;
         aDecl.IsImportant:=True;
         end;
+      end
+    else
+      begin
+      // Store the end of the value.
+      aDecl.EndRow:=FPrevSigTokenEndRow;
+      aDecl.EndCol:=FPrevSigTokenEndCol;
       end;
     if FInvalidDeclarationValue then
       begin
