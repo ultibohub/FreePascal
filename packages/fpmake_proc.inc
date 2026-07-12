@@ -984,3 +984,6 @@ begin
 {$include zorba/fpmake.pp}
 end;
 
+{$include fcl-sonar/fpmake.pp}
+
+

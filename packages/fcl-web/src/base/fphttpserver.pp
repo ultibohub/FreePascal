@@ -38,6 +38,7 @@ Const
   DefaultMaxLiveConnectionCount = 128;
   DefaultKeepConnectionIdleTimeout = 50; // Ms
   DefaultRequestReadTimeout = 30000; // Ms. Per-read timeout while reading a request. 0 disables.
+  DefaultPolledAcceptIdleTimeout = 100; // Ms. Poll interval used for tmPolled when no AcceptIdleTimeout is set.
 
 Type
   TFPHTTPConnection = Class;
@@ -94,6 +95,7 @@ Type
     FIsSocketSetup : Boolean;
     FBuffer : Ansistring;
     FKeepAlive : Boolean;
+    FRequestDataReceived : Boolean; // True once a byte of the current request has been read.
     function GetKeepConnections: Boolean;
     function GetKeepConnectionTimeout: Integer;
     function GetKeepConnectionIdleTimeout: Integer;
@@ -185,7 +187,19 @@ Type
       Var AResponse : TFPHTTPConnectionResponse) of object;
 
   { TFPCustomHttpServer }
-  TThreadMode = (tmNone,tmThread,tmThreadPool);
+  { Connection handling model. 
+    
+    tmNone and tmPolled are both single-threaded and differ only in I/O: 
+    
+    tmNone handles one connection at a time and blocks the accept loop while reading it; 
+    
+    tmPolled keeps a list of connections and only handles a connection 
+    once data is actually waiting (non-blocking readiness check), 
+    so idle/preconnect sockets never block the accept loop. 
+    
+    tmThread and tmThreadPool handle connections concurrently on separate threads. 
+  }
+  TThreadMode = (tmNone,tmPolled,tmThread,tmThreadPool);
 
   { TFPHTTPServerConnectionHandler }
 
@@ -249,6 +263,24 @@ Type
   TFPThreadedConnectionHandler = Class(TFPHTTPServerConnectionListHandler)
   private
     procedure ConnectionDone(Sender: TObject);
+  Public
+    procedure CheckRequests; override;
+    Procedure HandleConnection(aConnection : TFPHTTPConnection); override;
+  end;
+
+  { TFPPolledConnectionHandler }
+
+  {
+    Single-threaded handler that services connections only when they have data waiting. 
+    New connections are kept in the list and handled (synchronously) on
+    the accept-idle tick or as soon as data is available, so a silent/preconnect
+    socket never blocks the accept loop the way tmNone does. 
+  }
+    
+  TFPPolledConnectionHandler = Class(TFPHTTPServerConnectionListHandler)
+  Protected
+    // Handle aConnection if it has a request pending, else leave it for the next poll.
+    procedure CheckConnection(aConnection: TFPHTTPConnection); virtual;
   Public
     procedure CheckRequests; override;
     Procedure HandleConnection(aConnection : TFPHTTPConnection); override;
@@ -864,6 +896,79 @@ begin
 end;
 
 
+{ TFPPolledConnectionHandler }
+
+procedure TFPPolledConnectionHandler.CheckConnection(aConnection: TFPHTTPConnection);
+
+begin
+  { Drop connections that were 
+    - handed off (upgraded), 
+    - finished with an empty request  (closed), 
+    - or completed a request and are not kept alive. 
+    AllowNewRequest is only meaningful once a request has been handled (FLastRequestTime>0): 
+    for a fresh  connection it is False (keep-alive not negotiated yet), 
+    so it must not be used to reap connections that have not had their first request handled. 
+    }
+  if aConnection.IsUpgraded or aConnection.EmptyDetected
+     or ((aConnection.FLastRequestTime>0) and not aConnection.AllowNewRequest) then
+    begin
+    RemoveConnection(aConnection);
+    Exit;
+    end;
+  // Reap kept-alive connections that have been idle past the keep-alive timeout.
+  if (aConnection.FLastRequestTime>0) and (aConnection.KeepConnectionTimeout>0)
+     and (GetTickCount64 > aConnection.FLastRequestTime + QWord(aConnection.KeepConnectionTimeout)) then
+    begin
+    RemoveConnection(aConnection);
+    Exit;
+    end;
+  { Handle a request only when data is actually waiting: 
+    this is what keeps idle and preconnect sockets from blocking the single thread. 
+    Reading/handling is synchronous. }
+  if aConnection.Socket.CanRead(0) then
+    begin
+    aConnection.HandleRequest;
+    // Close now unless the connection was kept alive for a further request.
+    if aConnection.IsUpgraded or aConnection.EmptyDetected or not aConnection.AllowNewRequest then
+      RemoveConnection(aConnection);
+    end;
+end;
+
+
+procedure TFPPolledConnectionHandler.CheckRequests;
+
+Var
+  L : TList;
+  I : Integer;
+  lConnections : Array of TFPHTTPConnection;
+
+begin
+  { Snapshot the connections under lock, then handle them outside the lock: 
+    handling is synchronous and must not be done while holding the list lock.  }
+  L:=List.LockList;
+  try
+    SetLength(lConnections,L.Count);
+    For I:=0 to L.Count-1 do
+      lConnections[i]:=TFPHTTPConnection(L[i]);
+  finally
+    List.UnlockList;
+  end;
+  For I:=0 to High(lConnections) do
+    if Server.Active then
+      CheckConnection(lConnections[i]);
+end;
+
+
+procedure TFPPolledConnectionHandler.HandleConnection(aConnection: TFPHTTPConnection);
+
+begin
+  Inherited; // Adds to list
+  { Serve immediately if the request is already waiting (the common case); otherwise
+    leave it in the list to be polled on the next accept-idle tick. }
+  CheckConnection(aConnection);
+end;
+
+
 { TFPSimpleConnectionHandler }
 
 function TFPSimpleConnectionHandler.GetActiveConnectionCount: Integer;
@@ -1361,6 +1466,7 @@ function TFPCustomHttpServer.CreateConnectionHandler: TFPHTTPServerConnectionHan
 begin
   case ThreadMode of
     tmNone : Result:=TFPSimpleConnectionHandler.Create(Self);
+    tmPolled : Result:=TFPPolledConnectionHandler.Create(Self);
     tmThread : Result:=TFPThreadedConnectionHandler.Create(Self);
     tmThreadPool : Result:=TFPPooledConnectionHandler.Create(Self);
   end;
@@ -1383,7 +1489,7 @@ begin
   Con.OnRequestError:=@HandleRequestError;
   Con.OnUnexpectedError:=@HandleUnexpectedError;
   If CanLog(hlmConnect) then
-    DoLog(hlmConnect,SErrAcceptingNewConnection,[Con.ConnectionID,  HostAddrToStr(Data.RemoteAddress.sin_addr)]);
+    DoLog(hlmConnect,SErrAcceptingNewConnection,[Con.ConnectionID,  NetAddrToStr(Data.RemoteAddress.sin_addr)]);
   FConnectionHandler.HandleConnection(Con);
 end;
 
@@ -1499,7 +1605,13 @@ begin
   FServer.OnConnect:=@DOConnect;
   FServer.OnAcceptSocketError:=@DoAcceptError;
   FServer.OnIdle:=@DoAcceptIdle;
-  FServer.AcceptIdleTimeOut:=AcceptIdleTimeout;
+  { tmPolled relies on the accept-idle tick to poll connections for pending data.
+    Without a timeout, accept() would block indefinitely and connections would never
+    be polled, so fall back to a sensible default poll interval. }
+  if (ThreadMode=tmPolled) and (AcceptIdleTimeout=0) then
+    FServer.AcceptIdleTimeOut:=DefaultPolledAcceptIdleTimeout
+  else
+    FServer.AcceptIdleTimeOut:=AcceptIdleTimeout;
 end;
 
 procedure TFPCustomHttpServer.StartServerSocket;
@@ -1667,20 +1779,35 @@ function TFPHTTPConnection.ReadString : String;
 
   begin
     // Do not block indefinitely while reading a request. If a read time-out is
-    // configured and no data arrives within it, the peer has stalled mid-request
-    // (e.g. slowloris). Distinguish this from a genuine read error: CanRead uses
-    // select(), so it is portable and tells us "no data within timeout" without
-    // depending on platform errno values. We log it and close the connection.
+    // configured and no data arrives within it, either the peer never started a
+    // request (an idle/preconnect socket) or it stalled mid-request (slowloris).
+    // CanRead uses select(), so it is portable and tells us "no data within timeout"
+    // without depending on platform errno values. The two cases are handled below.
     if Assigned(Server) and (Server.RequestReadTimeout>0)
        and not FSocket.CanRead(Server.RequestReadTimeout) then
+      begin
+      // Distinguish an idle connection from a stalled request. If not a single byte
+      // of the current request has arrived, the peer opened the connection but sent
+      // nothing - typically a browser speculative/preconnect socket. That is normal:
+      // return with an empty buffer so ReadString yields '' and the caller closes the
+      // connection quietly via the empty-request path. Only a peer that stops *during*
+      // a request (slowloris) is a genuine timeout worth raising and logging.
+      if not FRequestDataReceived then
+        begin
+        FBuffer:='';
+        Exit;
+        end;
       Raise EHTTPServerTimeout.CreateFmtHelp(SErrRequestReadTimeout,
-              [Server.RequestReadTimeout,HostAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
+              [Server.RequestReadTimeout,NetAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
+      end;
     SetLength(FBuffer,ReadBufLen);
     r:=FSocket.Read(FBuffer[1],ReadBufLen);
     If r<0 then
       Raise EHTTPServer.Create(SErrReadingSocket);
     if (r<ReadBuflen) then
       SetLength(FBuffer,r);
+    if (r>0) then
+      FRequestDataReceived:=True;
   end;
 
 Var
@@ -1930,7 +2057,7 @@ begin
       if Assigned(Server) and (Server.RequestReadTimeout>0)
          and not FSocket.CanRead(Server.RequestReadTimeout) then
         Raise EHTTPServerTimeout.CreateFmtHelp(SErrRequestReadTimeout,
-                [Server.RequestReadTimeout,HostAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
+                [Server.RequestReadTimeout,NetAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
       R:=FSocket.Read(S[p],L);
       If R<0 then
         Raise EHTTPServer.Create(SErrReadingSocket);
@@ -1953,6 +2080,9 @@ Var
 
 begin
   Result:=Nil;
+  // A fresh request starts here: no byte received yet. This lets FillBuffer treat a
+  // first-byte read time-out as an idle connection rather than a slowloris stall.
+  FRequestDataReceived:=False;
   StartLine:=ReadString;
   if StartLine='' then
     exit;
@@ -1975,7 +2105,7 @@ begin
         Raise Err;
         end;
     Until (S='');
-    Result.RemoteAddress :=  HostAddrToStr(FSocket.RemoteAddress.sin_addr);
+    Result.RemoteAddress :=  NetAddrToStr(FSocket.RemoteAddress.sin_addr);
     Result.ServerPort := FServer.Port;
   except
     FreeAndNil(Result);
@@ -2008,7 +2138,7 @@ destructor TFPHTTPConnection.Destroy;
 
 begin
   If Assigned(FServer) and FServer.CanLog(hlmDisConnect) then
-    FServer.DoLog(hlmDisconnect,SClosingConnection,[Self.ConnectionID, HostAddrToStr(FSocket.RemoteAddress.sin_addr)]);
+    FServer.DoLog(hlmDisconnect,SClosingConnection,[Self.ConnectionID, NetAddrToStr(FSocket.RemoteAddress.sin_addr)]);
   FreeAndNil(FSocket);
   Inherited;
 end;

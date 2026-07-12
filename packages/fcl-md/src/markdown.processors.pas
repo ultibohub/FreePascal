@@ -877,9 +877,8 @@ begin
     Exit;
   // Ending may be preceded by 3 spaces
 
-  Result:=aLine.LeadingWhitespace>=4+lBlock.Indent;
-  if Result then
-    Exit;
+  if aLine.LeadingWhitespace>=4+lBlock.Indent then
+    Exit(False);
   S:=aLine.Remainder.Trim;
   Result:=IsStringOfChar(s) and s.StartsWith(FTerminal);
 end;
@@ -894,7 +893,7 @@ begin
   lBlock:=TMarkdownCodeBlock.Create(aParent,aLine.LineNo);
   lBlock.fenced:=true;
   lBlock.lang:=Flang;
-  lBlock.Indent:=aLine.CursorPos;
+  lBlock.Indent:=aLine.CursorPos-1;
   while Not LineEndsBlock(lBlock,PeekLine) do
     begin
     aLine:=NextLine;

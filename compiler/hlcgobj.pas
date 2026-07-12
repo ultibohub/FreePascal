@@ -54,6 +54,15 @@ unit hlcgobj;
          sym : tabstractnormalvarsym;
        end;
 
+       { thlcgobj methods that may have to be overridden by non-descendants }
+       thlcgobjhelpers = class
+         class procedure gen_proc_symbol(list:TAsmList);virtual;
+         { queue the code/data generated for a procedure for writing out to
+           the assembler/object file }
+         class procedure record_generated_code_for_procdef(pd: tprocdef; code, data: TAsmList); virtual;
+       end;
+       thlcgobjhelpersclass = class of thlcgobjhelpers;
+
        {# @abstract(Abstract high level code generator)
           This class implements an abstract instruction generator. All
           methods of this class are generic and are mapped to low level code
@@ -64,10 +73,13 @@ unit hlcgobj;
        { thlcgobj }
 
        thlcgobj = class
+       protected
+        fphlcgobjhelper: thlcgobjhelpersclass;
        public
           {************************************************}
           {                 basic routines                 }
-          constructor create;
+          constructor create; virtual;
+          constructor create(hlcgobjhelpers: thlcgobjhelpersclass);
 
           {# Initialize the register allocators needed for the codegenerator.}
           procedure init_register_allocators;virtual;
@@ -636,7 +648,7 @@ unit hlcgobj;
           function do_replace_node_regs(var n: tnode; para: pointer): foreachnoderesult; virtual;
          public
 
-          procedure gen_proc_symbol(list:TAsmList);virtual;
+          procedure gen_proc_symbol(list:TAsmList);
           procedure gen_proc_symbol_end(list:TAsmList);virtual;
           procedure handle_external_proc(list: TAsmList; pd: tprocdef; const importname: TSymStr); virtual;
 
@@ -649,7 +661,7 @@ unit hlcgobj;
          protected
           { helpers called by gen_initialize_code/gen_finalize_code }
           procedure inittempvariables(list:TAsmList);virtual;
-          procedure finalizetempvariables(list:TAsmList);virtual;
+          procedure finalizetempvariables(list:TAsmList;for_finalization:boolean);virtual;
           procedure initialize_regvars(p:TObject;arg:pointer);virtual;
           { generates the code for decrementing the reference count of parameters }
           procedure final_paras(p:TObject;arg:pointer);
@@ -705,8 +717,15 @@ unit hlcgobj;
           { Generate code to exit an unwind-protected region. The default implementation
             produces a simple jump to destination label. }
           procedure g_local_unwind(list: TAsmList; l: TAsmLabel);virtual;abstract;
+
+         strict protected
+          fhlcgobjhelpers: thlcgobjhelpersclass;
+         public
+          property hlcgobjhelpers: thlcgobjhelpersclass write fhlcgobjhelpers;
        end;
      thlcgobjclass = class of thlcgobj;
+
+     tcreate_hlcgcodegen = procedure(lcgobjhelper: thlcgobjhelpersclass);
 
     var
        {# Main high level code generator class }
@@ -714,7 +733,7 @@ unit hlcgobj;
        { class type of high level code generator class (also valid when hlcg is
          nil, in order to be able to call its virtual class methods) }
        chlcgobj: thlcgobjclass;
-       create_hlcodegen: TProcedure;
+       create_hlcodegen: tcreate_hlcgcodegen;
 
     procedure destroy_hlcodegen;
 
@@ -742,10 +761,91 @@ implementation
         destroy_codegen;
       end;
 
+
+    class procedure thlcgobjhelpers.gen_proc_symbol(list: TAsmList);
+      var
+        firstitem,
+        item: TCmdStrListItem;
+        global: boolean;
+      begin
+        item:=TCmdStrListItem(current_procinfo.procdef.aliasnames.first);
+        firstitem:=item;
+        global:=current_procinfo.procdef.needsglobalasmsym;
+        while assigned(item) do
+          begin
+  {$ifdef arm}
+            if GenerateThumbCode or GenerateThumb2Code then
+              list.concat(tai_directive.create(asd_thumb_func,''));
+  {$endif arm}
+            { alias procedure entry symbols via ".set" on Darwin, otherwise
+              they can be interpreted as all different starting symbols of
+              subsections and be reordered }
+            if (item<>firstitem) and
+               (target_info.system in (systems_darwin+systems_wasm)) then
+              begin
+                { the .set already defines the symbol, so can't emit a tai_symbol as that will redefine it }
+                if global then
+                  begin
+                    list.concat(tai_symbolpair.create(spk_set_global,item.str,firstitem.str));
+                  end
+                else
+                  begin
+                    list.concat(tai_symbolpair.create(spk_set,item.str,firstitem.str));
+                  end;
+              end
+            else
+              begin
+                if global then
+                  list.concat(Tai_symbol.createname_global(item.str,AT_FUNCTION,0,current_procinfo.procdef))
+                else
+                  list.concat(Tai_symbol.Createname_hidden(item.str,AT_FUNCTION,0,current_procinfo.procdef));
+                if not(af_stabs_use_function_absolute_addresses in target_asm.flags) then
+                  list.concat(Tai_function_name.create(item.str));
+              end;
+            item:=TCmdStrListItem(item.next);
+          end;
+        current_procinfo.procdef.procstarttai:=tai(list.last);
+      end;
+
+    class procedure thlcgobjhelpers.record_generated_code_for_procdef(pd: tprocdef; code, data: TAsmList);
+      var
+        alt: TAsmListType;
+      begin
+        if not(po_assembler in pd.procoptions) then
+          alt:=al_procedures
+        else
+          alt:=al_pure_assembler;
+        { add the procedure to the al_procedures }
+        maybe_new_object_file(current_asmdata.asmlists[alt]);
+  {$ifdef symansistr}
+        if pd.section<>'' then
+          new_proc_section(current_asmdata.asmlists[alt],sec_user,lower(pd.section),getprocalign)
+  {$else symansistr}
+        if assigned(pd.section) then
+          new_proc_section(current_asmdata.asmlists[alt],sec_user,lower(pd.section^),getprocalign)
+  {$endif symansistr}
+        else
+          new_section(current_asmdata.asmlists[alt],sec_code,lower(pd.mangledname),getprocalign);
+        current_asmdata.asmlists[alt].concatlist(code);
+        { save local data (castable) also in the same file }
+        if assigned(data) and
+           (not data.empty) then
+          current_asmdata.asmlists[alt].concatlist(data);
+      end;
+
+
   { thlcgobj }
 
   constructor thlcgobj.create;
     begin
+      if not assigned(fphlcgobjhelper) then
+        fphlcgobjhelper:=thlcgobjhelpers;
+    end;
+
+  constructor thlcgobj.create(hlcgobjhelpers: thlcgobjhelpersclass);
+    begin
+      fphlcgobjhelper:=hlcgobjhelpers;
+      create;
     end;
 
   procedure thlcgobj.init_register_allocators;
@@ -4939,48 +5039,8 @@ implementation
 
 
   procedure thlcgobj.gen_proc_symbol(list: TAsmList);
-    var
-      firstitem,
-      item: TCmdStrListItem;
-      global: boolean;
     begin
-      item:=TCmdStrListItem(current_procinfo.procdef.aliasnames.first);
-      firstitem:=item;
-      global:=current_procinfo.procdef.needsglobalasmsym;
-      while assigned(item) do
-        begin
-{$ifdef arm}
-          if GenerateThumbCode or GenerateThumb2Code then
-            list.concat(tai_directive.create(asd_thumb_func,''));
-{$endif arm}
-          { alias procedure entry symbols via ".set" on Darwin, otherwise
-            they can be interpreted as all different starting symbols of
-            subsections and be reordered }
-          if (item<>firstitem) and
-             (target_info.system in (systems_darwin+systems_wasm)) then
-            begin
-              { the .set already defines the symbol, so can't emit a tai_symbol as that will redefine it }
-              if global then
-                begin
-                  list.concat(tai_symbolpair.create(spk_set_global,item.str,firstitem.str));
-                end
-              else
-                begin
-                  list.concat(tai_symbolpair.create(spk_set,item.str,firstitem.str));
-                end;
-            end
-          else
-            begin
-              if global then
-                list.concat(Tai_symbol.createname_global(item.str,AT_FUNCTION,0,current_procinfo.procdef))
-              else
-                list.concat(Tai_symbol.Createname_hidden(item.str,AT_FUNCTION,0,current_procinfo.procdef));
-              if not(af_stabs_use_function_absolute_addresses in target_asm.flags) then
-                list.concat(Tai_function_name.create(item.str));
-            end;
-          item:=TCmdStrListItem(item.next);
-        end;
-      current_procinfo.procdef.procstarttai:=tai(list.last);
+      fphlcgobjhelper.gen_proc_symbol(list);
     end;
 
   procedure thlcgobj.gen_proc_symbol_end(list: TAsmList);
@@ -5028,20 +5088,24 @@ implementation
       end;
 
       { initialises temp. ansi/wide string data }
-      if (current_procinfo.procdef.proctypeoption<>potype_exceptfilter) then
+      if (current_procinfo.procdef.proctypeoption<>potype_exceptfilter) or
+         (target_info.system=system_aarch64_win64) then
         inittempvariables(list);
     end;
 
   procedure thlcgobj.gen_finalize_code(list: TAsmList);
     var
       old_current_procinfo: tprocinfo;
+      for_finalization: boolean;
     begin
       old_current_procinfo:=current_procinfo;
+      for_finalization:=false;
       if (current_procinfo.procdef.proctypeoption=potype_exceptfilter) then
         begin
           if (current_procinfo.parent.finalize_procinfo<>current_procinfo) then
             exit;
           current_procinfo:=current_procinfo.parent;
+          for_finalization:=true;
         end;
 
       { finalize paras data }
@@ -5050,7 +5114,7 @@ implementation
         current_procinfo.procdef.parast.SymList.ForEachCall(@final_paras,list);
 
       { finalize temporary data }
-      finalizetempvariables(list);
+      finalizetempvariables(list,for_finalization);
 
       current_procinfo:=old_current_procinfo;
     end;
@@ -5144,13 +5208,27 @@ implementation
             is_managed_type(hp^.def) then
           begin
             tg.temp_to_ref(hp,href);
+            { On AArch64-Win64 exceptfilters have their own SP-relative temps
+              but share the parent's temp allocator. Parent temps are already
+              initialised by the parent; only handler-local temps need zeroing.
+              adjust_exceptfilter_ref converts parent temps to FP-relative,
+              so if the base changed from the framepointer it is a parent temp. }
+            if (current_procinfo.procdef.proctypeoption=potype_exceptfilter) then
+              begin
+                cg.adjust_exceptfilter_ref(href,false);
+                if href.base<>current_procinfo.framepointer then
+                  begin
+                    hp:=hp^.next;
+                    continue;
+                  end;
+              end;
             g_initialize(list,hp^.def,href);
           end;
          hp:=hp^.next;
        end;
     end;
 
-  procedure thlcgobj.finalizetempvariables(list: TAsmList);
+  procedure thlcgobj.finalizetempvariables(list: TAsmList;for_finalization:boolean);
     var
       hp : ptemprecord;
       href : treference;
@@ -5164,6 +5242,8 @@ implementation
           begin
             include(current_procinfo.flags,pi_needs_implicit_finally);
             tg.temp_to_ref(hp,href);
+            if for_finalization then
+              cg.adjust_exceptfilter_ref(href,true);
             g_finalize(list,hp^.def,href);
           end;
          hp:=hp^.next;
@@ -5252,7 +5332,12 @@ implementation
                     hsym:=tparavarsym(get_high_value_sym(tparavarsym(p)));
                     if not assigned(hsym) then
                       internalerror(201003032);
-                    highloc:=hsym.initialloc
+                    highloc:=hsym.initialloc;
+                    { adjust high bound reference for exceptfilter finalization }
+                    if assigned(current_procinfo.finalize_procinfo) and
+                       (current_procinfo.finalize_procinfo.procdef.proctypeoption=potype_exceptfilter) and
+                       (highloc.loc in [LOC_REFERENCE,LOC_CREFERENCE]) then
+                      cg.adjust_exceptfilter_ref(highloc.reference,true);
                   end
                 else
                   highloc.loc:=LOC_INVALID;
@@ -5769,29 +5854,8 @@ implementation
     end;
 
   procedure thlcgobj.record_generated_code_for_procdef(pd: tprocdef; code, data: TAsmList);
-    var
-      alt: TAsmListType;
     begin
-      if not(po_assembler in pd.procoptions) then
-        alt:=al_procedures
-      else
-        alt:=al_pure_assembler;
-      { add the procedure to the al_procedures }
-      maybe_new_object_file(current_asmdata.asmlists[alt]);
-{$ifdef symansistr}
-      if pd.section<>'' then
-        new_proc_section(current_asmdata.asmlists[alt],sec_user,lower(pd.section),getprocalign)
-{$else symansistr}
-      if assigned(pd.section) then
-        new_proc_section(current_asmdata.asmlists[alt],sec_user,lower(pd.section^),getprocalign)
-{$endif symansistr}
-      else
-        new_section(current_asmdata.asmlists[alt],sec_code,lower(pd.mangledname),getprocalign);
-      current_asmdata.asmlists[alt].concatlist(code);
-      { save local data (castable) also in the same file }
-      if assigned(data) and
-         (not data.empty) then
-        current_asmdata.asmlists[alt].concatlist(data);
+      fphlcgobjhelper.record_generated_code_for_procdef(pd, code, data);
     end;
 
   function thlcgobj.g_call_system_proc(list: TAsmList; const procname: string; const paras: array of pcgpara; forceresdef: tdef): tcgpara;
