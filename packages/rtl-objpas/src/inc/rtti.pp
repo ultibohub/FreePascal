@@ -5569,7 +5569,11 @@ var
   total, visible: SizeInt;
   context: TRttiContext;
   obj: TRttiObject;
+  params, paramsAll: TRttiParameterArray;
 begin
+  { Unlocked fast path: FParams/FParamsAll are only ever published as
+    fully-built arrays (under the pool lock below), so observing a non-empty
+    array here means it is complete. }
   if aWithHidden and (Length(FParamsAll) > 0) then
     Exit(FParamsAll);
   if not aWithHidden and (Length(FParams) > 0) then
@@ -5578,33 +5582,58 @@ begin
   if FIntfMethodEntry^.ParamCount = 0 then
     Exit(Nil);
 
-  SetLength(FParams, FIntfMethodEntry^.ParamCount);
-  SetLength(FParamsAll, FIntfMethodEntry^.ParamCount);
+  { TRttiIntfMethod instances are shared through the GRttiPool cache and
+    GetParameters is reached concurrently (TVirtualInterface thunk on every
+    invocation, plus arbitrary user threads). The previous implementation
+    performed the lazy initialization directly on FParams/FParamsAll without
+    any synchronization: it published the arrays with SetLength BEFORE
+    filling them, so a concurrent reader passing the fast-path check above
+    could observe an array full of nil entries (leading to virtual calls on
+    nil TRttiParameter instances), and two concurrent initializers performed
+    unsynchronized SetLength on the same dynarray fields. Build into locals
+    and publish complete arrays under the same lock that already guards
+    TRttiInstanceType.GetDeclaredMethods. }
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  EnterCriticalsection(GRttiPool[FUsePublishedOnly].FLock);
+  try
+{$endif}
+    if Length(FParamsAll) = 0 then begin
+      SetLength(params, FIntfMethodEntry^.ParamCount);
+      SetLength(paramsAll, FIntfMethodEntry^.ParamCount);
 
-  context := TRttiContext.Create(FUsePublishedOnly);
-  total := 0;
-  visible := 0;
-  param := FIntfMethodEntry^.Param[0];
-  while total < FIntfMethodEntry^.ParamCount do begin
-    obj := context.GetByHandle(param);
-    if Assigned(obj) then
-      FParamsAll[total] := obj as TRttiVmtMethodParameter
-    else begin
-      FParamsAll[total] := TRttiVmtMethodParameter.Create(param);
-      context.AddObject(FParamsAll[total]);
+      context := TRttiContext.Create(FUsePublishedOnly);
+      total := 0;
+      visible := 0;
+      param := FIntfMethodEntry^.Param[0];
+      while total < FIntfMethodEntry^.ParamCount do begin
+        obj := context.GetByHandle(param);
+        if Assigned(obj) then
+          paramsAll[total] := obj as TRttiVmtMethodParameter
+        else begin
+          paramsAll[total] := TRttiVmtMethodParameter.Create(param);
+          context.AddObject(paramsAll[total]);
+        end;
+
+        if not (pfHidden in param^.Flags) then begin
+          params[visible] := paramsAll[total];
+          Inc(visible);
+        end;
+
+        param := param^.Next;
+        Inc(total);
+      end;
+
+      if visible <> total then
+        SetLength(params, visible);
+
+      FParams := params;
+      FParamsAll := paramsAll;
     end;
-
-    if not (pfHidden in param^.Flags) then begin
-      FParams[visible] := FParamsAll[total];
-      Inc(visible);
-    end;
-
-    param := param^.Next;
-    Inc(total);
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  finally
+    LeaveCriticalsection(GRttiPool[FUsePublishedOnly].FLock);
   end;
-
-  if visible <> total then
-    SetLength(FParams, visible);
+{$endif}
 
   if aWithHidden then
     Result := FParamsAll
@@ -5630,7 +5659,15 @@ begin
   Intf:=aInstance.AsInterface;
   if not Supports(Intf,TRttiInterfaceType(Parent).GUID,InstPtr) then
     raise EInvocationError.Create(SErrInvokeInsufficientRtti);
-  Result:=HandleInvokeHelper(Parent.handle,InstPtr,aArgs);
+  try
+    Result:=HandleInvokeHelper(Parent.handle,InstPtr,aArgs);
+  finally
+    { Supports into an untyped pointer add-referenced the invocation target
+      without a matching release: one leaked reference on the invoked object
+      per incoming dispatch.
+      InstPtr stays valid during the call through the Intf local reference. }
+    IInterface(InstPtr)._Release;
+  end;
 {$ELSE}
   if not IsStatic and aInstance.IsEmpty then
     raise EInvocationError.CreateFmt(SErrInvokeNotStaticNeedsSelf, [Name]);
@@ -6674,7 +6711,9 @@ var
   obj: TRttiObject;
   parent: TRttiInterfaceType;
   parentmethodcount: Word;
+  methods: specialize TArray<TRttiMethod>;
 begin
+  { Unlocked fast path }
   if Assigned(fDeclaredMethods) then
     Exit(fDeclaredMethods);
 
@@ -6685,30 +6724,47 @@ begin
   if (methtable^.Count = 0) or (methtable^.RTTICount = $ffff) then
     Exit(Nil);
 
-  parent := GetIntfBaseType;
-  if Assigned(parent) then
-    parentmethodcount := parent.IntfMethodCount
-  else
-    parentmethodcount := 0;
+  { TRttiInterfaceType instances are shared through the GRttiPool cache and
+    this method is reached concurrently without any caller-side lock (the
+    TVirtualInterface thunk and RTTI-based (de)serializers call GetMethods on
+    every invocation). }
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  EnterCriticalsection(GRttiPool[FUsePublishedOnly].FLock);
+  try
+{$endif}
+    if not Assigned(fDeclaredMethods) then begin
+      parent := GetIntfBaseType;
+      if Assigned(parent) then
+        parentmethodcount := parent.IntfMethodCount
+      else
+        parentmethodcount := 0;
 
-  SetLength(fDeclaredMethods, methtable^.Count);
+      SetLength(methods, methtable^.Count);
 
-  context := TRttiContext.Create(FUsePublishedOnly);
-  method := methtable^.Method[0];
-  count := methtable^.Count;
-  while count > 0 do begin
-    index := methtable^.Count - count;
-    obj := context.GetByHandle(method);
-    if Assigned(obj) then
-      fDeclaredMethods[index] := obj as TRttiMethod
-    else begin
-      fDeclaredMethods[index] := TRttiIntfMethod.Create(Self, method, parentmethodcount + index);
-      context.AddObject(fDeclaredMethods[index]);
+      context := TRttiContext.Create(FUsePublishedOnly);
+      method := methtable^.Method[0];
+      count := methtable^.Count;
+      while count > 0 do begin
+        index := methtable^.Count - count;
+        obj := context.GetByHandle(method);
+        if Assigned(obj) then
+          methods[index] := obj as TRttiMethod
+        else begin
+          methods[index] := TRttiIntfMethod.Create(Self, method, parentmethodcount + index);
+          context.AddObject(methods[index]);
+        end;
+
+        method := method^.Next;
+        Dec(count);
+      end;
+
+      fDeclaredMethods := methods;
     end;
-
-    method := method^.Next;
-    Dec(count);
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  finally
+    LeaveCriticalsection(GRttiPool[FUsePublishedOnly].FLock);
   end;
+{$endif}
 
   Result := fDeclaredMethods;
 end;
@@ -8215,17 +8271,33 @@ var
   parentmethods, selfmethods: TRttiMethodArray;
   parent: TRttiType;
 begin
+  { Unlocked fast path: fMethods is only ever published as a fully-built
+    array (under the pool lock below). }
   if Assigned(fMethods) then
     Exit(fMethods);
 
-  selfmethods := GetDeclaredMethods;
+  { TRttiType instances are shared through the GRttiPool cache. 
+    Two concurrent initializers assigning the managed fMethods field race on its
+    reference count and can leave a reader with a dangling array }
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  EnterCriticalsection(GRttiPool[FUsePublishedOnly].FLock);
+  try
+{$endif}
+    if not Assigned(fMethods) then begin
+      selfmethods := GetDeclaredMethods;
 
-  parent := GetBaseType;
-  if Assigned(parent) then begin
-    parentmethods := parent.GetMethods;
+      parent := GetBaseType;
+      if Assigned(parent) then begin
+        parentmethods := parent.GetMethods;
+      end;
+
+      fMethods := Concat(selfmethods, parentmethods);
+    end;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+  finally
+    LeaveCriticalsection(GRttiPool[FUsePublishedOnly].FLock);
   end;
-
-  fMethods := Concat(selfmethods, parentmethods);
+{$endif}
 
   Result := fMethods;
 end;
@@ -8381,8 +8453,9 @@ end;
 
 procedure TRttiContext.AddObject(AObject: TRttiObject);
 begin
-  EnsurePool(Self).AddObject(AObject);
+  { Set the flag before publishing the object in the pool}
   AObject.FUsePublishedOnly := UsePublishedOnly;
+  EnsurePool(Self).AddObject(AObject);
 end;
 
 function TRttiContext.GetOrAddObject(aHandle: Pointer; aClass: TRttiMemberClass; aParent: TRttiType): TRttiMember;
@@ -8492,6 +8565,10 @@ begin
   if not Supports(TInterfaceThunk(aInstance),(FIntfRTTI as TRttiInterfaceType).GUID,TheIntf) then
     raise EInsufficientRtti.CreateFmt(SErrVirtThunkNotCorrectInterface, [FIntfRTTI.Name]);
   TValue.Make(@TheIntf,FIntfRTTI.Handle,ParamValues[0]);
+  { Supports into an untyped pointer add-referenced the thunk without a
+    matching release, and TValue.Make above took its own properly-managed reference.
+    Balance the Supports reference here. }
+  IInterface(TheIntf)._Release;
   // Convert parameters to TValue
   For I:=1 to aCount do
     begin
