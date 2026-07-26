@@ -156,7 +156,9 @@ const
     'po_AsmPascalComments',
     'AllowMem',
     'WarnResourceNotFound',
-    'CheckDirectiveRTTI');
+    'CheckDirectiveRTTI',
+    'AllowPointerToSpecialize',
+    'StrictClassHelperMode');
 
   PCUDefaultModeSwitches: TModeSwitches = [
     msObjfpc,
@@ -268,7 +270,9 @@ const
     'ScopedEnums',
     'ObjectChecks',
     'PointerMath',
-    'Goto'
+    'Goto',
+    'VarPropSetter',
+    'BitPacking'
     );
 
   PCUMinConverterOptions = [coStoreImplJS,coShortRefGlobals];
@@ -439,7 +443,8 @@ const
   PCUClassScopeFlagNames: array[TPasClassScopeFlag] of string = (
     'AncestorResolved',
     'Sealed',
-    'Published'
+    'Published',
+    'DeferredAncestor'
     );
 
   PCUDispatchDefaultField = 'Msg';
@@ -612,7 +617,8 @@ const
     'NeedTmpVar',
     'OnlyTypeMembers',
     'IsClassOf',
-    'ConstParent'
+    'ConstParent',
+    'DeferredTemplate'
     );
 
 
