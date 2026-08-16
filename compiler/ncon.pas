@@ -45,6 +45,7 @@ interface
           value_currency : currency;
           lab_real : tasmlabel;
           constructor create(v : bestreal;def:tdef);virtual;
+          constructor create_currency_scalar(def:tdef);
           constructor ppuload(t:tnodetype;ppufile:tcompilerppufile);override;
           procedure ppuwrite(ppufile:tcompilerppufile);override;
           procedure buildderefimpl;override;
@@ -52,6 +53,7 @@ interface
           function dogetcopy : tnode;override;
           function pass_1 : tnode;override;
           function pass_typecheck:tnode;override;
+          function simplify(forinline : boolean) : tnode;override;
           function docompare(p: tnode) : boolean; override;
           procedure printnodedata(var t:text);override;
           function emit_data(tcb:ttai_typedconstbuilder):sizeint; override;
@@ -71,6 +73,7 @@ interface
             against the ranges of the type definition.
           }
           constructor create(const v : tconstexprint;def:tdef; _rangecheck : boolean);virtual;
+          constructor create_currency_scalar(def:tdef);
           constructor ppuload(t:tnodetype;ppufile:tcompilerppufile);override;
           procedure ppuwrite(ppufile:tcompilerppufile);override;
           procedure buildderefimpl;override;
@@ -233,7 +236,7 @@ implementation
       defcmp,defutil,procinfo,
       aasmdata,aasmtai,
       cgbase,
-      nld,nbas,ncnv;
+      nld,nbas,ncnv,nmat;
 
     function genintconstnode(const v : TConstExprInt) : tordconstnode;
       var
@@ -400,6 +403,10 @@ implementation
           else
             internalerror(200205103);
         end;
+
+        if is_currency(p.constdef) then
+          Include(p1.flags, nf_is_currency);
+
         { transfer generic param flag from symbol to node }
         if sp_generic_para in p.symoptions then
           include(p1.flags,nf_generic_para);
@@ -426,6 +433,8 @@ implementation
       begin
          if current_settings.fputype=fpu_none then
             internalerror(2008022401);
+         if def.typ<>floatdef then
+           InternalError(2002022402);
          inherited create(realconstn);
          typedef:=def;
          case tfloatdef(def).floattype of
@@ -444,6 +453,13 @@ implementation
          value_real:=v;
          value_currency:=v;
          lab_real:=nil;
+      end;
+
+    constructor trealconstnode.create_currency_scalar(def:tdef);
+      begin
+        Create(10000.0,def);
+        Include(flags,nf_internal);
+        Include(flags,nf_is_currency);
       end;
 
     constructor trealconstnode.ppuload(t:tnodetype;ppufile:tcompilerppufile);
@@ -551,6 +567,21 @@ implementation
       end;
 
 
+    function trealconstnode.simplify(forinline : boolean) : tnode;
+      begin
+        result:=nil;
+        if (frac(value_real)<>0.0) and is_currency(resultdef) and not (nf_is_currency in flags) then
+          begin
+            { Unfortunately we can't safely store unscaled Currency values with
+              fractional components in a cross-platform way, so scale it here
+              so its 4 decimal places are preserved }
+            value_real:=value_real*BestReal(10000.0);
+            Include(flags,nf_is_currency);
+            Include(flags,nf_internal);
+          end;
+      end;
+
+
     function trealconstnode.docompare(p: tnode): boolean;
       begin
         docompare :=
@@ -566,7 +597,21 @@ implementation
            or
            (
             (tfloatdef(typedef).floattype<>s64currency) and
-            (value_real = trealconstnode(p).value_real) and
+            (value_real=trealconstnode(p).value_real) and
+            (
+              { Make sure 0.0 and -0.0 are not equated unless fastmath is enabled }
+              (cs_opt_fastmath in current_settings.optimizerswitches) or
+              not (
+                (
+                  IsPosZero(value_real) and
+                  IsNegZero(trealconstnode(p).value_real)
+                ) or
+                (
+                  IsNegZero(value_real) and
+                  IsPosZero(trealconstnode(p).value_real)
+                )
+              )
+            ) and
             { floating point compares for non-numbers give strange results usually }
             is_number_float(value_real) and
             is_number_float(trealconstnode(p).value_real)
@@ -627,6 +672,14 @@ implementation
          value:=v;
          typedef:=def;
          rangecheck := _rangecheck;
+      end;
+
+
+    constructor tordconstnode.create_currency_scalar(def:tdef);
+      begin
+        Create(10000,def,false);
+        Include(flags,nf_internal);
+        Include(flags,nf_is_currency);
       end;
 
 
