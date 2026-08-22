@@ -98,12 +98,19 @@ Type
     function ParseComponentValue: TCSSElement; virtual;
     function ParseExpression: TCSSElement; virtual;
     function ParseRule: TCSSRuleElement; virtual;
-    function ParseAtUnknownRule: TCSSElement; virtual;
+    function ParseAtRulePrelude: TCSSAtRuleElement; virtual;
+    function ParseAtUnknownRule(aSkipDeclarations : Boolean = False): TCSSElement; virtual;
+    function ParseAtNestedRule: TCSSAtRuleElement; virtual;
+    function ParseAtMediaRulePrelude: TCSSAtRuleElement; virtual;
     function ParseAtMediaRule: TCSSAtRuleElement; virtual;
-    function ParseAtSimpleRule: TCSSAtRuleElement; virtual;
+    function ParseAtSimpleRule(aSkipDeclarations : Boolean = False): TCSSAtRuleElement; virtual;
+    function IsAtKeyframesKeyword(const aKeyword : TCSSString): Boolean; virtual;
+    function ParseAtKeyframesRule: TCSSAtRuleElement; virtual;
+    function ParseKeyframeSelector: TCSSElement; virtual;
     function ParseMediaCondition(TopLvl: boolean): TCSSElement; virtual;
     function ParseMediaBracket: TCSSElement; virtual;
-    function ParseRuleList(aStopOn : TCSStoken = ctkEOF): TCSSElement; virtual;
+    function ParseRuleList(aStopOn : TCSStoken = ctkEOF;
+                           aSkipDeclarations : Boolean = False): TCSSElement; virtual;
     function ParseSelector: TCSSElement; virtual;
     function ParseAttributeSelector: TCSSElement; virtual;
     function ParseWQName: TCSSElement;
@@ -120,8 +127,11 @@ Type
     function ParseParenthesis: TCSSElement; virtual;
     function ParsePseudoClass: TCSSElement; virtual;
     function ParsePseudoElement: TCSSElement; virtual;
-    function ParseRuleBody(aRule: TCSSRuleElement; aIsAt : Boolean = False) : integer; virtual;
+    function ParseRuleBody(aRule: TCSSRuleElement; aIsAt : Boolean = False;
+                           aSkipDeclarations : Boolean = False) : integer; virtual;
     function CurrentStartsNestedRule : Boolean; virtual;
+    function CurrentStartsDeclaration : Boolean; virtual;
+    procedure SkipInvalidDeclaration(aIsAt : Boolean = False); virtual;
     function LookAheadIsNestedRule : Boolean;
     function ParseInteger: TCSSElement; virtual;
     function ParseFloat: TCSSElement; virtual;
@@ -326,21 +336,24 @@ begin
     GetNextToken;
   if (CurrentToken=ctkLBRACE) then
     begin
+    // skip the block, including nested blocks
     Lvl:=1;
-    GetNextToken;
     repeat
+      GetNextToken;
       case CurrentToken of
       ctkEOF:
         break;
-      ctkLBRACE: inc(Lvl);
+      ctkLBRACE:
+        inc(Lvl);
       ctkRBRACE:
-        if Lvl=1 then
+        begin
+        dec(Lvl);
+        if Lvl=0 then
           begin
           GetNextToken;
           break;
-          end
-        else
-          dec(Lvl);
+          end;
+        end;
       end;
     until false;
     end;
@@ -451,28 +464,18 @@ begin
     aList.Free;
 end;
 
-function TCSSParser.ParseAtUnknownRule: TCSSElement;
-// read unknown at-rule
+function TCSSParser.ParseAtRulePrelude: TCSSAtRuleElement;
+// read the at-keyword and the selectors/condition up to the '{', ';' or EOF
 
 Var
-  aRule : TCSSRuleElement;
   aSel : TCSSElement;
   Term : TCSSTokens;
   aList : TCSSListElement;
-  {$ifdef VerboseCSSParser}
-  aAt : TCSSString;
-  {$endif}
 
 begin
-  Result:=nil;
-  Inc(FRuleLevel);
-{$ifdef VerboseCSSParser}
-  aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
-  Writeln('Parse @ rule');
-{$endif}
   Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
-  aRule:=TCSSAtRuleElement(CreateElement(CSSAtRuleElementClass));
-  TCSSAtRuleElement(aRule).AtKeyWord:=CurrentTokenString;
+  Result:=TCSSAtRuleElement(CreateElement(CSSAtRuleElementClass));
+  Result.AtKeyWord:=CurrentTokenString;
   GetNextToken;
   aList:=nil;
   try
@@ -484,16 +487,39 @@ begin
       if CurrentToken=ctkCOMMA then
         begin
         GetNextToken;
-        aRule.AddSelector(GetAppendElement(aList));
+        Result.AddSelector(GetAppendElement(aList));
         aList:=TCSSListElement(CreateElement(CSSListElementClass));
         end;
       end;
-    aRule.AddSelector(GetAppendElement(aList));
+    Result.AddSelector(GetAppendElement(aList));
     aList:=nil;
+  finally
+    aList.Free;
+  end;
+end;
+
+function TCSSParser.ParseAtUnknownRule(aSkipDeclarations : Boolean): TCSSElement;
+// read unknown at-rule, its block contains only rules
+
+Var
+  aRule : TCSSAtRuleElement;
+  {$ifdef VerboseCSSParser}
+  aAt : TCSSString;
+  {$endif}
+
+begin
+  Result:=nil;
+  Inc(FRuleLevel);
+{$ifdef VerboseCSSParser}
+  aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
+  Writeln('Parse @ rule');
+{$endif}
+  aRule:=ParseAtRulePrelude;
+  try
     if (CurrentToken=ctkLBRACE) then
       begin
       GetNextToken;
-      aRule.AddChild(ParseRuleList(ctkRBRACE));
+      aRule.AddChild(ParseRuleList(ctkRBRACE,aSkipDeclarations));
       ConsumeRBrace;
       end;
     Result:=aRule;
@@ -505,35 +531,70 @@ begin
   end;
 end;
 
-function TCSSParser.ParseAtMediaRule: TCSSAtRuleElement;
+function TCSSParser.ParseAtNestedRule: TCSSAtRuleElement;
+// read an at-rule nested inside a style rule, e.g.
+//   .foo { @supports (display:grid) { display:grid; } }
+// Its block can contain declarations as well as nested rules.
 
 Var
+  aRule : TCSSAtRuleElement;
   {$ifdef VerboseCSSParser}
   aAt : TCSSString;
   {$endif}
-  aRule : TCSSAtRuleElement;
-  Term : TCSSTokens;
-  aToken: TCSSToken;
-  aList : TCSSListElement;
-  El: TCSSElement;
+
 begin
   Result:=nil;
   Inc(FRuleLevel);
 {$ifdef VerboseCSSParser}
   aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
-  Writeln('Parse @media rule');
+  Writeln('Parse nested @ rule');
 {$endif}
-  Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
-  aRule:=TCSSAtRuleElement(CreateElement(CSSAtRuleElementClass));
-  aRule.AtKeyWord:=CurrentTokenString;
-  GetNextToken;
-  aList:=nil;
+  if lowercase(CurrentTokenString)='@media' then
+    // a nested @media has the same conditions as a top level @media
+    aRule:=ParseAtMediaRulePrelude
+  else
+    aRule:=ParseAtRulePrelude;
   try
+    if (CurrentToken=ctkLBRACE) then
+      begin
+      GetNextToken;
+      ParseRuleBody(aRule);
+      ConsumeRBrace;
+      end;
+    Result:=aRule;
+    aRule:=nil;
+{$ifdef VerboseCSSParser}  Writeln('Done Parse nested @ rule ',aAt); {$endif}
+    Inc(FRuleLevel);
+  finally
+    aRule.Free;
+  end;
+end;
+
+function TCSSParser.ParseAtMediaRulePrelude: TCSSAtRuleElement;
+// read the @media keyword and the media conditions up to the '{', ';' or EOF
+
+Var
+  Term : TCSSTokens;
+  aToken: TCSSToken;
+  aList : TCSSListElement;
+  OldOptions: TCSSScannerOptions;
+begin
+  Term:=[ctkLBRACE,ctkEOF,ctkSEMICOLON];
+  Result:=TCSSAtRuleElement(CreateElement(CSSAtRuleElementClass));
+  Result.AtKeyWord:=CurrentTokenString;
+  aList:=nil;
+  OldOptions:=Scanner.Options;
+  try
+    // A media query has no pseudo classes, so that 'max-width:100px' gives a
+    // ctkCOLON instead of a ctkPSEUDO ':100px'. Whitespace around the ':' of a
+    // media feature is optional.
+    Scanner.DisablePseudo:=True;
+    GetNextToken;
     aList:=TCSSListElement(CreateElement(CSSListElementClass));
     While Not (CurrentToken in Term) do
       begin
       aToken:=CurrentToken;
-      //  writeln('TCSSParser.ParseAtMediaRule Token=',CurrentToken);
+      //  writeln('TCSSParser.ParseAtMediaRulePrelude Token=',CurrentToken);
       case aToken of
       ctkIDENTIFIER:
         aList.AddChild(ParseMediaCondition(true));
@@ -546,23 +607,53 @@ begin
       if CurrentToken=ctkCOMMA then
         begin
         GetNextToken;
-        aRule.AddSelector(GetAppendElement(aList));
+        Result.AddSelector(GetAppendElement(aList));
         aList:=TCSSListElement(CreateElement(CSSListElementClass));
         end;
       end;
-    aRule.AddSelector(GetAppendElement(aList));
+    Result.AddSelector(GetAppendElement(aList));
     aList:=nil;
+  finally
+    Scanner.Options:=OldOptions;
+    aList.Free;
+  end;
+end;
+
+function TCSSParser.ParseAtMediaRule: TCSSAtRuleElement;
+
+Var
+  {$ifdef VerboseCSSParser}
+  aAt : TCSSString;
+  {$endif}
+  aRule : TCSSAtRuleElement;
+  Term : TCSSTokens;
+  El: TCSSElement;
+begin
+  Result:=nil;
+  Inc(FRuleLevel);
+{$ifdef VerboseCSSParser}
+  aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
+  Writeln('Parse @media rule');
+{$endif}
+  aRule:=ParseAtMediaRulePrelude;
+  try
     if (CurrentToken=ctkLBRACE) then
       begin
       GetNextToken;
       Term:=[ctkEOF,ctkRBRACE];
       While not (CurrentToken in Term) do
         begin
-        El:=ParseExpression;
-        if El is TCSSRuleElement then
-          aRule.AddNestedRule(TCSSRuleElement(El))
+        if CurrentStartsDeclaration then
+          // a declaration directly in a @media block: only rules allowed
+          SkipInvalidDeclaration
         else
-          aRule.AddChild(ParseExpression);
+          begin
+          El:=ParseExpression;
+          if El is TCSSRuleElement then
+            aRule.AddNestedRule(TCSSRuleElement(El))
+          else
+            aRule.AddChild(ParseExpression);
+          end;
         if CurrentToken=ctkSEMICOLON then
           GetNextToken;
         end;
@@ -577,7 +668,7 @@ begin
   end;
 end;
 
-function TCSSParser.ParseAtSimpleRule: TCSSAtRuleElement;
+function TCSSParser.ParseAtSimpleRule(aSkipDeclarations : Boolean): TCSSAtRuleElement;
 var
   {$ifdef VerboseCSSParser}
   aAt : TCSSString;
@@ -617,7 +708,7 @@ begin
     GetNextToken;
 
     // read declarations
-    ParseRuleBody(aRule);
+    ParseRuleBody(aRule,false,aSkipDeclarations);
     if CurrentToken=ctkRBRACE then
       GetNextToken;
 
@@ -627,6 +718,165 @@ begin
     Inc(FRuleLevel);
   finally
     aRule.Free;
+  end;
+end;
+
+function TCSSParser.IsAtKeyframesKeyword(const aKeyword: TCSSString): Boolean;
+// true for '@keyframes' and its vendor prefixed forms, e.g. '@-webkit-keyframes'
+
+var
+  s : TCSSString;
+  p : Integer;
+
+begin
+  Result:=false;
+  s:=lowercase(aKeyword);
+  if (s='') or (s[1]<>'@') then exit;
+  Delete(s,1,1);
+  if (s<>'') and (s[1]='-') then
+    begin
+    // skip the vendor prefix, e.g. '-webkit-'
+    p:=Pos('-',s,2);
+    if p<1 then exit;
+    Delete(s,1,p);
+    end;
+  Result:=s='keyframes';
+end;
+
+function TCSSParser.ParseAtKeyframesRule: TCSSAtRuleElement;
+// read '@keyframes name { <keyframe selectors> { declarations } ... }', e.g.
+//   @keyframes fade { from { opacity: 0; } 50%, 75% { opacity: 0.5; } to { opacity: 1; } }
+// The name becomes the selector of the at-rule, each keyframe becomes a nested rule.
+
+Var
+  {$ifdef VerboseCSSParser}
+  aAt : TCSSString;
+  {$endif}
+  aRule : TCSSAtRuleElement;
+  aKeyframe : TCSSRuleElement;
+  aSel : TCSSElement;
+  Valid : Boolean;
+
+begin
+  Result:=nil;
+  Inc(FRuleLevel);
+{$ifdef VerboseCSSParser}
+  aAt:=Format(' Level %d at (%d:%d)',[FRuleLevel,CurrentLine,CurrentPos]);
+  Writeln('Parse @keyframes rule');
+{$endif}
+  aRule:=TCSSAtRuleElement(CreateElement(CSSAtRuleElementClass));
+  try
+    aRule.AtKeyWord:=CurrentTokenString;
+    GetNextToken;
+
+    // read the name of the animation
+    case CurrentToken of
+    ctkIDENTIFIER:
+      aRule.AddSelector(ParseIdentifier);
+    ctkSTRING:
+      aRule.AddSelector(ParseString);
+    else
+      DoWarnExpectedButGot('identifier');
+    end;
+
+    if CurrentToken<>ctkLBRACE then
+      begin
+      if CurrentToken<>ctkEOF then
+        begin
+        DoWarnExpectedButGot('{');
+        SkipRule;
+        end;
+      Result:=aRule;
+      aRule:=nil;
+      exit;
+      end;
+    GetNextToken;
+
+    // read the keyframes
+    While Not (CurrentToken in [ctkEOF,ctkRBRACE]) do
+      begin
+      if CurrentToken=ctkSEMICOLON then
+        begin
+        GetNextToken;
+        continue;
+        end;
+      aKeyframe:=TCSSRuleElement(CreateElement(CSSRuleElementClass));
+      try
+        // read the keyframe selectors, e.g. 'from', 'to', '0%, 50%'
+        Valid:=true;
+        While Not (CurrentToken in [ctkEOF,ctkLBRACE,ctkRBRACE]) do
+          begin
+          aSel:=ParseKeyframeSelector;
+          if aSel=nil then
+            begin
+            Valid:=false;
+            break;
+            end;
+          aKeyframe.AddSelector(aSel);
+          if CurrentToken<>ctkCOMMA then
+            break;
+          GetNextToken;
+          end;
+
+        if not Valid then
+          // an invalid keyframe selector: skip the whole keyframe
+          SkipRule
+        else
+          begin
+          if CurrentToken=ctkLBRACE then
+            begin
+            GetNextToken;
+            // a keyframe contains only declarations
+            ParseRuleBody(aKeyframe);
+            ConsumeRBrace;
+            end;
+          aRule.AddNestedRule(aKeyframe);
+          aKeyframe:=nil;
+          end;
+      finally
+        aKeyframe.Free;
+      end;
+      end;
+    ConsumeRBrace;
+
+    Result:=aRule;
+    aRule:=nil;
+{$ifdef VerboseCSSParser}  Writeln('Done Parse @keyframes rule ',aAt); {$endif}
+    Dec(FRuleLevel);
+  finally
+    aRule.Free;
+  end;
+end;
+
+function TCSSParser.ParseKeyframeSelector: TCSSElement;
+// read a single keyframe selector: 'from', 'to' or a percentage
+
+begin
+  Result:=nil;
+  case CurrentToken of
+  ctkIDENTIFIER:
+    begin
+    case lowercase(CurrentTokenString) of
+    'from','to': ;
+    else
+      DoWarnExpectedButGot('from or to');
+    end;
+    Result:=ParseIdentifier;
+    end;
+  ctkINTEGER:
+    begin
+    Result:=ParseInteger;
+    if (Result is TCSSIntegerElement) and (TCSSIntegerElement(Result).Units<>cuPercent) then
+      DoWarnExpectedButGot('percentage');
+    end;
+  ctkFLOAT:
+    begin
+    Result:=ParseFloat;
+    if (Result is TCSSFloatElement) and (TCSSFloatElement(Result).Units<>cuPercent) then
+      DoWarnExpectedButGot('percentage');
+    end;
+  else
+    DoWarnExpectedButGot('percentage');
   end;
 end;
 
@@ -944,14 +1194,22 @@ begin
     '@media': Result:=ParseAtMediaRule;
     '@font-face',
     '@page': Result:=ParseAtSimpleRule;
+    // a top level @starting-style contains only rules, no declarations
+    '@starting-style': Result:=ParseAtSimpleRule(true);
     else
-      Result:=ParseAtUnknownRule;
+      if IsAtKeyframesKeyword(CurrentTokenString) then
+        // @keyframes and its vendor prefixed forms
+        Result:=ParseAtKeyframesRule
+      else
+        // e.g. @supports: only rules are allowed in the block of a top level at-rule
+        Result:=ParseAtUnknownRule(true);
     end
   else
     Result:=ParseComponentValueList;
 end;
 
-function TCSSParser.ParseRuleList(aStopOn : TCSStoken = ctkEOF): TCSSElement;
+function TCSSParser.ParseRuleList(aStopOn : TCSStoken = ctkEOF;
+  aSkipDeclarations : Boolean = False): TCSSElement;
 
 Var
   aList : TCSSCompoundElement;
@@ -963,8 +1221,14 @@ begin
   Try
     While not (CurrentToken in Terms) do
       begin
-      aEl:=ParseExpression;
-      aList.AddChild(aEl);
+      if aSkipDeclarations and CurrentStartsDeclaration then
+        // a declaration directly in this at-rule block: only rules allowed
+        SkipInvalidDeclaration
+      else
+        begin
+        aEl:=ParseExpression;
+        aList.AddChild(aEl);
+        end;
       if CurrentToken=ctkSEMICOLON then
         GetNextToken;
       end;
@@ -1116,7 +1380,7 @@ end;
 function TCSSParser.ParseUnit : TCSSUnit;
 
 var
-  p: PCSSChar;
+  aName: TCSSString;
   U: TCSSUnit;
 begin
   Result:=cuNone;
@@ -1128,9 +1392,11 @@ begin
     end;
   ctkIDENTIFIER:
     begin
-    p:=PCSSChar(CurrentTokenString);
+    // match the whole unit name, not just a prefix, otherwise a short name eats
+    // every longer identifier starting with it, e.g. 'in' would match 'index'
+    aName:=CurrentTokenString;
     for U:=Succ(cuNone) to High(TCSSUnit) do
-      if CompareMem(p,PCSSChar(CSSUnitNames[U]),SizeOf(TCSSChar)*length(CSSUnitNames[U])) then
+      if CSSUnitNames[U]=aName then
         begin
         Result:=U;
         GetNextToken;
@@ -1433,7 +1699,31 @@ begin
   Result:=LookAheadIsNestedRule;
 end;
 
-function TCSSParser.ParseRuleBody(aRule: TCSSRuleElement; aIsAt: Boolean = false): integer;
+function TCSSParser.CurrentStartsDeclaration: Boolean;
+// Whether the current token starts a declaration instead of a rule.
+// Only an identifier can start a declaration, e.g. 'color:red' or '--foo:red'.
+begin
+  Result:=(CurrentToken=ctkIDENTIFIER) and not CurrentStartsNestedRule;
+end;
+
+procedure TCSSParser.SkipInvalidDeclaration(aIsAt: Boolean);
+// Skip a declaration in a block where only rules are allowed, e.g. the body of
+// a top level @media, @supports or @starting-style.
+var
+  aDecl : TCSSElement;
+begin
+  DoWarnExpectedButGot('selector');
+  aDecl:=ParseDeclaration(aIsAt);
+  if aDecl=nil then
+    // skip invalid
+    while not (CurrentToken in [ctkEOF,ctkSEMICOLON,ctkRBRACE]) do
+      GetNextToken
+  else
+    aDecl.Free;
+end;
+
+function TCSSParser.ParseRuleBody(aRule: TCSSRuleElement; aIsAt: Boolean = false;
+  aSkipDeclarations: Boolean = false): integer;
 
 Var
   aDecl : TCSSElement;
@@ -1449,9 +1739,11 @@ begin
       break;
     if CurrentToken=ctkATKEYWORD then
       begin
-      aDecl:=ParseAtUnknownRule;
-      if aDecl<>nil then
-        aRule.AddChild(aDecl);
+      // an at-rule nested in a style rule, e.g. @supports or @starting-style,
+      // can contain declarations as well as nested rules
+      aNestedRule:=ParseAtNestedRule;
+      if aNestedRule<>nil then
+        aRule.AddNestedRule(aNestedRule);
       end
     else if CurrentStartsNestedRule then
       begin
@@ -1459,29 +1751,32 @@ begin
       if aNestedRule<>nil then
         aRule.AddNestedRule(aNestedRule);
       end
+    else if aSkipDeclarations then
+      // e.g. a declaration directly in a top level @starting-style: only rules allowed
+      SkipInvalidDeclaration(aIsAt)
     else
       begin
       aDecl:=ParseDeclaration(aIsAt);
-      if aDecl<>nil then
+      if aDecl=nil then
         begin
-        if aRule.NestedRuleCount=0 then
-          aRule.AddChild(aDecl)
-        else
-          begin
-          // declarations behind nested rules are added to a special nested rule
-          aNestedRule:=aRule.NestedRules[aRule.NestedRuleCount-1];
-          if aNestedRule.SelectorCount>0 then
-            begin
-            // add special nested rule
-            aNestedRule:=TCSSRuleElement(CreateElement(CSSRuleElementClass));
-            aRule.AddNestedRule(aNestedRule);
-            end;
-          aNestedRule.AddChild(aDecl);
-          end;
-        end
-      else // skip invalid
+        // skip invalid
         while not (CurrentToken in [ctkEOF,ctkSEMICOLON,ctkRBRACE]) do
           GetNextToken;
+        end
+      else if aRule.NestedRuleCount=0 then
+        aRule.AddChild(aDecl)
+      else
+        begin
+        // declarations behind nested rules are added to a special nested rule
+        aNestedRule:=aRule.NestedRules[aRule.NestedRuleCount-1];
+        if (aNestedRule.SelectorCount>0) or (aNestedRule is TCSSAtRuleElement) then
+          begin
+          // add special nested rule
+          aNestedRule:=TCSSRuleElement(CreateElement(CSSRuleElementClass));
+          aRule.AddNestedRule(aNestedRule);
+          end;
+        aNestedRule.AddChild(aDecl);
+        end;
       end;
     end;
   Result:=aRule.ChildCount;

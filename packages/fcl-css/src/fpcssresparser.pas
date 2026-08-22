@@ -328,6 +328,12 @@ type
   end;
   TCSSAttributeKeyDataClass = class of TCSSAttributeKeyData;
 
+  { TCSSRuleParserData - TCSSElement.CustomData of TCSSRuleElement and TCSSAtRuleElement }
+
+  TCSSRuleParserData = class(TCSSElementOwnedData)
+  end;
+  TCSSRuleDataClass = class of TCSSRuleParserData;
+
   TCSSBaseResolver = class;
   TCSSResolverParser = class;
 
@@ -412,7 +418,7 @@ type
     FPseudoClassCount: TCSSNumericalID;
     FPseudoElementCount: TCSSNumericalID;
     FPseudoFunctionCount: TCSSNumericalID;
-    FStamp, FModifiedStamp: TCSSNumericalID;
+    FStamp, FModifiedStamp: integer;
     FTypeCount: TCSSNumericalID;
     function GetModified: boolean;
     procedure SetModified(const AValue: boolean);
@@ -424,7 +430,7 @@ type
     function IndexOfNamedItem(Kind: TCSSNumericalIDKind; const aName: TCSSString): TCSSNumericalID; overload;
     procedure ConsistencyCheck; virtual;
     procedure ChangeStamp;
-    property Stamp: TCSSNumericalID read FStamp; // always >0
+    property Stamp: integer read FStamp; // always >0
     property Modified: boolean read GetModified write SetModified;
   public
     // attributes
@@ -531,14 +537,6 @@ type
   TCSSResolvedHashIdentifierElement = class(TCSSHashIdentifierElement)
   public
     NumericalID: TCSSNumericalID;
-  end;
-
-  { TCSSResolvedRuleElement }
-
-  TCSSResolvedRuleElement = class(TCSSRuleElement)
-  public
-    HasDisabledDecls: boolean; // at least one direct child declaration is disabled,
-      // maintained by TCSSResolver.DisableDeclaration/EnableDeclaration
   end;
 
   { TCSSNthChildParams }
@@ -743,11 +741,12 @@ type
     function ResolvePseudoFunction(El: TCSSResolvedCallElement): TCSSNumericalID; virtual;
     function ResolveMediaIdentifier(El: TCSSResolvedIdentifierElement): TCSSNumericalID; virtual;
     procedure CheckMediaSelector(El: TCSSElement); virtual;
+    function CreateElement(aClass: TCSSElementClass): TCSSElement; override;
     function ParseCall(aName: TCSSString; IsSelector: boolean): TCSSCallElement; override;
     function ParseDeclaration(aIsAt: Boolean): TCSSDeclarationElement; override;
     function ParsePseudoElement: TCSSElement; override;
     function ParseSelector: TCSSElement; override;
-    function ParseAtMediaRule: TCSSAtRuleElement; override;
+    function ParseAtMediaRulePrelude: TCSSAtRuleElement; override;
     procedure CheckSelector(El: TCSSElement); virtual;
     procedure CheckSelectorArray(anArray: TCSSArrayElement); virtual;
     procedure CheckSelectorArrayBinary(aBinary: TCSSBinaryElement); virtual;
@@ -759,6 +758,7 @@ type
   public
     CSSNthChildParamsClass: TCSSNthChildParamsClass;
     CSSAttributeKeyDataClass: TCSSAttributeKeyDataClass;
+    CSSRuleDataClass: TCSSRuleDataClass;
     constructor Create(AScanner: TCSSScanner); override; overload;
     destructor Destroy; override;
     procedure Log(MsgType: TEventType; const ID: TCSSMsgID; const Msg: TCSSString; PosEl: TCSSElement); virtual;
@@ -2596,6 +2596,8 @@ var
   // '--xxx'  -> rtkIdentifier
   // 'name('  -> rtkFunction if the function is known, else invalid
   // 'name'   -> rtkKeyword if the keyword is known, else invalid
+  // '-name'  -> as 'name', a single leading dash is part of the word,
+  //             e.g. the custom identifier -fade
   var
     Name: TCSSString;
     FuncID, KeywordID: TCSSNumericalID;
@@ -2609,6 +2611,14 @@ var
     if p^='(' then
     begin
       // function call, the token includes the opening parenthesis
+      if (Len>=2) and (StartP[0]='-') and (StartP[1]<>'-') then
+      begin
+        // a single dash in front of a function is the minus operator,
+        // e.g. -calc(), it is not part of the function name
+        AddKind(rtkMinus);
+        inc(StartP);
+        dec(Len);
+      end;
       // function names are ASCII case-insensitive, e.g. var() = VAR()
       SetString(Name,StartP,Len);
       FuncID:=CSSRegistry.IndexOfAttrFunction(LowerCase(Name));
@@ -2699,8 +2709,9 @@ begin
         case p[1] of
         '0'..'9','.':
           if not ReadNumberToken then exit;
-        '-':
-          if not ReadWordToken then exit; // custom identifier --xxx
+        '-','a'..'z','A'..'Z':
+          // custom identifier, e.g. --my-var or -fade
+          if not ReadWordToken then exit;
         else
           AddKind(rtkMinus);
           inc(p);
@@ -2821,7 +2832,7 @@ begin
   SetLength(Result,10);
   Result[0]:=ord(rtkFloat);
   Result[1]:=ord(anUnit);
-  PDouble(@Result[3])^:=aFloat;
+  PDouble(@Result[2])^:=aFloat; // kind + unit + double, see ReadNext
 end;
 
 function TCSSBaseResolver.Detokenize(const aData: TBytes): TCSSString;
@@ -3250,11 +3261,22 @@ begin
   end;
 end;
 
-function TCSSResolverParser.ParseAtMediaRule: TCSSAtRuleElement;
+function TCSSResolverParser.CreateElement(aClass: TCSSElementClass): TCSSElement;
+begin
+  Result:=inherited CreateElement(aClass);
+  // give every rule and @-rule its data, so the resolver can cache per rule
+  if (CSSRuleDataClass<>nil) and aClass.InheritsFrom(TCSSRuleElement) then
+    Result.CustomData:=CSSRuleDataClass.Create;
+end;
+
+function TCSSResolverParser.ParseAtMediaRulePrelude: TCSSAtRuleElement;
+// Resolve the media identifiers here, not in ParseAtMediaRule, because a @media
+// nested in a style rule or in another at-rule is parsed via ParseAtNestedRule,
+// which calls only the prelude.
 var
   i: Integer;
 begin
-  Result:=inherited ParseAtMediaRule;
+  Result:=inherited ParseAtMediaRulePrelude;
   if Result=nil then exit;
 
   for i:=0 to Result.SelectorCount-1 do
@@ -3779,9 +3801,9 @@ begin
   CSSClassNameElementClass:=TCSSResolvedClassNameElement;
   CSSHashIdentifierElementClass:=TCSSResolvedHashIdentifierElement;
   CSSCallElementClass:=TCSSResolvedCallElement;
-  CSSRuleElementClass:=TCSSResolvedRuleElement;
   CSSNthChildParamsClass:=TCSSNthChildParams;
   CSSAttributeKeyDataClass:=TCSSAttributeKeyData;
+  CSSRuleDataClass:=TCSSRuleParserData;
 end;
 
 destructor TCSSResolverParser.Destroy;

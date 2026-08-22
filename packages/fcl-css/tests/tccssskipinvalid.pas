@@ -48,8 +48,17 @@ type
     procedure TestSkipRule_AtMediaBinaryEOF;
     procedure TestSkipRule_AtMediaCurlyEOF;
     procedure TestSkipRule_AtMediaCurlyRuleCurlyEOF;
+    procedure TestSkipRule_AtMediaInvalidConditionBlock;
+    procedure TestSkipRule_AtMediaInvalidConditionNestedBlock;
     procedure TestSkipRule_AtFontFaceCurlyEOF;
     procedure TestSkipRule_AtFontFaceCurlyNameColonEOF;
+    procedure TestSkipRule_AtKeyframesEOF;
+    procedure TestSkipRule_AtKeyframesNameEOF;
+    procedure TestSkipRule_AtKeyframesCurlyEOF;
+    procedure TestSkipRule_AtKeyframesNoName;
+    procedure TestSkipRule_AtKeyframesSelectorCurlyEOF;
+    procedure TestSkipRule_AtKeyframesInvalidSelector;
+    procedure TestSkipRule_AtKeyframesMissingUnit;
     procedure TestSkipRule_NameEOF;
     procedure TestSkipRule_NameCurlyEOF;
     procedure TestSkipRule_NameCurlyNestedCurlyEOF;
@@ -259,6 +268,18 @@ begin
   CheckSelector(aRule.NestedRules[0],0,'div');
 end;
 
+procedure TTestCSSSkipInline.TestSkipRule_AtMediaInvalidConditionBlock;
+begin
+  // SkipRule must skip the whole block, not only its first token
+  ParseRules_FirstAtRule('@media 5 { .foo{top:1px} }','@media');
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtMediaInvalidConditionNestedBlock;
+begin
+  // SkipRule must count the nested blocks
+  ParseRules_FirstAtRule('@media 5 { .foo{ .bar{top:1px} } }','@media');
+end;
+
 procedure TTestCSSSkipInline.TestSkipRule_AtFontFaceCurlyEOF;
 begin
   ParseRules_FirstAtRule('@font-face{','@font-face');
@@ -267,6 +288,61 @@ end;
 procedure TTestCSSSkipInline.TestSkipRule_AtFontFaceCurlyNameColonEOF;
 begin
   ParseRules_FirstAtRule('@font-face{src:','@font-face');
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesEOF;
+begin
+  ParseRules_FirstAtRule('@keyframes','@keyframes');
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesNameEOF;
+begin
+  ParseRules_FirstAtRule('@keyframes fade','@keyframes');
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesCurlyEOF;
+var
+  R: TCSSAtRuleElement;
+begin
+  // the unclosed at-rule is auto closed at EOF
+  R:=ParseRules_FirstAtRule('@keyframes fade{','@keyframes');
+  AssertEquals('keyframe count',0,R.NestedRuleCount);
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesNoName;
+var
+  R: TCSSAtRuleElement;
+begin
+  R:=ParseRules_FirstAtRule('@keyframes { 0% {top:1px} }','@keyframes');
+  AssertEquals('selector count',0,R.SelectorCount);
+  AssertEquals('keyframe count',1,R.NestedRuleCount);
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesSelectorCurlyEOF;
+var
+  R: TCSSAtRuleElement;
+begin
+  R:=ParseRules_FirstAtRule('@keyframes fade{0%{','@keyframes');
+  AssertEquals('keyframe count',1,R.NestedRuleCount);
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesInvalidSelector;
+var
+  R: TCSSAtRuleElement;
+begin
+  // the keyframe with the invalid selector is skipped, the next one is parsed
+  R:=ParseRules_FirstAtRule('@keyframes fade{ .foo {top:1px} to {top:2px} }','@keyframes');
+  AssertEquals('keyframe count',1,R.NestedRuleCount);
+  CheckSelector(R.NestedRules[0],0,'to');
+end;
+
+procedure TTestCSSSkipInline.TestSkipRule_AtKeyframesMissingUnit;
+var
+  R: TCSSAtRuleElement;
+begin
+  // a keyframe selector must be a percentage
+  R:=ParseRules_FirstAtRule('@keyframes fade{ 0 {top:1px} }','@keyframes');
+  AssertEquals('keyframe count',1,R.NestedRuleCount);
 end;
 
 procedure TTestCSSSkipInline.TestSkipRule_NameEOF;
