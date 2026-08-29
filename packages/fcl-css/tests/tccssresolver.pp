@@ -233,7 +233,9 @@ type
     // computed by resolver:
     Rules: TCSSSharedRuleList; // owned by resolver
     Values: TCSSAttributeValues;
-    // @starting-style, computed by resolver, valid if HasStartingStyle:
+    // The @starting-style declarations only, computed by resolver,
+    // valid if HasStartingStyle. They contain nothing from the normal rules
+    // and nothing from the inline style.
     HasStartingStyle: boolean;
     StartingRules: TCSSSharedRuleList; // owned by resolver
     StartingValues: TCSSAttributeValues;
@@ -293,7 +295,8 @@ type
     property Background: TCSSString index naBackground read GetAttribute;
     property Direction: TCSSString index naDirection read GetAttribute;
     property Attribute[Attr: TDemoNodeAttribute]: TCSSString read GetAttribute;
-    // CSS attributes of the @starting-style pass, '' if HasStartingStyle=false
+    // CSS attributes declared by the @starting-style rules, '' if the attribute
+    // is not declared there or HasStartingStyle=false
     property StartingWidth: TCSSString index naWidth read GetStartingAttribute;
     property StartingHeight: TCSSString index naHeight read GetStartingAttribute;
     property StartingAttribute[Attr: TDemoNodeAttribute]: TCSSString read GetStartingAttribute;
@@ -449,6 +452,9 @@ type
     // locate a declaration in the author 'test.css' sheet by top-level selector
     // and property name, e.g. FindAuthorDecl('.bird','left')
     function FindAuthorDecl(const aSelector, aProp: string): TCSSDeclarationElement;
+    // the value of the first declaration of the first keyframe of a @keyframes rule,
+    // e.g. '1px', used to tell same-named @keyframes rules apart
+    function KeyframesFirstValue(aRule: TCSSAtRuleElement): string;
   published
     // invalid attributes while parsing stylesheet
     procedure TestRes_ParseAttr_Keyword;
@@ -637,11 +643,11 @@ type
     procedure TestRes_StartingStyle_None; // no @starting-style at all
     procedure TestRes_StartingStyle_TopLevel; // @starting-style{ div{..} }
     procedure TestRes_StartingStyle_Nested; // div{ @starting-style{..} }
-    procedure TestRes_StartingStyle_KeepsNormalValues; // untouched attributes stay
+    procedure TestRes_StartingStyle_OnlyStartingValues; // no values of the normal rules
     procedure TestRes_StartingStyle_SelectorNotMatching;
     procedure TestRes_StartingStyle_ParentRuleNotMatching;
-    procedure TestRes_StartingStyle_Specificity; // a higher specificity normal rule wins
-    procedure TestRes_StartingStyle_SameSpecificityWins; // ties go to @starting-style
+    procedure TestRes_StartingStyle_Specificity; // the higher specificity rule wins
+    procedure TestRes_StartingStyle_SameSpecificityDocOrder; // ties go to the last rule
     procedure TestRes_StartingStyle_NestedSelector; // descendant selector inside @starting-style
     procedure TestRes_StartingStyle_NestedAmpSelector; // &.red inside a nested @starting-style
     // a nested rule is matched by its own selector, the enclosing rule matches an
@@ -661,6 +667,27 @@ type
     procedure TestRes_StartingStyle_Var;
     procedure TestRes_StartingStyle_ComputeTwice;
 
+    // TCSSRuleData.StyleRuleParent
+    procedure TestRes_RuleData_StyleRuleParent;
+
+    // @keyframes, see TCSSResolver.FindKeyframesRule
+    procedure TestRes_Keyframes_TopLevel;
+    procedure TestRes_Keyframes_NotFound;
+    procedure TestRes_Keyframes_NoCascadeEffect; // adds nothing to a node
+    procedure TestRes_Keyframes_TopLevelDuplicateLastWins;
+    procedure TestRes_Keyframes_VendorPrefix; // @-webkit-keyframes
+    procedure TestRes_Keyframes_QuotedName; // @keyframes "fade"
+    procedure TestRes_Keyframes_CaseSensitive;
+    procedure TestRes_Keyframes_InMedia; // @media{ @keyframes{..} }
+    procedure TestRes_Keyframes_MediaNotMatching;
+    procedure TestRes_Keyframes_MediaNotMatchingDoesNotShadow;
+    procedure TestRes_Keyframes_NestedInRule; // div{ @keyframes{..} }
+    procedure TestRes_Keyframes_NestedInRuleNotMatching;
+    procedure TestRes_Keyframes_NestedDuplicateDifferentNodes;
+    procedure TestRes_Keyframes_NestedWinsOverTopLevel;
+    procedure TestRes_Keyframes_TopLevelWinsOverEarlierNested;
+    procedure TestRes_Keyframes_ReplaceStyleSheet;
+
     // rule buckets: selectors bucketed by their rightmost identifier
     procedure TestRes_Buckets_GetCSSClasses;
     procedure TestRes_Buckets_ClassBucket; // only the .red bucket matches
@@ -672,6 +699,11 @@ type
     procedure TestRes_Buckets_NonMatchingSkipped; // wrong class/type/id never apply
     procedure TestRes_Buckets_CompoundRightmost; // div.red bucketed by class .red
     procedure TestRes_Buckets_DescendantRightmost; // div .red bucketed by class .red
+    procedure TestRes_Buckets_MediaMatchingHoisted; // rules of a matching @media are bucketed
+    procedure TestRes_Buckets_MediaNotMatchingSkipped; // rules of a non matching @media are dropped
+    procedure TestRes_Buckets_MediaFlipRebuilds; // InvalidateMedia rebuilds the buckets
+    procedure TestRes_Buckets_MediaNestedInMedia; // @media{ @media{ div{} } }
+    procedure TestRes_Buckets_MediaSiblingSelector; // a non matching @media adds no sibling selector
   end;
 
 function LinesToStr(const Args: array of const): TCSSString;
@@ -1500,21 +1532,19 @@ var
   AttrID: TCSSNumericalID;
   CurValue: TCSSAttributeValue;
   Desc: TCSSAttributeDesc;
-  SiblingMatches: TCSSSiblingMatchList;
 begin
   FResolver:=Resolver;
 
   if (InlineStyleElement=nil) and (InlineStyle<>'') then
     InlineStyleElement:=Resolver.ParseInlineStyle(InlineStyle) as TCSSRuleElement;
 
-  Resolver.Compute(Self,InlineStyleElement,Rules,Values,SiblingMatches);
+  Resolver.Compute(Self,InlineStyleElement,Rules,Values);
 
   // the @starting-style values are not run through OnCompute, because that would
   // write into the node's fields and clobber the normal computed state
   StartingRules:=nil;
   FreeAndNil(StartingValues);
-  HasStartingStyle:=Resolver.ComputeStartingStyle(Self,InlineStyleElement,Rules,
-                                                  StartingRules,StartingValues);
+  HasStartingStyle:=Resolver.ComputeStartingStyle(Self,StartingRules,StartingValues);
 
   {$IFDEF VerboseCSSResolver}
   writeln('TDemoNode.ApplyCSS ',Name,' length(Values)=',length(Values.Values),' All="',CSSRegistry.Keywords[Values.AllValue],'"');
@@ -3610,6 +3640,20 @@ begin
   end;
 end;
 
+function TTestCSSResolver.KeyframesFirstValue(aRule: TCSSAtRuleElement): string;
+var
+  Keyframe: TCSSRuleElement;
+  i: Integer;
+begin
+  Result:='';
+  if aRule=nil then exit;
+  if aRule.NestedRuleCount=0 then exit;
+  Keyframe:=aRule.NestedRules[0];
+  for i:=0 to Keyframe.ChildCount-1 do
+    if Keyframe.Children[i] is TCSSDeclarationElement then
+      exit(Doc.CSSResolver.GetDeclarationValue(TCSSDeclarationElement(Keyframe.Children[i])));
+end;
+
 procedure TTestCSSResolver.TestRes_Disable_Longhand;
 var
   Div1: TDemoDiv;
@@ -5466,14 +5510,15 @@ begin
   AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
 end;
 
-procedure TTestCSSResolver.TestRes_StartingStyle_KeepsNormalValues;
+procedure TTestCSSResolver.TestRes_StartingStyle_OnlyStartingValues;
 var
   Div1: TDemoDiv;
 begin
   Doc.Root:=TDemoNode.Create(nil);
   Div1:=AddDiv('Div1',Doc.Root);
 
-  // the starting style only overrides width, height comes from the normal rule
+  // only the width of the @starting-style is returned, the height of the normal
+  // rule is not - the caller applies the starting values on top of its own
   Doc.Style:=LinesToStr([
   'div{ width: 20px; height: 5px; }',
   '@starting-style { div{ width: 10px; } }',
@@ -5482,7 +5527,7 @@ begin
   AssertEquals('Div1.Width','20px',Div1.Width);
   AssertEquals('Div1.Height','5px',Div1.Height);
   AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
-  AssertEquals('Div1.StartingHeight','5px',Div1.StartingHeight);
+  AssertEquals('Div1.StartingHeight','',Div1.StartingHeight);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_SelectorNotMatching;
@@ -5527,34 +5572,35 @@ begin
   Div1:=AddDiv('Div1',Doc.Root);
   Div1.CSSClasses.Add('red');
 
-  // .red (class) beats the div (type) of the @starting-style
+  // .red (class) beats div (type), although div comes later
   Doc.Style:=LinesToStr([
-  '.red{ width: 30px; }',
-  '@starting-style { div{ width: 10px; } }',
+  '@starting-style {',
+  '  .red{ width: 30px; }',
+  '  div{ width: 10px; }',
+  '}',
   '']);
   ApplyStyle;
-  AssertEquals('Div1.Width','30px',Div1.Width);
   AssertTrue('Div1.HasStartingStyle',Div1.HasStartingStyle);
   AssertEquals('Div1.StartingWidth','30px',Div1.StartingWidth);
 end;
 
-procedure TTestCSSResolver.TestRes_StartingStyle_SameSpecificityWins;
+procedure TTestCSSResolver.TestRes_StartingStyle_SameSpecificityDocOrder;
 var
   Div1: TDemoDiv;
 begin
   Doc.Root:=TDemoNode.Create(nil);
   Div1:=AddDiv('Div1',Doc.Root);
 
-  // ComputeStartingStyle appends the @starting-style rules to the already sorted
-  // rules of Compute, so at equal specificity the @starting-style always wins,
-  // even though it comes first in the stylesheet
+  // the @starting-style rules are collected in document order, so at equal
+  // specificity the last declaration wins
   Doc.Style:=LinesToStr([
   '@starting-style { div{ width: 10px; } }',
   'div{ width: 20px; }',
+  '@starting-style { div{ width: 30px; } }',
   '']);
   ApplyStyle;
   AssertEquals('Div1.Width','20px',Div1.Width);
-  AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
+  AssertEquals('Div1.StartingWidth','30px',Div1.StartingWidth);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_NestedSelector;
@@ -5724,7 +5770,7 @@ begin
   AssertEquals('Div1.Width','20px',Div1.Width);
   AssertTrue('Div1.HasStartingStyle',Div1.HasStartingStyle);
   AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
-  AssertEquals('Div1.StartingHeight','21px',Div1.StartingHeight);
+  AssertEquals('Div1.StartingHeight','',Div1.StartingHeight);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_MediaAncestorNotMatching;
@@ -5762,7 +5808,7 @@ begin
   AssertEquals('Div1.Width','20px',Div1.Width);
   AssertTrue('Div1.HasStartingStyle',Div1.HasStartingStyle);
   AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
-  AssertEquals('Div1.StartingHeight','21px',Div1.StartingHeight);
+  AssertEquals('Div1.StartingHeight','',Div1.StartingHeight);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_UnknownAtRuleAncestor;
@@ -5804,10 +5850,9 @@ begin
   AssertEquals('Div1.Width','20px',Div1.Width);
   AssertTrue('Div1.HasStartingStyle',Div1.HasStartingStyle);
   AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
-  AssertEquals('Div1.StartingHeight','21px',Div1.StartingHeight);
+  AssertEquals('Div1.StartingHeight','',Div1.StartingHeight);
   // the outer rule is added exactly once
-  AssertEquals('starting rule count',length(Div1.Rules.Rules)+1,
-               length(Div1.StartingRules.Rules));
+  AssertEquals('starting rule count',1,length(Div1.StartingRules.Rules));
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_Important;
@@ -5816,26 +5861,29 @@ var
 begin
   Doc.Root:=TDemoNode.Create(nil);
   Div1:=AddDiv('Div1',Doc.Root);
+  Div1.CSSClasses.Add('red');
 
   // !important sets the specificity of the declaration to CSSSpecificityImportant,
-  // which beats the normal @starting-style declaration
+  // which beats the higher specificity .red
   Doc.Style:=LinesToStr([
-  'div{ width: 20px !important; }',
-  '@starting-style { div{ width: 10px; } }',
+  '@starting-style {',
+  '  div{ width: 10px !important; }',
+  '  .red{ width: 30px; }',
+  '}',
   '']);
   ApplyStyle;
-  AssertEquals('Div1.Width','20px',Div1.Width);
   AssertTrue('Div1.HasStartingStyle',Div1.HasStartingStyle);
-  AssertEquals('Div1.StartingWidth','20px',Div1.StartingWidth);
+  AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
 
-  // an important @starting-style declaration wins again
+  // both important -> the higher specificity wins again
   Doc.Style:=LinesToStr([
-  'div{ width: 20px !important; }',
-  '@starting-style { div{ width: 10px !important; } }',
+  '@starting-style {',
+  '  div{ width: 10px !important; }',
+  '  .red{ width: 30px !important; }',
+  '}',
   '']);
   ApplyStyle;
-  AssertEquals('Div1.Width 2','20px',Div1.Width);
-  AssertEquals('Div1.StartingWidth 2','10px',Div1.StartingWidth);
+  AssertEquals('Div1.StartingWidth 2','30px',Div1.StartingWidth);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_InlineStyle;
@@ -5853,8 +5901,8 @@ begin
   ApplyStyle;
   AssertEquals('Div1.Width','30px',Div1.Width);
   AssertTrue('Div1.HasStartingStyle',Div1.HasStartingStyle);
-  // the inline style beats the @starting-style rule
-  AssertEquals('Div1.StartingWidth','30px',Div1.StartingWidth);
+  // the inline style is not applied, the caller has to do that itself
+  AssertEquals('Div1.StartingWidth','10px',Div1.StartingWidth);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_Shorthand;
@@ -5884,12 +5932,22 @@ begin
   Div1:=AddDiv('Div1',Doc.Root);
 
   Doc.Style:=LinesToStr([
-  'div{ --bird-width: 5px; width: 20px; }',
-  '@starting-style { div{ width: var(--bird-width); } }',
+  'div{ width: 20px; }',
+  '@starting-style { div{ --bird-width: 5px; width: var(--bird-width); } }',
   '']);
   ApplyStyle;
   AssertEquals('Div1.Width','20px',Div1.Width);
   AssertEquals('Div1.StartingWidth','5px',Div1.StartingWidth);
+
+  // a custom property set only by a normal rule is not available here, so the
+  // declaration is dropped
+  Doc.Style:=LinesToStr([
+  'div{ --bird-width: 5px; width: 20px; }',
+  '@starting-style { div{ width: var(--bird-width); } }',
+  '']);
+  ApplyStyle;
+  AssertEquals('Div1.Width 2','20px',Div1.Width);
+  AssertEquals('Div1.StartingWidth 2','',Div1.StartingWidth);
 end;
 
 procedure TTestCSSResolver.TestRes_StartingStyle_ComputeTwice;
@@ -5911,6 +5969,331 @@ begin
   Div1.ApplyCSS(Doc.CSSResolver);
   AssertEquals('Div1.Width second','20px',Div1.Width);
   AssertEquals('Div1.StartingWidth second','10px',Div1.StartingWidth);
+end;
+
+procedure TTestCSSResolver.TestRes_RuleData_StyleRuleParent;
+var
+  Div1: TDemoDiv;
+  Span1: TDemoSpan;
+  R: TCSSResolver;
+  ShIdx: Integer;
+  Rules, NestedRules: TCSSRuleElementArray;
+  TopRule, NestedRule: TCSSRuleElement;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+  Span1:=AddSpan('Span1',Div1);
+
+  Doc.Style:=LinesToStr([
+  'div{',
+  '  width: 1px;',
+  '  span{ height: 2px; }',
+  '}',
+  '']);
+  ApplyStyle;
+  AssertEquals('Div1.Width','1px',Div1.Width);
+  AssertEquals('Span1.Height','2px',Span1.Height);
+
+  R:=Doc.CSSResolver;
+  ShIdx:=R.IndexOfStyleSheetWithName(cssoAuthor,'test.css');
+  AssertTrue('test.css found',ShIdx>=0);
+  Rules:=CSSGetTopLevelRules(R.StyleSheets[ShIdx].Element);
+  AssertEquals('top level rule count',1,length(Rules));
+  TopRule:=Rules[0];
+  AssertTrue('top level rule has no StyleRuleParent',
+             TCSSRuleData(TopRule.CustomData).StyleRuleParent=nil);
+
+  NestedRules:=CSSGetNestedRules(TopRule);
+  AssertEquals('nested rule count',1,length(NestedRules));
+  NestedRule:=NestedRules[0];
+  AssertTrue('nested rule StyleRuleParent is the div rule',
+             TCSSRuleData(NestedRule.CustomData).StyleRuleParent=TopRule);
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_TopLevel;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:=LinesToStr([
+  '@keyframes fade {',
+  '  from{ width: 1px; }',
+  '  to{ width: 2px; }',
+  '}',
+  '']);
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade for Div1','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+  // a top level @keyframes applies to every node, even without one
+  AssertEquals('fade for nil','1px',KeyframesFirstValue(R.FindKeyframesRule(nil,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_NotFound;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@keyframes fade { from{ width: 1px; } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertTrue('unknown name',R.FindKeyframesRule(Div1,'slide')=nil);
+  AssertTrue('empty name',R.FindKeyframesRule(Div1,'')=nil);
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_NoCascadeEffect;
+var
+  Div1: TDemoDiv;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:=LinesToStr([
+  'div{ width: 20px; }',
+  '@keyframes fade { from{ width: 1px; } to{ width: 2px; } }',
+  '']);
+  ApplyStyle;
+  // the keyframes must not contribute to the cascade
+  AssertEquals('Div1.Width','20px',Div1.Width);
+  AssertEquals('resolver log count',0,Doc.CSSResolver.LogCount);
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_TopLevelDuplicateLastWins;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:=LinesToStr([
+  '@keyframes fade { from{ width: 1px; } }',
+  '@keyframes fade { from{ width: 2px; } }',
+  '']);
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade','2px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_VendorPrefix;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@-webkit-keyframes fade { from{ width: 1px; } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('webkit fade','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+
+  // a later plain @keyframes supersedes the vendor prefixed one
+  Doc.CSSResolver.ReplaceStyleSheet(R.IndexOfStyleSheetWithName(cssoAuthor,'test.css'),
+    LinesToStr([
+    '@-webkit-keyframes fade { from{ width: 1px; } }',
+    '@keyframes fade { from{ width: 2px; } }',
+    '']));
+  AssertEquals('plain fade','2px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_QuotedName;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@keyframes "fade" { from{ width: 1px; } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_CaseSensitive;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@keyframes Fade { from{ width: 1px; } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('Fade','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'Fade')));
+  AssertTrue('fade',R.FindKeyframesRule(Div1,'fade')=nil);
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_InMedia;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@media screen { @keyframes fade { from{ width: 1px; } } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_MediaNotMatching;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@media (width > 9000px) { @keyframes fade { from{ width: 1px; } } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertTrue('fade',R.FindKeyframesRule(Div1,'fade')=nil);
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_MediaNotMatchingDoesNotShadow;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  // CollectKeyframes skips the non matching @media, so its @keyframes does not
+  // supersede the earlier top level one (see AddKeyframes)
+  Doc.Style:=LinesToStr([
+  '@keyframes fade { from{ width: 1px; } }',
+  '@media (width > 9000px) { @keyframes fade { from{ width: 2px; } } }',
+  '']);
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_NestedInRule;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:=LinesToStr([
+  'div{',
+  '  width: 20px;',
+  '  @keyframes fade { from{ width: 1px; } }',
+  '}',
+  '']);
+  ApplyStyle;
+  AssertEquals('Div1.Width','20px',Div1.Width);
+  R:=Doc.CSSResolver;
+  AssertEquals('fade','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_NestedInRuleNotMatching;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='span{ @keyframes fade { from{ width: 1px; } } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertTrue('fade for Div1',R.FindKeyframesRule(Div1,'fade')=nil);
+  // a @keyframes scoped to a style rule is not a global one
+  AssertTrue('fade for nil',R.FindKeyframesRule(nil,'fade')=nil);
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_NestedDuplicateDifferentNodes;
+var
+  Div1: TDemoDiv;
+  Span1: TDemoSpan;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+  Span1:=AddSpan('Span1',Doc.Root);
+
+  Doc.Style:=LinesToStr([
+  'div{ @keyframes fade { from{ width: 1px; } } }',
+  'span{ @keyframes fade { from{ width: 2px; } } }',
+  '']);
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade for Div1','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+  AssertEquals('fade for Span1','2px',KeyframesFirstValue(R.FindKeyframesRule(Span1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_NestedWinsOverTopLevel;
+var
+  Div1: TDemoDiv;
+  Span1: TDemoSpan;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+  Span1:=AddSpan('Span1',Doc.Root);
+
+  Doc.Style:=LinesToStr([
+  '@keyframes fade { from{ width: 1px; } }',
+  'div{ @keyframes fade { from{ width: 2px; } } }',
+  '']);
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade for Div1','2px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+  AssertEquals('fade for Span1','1px',KeyframesFirstValue(R.FindKeyframesRule(Span1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_TopLevelWinsOverEarlierNested;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  // the document order decides, a nested @keyframes does not simply beat a global one
+  Doc.Style:=LinesToStr([
+  '@keyframes fade { from{ width: 1px; } }',
+  'div{ @keyframes fade { from{ width: 2px; } } }',
+  '@keyframes fade { from{ width: 3px; } }',
+  '']);
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade for Div1','3px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+end;
+
+procedure TTestCSSResolver.TestRes_Keyframes_ReplaceStyleSheet;
+var
+  Div1: TDemoDiv;
+  R: TCSSResolver;
+  ShIdx: Integer;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  Doc.Style:='@keyframes fade { from{ width: 1px; } }';
+  ApplyStyle;
+  R:=Doc.CSSResolver;
+  AssertEquals('fade before','1px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+
+  // reparsing the sheet frees the old rules -> the list must be rebuilt
+  ShIdx:=R.IndexOfStyleSheetWithName(cssoAuthor,'test.css');
+  R.ReplaceStyleSheet(ShIdx,'@keyframes fade { from{ width: 2px; } }');
+  AssertEquals('fade after','2px',KeyframesFirstValue(R.FindKeyframesRule(Div1,'fade')));
+
+  R.ReplaceStyleSheet(ShIdx,'div{ width: 20px; }');
+  AssertTrue('fade removed',R.FindKeyframesRule(Div1,'fade')=nil);
 end;
 
 procedure TTestCSSResolver.TestRes_Buckets_GetCSSClasses;
@@ -6094,6 +6477,129 @@ begin
   AssertEquals('Span1.left','1px',Span1.Left);
   AssertEquals('Span2.left','',Span2.Left);
   if Div1=nil then ;
+end;
+
+procedure TTestCSSResolver.TestRes_Buckets_MediaMatchingHoisted;
+var
+  Span1, Span2: TDemoSpan;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Span1:=AddSpan_Class('Span1','red',Doc.Root);
+  Span2:=AddSpan_Class('Span2','blue',Doc.Root);
+
+  // 'screen' matches, so the @media is transparent and its .red rule is bucketed
+  // like a top level rule, i.e. it is a candidate for Span1, but not for Span2
+  Doc.Style:='@media screen{ .red{ left: 1px; } }';
+  ApplyStyle;
+  AssertEquals('Span1.left','1px',Span1.Left);
+  AssertEquals('Span2.left','',Span2.Left);
+  AssertEquals('MediaEvalCount',1,Doc.MediaEvalCount);
+
+  // Note: every span also matches its user-agent type style (span{display:..})
+  // via the type bucket, so the candidate counts include that one extra rule.
+  R:=Doc.CSSResolver;
+  Span1.ApplyCSS(R);
+  AssertEquals('Span1 candidates',2,R.RuleCandidateCount);
+  Span2.ApplyCSS(R);
+  AssertEquals('Span2 candidates',1,R.RuleCandidateCount);
+end;
+
+procedure TTestCSSResolver.TestRes_Buckets_MediaNotMatchingSkipped;
+var
+  Span1, Span2: TDemoSpan;
+  R: TCSSResolver;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Span1:=AddSpan_Class('Span1','red',Doc.Root);
+  Span2:=AddSpan_Class('Span2','blue',Doc.Root);
+
+  // 'print' does not match, so BuildRuleBuckets drops the whole subtree and it is
+  // a candidate for no node at all. The media query is evaluated once, not per node.
+  Doc.Style:=LinesToStr([
+  '@media print{ .red{ left: 1px; } }',
+  '.red{ top: 2px; }',
+  '']);
+  ApplyStyle;
+  AssertEquals('Span1.left','',Span1.Left);
+  AssertEquals('Span1.top','2px',Span1.Top);
+  AssertEquals('MediaEvalCount',1,Doc.MediaEvalCount);
+
+  // Span1: the UA span rule and the top level .red; Span2: only the UA span rule
+  R:=Doc.CSSResolver;
+  Span1.ApplyCSS(R);
+  AssertEquals('Span1 candidates',2,R.RuleCandidateCount);
+  Span2.ApplyCSS(R);
+  AssertEquals('Span2 candidates',1,R.RuleCandidateCount);
+end;
+
+procedure TTestCSSResolver.TestRes_Buckets_MediaFlipRebuilds;
+var
+  Div1: TDemoDiv;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  // the buckets depend on the media environment -> InvalidateMedia must rebuild them
+  Doc.Style:=LinesToStr([
+  '@media (width > 500px){ div{ left: 1px; } }',
+  '@media (width < 500px){ div{ left: 2px; } }',
+  '']);
+  ApplyStyle; // Doc.Width is 800
+  AssertEquals('Div1.left wide','1px',Div1.Left);
+
+  Doc.Width:=400; // the setter calls InvalidateMedia
+  ReResolve;
+  AssertEquals('Div1.left narrow','2px',Div1.Left);
+
+  Doc.Width:=800;
+  ReResolve;
+  AssertEquals('Div1.left wide again','1px',Div1.Left);
+end;
+
+procedure TTestCSSResolver.TestRes_Buckets_MediaNestedInMedia;
+var
+  Div1: TDemoDiv;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Div1:=AddDiv('Div1',Doc.Root);
+
+  // both @media must match, the inner one flips with the width
+  Doc.Style:=LinesToStr([
+  '@media screen{',
+  '  @media (width > 500px){ div{ left: 1px; } }',
+  '  @media print{ div{ top: 2px; } }',
+  '}',
+  '']);
+  ApplyStyle; // Doc.Width is 800
+  AssertEquals('Div1.left wide','1px',Div1.Left);
+  AssertEquals('Div1.top','',Div1.Top);
+
+  Doc.Width:=400;
+  ReResolve;
+  AssertEquals('Div1.left narrow','',Div1.Left);
+end;
+
+procedure TTestCSSResolver.TestRes_Buckets_MediaSiblingSelector;
+var
+  Span1, Span2: TDemoSpan;
+  Matched: TCSSSiblingMatchList;
+begin
+  Doc.Root:=TDemoNode.Create(nil);
+  Span1:=AddSpan_Class('Span1','red',Doc.Root);
+  Span2:=AddSpan_Class('Span2','blue',Doc.Root);
+
+  // the selector of a non matching @media must not become a sibling selector
+  Doc.Style:=LinesToStr([
+  '@media print{ .red + .blue{ left: 1px; } }',
+  '@media screen{ .red + .blue{ top: 2px; } }',
+  '']);
+  ApplyStyle;
+  AssertEquals('Span2.left','',Span2.Left);
+  AssertEquals('Span2.top','2px',Span2.Top);
+  Matched:=Doc.CSSResolver.MatchSiblingSelectors(Span2);
+  AssertEquals('sibling selectors of Span2',1,length(Matched.Matched));
+  if Span1=nil then ;
 end;
 
 procedure TTestCSSResolver.CheckTokenize(const Title, aValue, Expected: string);
