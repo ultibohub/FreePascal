@@ -409,7 +409,7 @@ type
     procedure ParseRecordMembers(ARec: TPasRecordType; AEndToken: TToken; AllowMethods : Boolean);
     procedure ParseRecordVariantParts(ARec: TPasRecordType; AEndToken: TToken);
     function GetProcedureClass(ProcType : TProcType): TPTreeElement;
-    procedure ParseClassFields(AType: TPasClassType; const AVisibility: TPasMemberVisibility; IsClassField : Boolean);
+    procedure ParseClassFields(AType: TPasClassType; const AVisibility: TPasMemberVisibility; IsClassField : Boolean; IsThreadVar : Boolean = False);
     procedure ParseClassMembers(AType: TPasClassType);
     procedure ProcessMethod(AType: TPasClassType; IsClass : Boolean; AVisibility : TPasMemberVisibility; MustBeGeneric: boolean);
     procedure ReadGenericArguments(List: TFPList; Parent: TPasElement);
@@ -651,6 +651,11 @@ uses strutils;
 
 const
   WhitespaceTokensToIgnore = [tkWhitespace, tkComment, tkLineEnding, tkTab];
+
+  // What may name a parameter. `absolute` and `inline` are DIRECTIVES in fpc,
+  // not reserved words, and it accepts both here - libpipewire's libspa declares
+  // `absolute: T_Bool` and fcl-css `Inline: boolean`.
+  ParamNameTokens = [tkIdentifier, tkabsolute, tkinline];
 
 type
   TDeclType = (declNone, declConst, declResourcestring, declType,
@@ -1669,6 +1674,9 @@ begin
         Allowed:=IntfAllowed;
         if TPasClassType(Parent).IsExternal then
           Include(Allowed,pmExternal);
+        // real-FPC accepts and ignores these on an interface method
+        if po_IntfMethodModifiers in Options then
+          Allowed:=Allowed+[pmVirtual,pmDynamic,pmAbstract,pmOverride,pmReintroduce];
         if not (PM in Allowed) then
           exit(false);
         end;
@@ -2835,7 +2843,10 @@ begin
     tkString: Last:=CreatePrimitiveExpr(AParent,pekString,CurTokenString);
     tkStringMultiLine: Last:=CreatePrimitiveExpr(AParent,pekStringMultiLine,CurTokenString);
     tkNumber: Last:=CreatePrimitiveExpr(AParent,pekNumber,CurTokenString);
-    tkIdentifier:
+    // tkabsolute/tkinline: fpc treats both as DIRECTIVES, so they can name a
+    // parameter and then be READ in the body - fcl-css' ParseCSSSource takes an
+    // `Inline: boolean` and tests `if Inline then`.
+    tkIdentifier, tkabsolute, tkinline:
       begin
       if msDelphi in CurrentModeswitches then
         CanSpecialize:=aCan
@@ -2846,6 +2857,14 @@ begin
         Last:=CreateSelfExpr(AParent)
       else
         Last:=CreatePrimitiveExpr(AParent,pekIdent,aName);
+      end;
+    tkfile:
+      begin
+      // `file` names the untyped file TYPE in an expression - real FPC folds
+      // `SizeOf(file)` (unzip51g). TypedFile is the registered name of that type.
+      CanSpecialize:=aCannot;
+      aName:='TypedFile';
+      Last:=CreatePrimitiveExpr(AParent,pekIdent,aName);
       end;
     tkspecialize:
       begin
@@ -2959,17 +2978,31 @@ begin
       NextToken;
       if CurToken=tkspecialize then
         begin
-        // Obj.specialize ...
-        if CanSpecialize=aMust then
-          CheckToken(tkLessThan);
-        CanSpecialize:=aMust;
+        // Obj.specialize ... - unless nothing follows that could be specialized,
+        // in which case `specialize` is the MEMBER's name (it is a soft keyword,
+        // an ordinary identifier everywhere but a declaration).
         NextToken;
+        if not (CurToken in [tkIdentifier,tktrue,tkfalse,tkself]) then
+          UngetToken
+        else
+          begin
+          UngetToken;
+          if CanSpecialize=aMust then
+            CheckToken(tkLessThan);
+          CanSpecialize:=aMust;
+          NextToken;
+          end;
         end
       else if msDelphi in CurrentModeswitches then
         CanSpecialize:=aCan
       else
         CanSpecialize:=aCannot;
-      if CurToken in [tkIdentifier,tktrue,tkfalse,tkself] then // true and false are sub identifiers as well
+      // The SOFT keywords are ordinary identifiers after a dot, in every mode:
+      // ppcx64 accepts TEnum.Generic / .Specialize / .Absolute in objfpc and
+      // rejects the hard ones (.In, .Type, .Operator, .Xor), which the Delphi
+      // rule below still allows. vcl-compat's TJsonBinaryType has a Generic.
+      if CurToken in [tkIdentifier,tktrue,tkfalse,tkself,
+                      tkgeneric,tkspecialize,tkabsolute] then // true and false are sub identifiers as well
         begin
         aName:=aName+'.'+CurTokenString;
         Expr:=CreatePrimitiveExpr(AParent,pekIdent,CurTokenString);
@@ -4103,7 +4136,12 @@ begin
   HadTypeSection:=false;
   while True do
   begin
-    if CurBlock in [DeclNone,declConst,declType,declVar] then
+    // A resourcestring or threadvar section ends at `operator` just as a var
+    // section does; without them the word arrives as an identifier and reads
+    // as one more declaration in the section (fcl-net's ssockets.pp puts
+    // `operator :=` straight after a resourcestring block).
+    if CurBlock in [DeclNone,declConst,declResourcestring,declType,declVar,
+        declThreadVar] then
       Scanner.SetTokenOption(toOperatorToken)
     else
       Scanner.UnSetTokenOption(toOperatorToken);
@@ -4200,7 +4238,10 @@ begin
       pt:=GetProcTypeFromToken(CurToken,True);
       AddProcOrFunction(Declarations,ParseProcedureOrFunctionDecl(Declarations, pt, MustBeGeneric));
       end;
-    tkAbsolute,
+    // `true` and `false` are CONSTANTS of the system unit, not reserved words,
+    // so a declaration may shadow them - exactly as `absolute` above may be a
+    // name. fcl-jsonschema declares a local `False: Boolean`.
+    tkAbsolute, tktrue, tkfalse,
     tkIdentifier:
       begin
       Scanner.UnSetTokenOption(toOperatorToken);
@@ -5310,6 +5351,9 @@ end;
 function TPasParser.GetVariableValueAndLocation(Parent: TPasElement; IsUntypedInline: Boolean; out Value: TPasExpr; out
   AbsoluteExpr: TPasExpr; out Location: String): Boolean;
 
+var
+  IndexParams: TParamsExpr;
+
 begin
   Value:=Nil;
   AbsoluteExpr:=Nil;
@@ -5340,6 +5384,17 @@ begin
     else
       begin
       Location:=ReadDottedIdentifier(Parent,AbsoluteExpr,true);
+      // `absolute Arr[i]` names an ELEMENT as the location, which real FPC
+      // accepts (rtl-generics: `LHash1: UInt32 absolute LHash[0]`)
+      while (CurToken=tkSquaredBraceOpen) and (AbsoluteExpr<>nil) do
+        begin
+        IndexParams:=ParseParams(Parent,pekArrayParams,false);
+        if IndexParams=nil then break;
+        IndexParams.Value:=AbsoluteExpr;
+        AbsoluteExpr.Parent:=IndexParams;
+        AbsoluteExpr:=IndexParams;
+        NextToken;
+        end;
       if CurToken<>tkSemicolon then
         AbsoluteExpr:=DoParseExpression(Parent,AbsoluteExpr,false);
       UnGetToken;
@@ -5901,8 +5956,11 @@ begin
         // (const|var|) [ref]  a : type;
         CheckAttributes(True);
         Name:=GetParamName;
-      end else if (CurToken = tkIdentifier) and (UpperCase(CurTokenString) = 'OUT') then
+      end else if (CurToken = tkIdentifier) and (not CurTokenEscaped)
+          and (UpperCase(CurTokenString) = 'OUT') then
       begin
+        // `&out` is the NAME out, not the out access specifier - libxml's
+        // xsltGetNamespace declares `&out: xmlNodePtr`.
         if ([msObjfpc, msDelphi, msDelphiUnicode, msOut] * CurrentModeswitches)<>[] then
           begin
           Access := ArgOut;
@@ -5916,7 +5974,7 @@ begin
           ParseExcTokenError('identifier')
         else
           Name := CurTokenString
-      end else if CurToken = tkIdentifier then
+      end else if CurToken in ParamNameTokens then
         Name := CurTokenString
       else
         ParseExc(nParserExpectedConstVarID,SParserExpectedConstVarID);
@@ -5942,7 +6000,7 @@ begin
         else if CurToken <> tkComma then
           ParseExc(nParserExpectedCommaColon,SParserExpectedCommaColon);
         NextToken;
-        if CurToken = tkIdentifier then
+        if CurToken in ParamNameTokens then
           Name := CurTokenString
         else
           ParseExc(nParserExpectedConstVarID,SParserExpectedConstVarID);
@@ -6060,6 +6118,7 @@ begin
         tkof, // e.g. procedure of object
         tkis, // e.g. procedure is nested
         tkBraceClose, // e.g. a param-less inline proc parameter: (procedure pp)
+        tkEqual, // e.g. const p: array[0..1] of procedure = (@a, @b);
         tkIdentifier: // e.g. procedure cdecl;
           UngetToken;
       else
@@ -6085,6 +6144,13 @@ Var
 
 begin
   P:=TPasProcedure(Parent);
+  // real-FPC accepts and IGNORES these on an interface method, so the modifier is
+  // dropped instead of recorded - an interface method is virtual+abstract anyway
+  if (po_IntfMethodModifiers in Options)
+      and (pm in [pmVirtual,pmDynamic,pmAbstract,pmOverride,pmReintroduce])
+      and (P<>nil) and (P.Parent is TPasClassType)
+      and (TPasClassType(P.Parent).ObjKind in [okInterface,okDispInterface]) then
+    exit;
   if pm<>pmPublic then
     AddModifier;
   Case pm of
@@ -7491,7 +7557,13 @@ var
       else
         break;
     until false;
-    if (NameParts=nil) and MustBeGeneric then
+    if (NameParts=nil) and MustBeGeneric and (Cnt=1) then
+      // A QUALIFIED name needs no type parameters of its own: it is the
+      // implementation header of a generic class's method, and the class
+      // carries them - `generic function TFuture.GetValue: T;` in
+      // vcl-compat's system.threading. ppcx64 accepts that (and, in fact, an
+      // unqualified one too); only the unqualified form still has to say
+      // which parameters it introduces.
       CheckToken(tkLessThan);
     UngetToken;
   end;
@@ -7550,6 +7622,25 @@ begin
             OT:=TPasOperator.TokenToOperatorType(CurTokenText)
           else
             OT:=TPasOperator.NameToOperatorType(CurTokenString);
+          // A NESTED type needs more than one qualifier:
+          // `class operator TThreadPool.TSafeSharedInteger.Explicit` names the
+          // enclosing class, the record, and only then the operator.
+          while (OT=otUnknown) and not IsTokenBased do
+            begin
+            OperatorTypeName:=OperatorTypeName+'.'+CurTokenString;
+            NextToken;
+            if CurToken<>tkDot then
+              begin
+              UngetToken;
+              break;
+              end;
+            NextToken;
+            IsTokenBased:=CurToken<>tkIdentifier;
+            if IsTokenBased then
+              OT:=TPasOperator.TokenToOperatorType(CurTokenText)
+            else
+              OT:=TPasOperator.NameToOperatorType(CurTokenString);
+            end;
           // Second name part = the operator's canonical name (generic impl only).
           if NameParts<>nil then
             begin
@@ -8061,7 +8152,8 @@ begin
 end;
 
 procedure TPasParser.ParseClassFields(AType: TPasClassType;
-  const AVisibility: TPasMemberVisibility; IsClassField: Boolean);
+  const AVisibility: TPasMemberVisibility; IsClassField: Boolean;
+  IsThreadVar: Boolean);
 
 Var
   Element: TPasElement;
@@ -8091,6 +8183,8 @@ begin
     VarEl:=TPasVariable(Element);
     if IsClassField then
       Include(VarEl.VarModifiers,vmClass);
+    if IsThreadVar then
+      Include(VarEl.VarModifiers,vmThread);
     if isStatic then
       Include(VarEl.VarModifiers,vmStatic);
     Engine.FinishScope(stDeclaration,VarEl);
@@ -8249,7 +8343,7 @@ procedure TPasParser.ParseClassMembers(AType: TPasClassType);
 
 
 Type
-  TSectionType = (stNone,stConst,stType,stVar,stClassVar);
+  TSectionType = (stNone,stConst,stType,stVar,stClassVar,stClassThreadVar);
 Var
   CurVisibility : TPasMemberVisibility;
   CurSection : TSectionType;
@@ -8322,6 +8416,19 @@ begin
       else
         CurSection:=stVar;
       end;
+    tkthreadvar:
+      begin
+      // `class threadvar` - a class variable with one copy per thread.
+      // vcl-compat's TThreadPool declares `class threadvar QueueThread`.
+      if not haveClass then
+        ParseExc(nParserXNotAllowedInY,SParserXNotAllowedInY,['THREADVAR',ObjKindNames[AType.ObjKind]]);
+      if (AType.ObjKind in okWithFields)
+        or (AType.ObjKind in okAllHelpers) then
+        // ok
+      else
+        ParseExc(nParserXNotAllowedInY,SParserXNotAllowedInY,['THREADVAR',ObjKindNames[AType.ObjKind]]);
+      CurSection:=stClassThreadVar;
+      end;
     tkabsolute,
     tkIdentifier:
      // create the TPasVariable here, so that SourceLineNumber is correct
@@ -8351,13 +8458,14 @@ begin
           if Curtoken=tkEnd then // case Ta = Class x : String end;
             UngetToken;
           end;
-        stClassVar:
+        stClassVar,
+        stClassThreadVar:
           begin
           if not
             ((AType.ObjKind in okWithClassFields)
             or ((aType.ObjKind=okInterface) and aType.IsExternal)) then
             ParseExc(nParserNoFieldsAllowed,SParserNoFieldsAllowedInX,[ObjKindNames[AType.ObjKind]]);
-          ParseClassFields(AType,CurVisibility,true);
+          ParseClassFields(AType,CurVisibility,true,CurSection=stClassThreadVar);
           end;
         else
           Raise Exception.Create('Internal error 201704251415');
@@ -8611,6 +8719,7 @@ procedure TPasParser.DoParseArrayType(ArrType: TPasArrayType);
 var
   S: String;
   RangeExpr: TPasExpr;
+  IsEqual: Boolean;
 begin
   NextToken;
   S:='';
@@ -8663,7 +8772,16 @@ begin
   // TPasProcedureType parsing has eaten the semicolon;
   // We know it was a local definition if the array def (ArrType) is the parent
   if (ArrType.ElType is TPasProcedureType) and (ArrType.ElType.Parent=ArrType) then
+    begin
+    // A typed constant (`array[0..1] of Procedure = (@a, @b)`) stops the
+    // procedure-type parse at the '=' without eating a semicolon, so there is
+    // nothing to give back there.
+    NextToken;
+    IsEqual:=CurToken=tkEqual;
     UnGetToken;
+    if not IsEqual then
+      UnGetToken;
+    end;
 end;
 
 function TPasParser.ParseClassDecl(Parent: TPasElement;
@@ -8978,7 +9096,10 @@ begin
     if NeedUnget then
       Parser.NextToken;
     tk:=Parser.CurToken;
-    if (tk in [tkend,tkelse])
+    // A further semicolon is an EMPTY STATEMENT, which is legal after a
+    // handler: fcl-wit's utcrundirtests ends one with `lErr:=...;;` and fpc
+    // accepts it. Ungetting below leaves it for the enclosing except block.
+    if (tk in [tkend,tkelse,tkSemicolon])
         or ((tk=tkIdentifier) and (lowercase(Parser.CurTokenString)='on')) then
       // ok
     else
@@ -9181,6 +9302,7 @@ procedure TPasParser.TParseStatementParams.ParseFor;
 var
   ForLoop: TPasImplForLoop;
   Expr: TPasExpr;
+  CastParams: TParamsExpr;
   lt: TLoopType;
   SrcPos: TPasSourcePos;
   isVarDef : Boolean;
@@ -9232,6 +9354,18 @@ begin
           Parser.CreatePrimitiveExpr(ForLoop,pekIdent,Parser.CurTokenString),
           eopSubIdent,SrcPos);
         ForLoop.VariableName:=Expr;
+        end;
+      tkBraceOpen:
+        begin
+        // The loop variable is a typecast: for Pointer(N) in List do
+        if IsVarDef then
+          Parser.ParseExc(nParserExpectedAssignIn,SParserExpectedAssignIn);
+        CastParams:=Parser.ParseParams(ForLoop,pekFuncParams);
+        CastParams.Value:=Expr;
+        Expr.Parent:=CastParams;
+        Expr:=CastParams;
+        ForLoop.VariableName:=Expr;
+        Parser.UngetToken;
         end;
     else
       Parser.ParseExc(nParserExpectedAssignIn,SParserExpectedAssignIn);

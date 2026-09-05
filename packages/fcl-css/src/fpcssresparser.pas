@@ -304,7 +304,6 @@ const
     (Name: 'yellowgreen'; Color: TCSSAlphaColor($ff9acd32))
   );
 
-
 type
 
   { TCSSRegistryNamedItem }
@@ -489,11 +488,17 @@ type
     // keywords
     Keywords: TCSSStringArray; // Note: Keywords[0] is nil to spot bugs easily
     KeywordTokens: TBytesArray; // tokenized form of each keyword, see TCSSBaseResolver.Tokenize
-    kwFirstColor, kwLastColor, kwTransparent: TCSSNumericalID;
+    kwFirstColor, kwLastColor: TCSSNumericalID; // named colors, excluding transparent, currentColor and system colors
+    kwTransparent: TCSSNumericalID;
+    kwCurrentColor: TCSSNumericalID;
+    kwFirstSystemColor, kwLastSystemColor: TCSSNumericalID;
     function AddKeyword(const aName: TCSSString): TCSSNumericalID; overload;
     procedure AddKeywords(const Names: TCSSStringArray; out First, Last: TCSSNumericalID); overload;
     function IndexOfKeyword(const aName: TCSSString): TCSSNumericalID; overload;
+    function IndexOfValueKeyword(const aName: TCSSString;
+      AllowUnknownIdentifiers: boolean): TCSSNumericalID; virtual; // resolve a word of an attribute value
     procedure AddColorKeywords; virtual;
+    function IsColorKeyword(KeywordID: TCSSNumericalID; OnlyConst: boolean): boolean;
     function GetNamedColor(const aName: TCSSString): TCSSAlphaColor; virtual; overload;
     function GetKeywordColor(KeywordID: TCSSNumericalID): TCSSAlphaColor; virtual; overload;
     property KeywordCount: TCSSNumericalID read FKeywordCount;
@@ -645,19 +650,21 @@ type
     FHasMediaBoolean: TCSSHasMediaBoolEvent;
     FIsMediaPlain: TCSSIsMediaPlainEvent;
     FMediaCompare: TCSSMediaCompareEvent;
+    FCurValue: TCSSString;
+    FIdentifier: TCSSString;
+    FIdentifierValid: boolean;
+    function GetCurValue: TCSSString;
+    function GetIdentifier: TCSSString;
   protected
     procedure SetCSSRegistry(const AValue: TCSSRegistry); virtual;
     procedure SetHasMediaBoolean(const AValue: TCSSHasMediaBoolEvent); virtual;
     procedure SetIsMediaPlain(const AValue: TCSSIsMediaPlainEvent); virtual;
     procedure SetMediaCompare(const AValue: TCSSMediaCompareEvent); virtual;
-    // Called when one of the @media events changed. A descendant caching @media
-    // results (see TCSSResolver.InvalidateMedia) must drop them here.
     procedure MediaEnvironmentChanged; virtual;
-    function CurFits(const Params: TCSSCheckAttrParams_Dimension): boolean; // true if the current float component fits
   public
     CurAttrData: TCSSAttributeKeyData;
     CurDesc: TCSSAttributeDesc;
-    CurValue: TCSSString; // source text (for diagnostics), set by InitParseAttr
+
     CurTokens: TBytes; // tokenized value being read, see Tokenize
     CurTokenPos: integer; // offset in CurTokens of the next token (read by ReadNext)
     CurTokenStart: integer; // offset in CurTokens where the current token started
@@ -668,46 +675,52 @@ type
     KeywordID: TCSSNumericalID;
     FunctionID: TCSSNumericalID;
     Symbol: TCSSToken;
-    Identifier: TCSSString; // text payload of rtkIdentifier/rtkString*/rtkHexColor and symbols
+    Empty: boolean; // no tokens read so far or only whitespace
     procedure ResetCurComp; // clear the current token component
     function InitParseAttr(Desc: TCSSAttributeDesc; AttrData: TCSSAttributeKeyData): boolean; virtual; // true if parsing can start
     function InitParseAttr(Desc: TCSSAttributeDesc; const Value: TCSSString): boolean; virtual; // true if parsing can start
     function InitParseAttr(Desc: TCSSAttributeDesc; const Tokens: TBytes): boolean; virtual; // true if parsing can start, reuses already tokenized value
     procedure InitParseAttr(const Value: TCSSString); virtual;
-    // check whole attribute:
-    function CheckAttribute_Keyword(const Tokens: TBytes): TCSSNumericalID; virtual;
-    function CheckAttribute_Keyword(const AllowedKeywordIDs: TCSSNumericalIDArray): boolean; virtual;
-    function CheckAttribute_Keyword_List(const AllowedKeywordIDs: TCSSNumericalIDArray): boolean; virtual;
-    function CheckAttribute_Dimension(const Params: TCSSCheckAttrParams_Dimension): boolean; virtual;
-    function CheckAttribute_Color(const AllowedKeywordIDs: TCSSNumericalIDArray): boolean; virtual;
-    // parse whole attribute:
+    property CurValue: TCSSString read GetCurValue; // source text (for diagnostics)
+    // text payload of rtkIdentifier/rtkString*/rtkHexColor and symbols of the
+    // current token, decoded from CurTokens on demand, see ReadNext
+    property Identifier: TCSSString read GetIdentifier;
     function ReadNext: boolean;
-    function ReadAttribute_Keyword(out Invalid: boolean; const AllowedKeywordIDs: TCSSNumericalIDArray): boolean; virtual;
-    function ReadAttribute_Dimension(out Invalid: boolean; const Params: TCSSCheckAttrParams_Dimension): boolean; virtual;
-    function ReadAttribute_Color(out Invalid: boolean; const AllowedKeywordIDs: TCSSNumericalIDArray): boolean; virtual;
-    function IsBaseKeyword(aKeywordID: TCSSNumericalID): boolean;
+    function PeekNextTokenKind: TCSSResTokenKind; // kind of the next token without consuming, skipping whitespace; rtkNone at end
+    function AtEnd: boolean; // true if there is no current token, i.e. the last ReadNext reached the end of CurTokens
+    class procedure SkipToEndOfAttribute(var p: PCSSChar);
+    class function SkipString(var p: PCSSChar): boolean;
+    class function SkipBrackets(var p: PCSSChar; Lvl: integer = 1): boolean;
+    // check whole attribute:
+    function CheckAttribute_Keyword(const Tokens: TBytes): TCSSNumericalID;
+    function CheckAttribute_Keyword(const AllowedKeywordIDs: TCSSNumericalIDArray): boolean;
+    function CheckAttribute_Keyword_List(const AllowedKeywordIDs: TCSSNumericalIDArray): boolean;
+    function CheckAttribute_Dimension(const Params: TCSSCheckAttrParams_Dimension): boolean;
+    function CheckAttribute_Color(const AllowedKeywordIDs: TCSSNumericalIDArray = nil): boolean;
+    // check current component:
     function IsKeywordIn(aKeywordID: TCSSNumericalID; const KeywordIDs: TCSSNumericalIDArray): boolean; overload;
     function IsKeywordIn(const KeywordIDs: TCSSNumericalIDArray): boolean; overload;
     function IsLengthOrPercentage(AllowNegative: boolean): boolean; overload;
     function IsSymbol(Token: TCSSToken): boolean; overload;
+    function IsFloat(const Params: TCSSCheckAttrParams_Dimension): boolean; // true if the current float component fits
+    function IsDimension(const Params: TCSSCheckAttrParams_Dimension): boolean; // true if the current float or keyword fits
+    function IsColor: boolean; // true if the current component is a color
     function GetCompString: TCSSString; overload;
     function GetCompTokens: TBytes; // the current CurTokenStart til CurTokenPos
     function FloatAsString: TCSSString; // the current component as float+unit
     function IsInteger: boolean; // the current component is a unitless number
     function IsIntegerValue(v: Integer): boolean;
     // low level functions to read attribute tokens
+    function IsBaseKeyword(aKeywordID: TCSSNumericalID): boolean;
     function Tokenize(const aValue: string; out aData: TBytes; AllowUnknownIdentifiers: boolean = false;
       TrimEnclosingSpace: boolean = true): boolean; // false if invalid (e.g. only whitespace), see TCSSResTokenKind
     function TokenizeKeyword(KW: TCSSNumericalID): TBytes;
     function TokenizeIdentifier(const anIdentifier: TCSSString): TBytes;
     function TokenizeFloat(const aFloat: double; anUnit: TCSSUnit): TBytes;
+    function TokenizeHexColor(const aHexDigits: TCSSString): TBytes;
+    function ResolveIdentifierTokens(var Tokens: TBytes): boolean; // convert rtkIdentifier to rtkKeyword, false if invalid
     function Detokenize(const aData: TBytes): TCSSString; // convert a token array back to a css value
     function DetokenizeOne(aData: PByte): TCSSString; // convert one token back to a css value
-    function PeekNextTokenKind: TCSSResTokenKind; // kind of the next token without consuming, skipping whitespace; rtkNone at end
-    function AtEnd: boolean; // true if there is no current token, i.e. the last ReadNext reached the end of CurTokens
-    class procedure SkipToEndOfAttribute(var p: PCSSChar);
-    class function SkipString(var p: PCSSChar): boolean;
-    class function SkipBrackets(var p: PCSSChar; Lvl: integer = 1): boolean;
     // registry
     function GetAttributeID(const aName: TCSSString; AutoCreate: boolean = false): TCSSNumericalID; virtual;
     function GetAttributeDesc(AttrID: TCSSNumericalID): TCSSAttributeDesc; virtual;
@@ -1078,6 +1091,9 @@ begin
     raise ECSSParser.Create('20260327000002');
   if AddKeyword('not')<>CSSKeywordNot then
     raise ECSSParser.Create('20260327000003');
+
+  kwFirstSystemColor:=0;
+  kwLastSystemColor:=-1;
 
   // init attribute functions
   if AddAttrFunction('var')<>CSSAttrFuncVar then
@@ -1829,6 +1845,37 @@ begin
     Result:={%H-}TCSSNumericalID(p);
 end;
 
+function TCSSRegistry.IndexOfValueKeyword(const aName: TCSSString;
+  AllowUnknownIdentifiers: boolean): TCSSNumericalID;
+// Resolve a word of an attribute value to a keyword, CSSIDNone if there is none.
+// Attributes allowing unknown identifiers use case sensitive names, e.g. font-family,
+// so they never get a color keyword: 'Red' and 'red' stay identifiers.
+// For all other attributes color names are ASCII case insensitive, e.g. 'Red' = 'red'.
+var
+  LoName: TCSSString;
+begin
+  Result:=IndexOfKeyword(aName);
+  if AllowUnknownIdentifiers then
+  begin
+    if IsColorKeyword(Result,false) then
+      Result:=CSSIDNone;
+    exit;
+  end;
+  if Result>CSSIDNone then
+    exit;
+  LoName:=lowercase(aName);
+  Result:=IndexOfKeyword(LoName);
+  if ((Result>=kwFirstColor) and (Result<=kwLastColor))
+      or ((Result>=kwFirstSystemColor) and (Result<=kwLastSystemColor)) then
+    // color keywords are case insensitive
+  else if LoName='currentcolor' then
+    Result:=kwCurrentColor
+  else if LoName='transparent' then
+    Result:=kwTransparent
+  else
+    Result:=CSSIDNone;
+end;
+
 procedure TCSSRegistry.AddColorKeywords;
 var
   Names: TCSSStringArray;
@@ -1838,7 +1885,20 @@ begin
   for i:=0 to High(CSSNamedColors) do
     Names[i]:=CSSNamedColors[i].Name;
   AddKeywords(Names,kwFirstColor,kwLastColor);
+
   kwTransparent:=IndexOfKeyword('transparent');
+  kwCurrentColor:=AddKeyword('currentColor');
+end;
+
+function TCSSRegistry.IsColorKeyword(KeywordID: TCSSNumericalID; OnlyConst: boolean): boolean;
+begin
+  if (KeywordID>=kwFirstColor) and (KeywordID<=kwLastColor) then
+    exit(true);
+  if OnlyConst then
+    exit(false);
+  Result:=(KeywordID=kwCurrentColor)
+       or (KeywordID=kwTransparent)
+       or ((KeywordID>=kwFirstSystemColor) and (KeywordID<=kwLastSystemColor));
 end;
 
 function TCSSRegistry.GetNamedColor(const aName: TCSSString): TCSSAlphaColor;
@@ -1849,7 +1909,7 @@ end;
 function TCSSRegistry.GetKeywordColor(KeywordID: TCSSNumericalID): TCSSAlphaColor;
 begin
   if (KeywordID<kwFirstColor) or (KeywordID>kwLastColor) then
-    Result:=$ff000000
+    Result:=$ff000000 // black
   else
     Result:=CSSNamedColors[KeywordID-kwFirstColor].Color;
 end;
@@ -1953,6 +2013,53 @@ end;
 
 { TCSSBaseResolver }
 
+function TCSSBaseResolver.GetCurValue: TCSSString;
+begin
+  Result:=FCurValue;
+  if Result='' then
+  begin
+    Result:=Detokenize(CurTokens);
+    FCurValue:=Result;
+  end;
+end;
+
+function TCSSBaseResolver.GetIdentifier: TCSSString;
+// decode the text payload of the current token, see ReadNext and DetokenizeOne
+var
+  Cnt: DWord;
+  p: integer;
+begin
+  if FIdentifierValid then
+    exit(FIdentifier);
+  FIdentifierValid:=true;
+  FIdentifier:='';
+  p:=CurTokenStart;
+  if p<length(CurTokens) then
+    case TokenKind of
+    rtkIdentifier,rtkStringApos,rtkStringQuote:
+      begin
+        Cnt:=PDWord(@CurTokens[p+1])^;
+        if Cnt>0 then
+        begin
+          SetLength(FIdentifier,Cnt);
+          Move(CurTokens[p+5],FIdentifier[1],Cnt);
+        end;
+      end;
+    rtkHexColor:
+      begin
+        Cnt:=CurTokens[p+1];
+        if Cnt>0 then
+        begin
+          SetLength(FIdentifier,Cnt);
+          Move(CurTokens[p+2],FIdentifier[1],Cnt);
+        end;
+      end;
+    rtkSymbol:
+      FIdentifier:=TCSSChar(CurTokens[p+1]);
+    end;
+  Result:=FIdentifier;
+end;
+
 procedure TCSSBaseResolver.SetCSSRegistry(const AValue: TCSSRegistry);
 begin
   if FCSSRegistry=AValue then Exit;
@@ -1990,13 +2097,16 @@ begin
   CurTokens:=nil;
   CurTokenPos:=0;
   CurTokenStart:=0;
+  FCurValue:='';
   TokenKind:=rtkNone;
   Float:=0;
   FloatUnit:=cuNone;
   KeywordID:=CSSIDNone;
   FunctionID:=CSSIDNone;
   Symbol:=ctkUNKNOWN;
-  Identifier:='';
+  FIdentifier:='';
+  FIdentifierValid:=true;
+  Empty:=true;
 end;
 
 function TCSSBaseResolver.InitParseAttr(Desc: TCSSAttributeDesc; AttrData: TCSSAttributeKeyData
@@ -2012,7 +2122,6 @@ begin
 
   // the value was already tokenized during parsing, reuse the tokens
   CurTokens:=AttrData.Tokens;
-  CurValue:=Detokenize(CurTokens); // source text for diagnostics / comp parser fallback
   if not ReadNext then
     exit;
 
@@ -2034,29 +2143,27 @@ function TCSSBaseResolver.InitParseAttr(Desc: TCSSAttributeDesc; const Value: TC
 begin
   CurAttrData:=nil;
   CurDesc:=Desc;
-  CurValue:=Value;
   ResetCurComp;
+  FCurValue:=Value;
   if not Tokenize(Value,CurTokens,Desc.AllowUnknownIdentifiers) then
     exit(false);
   Result:=ReadNext;
 end;
 
 function TCSSBaseResolver.InitParseAttr(Desc: TCSSAttributeDesc; const Tokens: TBytes): boolean;
-// reuse an already tokenized value
 begin
   CurAttrData:=nil;
   CurDesc:=Desc;
   ResetCurComp;
   CurTokens:=Tokens;
-  CurValue:=Detokenize(Tokens); // source text for diagnostics / comp parser fallback
   Result:=ReadNext;
 end;
 
 procedure TCSSBaseResolver.InitParseAttr(const Value: TCSSString);
 begin
   CurAttrData:=nil;
-  CurValue:=Value;
   ResetCurComp;
+  FCurValue:=Value;
   if Tokenize(Value,CurTokens) then
     ReadNext;
 end;
@@ -2072,7 +2179,7 @@ begin
   p:=0;
   // a leading whitespace token (single byte, no payload) is skipped, see Tokenize
   if (p<Len) and (Tokens[p]=ord(rtkWhitespace)) then inc(p);
-  if (p>=Len) or (Tokens[p]<>ord(rtkKeyword)) then exit;
+  if (p+3<>Len) or (Tokens[p]<>ord(rtkKeyword)) then exit;
   Result:=PWord(@Tokens[p+1])^;
 end;
 
@@ -2129,21 +2236,53 @@ end;
 function TCSSBaseResolver.CheckAttribute_Dimension(const Params: TCSSCheckAttrParams_Dimension
   ): boolean;
 var
-  Invalid: boolean;
+  i: Integer;
 begin
-  Result:=ReadAttribute_Dimension(Invalid,Params);
-  if (not Result) and (CurAttrData<>nil) then
-    CurAttrData.Invalid:=true;
+  case TokenKind of
+  rtkFloat:
+    if IsFloat(Params) and not ReadNext then
+      exit(true);
+  rtkKeyword:
+    for i:=0 to length(Params.AllowedKeywordIDs)-1 do
+      if KeywordID=Params.AllowedKeywordIDs[i] then
+        if ReadNext then
+          break
+        else
+          exit(true);
+  end;
+
+  Result:=false;
 end;
 
 function TCSSBaseResolver.CheckAttribute_Color(const AllowedKeywordIDs: TCSSNumericalIDArray
   ): boolean;
 var
-  Invalid: boolean;
+  i: Integer;
 begin
-  Result:=ReadAttribute_Color(Invalid,AllowedKeywordIDs);
-  if (not Result) and (CurAttrData<>nil) then
-    CurAttrData.Invalid:=true;
+  case TokenKind of
+  rtkKeyword:
+    begin
+      if CSSRegistry.IsColorKeyword(KeywordID,false) then
+      begin
+        if not ReadNext then
+          exit(true);
+      end;
+      for i:=0 to length(AllowedKeywordIDs)-1 do
+        if KeywordID=AllowedKeywordIDs[i] then
+          if ReadNext then
+            break
+          else
+            exit(true);
+    end;
+  rtkFunction:
+    begin
+      // todo: check for allowed functions
+    end;
+  rtkHexColor:
+    exit(true);
+  end;
+
+  Result:=false;
 end;
 
 function TCSSBaseResolver.ReadNext: boolean;
@@ -2174,17 +2313,9 @@ function TCSSBaseResolver.ReadNext: boolean;
     inc(CurTokenPos,8);
   end;
 
-  function ReadStr(Count: DWord): TCSSString;
-  begin
-    Result:='';
-    if Count=0 then exit;
-    SetLength(Result,Count);
-    Move(CurTokens[CurTokenPos],Result[1],Count);
-    inc(CurTokenPos,Count);
-  end;
-
 var
   Len: integer;
+  Cnt: DWord;
 begin
   // reset the current component
   Float:=0;
@@ -2192,7 +2323,7 @@ begin
   KeywordID:=CSSIDNone;
   FunctionID:=CSSIDNone;
   Symbol:=ctkUNKNOWN;
-  Identifier:='';
+  FIdentifierValid:=false; // Identifier is decoded on demand, see GetIdentifier
 
   Len:=length(CurTokens);
   // any amount of whitespace is a single token and is skipped here
@@ -2201,10 +2332,15 @@ begin
 
   CurTokenStart:=CurTokenPos;
   if CurTokenPos>=Len then
+  begin
     // no more tokens: CurTokenStart=length(CurTokens), see AtEnd
+    TokenKind:=rtkNone;
     exit(false);
+  end;
 
   TokenKind:=TCSSResTokenKind(ReadByte);
+  if TokenKind<>rtkWhitespace then
+    Empty:=false;
   case TokenKind of
   rtkFloat:
     begin
@@ -2215,24 +2351,26 @@ begin
     KeywordID:=ReadWord;
   rtkFunction:
     FunctionID:=ReadWord;
-  rtkIdentifier:
-    Identifier:=ReadStr(ReadDWord);
-  rtkStringApos,rtkStringQuote:
-    Identifier:=ReadStr(ReadDWord);
-  rtkHexColor:
-    Identifier:=ReadStr(ReadByte);
-  rtkSymbol:
+  rtkIdentifier,rtkStringApos,rtkStringQuote:
     begin
-      Identifier:=TCSSChar(ReadByte);
-      case Identifier[1] of
-      ',': Symbol:=ctkCOMMA;
-      ':': Symbol:=ctkCOLON;
-      ';': Symbol:=ctkSEMICOLON;
-      '.': Symbol:=ctkDOT;
-      '*': Symbol:=ctkSTAR;
-      '/': Symbol:=ctkDIV;
-      else Symbol:=ctkUNKNOWN;
-      end;
+      // skip the text, see GetIdentifier
+      Cnt:=ReadDWord;
+      inc(CurTokenPos,Cnt);
+    end;
+  rtkHexColor:
+    begin
+      Cnt:=ReadByte;
+      inc(CurTokenPos,Cnt);
+    end;
+  rtkSymbol:
+    case TCSSChar(ReadByte) of
+    ',': Symbol:=ctkCOMMA;
+    ':': Symbol:=ctkCOLON;
+    ';': Symbol:=ctkSEMICOLON;
+    '.': Symbol:=ctkDOT;
+    '*': Symbol:=ctkSTAR;
+    '/': Symbol:=ctkDIV;
+    else Symbol:=ctkUNKNOWN;
     end;
   rtkPlus: Symbol:=ctkPLUS;
   rtkMinus: Symbol:=ctkMINUS;
@@ -2265,7 +2403,7 @@ begin
   Result:=CurTokenStart>=length(CurTokens);
 end;
 
-function TCSSBaseResolver.CurFits(const Params: TCSSCheckAttrParams_Dimension): boolean;
+function TCSSBaseResolver.IsFloat(const Params: TCSSCheckAttrParams_Dimension): boolean;
 begin
   Result:=false;
   if TokenKind<>rtkFloat then exit;
@@ -2278,76 +2416,41 @@ begin
     exit(true);
 end;
 
-function TCSSBaseResolver.ReadAttribute_Keyword(out Invalid: boolean;
-  const AllowedKeywordIDs: TCSSNumericalIDArray): boolean;
+function TCSSBaseResolver.IsDimension(const Params: TCSSCheckAttrParams_Dimension): boolean;
 var
   i: Integer;
 begin
-  Invalid:=false;
-  repeat
-    case TokenKind of
-    rtkKeyword:
-      for i:=0 to length(AllowedKeywordIDs)-1 do
-        if KeywordID=AllowedKeywordIDs[i] then
-          exit(true);
-    end;
-    // todo: warn if invalid
-  until not ReadNext;
-  Invalid:=true;
   Result:=false;
-end;
-
-function TCSSBaseResolver.ReadAttribute_Dimension(out Invalid: boolean;
-  const Params: TCSSCheckAttrParams_Dimension): boolean;
-var
-  i: Integer;
-begin
-  Invalid:=true;
-  repeat
-    case TokenKind of
-    rtkFloat:
-      if CurFits(Params) then
-        exit(true);
-    rtkKeyword:
-      for i:=0 to length(Params.AllowedKeywordIDs)-1 do
-        if KeywordID=Params.AllowedKeywordIDs[i] then
-          exit(true);
-    end;
-    // todo: warn if invalid
-  until not ReadNext;
-  Invalid:=true;
-  Result:=false;
-end;
-
-function TCSSBaseResolver.ReadAttribute_Color(out Invalid: boolean;
-  const AllowedKeywordIDs: TCSSNumericalIDArray): boolean;
-var
-  i: Integer;
-begin
-  Invalid:=false;
-  repeat
-    case TokenKind of
-    rtkKeyword:
-      begin
-        if (KeywordID>=CSSRegistry.kwFirstColor)
-            and (KeywordID<=CSSRegistry.kwLastColor)
-        then
-          exit(true);
-        for i:=0 to length(AllowedKeywordIDs)-1 do
-          if KeywordID=AllowedKeywordIDs[i] then
-            exit(true);
-      end;
-    rtkFunction:
-      begin
-        // todo: check for allowed functions
-      end;
-    rtkHexColor:
+  case TokenKind of
+  rtkFloat:
+    if FloatUnit in Params.AllowedUnits then
+    begin
+      if (not Params.AllowNegative) and (Float<0) then exit;
+      if (not Params.AllowFrac) and (Frac(Float)>0) then exit;
       exit(true);
-    end;
-    // todo: warn if invalid
-  until not ReadNext;
-  Invalid:=true;
+    end else if (FloatUnit=cuNone) and (Float=0) then
+      exit(true);
+  rtkKeyword:
+    for i:=0 to length(Params.AllowedKeywordIDs)-1 do
+      if Params.AllowedKeywordIDs[i]=KeywordID then
+        exit(true);
+  end;
+end;
+
+function TCSSBaseResolver.IsColor: boolean;
+begin
   Result:=false;
+  case TokenKind of
+  rtkKeyword:
+    if CSSRegistry.IsColorKeyword(KeywordID,false) then
+      exit(true);
+  rtkFunction:
+    begin
+      // todo: check for allowed functions
+    end;
+  rtkHexColor:
+    exit(true);
+  end;
 end;
 
 function TCSSBaseResolver.IsBaseKeyword(aKeywordID: TCSSNumericalID): boolean;
@@ -2671,7 +2774,7 @@ var
       exit(true);
     end;
     SetString(Name,StartP,Len);
-    KeywordID:=CSSRegistry.IndexOfKeyword(Name);
+    KeywordID:=CSSRegistry.IndexOfValueKeyword(Name,AllowUnknownIdentifiers);
     if KeywordID<=CSSIDNone then
     begin
       if not AllowUnknownIdentifiers then
@@ -2865,6 +2968,112 @@ begin
   Result[0]:=ord(rtkFloat);
   Result[1]:=ord(anUnit);
   PDouble(@Result[2])^:=aFloat; // kind + unit + double, see ReadNext
+end;
+
+function TCSSBaseResolver.TokenizeHexColor(const aHexDigits: TCSSString): TBytes;
+// aHexDigits are the hex characters without the leading '#'.
+// Only the four lengths Tokenize creates are valid: #rgb, #rgba, #rrggbb and #rrggbbaa.
+// Any other length gives nil, so a caller cannot build a value that Tokenize would refuse.
+var
+  l: integer;
+begin
+  Result:=nil;
+  l:=length(aHexDigits);
+  case l of
+  3,4,6,8: ;
+  else
+    exit;
+  end;
+  SetLength(Result,2+l);
+  Result[0]:=ord(rtkHexColor);
+  Result[1]:=byte(l);
+  Move(aHexDigits[1],Result[2],l); // kind + count + count hex chars, see ReadNext
+end;
+
+function TCSSBaseResolver.ResolveIdentifierTokens(var Tokens: TBytes): boolean;
+// An attribute that does not allow unknown identifiers must not contain
+// rtkIdentifier tokens, except the custom identifiers --xxx.
+// A value containing a var() is tokenized before the target attribute is known,
+// so the identifiers are converted to keywords here, e.g. 'Red' to the keyword red.
+// Returns false if a word is not a keyword, i.e. the value is invalid.
+var
+  Len, Ofs, TokLen, NewLen: integer;
+  aName: TCSSString;
+  aKeywordID: TCSSNumericalID;
+  NeedChange: boolean;
+  NewTokens: TBytes;
+
+  function ReadName(aOfs: integer): TCSSString;
+  // see GetIdentifier
+  var
+    Cnt: DWord;
+  begin
+    Result:='';
+    Cnt:=PDWord(@Tokens[aOfs+1])^;
+    if Cnt=0 then exit;
+    SetLength(Result,Cnt);
+    Move(Tokens[aOfs+5],Result[1],Cnt);
+  end;
+
+  function IsCustomIdentifier(const anIdentifier: TCSSString): boolean;
+  begin
+    Result:=(length(anIdentifier)>=2) and (anIdentifier[1]='-') and (anIdentifier[2]='-');
+  end;
+
+begin
+  Result:=true;
+  Len:=length(Tokens);
+
+  // check if there is an identifier to convert
+  NeedChange:=false;
+  Ofs:=0;
+  while Ofs<Len do
+  begin
+    if TCSSResTokenKind(Tokens[Ofs])=rtkIdentifier then
+    begin
+      aName:=ReadName(Ofs);
+      if not IsCustomIdentifier(aName) then
+      begin
+        if CSSRegistry.IndexOfValueKeyword(aName,false)<=CSSIDNone then
+          exit(false); // this attribute does not allow unknown identifiers
+        NeedChange:=true;
+      end;
+    end;
+    TokLen:=CSSTokenByteLen(Tokens,Ofs);
+    if TokLen<=0 then
+      exit(false);
+    inc(Ofs,TokLen);
+  end;
+  if not NeedChange then
+    exit;
+
+  // replace the identifiers with keywords, a keyword token is always shorter
+  NewTokens:=nil;
+  SetLength(NewTokens,Len);
+  NewLen:=0;
+  Ofs:=0;
+  while Ofs<Len do
+  begin
+    TokLen:=CSSTokenByteLen(Tokens,Ofs);
+    if TCSSResTokenKind(Tokens[Ofs])=rtkIdentifier then
+    begin
+      aName:=ReadName(Ofs);
+      if not IsCustomIdentifier(aName) then
+      begin
+        aKeywordID:=CSSRegistry.IndexOfValueKeyword(aName,false);
+        NewTokens[NewLen]:=ord(rtkKeyword);
+        PWord(@NewTokens[NewLen+1])^:=word(aKeywordID);
+        inc(NewLen,3);
+        inc(Ofs,TokLen);
+        continue;
+      end;
+    end;
+    Move(Tokens[Ofs],NewTokens[NewLen],TokLen);
+    inc(NewLen,TokLen);
+    inc(Ofs,TokLen);
+  end;
+  SetLength(NewTokens,NewLen);
+  Tokens:=NewTokens;
 end;
 
 function TCSSBaseResolver.Detokenize(const aData: TBytes): TCSSString;
@@ -3939,9 +4148,7 @@ begin
   case CurComp.Kind of
   rvkKeyword:
     begin
-      if (CurComp.KeywordID>=CSSRegistry.kwFirstColor)
-          and (CurComp.KeywordID<=CSSRegistry.kwLastColor)
-      then
+      if CSSRegistry.IsColorKeyword(CurComp.KeywordID,false) then
         exit(true);
       for i:=0 to length(AllowedKeywordIDs)-1 do
         if CurComp.KeywordID=AllowedKeywordIDs[i] then

@@ -777,7 +777,8 @@ type
     function EvalParamsExpr(Expr: TParamsExpr; Flags: TResEvalFlags): TResEvalValue;
     function EvalArrayParamsExpr(Expr: TParamsExpr; Flags: TResEvalFlags): TResEvalValue;
     function EvalSetParamsExpr(Expr: TParamsExpr; Flags: TResEvalFlags): TResEvalSet;
-    function EvalSetExpr(Expr: TPasExpr; ExprArray: TPasExprArray; Flags: TResEvalFlags): TResEvalSet;
+    function EvalSetExpr(Expr: TPasExpr; ExprArray: TPasExprArray;
+      Flags: TResEvalFlags; AsArray: boolean = false): TResEvalSet;
     function EvalArrayValuesExpr(Expr: TArrayValues; Flags: TResEvalFlags): TResEvalSet;
     function EvalPrimitiveExprString(Expr: TPrimitiveExpr): TResEvalValue; virtual;
     function EvalPrimitiveExprStringMultiLine(Expr: TPrimitiveExpr): TResEvalValue; virtual;
@@ -1430,6 +1431,15 @@ var
   Int: TMaxPrecInt;
   UInt: TMaxPrecUInt;
 begin
+  // The @ operator needs a compiler, not just a resolver, so its value is opaque
+  // whatever the operand is - and in a CONSTANT the operand need not be
+  // evaluable at all: rtl-extra's objects.pp writes `@(TypeOf(TCollection)^)`,
+  // whose deref folds to nothing, and the nil came back as "Constant expression
+  // expected". Only when a constant is DEMANDED: an opportunistic fold must
+  // still answer nil, or `(@buf[n] + 1) - p` in timezone.inc looks constant and
+  // the arithmetic on the placeholder fails.
+  if (Expr.OpCode=eopAddress) and ([refConst,refConstExt]*Flags<>[]) then
+    exit(TResEvalValue.CreateKind(revkNil));
   Result:=Eval(Expr.Operand,Flags);
   if Result=nil then exit;
   {$IFDEF VerbosePasResEval}
@@ -1947,7 +1957,12 @@ begin
       UInt:=TResEvalUInt(LeftValue).UInt;
       case RightValue.Kind of
       revkInt: // uint + int
-        IntAddUInt(UInt,TResEvalInt(RightValue).Int);
+        // The arguments were the wrong way round: the QWord went into the
+        // SIGNED parameter, and with $R+ active any value above High(Int64)
+        // raised a range check at the call itself - glibconfig.inc's
+        // qword(2)*qword(G_MAXINT64)+1. Addition commutes, so the int goes
+        // first, exactly as in the int+uint case above.
+        IntAddUInt(TResEvalInt(RightValue).Int,UInt);
       revkUInt: // uint + uint
         begin
         UInt:=UInt+TResEvalUInt(RightValue).UInt;
@@ -2354,20 +2369,24 @@ begin
         {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
         Result:=TResEvalInt.CreateValue(Int);
       except
-        on E: EOverflow do
-          if (Int>0) and (TResEvalInt(RightValue).Int>0) then
-            try
-              // try uint*uint
-              {$Q+}
-              UInt:=TMaxPrecUInt(Int) * TMaxPrecUInt(TResEvalInt(RightValue).Int);
-              {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
-              Result:=CreateResEvalInt(UInt);
-            except
-              on E: EOverflow do
-                RaiseOverflowArithmetic(20170530101616,Expr);
-            end
-          else
-            RaiseOverflowArithmetic(20170525230247,Expr);
+        // An integer overflow raises EIntOverflow, which does NOT descend from
+        // EOverflow, so filtering on that class left this retry unreachable and
+        // `$AA * $0101010101010101` (heaptrc.pp) failed although the product
+        // fits a QWord. Both operands come from LeftValue/RightValue, never
+        // from Int, which the failed multiplication may already have changed.
+        if (TResEvalInt(LeftValue).Int>0) and (TResEvalInt(RightValue).Int>0) then
+          try
+            // try uint*uint
+            {$Q+}
+            UInt:=TMaxPrecUInt(TResEvalInt(LeftValue).Int)
+                  * TMaxPrecUInt(TResEvalInt(RightValue).Int);
+            {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
+            Result:=CreateResEvalInt(UInt);
+          except
+            RaiseOverflowArithmetic(20170530101616,Expr);
+          end
+        else
+          RaiseOverflowArithmetic(20170525230247,Expr);
       end;
     revkUInt:
       // int * uint
@@ -2377,7 +2396,21 @@ begin
         {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
         Result:=TResEvalInt.CreateValue(Int);
       except
-        RaiseOverflowArithmetic(20170711164445,Expr);
+        // The mirror of the int*int retry: a non-negative product that does not
+        // fit a signed 64-bit value may still fit a QWord. heaptrc.pp folds
+        // `$AA * PtrUint($0101010101010101)` to $AAAAAAAAAAAAAAAA.
+        if TResEvalInt(LeftValue).Int>0 then
+          try
+            {$Q+}
+            UInt:=TMaxPrecUInt(TResEvalInt(LeftValue).Int)
+                  * TResEvalUInt(RightValue).UInt;
+            {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
+            Result:=CreateResEvalInt(UInt);
+          except
+            RaiseOverflowArithmetic(20170711164445,Expr);
+          end
+        else
+          RaiseOverflowArithmetic(20170711164445,Expr);
       end;
     revkFloat:
       // int * float
@@ -2415,12 +2448,18 @@ begin
       if TResEvalInt(RightValue).Int>=0 then
         try
           {$Q+}
-          UInt:=UInt * TResEvalInt(RightValue).Int;
+          // The signed operand is known non-negative here, so make it a QWord
+          // and multiply in QWord: mixing the two widths computes the product
+          // in the SIGNED domain, where qword(2)*High(Int64) overflows although
+          // the answer fits a QWord. The mirror of the retries in int*int and
+          // int*uint above.
+          UInt:=UInt * TMaxPrecUInt(TResEvalInt(RightValue).Int);
           {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
           Result:=TResEvalUInt.CreateValue(UInt);
         except
-          on E: EOverflow do
-            RaiseOverflowArithmetic(20170711164714,Expr);
+          // EIntOverflow does not descend from EOverflow, so this filter never
+          // matched and the error escaped the resolver entirely.
+          RaiseOverflowArithmetic(20170711164714,Expr);
         end
       else
         try
@@ -2429,8 +2468,7 @@ begin
           {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
           Result:=TResEvalInt.CreateValue(Int);
         except
-          on E: EOverflow do
-            RaiseOverflowArithmetic(20170711164736,Expr);
+          RaiseOverflowArithmetic(20170711164736,Expr);
         end;
     revkUInt:
       // uint * uint
@@ -3032,6 +3070,28 @@ end;
 function TResExprEvaluator.EvalBinaryBoolOpExpr(Expr: TBinaryExpr; LeftValue,
   RightValue: TResEvalValue): TResEvalValue;
 // AND, OR, XOR
+
+  function MixedBitwise(const L, R: QWord): TResEvalValue;
+  // A bitwise operator with one signed and one unsigned operand. Both are used
+  // as bit patterns, which is what a negative value means here, and the result
+  // comes back signed whenever it fits, so nothing downstream sees a QWord it
+  // did not ask for. heaptrc.pp folds
+  // `PtrUint((c shl 32 or c) and High(PtrUint))` this way.
+  var
+    V: QWord;
+  begin
+    V:=0;
+    case Expr.OpCode of
+    eopAnd: V:=L and R;
+    eopOr: V:=L or R;
+    eopXor: V:=L xor R;
+    end;
+    if V<=QWord(High(TMaxPrecInt)) then
+      Result:=TResEvalInt.CreateValue(TMaxPrecInt(V))
+    else
+      Result:=TResEvalUInt.CreateValue(V);
+  end;
+
 begin
   Result:=nil;
   case LeftValue.Kind of
@@ -3065,6 +3125,9 @@ begin
       eopXor: TResEvalInt(Result).Int:=TResEvalInt(LeftValue).Int xor TResEvalInt(RightValue).Int;
       end;
       end;
+    revkUInt:
+      Result:=MixedBitwise(QWord(TResEvalInt(LeftValue).Int),
+                           TResEvalUInt(RightValue).UInt);
     else
       {$IFDEF VerbosePasResolver}
       writeln('TResExprEvaluator.EvalBinaryBoolOpExpr int ',Expr.OpCode,' ? Left=',LeftValue.AsDebugString,' Right=',RightValue.AsDebugString);
@@ -3083,6 +3146,9 @@ begin
       eopXor: TResEvalUInt(Result).UInt:=TResEvalUInt(LeftValue).UInt xor TResEvalUInt(RightValue).UInt;
       end;
       end;
+    revkInt:
+      Result:=MixedBitwise(TResEvalUInt(LeftValue).UInt,
+                           QWord(TResEvalInt(RightValue).Int));
     else
       {$IFDEF VerbosePasResolver}
       writeln('TResExprEvaluator.EvalBinaryBoolOpExpr int ',Expr.OpCode,' ? Left=',LeftValue.AsDebugString,' Right=',RightValue.AsDebugString);
@@ -3808,7 +3874,15 @@ begin
       {$endif}
         MaxIndex:=length(TResEvalUTF16(ArrayValue).S);
       if (Int<1) or (Int>MaxIndex) then
-        EmitRangeCheckConst(20170711183058,IntToStr(Int),'1',IntToStr(MaxIndex),Param0,mtError);
+        begin
+        // Only a DEMANDED constant is an error here. ppcx64 leaves an
+        // out-of-range index on a constant string to RUN time, which is what
+        // makes `if Length(S)>0 then C:=S[1]` legal when S is the empty
+        // constant (vcl-compat's system.ioutils over Unix's DriveSeparator='').
+        if [refConst,refConstExt]*Flags<>[] then
+          EmitRangeCheckConst(20170711183058,IntToStr(Int),'1',IntToStr(MaxIndex),Param0,mtError);
+        exit;
+        end;
       {$ifdef FPC_HAS_CPSTRING}
       if ArrayValue.Kind=revkString then
         Result:=TResEvalString.CreateValue(TResEvalString(ArrayValue).S[Int])
@@ -3821,7 +3895,13 @@ begin
       {$IFDEF VerbosePasResolver}
       writeln('TResExprEvaluator.EvalParamsExpr Array=',ArrayValue.AsDebugString);
       {$ENDIF}
-      RaiseNotYetImplemented(20170711181507,Expr);
+      // Only indexing a constant STRING folds here. Indexing any other constant
+      // - a typed const array - is simply not foldable, and that is an error
+      // only where a constant was DEMANDED: cutils.pas reads a local
+      // `array[0..15] of 0..15` with a runtime index.
+      if [refConst,refConstExt]*Flags<>[] then
+        RaiseNotYetImplemented(20170711181507,Expr);
+      exit;
     end;
 
     if [refConst,refConstExt]*Flags<>[] then
@@ -3842,7 +3922,11 @@ begin
 end;
 
 function TResExprEvaluator.EvalSetExpr(Expr: TPasExpr;
-  ExprArray: TPasExprArray; Flags: TResEvalFlags): TResEvalSet;
+  ExprArray: TPasExprArray; Flags: TResEvalFlags;
+  AsArray: boolean): TResEvalSet;
+// AsArray: the list is an ARRAY initializer, not a set. An array may repeat an
+// element and may have elements a set cannot hold (a set of its own), so those
+// two are simply "cannot fold" here - never an error, as they are for a set.
 var
   i: Integer;
   RangeStart, RangeEnd: TMaxPrecInt;
@@ -3983,6 +4067,14 @@ begin
         {$IF defined(VerbosePasResEval) or defined(VerbosePasResolver)}
         writeln('TResExprEvaluator.EvalSetExpr Result.ElKind=',Result.ElKind,' Value.Kind=',Value.Kind);
         {$ENDIF}
+        if AsArray then
+          begin
+          // An ARRAY element a set cannot hold - an element that is itself a
+          // set, as in ogbase.pas's array[TAsmSectiontype] of TObjSectionOptions.
+          // There is nothing to add; the array is read from the syntax tree.
+          ReleaseEvalValue(Value);
+          continue;
+          end;
         RaiseNotYetImplemented(20170713143422,El);
       end;
 
@@ -3991,6 +4083,14 @@ begin
         {$IF defined(VerbosePasResEval) or defined(VerbosePasResolver)}
         writeln('TResExprEvaluator.EvalSetExpr Value=',Value.AsDebugString,' Range=',RangeStart,'..',RangeEnd,' Result=',Result.AsDebugString);
         {$ENDIF}
+        // An ARRAY may name the same element twice - `(OS_NO,OS_8,OS_NO,...)`
+        // in the compiler's own cgbase.pas. Only a SET may not; the value is
+        // already there, so there is nothing left to add.
+        if AsArray then
+          begin
+          ReleaseEvalValue(Value);
+          continue;
+          end;
         RaiseMsg(20170714141326,nRangeCheckInSetConstructor,
           sRangeCheckInSetConstructor,[],El);
         end;
@@ -4011,7 +4111,7 @@ begin
   {$IFDEF VerbosePasResEval}
   writeln('TResExprEvaluator.EvalArrayValuesExpr length(Expr.Values)=',length(Expr.Values));
   {$ENDIF}
-  Result:=EvalSetExpr(Expr,Expr.Values,Flags);
+  Result:=EvalSetExpr(Expr,Expr.Values,Flags,true);
 end;
 
 function TResExprEvaluator.EvalBinaryPowerExpr(Expr: TBinaryExpr; LeftValue,
@@ -4841,7 +4941,10 @@ begin
   try
     RangeValue:=Eval(RangeExpr,[]);
     if RangeValue=nil then
-      RaiseNotYetImplemented(20170522171226,RangeExpr);
+      // a range that does not fold - it depends on a generic template parameter
+      // (rtl-generics writes `array[0..Pred(TCuckooCfg.D)]`) - cannot be checked
+      // here; the specialization checks it with the real bounds
+      exit(true);
     Result:=IsInRange(Value,Expr,RangeValue,RangeExpr,EmitHints);
   finally
     ReleaseEvalValue(Value);
@@ -5164,7 +5267,12 @@ begin
     revkUnicodeString:
       v:=StringToOrd(Value,ErrorEl);
     revkEnum:
-      v:=TResEvalEnum(Value).Index;
+      // An enum ordinal is a full signed integer and is NOT bounded by the
+      // member count once values are assigned: gstreamer's GST_MESSAGE_* run up
+      // to 1 shl 31. The $ffff cap below exists for a character - applying it
+      // here answered nil, and the caller turned that into
+      // "Constant expression expected".
+      exit(TResEvalInt.CreateValue(TResEvalEnum(Value).Index));
   else
     {$IFDEF VerbosePasResEval}
     writeln('TResExprEvaluator.OrdValue ',Value.AsDebugString);
@@ -5468,6 +5576,14 @@ begin
           IntToStr(TResEvalUInt(Value).UInt),'0',IntToStr(MaxIndex),Expr,mtError)
       else
         Index:=TResEvalUInt(Value).UInt;
+    revkEnum:
+      // one enum type cast to another keeps the value's ordinal
+      // (symbolic's teval.inc writes VLIWOp2(powo))
+      if TResEvalEnum(Value).Index>MaxIndex then
+        EmitRangeCheckConst(20170713105944,
+          IntToStr(TResEvalEnum(Value).Index),'0',IntToStr(MaxIndex),Expr,mtError)
+      else
+        Index:=TResEvalEnum(Value).Index;
     else
       RaiseNotYetImplemented(20170713105625,Expr);
     end;

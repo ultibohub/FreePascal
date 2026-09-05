@@ -669,6 +669,7 @@ type
     // flag an invalid value live while it is being edited.
     function IsAttrValueInvalid(AttrID: TCSSNumericalID; const Tokens: TBytes): boolean; overload;
     function IsAttrValueInvalid(AttrID: TCSSNumericalID; const aValue: TCSSString): boolean; overload;
+    function GetDeclarationTokens(Decl: TCSSDeclarationElement): TBytes; virtual;
     function GetDeclarationValue(Decl: TCSSDeclarationElement): TCSSString; virtual;
     // css class names from selectors, numbered from 1
     function GetCSSClassID(const aCSSClassName: TCSSString): TCSSNumericalID; override;
@@ -704,14 +705,11 @@ type
     function GetDeclarationPath(DeclEl: TCSSDeclarationElement; out Path: TCSSDeclarationPath): boolean;
     function FindDeclaration(const Path: TCSSDeclarationPath): TCSSDeclarationElement;
     // disable/enable a single declaration; The disabled state is restored after the stylesheet is reparsed.
+    // inline declarations need TransferDisabledDeclarations
     procedure DisableDeclaration(Decl: TCSSDeclarationElement); virtual;
     procedure EnableDeclaration(Decl: TCSSDeclarationElement); virtual;
     function IsDeclarationDisabled(Decl: TCSSDeclarationElement): boolean; virtual;
     function RuleHasDisabledDeclaration(Rule: TCSSRuleElement): boolean; virtual;
-    // Carry the disabled flags of OldRule's declarations over to NewRule's, matched by
-    // property name (same-named ones in order). For a rule that is in no stylesheet -
-    // an element/inline style - and therefore has no declaration path, so that the
-    // path based RestoreDisabledDeclarations cannot reach it after a reparse.
     procedure TransferDisabledDeclarations(OldRule, NewRule: TCSSRuleElement); virtual;
     function GetDisabledDeclarations: TFPList; virtual; // TCSSDeclarationElement list, caller frees the list
     function GetDisabledDeclarationPaths: TStrings; virtual; // path -> Objects[i]=TCSSDeclarationElement, caller frees
@@ -3680,6 +3678,7 @@ const
 var
   AttrID, NextAttrID: TCSSNumericalID;
   AttrP: PMergedAttribute;
+  AttrDesc: TCSSAttributeDesc;
   ReplaceCnt: integer;
 
   function SubstituteVars(var Tokens: TBytes): boolean;
@@ -3806,7 +3805,14 @@ begin
       begin
         ReplaceCnt:=0;
         if not SubstituteVars(AttrP^.Tokens) then
-          AttrP^.Tokens:=nil;
+          AttrP^.Tokens:=nil
+        else begin
+          // the var() values were tokenized without knowing this attribute
+          AttrDesc:=GetAttributeDesc(AttrID);
+          if (AttrDesc<>nil) and not AttrDesc.AllowUnknownIdentifiers then
+            if not ResolveIdentifierTokens(AttrP^.Tokens) then
+              AttrP^.Tokens:=nil;
+        end;
       end;
       if CSSTokensEmpty(AttrP^.Tokens) then
         RemoveMergedAttribute(AttrID);
@@ -3877,7 +3883,7 @@ end;
 function TCSSResolver.CreateValueList: TCSSAttributeValues;
 var
   Cnt: Integer;
-  AttrID: TCSSNumericalID;
+  AttrID, AllKeywordID: TCSSNumericalID;
   AttrP: PMergedAttribute;
   AttrValue: TCSSAttributeValue;
 begin
@@ -3887,11 +3893,11 @@ begin
   if FMergedAllDecl<>nil then
   begin
     // set Result.AllValue
-    InitParseAttr(CSSRegistry.Attributes[CSSAttributeID_All],GetDeclarationValue(FMergedAllDecl));
-    if (TokenKind=rtkKeyword) and IsBaseKeyword(KeywordID) then
-    begin
-      Result.AllValue:=KeywordID;
-    end;
+    // The parser already tokenized and checked the value, so read the keyword
+    // directly from the tokens instead of parsing the value again.
+    AllKeywordID:=CheckAttribute_Keyword(GetDeclarationTokens(FMergedAllDecl));
+    if IsBaseKeyword(AllKeywordID) then
+      Result.AllValue:=AllKeywordID;
   end;
 
   // count and allocate attributes
@@ -4198,6 +4204,8 @@ begin
       Desc.Name:=aName;
       Desc.Index:=CSSRegistry.AttributeCount+FCustomAttributeCount;
       Desc.Inherits:=true;
+      // the target attribute is unknown, so keep the names case sensitive
+      Desc.AllowUnknownIdentifiers:=true;
       FCustomAttributes[FCustomAttributeCount]:=Desc;
       FCustomAttributeNameToDesc.Add(aName,Desc);
 
@@ -5103,16 +5111,21 @@ begin
     Result:='';
 end;
 
-function TCSSResolver.GetDeclarationValue(Decl: TCSSDeclarationElement): TCSSString;
+function TCSSResolver.GetDeclarationTokens(Decl: TCSSDeclarationElement): TBytes;
 var
   KeyData: TCSSAttributeKeyData;
 begin
-  Result:='';
+  Result:=nil;
   if Decl=nil then exit;
   if Decl.KeyCount=0 then exit;
   KeyData:=TCSSAttributeKeyData(Decl.Keys[0].CustomData);
   if KeyData=nil then exit;
-  Result:=Detokenize(KeyData.Tokens);
+  Result:=KeyData.Tokens;
+end;
+
+function TCSSResolver.GetDeclarationValue(Decl: TCSSDeclarationElement): TCSSString;
+begin
+  Result:=Detokenize(GetDeclarationTokens(Decl));
 end;
 
 procedure TCSSResolver.ClearStyleSheets;

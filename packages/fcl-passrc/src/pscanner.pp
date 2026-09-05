@@ -745,7 +745,8 @@ type
     po_WarnResourceNotFound, // Do not raise error if resource not found.
     po_CheckDirectiveRTTI,   // parse $RTTI directive and error on invalid
     po_AllowPointerToSpecialize, // allow ^specialize Type<Params> inline-specialized pointer types
-    po_StrictClassHelperMode // "class helper" requires msClass (real-FPC: reject it in fpc/tp mode)
+    po_StrictClassHelperMode, // "class helper" requires msClass (real-FPC: reject it in fpc/tp mode)
+    po_IntfMethodModifiers   // allow and ignore virtual/dynamic/abstract/override/reintroduce on an interface method (real-FPC)
     );
   TPOptions = set of TPOption;
 
@@ -5435,16 +5436,33 @@ Var
 
 begin
   Result:=tkComment;
-  P:=Pos(' ',ADirectiveText);
-  If P=0 then
-    begin
-    P:=Pos(#9,ADirectiveText);
-    If P=0 then
-      P:=Length(ADirectiveText)+1;
-    end;
+  // The directive NAME ends at the first whitespace, and a LINE ENDING counts:
+  // an {$if} whose expression starts on the next line is legal, and taking only
+  // space/tab left the line ending glued to the name so nothing matched below
+  // (rtl-extra's sockets.pp, 45 corpus units).
+  P:=1;
+  while (P<=Length(ADirectiveText))
+      and not (ADirectiveText[P] in [' ',#9,#10,#13]) do
+    Inc(P);
   Directive:=Copy(ADirectiveText,2,P-2); // 1 is $
   Param:=ADirectiveText;
   Delete(Param,1,P);
+  // Drop any further leading whitespace so the parameter starts at the value:
+  // ReadIdentifier gives up on the first non-identifier character, so a name on
+  // the next line ({$ifdef<eol>  NAME}) or after two spaces read as empty.
+  while (Param<>'') and (Param[1] in [' ',#9,#10,#13]) do
+    Delete(Param,1,1);
+  // A switch may be written `{$macro+}` / `{$macro-}` with no space, which
+  // FPC treats exactly like `{$macro on}` / `{$macro off}`. 
+  if (Param='') and (Length(Directive)>2)
+      and (Directive[Length(Directive)] in ['+','-']) then
+    begin
+    if Directive[Length(Directive)]='+' then
+      Param:='on'
+    else
+      Param:='off';
+    Directive:=Copy(Directive,1,Length(Directive)-1);
+    end;
   {$IFDEF VerbosePasDirectiveEval}
   Writeln('TPascalScanner.HandleDirective.Directive: "',Directive,'", Param : "',Param,'"');
   {$ENDIF}
@@ -5647,9 +5665,9 @@ var
   NewValue: Boolean;
 
 begin
-  if CompareText(Param,'on')=0 then
+  if (CompareText(Param,'on')=0) or (Param='+') then
     NewValue:=true
-  else if CompareText(Param,'off')=0 then
+  else if (CompareText(Param,'off')=0) or (Param='-') then
     NewValue:=false
   else
     begin
