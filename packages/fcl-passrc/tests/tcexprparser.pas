@@ -17,6 +17,7 @@ type
     FRight: TPAsExpr;
     FTheExpr: TPasExpr;
     FVariables : TStringList;
+    FDirective : String; // e.g. '{$mode delphi}', added in front of the var section
     procedure AssertLeftPrecedence(AInnerLeft: Integer; AInnerOp: TExprOpCode;
       AInnerRight: Integer; AOuterOp: TexprOpCode; AOuterRight: Integer);
     procedure AssertRightPrecedence(AOuterLeft: Integer; AOuterOp: TExprOpCode;
@@ -88,7 +89,20 @@ type
     Procedure TestBinaryOr;
     Procedure TestBinaryXOr;
     Procedure TestBinaryIn;
+    Procedure TestBinaryNotIn;
+    Procedure TestBinaryNotInPrecedence;
+    Procedure TestBinaryNotInVsUnaryNot;
+    Procedure TestIfExpr;
+    Procedure TestIfExprModeSwitch;
+    Procedure TestIfExprNested;
+    Procedure TestIfExprPrecedence;
+    Procedure TestIfExprInBrackets;
+    Procedure TestIfExprObjFPCFail;
+    Procedure TestIfExprMissingElseFail;
     Procedure TestBinaryIs;
+    Procedure TestBinaryIsNot;
+    Procedure TestBinaryIsNotPrecedence;
+    Procedure TestBinaryIsNotVsUnaryNot;
     Procedure TestBinaryAs;
     Procedure TestBinaryEquals;
     Procedure TestBinaryDiffers;
@@ -898,6 +912,151 @@ begin
   AssertExpression('Right is array set',TheRight,pekSet,TParamsExpr);
 end;
 
+procedure TTestExpressions.TestBinaryNotIn;
+begin
+  DeclareVar('boolean','a');
+  ParseExpression('1 not in [1,2,3]');
+  AssertBinaryExpr('Simple binary not in',eopNotIn,FLeft,FRight);
+  AssertExpression('Left is 1',TheLeft,pekNumber,'1');
+  AssertExpression('Right is array set',TheRight,pekSet,TParamsExpr);
+  AssertEquals('Declaration','1 not in [1, 2, 3]',TheExpr.GetDeclaration(true));
+end;
+
+procedure TTestExpressions.TestBinaryNotInPrecedence;
+
+var
+  L,R : TPasExpr;
+
+begin
+  // "not in" has the same precedence as "in", i.e. lower than "+"
+  DeclareVar('integer','a');
+  ParseExpression('a not in [1]+[2]');
+  AssertBinaryExpr('Outer is "not in"',eopNotIn,FLeft,FRight);
+  AssertExpression('Outer left is a',TheLeft,pekIdent,'a');
+  AssertBinaryExpr('Inner is +',TheRight,eopAdd,L,R);
+  AssertExpression('Inner left is set',L,pekSet,TParamsExpr);
+  AssertExpression('Inner right is set',R,pekSet,TParamsExpr);
+end;
+
+procedure TTestExpressions.TestBinaryNotInVsUnaryNot;
+
+var
+  O : TPasExpr;
+
+begin
+  // a leading "not" is still the unary operator: "not a in [true]" is "(not a) in [true]"
+  DeclareVar('boolean','a');
+  ParseExpression('not a in [true]');
+  AssertBinaryExpr('Binary in',eopIn,FLeft,FRight);
+  AssertUnaryExpr('Left is unary not',TheLeft,eopNot,O);
+  AssertExpression('Operand is a',O,pekIdent,'a');
+  AssertExpression('Right is set',TheRight,pekSet,TParamsExpr);
+end;
+
+procedure TTestExpressions.TestIfExpr;
+
+var
+  I : TIfExpr;
+
+begin
+  FDirective:='{$mode delphi}';
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  ParseExpression('if b then 1 else 2');
+  AssertExpression('If expression',TheExpr,pekIf,TIfExpr);
+  I:=TheExpr as TIfExpr;
+  AssertExpression('Condition is b',I.ConditionExpr,pekIdent,'b');
+  AssertExpression('Then is 1',I.ThenExpr,pekNumber,'1');
+  AssertExpression('Else is 2',I.ElseExpr,pekNumber,'2');
+  AssertEquals('Declaration','if b then 1 else 2',TheExpr.GetDeclaration(true));
+end;
+
+procedure TTestExpressions.TestIfExprModeSwitch;
+begin
+  FDirective:='{$modeswitch statementexpressions}';
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  ParseExpression('if b then 1 else 2');
+  AssertExpression('If expression',TheExpr,pekIf,TIfExpr);
+end;
+
+procedure TTestExpressions.TestIfExprNested;
+
+var
+  I, Inner : TIfExpr;
+
+begin
+  // the inner if-expression takes the first else
+  FDirective:='{$mode delphi}';
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  DeclareVar('boolean','c');
+  ParseExpression('if b then if c then 1 else 2 else 3');
+  AssertExpression('If expression',TheExpr,pekIf,TIfExpr);
+  I:=TheExpr as TIfExpr;
+  AssertExpression('Condition is b',I.ConditionExpr,pekIdent,'b');
+  AssertExpression('Then is if',I.ThenExpr,pekIf,TIfExpr);
+  Inner:=TIfExpr(I.ThenExpr);
+  AssertExpression('Inner condition is c',Inner.ConditionExpr,pekIdent,'c');
+  AssertExpression('Inner then is 1',Inner.ThenExpr,pekNumber,'1');
+  AssertExpression('Inner else is 2',Inner.ElseExpr,pekNumber,'2');
+  AssertExpression('Else is 3',I.ElseExpr,pekNumber,'3');
+  AssertEquals('Declaration','if b then if c then 1 else 2 else 3',TheExpr.GetDeclaration(true));
+end;
+
+procedure TTestExpressions.TestIfExprPrecedence;
+
+var
+  I : TIfExpr;
+  L, R : TPasExpr;
+
+begin
+  // if-expression has the lowest precedence: the else-part extends as far as possible
+  FDirective:='{$mode delphi}';
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  ParseExpression('1 + if b then 2 else 3 + 4');
+  AssertBinaryExpr('Outer is +',eopAdd,FLeft,FRight);
+  AssertExpression('Left is 1',TheLeft,pekNumber,'1');
+  AssertExpression('Right is if',TheRight,pekIf,TIfExpr);
+  I:=TIfExpr(TheRight);
+  AssertExpression('Then is 2',I.ThenExpr,pekNumber,'2');
+  AssertBinaryExpr('Else is +',I.ElseExpr,eopAdd,L,R);
+  AssertExpression('Else left is 3',L,pekNumber,'3');
+  AssertExpression('Else right is 4',R,pekNumber,'4');
+  AssertEquals('Declaration','1 + (if b then 2 else 3 + 4)',TheExpr.GetDeclaration(true));
+end;
+
+procedure TTestExpressions.TestIfExprInBrackets;
+begin
+  FDirective:='{$mode delphi}';
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  ParseExpression('(if b then 1 else 2) * 3');
+  AssertBinaryExpr('Outer is *',eopMultiply,FLeft,FRight);
+  AssertExpression('Left is if',TheLeft,pekIf,TIfExpr);
+  AssertExpression('Right is 3',TheRight,pekNumber,'3');
+  AssertEquals('Declaration','(if b then 1 else 2) * 3',TheExpr.GetDeclaration(true));
+end;
+
+procedure TTestExpressions.TestIfExprObjFPCFail;
+begin
+  // without modeswitch statementexpressions
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  SetExpression('if b then 1 else 2');
+  AssertException(EParserError,@ParseExpression);
+end;
+
+procedure TTestExpressions.TestIfExprMissingElseFail;
+begin
+  FDirective:='{$mode delphi}';
+  DeclareVar('integer','a');
+  DeclareVar('boolean','b');
+  SetExpression('if b then 1');
+  AssertException(EParserError,@ParseExpression);
+end;
+
 procedure TTestExpressions.TestBinaryIs;
 begin
   DeclareVar('boolean','a');
@@ -905,6 +1064,49 @@ begin
   ParseExpression('b is TObject');
   AssertBinaryExpr('Simple binary Is',eopIs,FLeft,FRight);
   AssertExpression('Left is 1',TheLeft,pekident,'b');
+  AssertExpression('Right is TObject',TheRight,pekIdent,'TObject');
+end;
+
+procedure TTestExpressions.TestBinaryIsNot;
+begin
+  DeclareVar('boolean','a');
+  DeclareVar('TObject','b');
+  ParseExpression('b is not TObject');
+  AssertBinaryExpr('Simple binary Is not',eopIsNot,FLeft,FRight);
+  AssertExpression('Left is b',TheLeft,pekIdent,'b');
+  AssertExpression('Right is TObject',TheRight,pekIdent,'TObject');
+  AssertEquals('Declaration','b is not TObject',TheExpr.GetDeclaration(true));
+end;
+
+procedure TTestExpressions.TestBinaryIsNotPrecedence;
+
+var
+  L,R : TPasExpr;
+
+begin
+  // "is not" has the same precedence as "is", i.e. the same as "and"
+  DeclareVar('TObject','a');
+  DeclareVar('boolean','b');
+  ParseExpression('a is not TObject and b');
+  AssertBinaryExpr('Outer is and',eopAnd,FLeft,FRight);
+  AssertBinaryExpr('Inner is "is not"',TheLeft,eopIsNot,L,R);
+  AssertExpression('Inner left is a',L,pekIdent,'a');
+  AssertExpression('Inner right is TObject',R,pekIdent,'TObject');
+  AssertExpression('Outer right is b',TheRight,pekIdent,'b');
+end;
+
+procedure TTestExpressions.TestBinaryIsNotVsUnaryNot;
+
+var
+  O : TPasExpr;
+
+begin
+  // a leading "not" is still the unary operator: "not a is TObject" is "(not a) is TObject"
+  DeclareVar('boolean','a');
+  ParseExpression('not a is TObject');
+  AssertBinaryExpr('Binary is',eopIs,FLeft,FRight);
+  AssertUnaryExpr('Left is unary not',TheLeft,eopNot,O);
+  AssertExpression('Operand is a',O,pekIdent,'a');
   AssertExpression('Right is TObject',TheRight,pekIdent,'TObject');
 end;
 
@@ -1092,6 +1294,8 @@ Var
 
 begin
   StartProgram(ExtractFileUnitName(MainFilename));
+  if FDirective<>'' then
+    Add(FDirective);
   if FVariables.Count=0 then
     DeclareVar('integer');
   Add('Var');

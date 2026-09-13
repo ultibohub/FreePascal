@@ -238,6 +238,10 @@ type
   { TTestResolver }
 
   TTestResolver = Class(TCustomTestResolver)
+  Protected
+    // Returns the folded value of the program const named aName
+    // (caller frees it via ReleaseEvalValue).
+    function EvalProgramConst(const aName: string): TResEvalValue;
   Published
     Procedure TestEmpty;
 
@@ -291,6 +295,7 @@ type
     Procedure TestIntegerRangeHighLowerLowFail;
     Procedure TestIntegerRangeLowHigh;
     Procedure TestAssignIntRangeWarning;
+    Procedure TestConstNotInEval;
     Procedure TestByteRangeWarning;
     Procedure TestByteRangeWarningOff;
     Procedure TestCustomIntRangeWarning;
@@ -321,6 +326,7 @@ type
     Procedure TestEnumDotValueFail;
     Procedure TestSets;
     Procedure TestSetOperators;
+    Procedure TestSet_NotInOtherEnumFail;
     Procedure TestEnumParams;
     Procedure TestSetParams;
     Procedure TestSetFunctions;
@@ -379,6 +385,23 @@ type
     Procedure TestAssign_Access;
     Procedure TestAssignedIntFail;
 
+    // if-expression
+    Procedure TestIfExpr;
+    Procedure TestIfExpr_CondNotBoolFail;
+    Procedure TestIfExpr_IntAndStringFail;
+    Procedure TestIfExpr_NilAndIntFail;
+    Procedure TestIfExpr_AssignFail;
+    Procedure TestIfExpr_ConstEval;
+    Procedure TestIfExpr_Generic;
+    Procedure TestIfExpr_CommonAncestor;
+    Procedure TestIfExpr_ClassRef;
+    Procedure TestIfExpr_ClassRefDescendantFail;
+    Procedure TestIfExpr_ClassRefAndInstanceFail;
+    Procedure TestIfExpr_ShortStrings;
+    Procedure TestIfExpr_Variant;
+    Procedure TestIfExpr_CharOverloadWideChar;
+    Procedure TestIfExpr_FloatConstOverloadDouble;
+
     // misc built-in functions
     Procedure TestHighLow;
     Procedure TestStr_BaseTypes;
@@ -389,6 +412,22 @@ type
     Procedure TestTypeInfo;
     Procedure TestTypeInfo_FailRTTIDisabled;
     Procedure TestGetTypeKind;
+    Procedure TestNameOf;
+    Procedure TestNameOf_Const;
+    Procedure TestNameOf_Qualified;
+    Procedure TestNameOf_Unit;
+    Procedure TestNameOf_Generic;
+    Procedure TestNameOf_GenericSpecialize;
+    Procedure TestNameOfStringLiteralFail;
+    Procedure TestNameOfExprFail;
+    Procedure TestNameOfArrayElementFail;
+    Procedure TestNameOfNoParamsFail;
+    Procedure TestNameOfTwoParamsFail;
+    Procedure TestIsConstValue;
+    Procedure TestIsConstValue_Const;
+    Procedure TestIsConstValueNoParamsFail;
+    Procedure TestIsConstValueTypeFail;
+    Procedure TestTypeQualifiedInstanceMemberFail;
 
     // statements
     Procedure TestForLoop;
@@ -690,6 +729,7 @@ type
     Procedure TestClassNilAsParam;
     Procedure TestClass_Operators_Is_As;
     Procedure TestClass_OperatorIsOnNonTypeFail;
+    Procedure TestClass_OperatorIsNotOnNonTypeFail;
     Procedure TestClass_OperatorAsOnNonDescendantFail;
     Procedure TestClass_OperatorAsOnNonTypeFail;
     Procedure TestClassAsFuncResult;
@@ -1367,13 +1407,13 @@ begin
       {$ENDIF}
       aRow:=E.Row;
       aCol:=E.Column;
-{$IFNDEF NOCONSOLE}
+      {$IFNDEF NOCONSOLE}
       WriteSources(aFilename,aRow,aCol);
       writeln('ERROR: TTestResolver.ParseMain ',ExpectedModuleClass.ClassName,' Parser: '+E.ClassName+':'+E.Message,
         ' Scanner at'
         +' '+aFilename+'('+IntToStr(aRow)+','+IntToStr(aCol)+')'
         +' Line="'+Scanner.CurLine+'"');
-{$ENDIF}
+      {$ENDIF}
       Fail(E.Message);
       end;
     on E: EPasResolve do
@@ -1390,18 +1430,18 @@ begin
         {$ENDIF}
         ResolverEngine.UnmangleSourceLineNumber(E.PasElement.SourceLinenumber,aRow,aCol);
         end;
-{$IFNDEF NOCONSOLE}
+      {$IFNDEF NOCONSOLE}
       WriteSources(aFilename,aRow,aCol);
       writeln('ERROR: TTestResolver.ParseMain ',ExpectedModuleClass.ClassName,' PasResolver: '+E.ClassName+':'+E.Message
         +' at '+aFilename+'('+IntToStr(aRow)+','+IntToStr(aCol)+')');
-{$ENDIF}
+      {$ENDIF}
       Fail(E.Message);
       end;
     on E: Exception do
       begin
-{$IFNDEF NOCONSOLE}
+      {$IFNDEF NOCONSOLE}
       writeln('ERROR: TTestResolver.ParseMain ',ExpectedModuleClass.ClassName,' Exception: '+E.ClassName+':'+E.Message);
-{$ENDIF}
+      {$ENDIF}
       Fail(E.Message);
       end;
   end;
@@ -1670,14 +1710,14 @@ var
       for i:=0 to ReferenceElements.Count-1 do
         begin
         El:=TPasElement(ReferenceElements[i]);
-{$IFNDEF NOCONSOLE}
+        {$IFNDEF NOCONSOLE}
         write('Reference candidate for "',aMarker^.Identifier,'" at reference ',aMarker^.Filename,'(',aMarker^.Row,',',aMarker^.StartCol,'-',aMarker^.EndCol,')');
         write(' El=',GetObjName(El));
         if EL is TPrimitiveExpr then
           begin
            writeln('CheckResolverReference ',TPrimitiveExpr(El).Value);
           end;
-{$ENDIF}
+        {$ENDIF}
         Ref:=nil;
         if El.CustomData is TResolvedReference then
           Ref:=TResolvedReference(El.CustomData).Declaration
@@ -1685,7 +1725,7 @@ var
           Ref:=TPasPropertyScope(El.CustomData).AncestorProp
         else if El.CustomData is TPasSpecializeTypeData then
           Ref:=TPasSpecializeTypeData(El.CustomData).SpecializedType;
-{$IFNDEF NOCONSOLE}
+        {$IFNDEF NOCONSOLE}
         if Ref<>nil then
           begin
           write(' Decl=',GetObjName(Ref));
@@ -1695,9 +1735,9 @@ var
         else
           write(' has no TResolvedReference. El.CustomData=',GetObjName(El.CustomData));
         writeln;
-{$ENDIF}
+        {$ENDIF}
         end;
-{$IFNDEF NOCONSOLE}
+      {$IFNDEF NOCONSOLE}
       for i:=0 to LabelElements.Count-1 do
         begin
         El:=TPasElement(LabelElements[i]);
@@ -1705,7 +1745,7 @@ var
         write(' El=',GetObjName(El));
         writeln;
         end;
-{$ENDIF}
+      {$ENDIF}
 
       RaiseErrorAtSrcMarker('wrong resolved reference "'+aMarker^.Identifier+'"',aMarker);
     finally
@@ -1777,7 +1817,7 @@ var
           end;
         end;
       // failed -> show candidates
-{$IFNDEF NOCONSOLE}
+      {$IFNDEF NOCONSOLE}
       writeln('CheckDirectReference failed: Labels:');
       for j:=0 to LabelElements.Count-1 do
         begin
@@ -1792,7 +1832,7 @@ var
         //if EL is TPasVariable then
         //  writeln('CheckDirectReference ',GetObjPath(TPasVariable(El).VarType),' ',ResolverEngine.GetElementSourcePosStr(TPasVariable(EL).VarType));
         end;
-{$ENDIF}
+      {$ENDIF}
       RaiseErrorAtSrcMarker('wrong direct reference "'+aMarker^.Identifier+'"',aMarker);
     finally
       LabelElements.Free;
@@ -2978,6 +3018,21 @@ end;
 
 { TTestResolver }
 
+function TTestResolver.EvalProgramConst(const aName: string): TResEvalValue;
+var
+  i: Integer;
+  El: TPasElement;
+begin
+  Result:=nil;
+  for i:=0 to PasProgram.ProgramSection.Declarations.Count-1 do
+    begin
+    El:=TPasElement(PasProgram.ProgramSection.Declarations[i]);
+    if (El is TPasConst) and (CompareText(El.Name,aName)=0) then
+      exit(ResolverEngine.Eval(TPasConst(El).Expr,[refConst]));
+    end;
+  Fail('const '+aName+' not found');
+end;
+
 procedure TTestResolver.TestEmpty;
 begin
   StartProgram(false);
@@ -3724,6 +3779,25 @@ begin
   CheckResolverUnexpectedHints;
 end;
 
+procedure TTestResolver.TestConstNotInEval;
+begin
+  StartProgram(false);
+  Add([
+  'type TMyInt = 0..0;',
+  'const',
+  '  c = 3 not in [1,2];',
+  '  d = 2 not in [1,2];',
+  'var i: TMyInt;',
+  'begin',
+  '  i:=ord(d);',
+  '  i:=ord(c);']);
+  ParseProgram;
+  // only c is true, i.e. ord(c)=1 is out of range
+  CheckResolverHint(mtWarning,nRangeCheckEvaluatingConstantsVMinMax,
+    'range check error while evaluating constants (1 is not between 0 and 0)');
+  CheckResolverUnexpectedHints;
+end;
+
 procedure TTestResolver.TestByteRangeWarning;
 begin
   StartProgram(false);
@@ -4231,6 +4305,9 @@ begin
   Add('  if {@Green}Green in {@s}s then ;');
   Add('  if {@Blue}Blue in {@Colors}Colors then ;');
   Add('  if {@f}f in {@ExtColors}ExtColors then ;');
+  Add('  if {@Green}Green not in {@s}s then ;');
+  Add('  if {@f}f not in {@ExtColors}ExtColors then ;');
+  Add('  if ({@f}f not in {@s}s) and ({@f}f not in [{@Red}Red]) then ;');
   Add('  {@s}s:={@s}s * {@Colors}Colors;');
   Add('  {@s}s:={@Colors}Colors * {@s}s;');
   Add('  {@s}s:={@ExtColors}ExtColors * {@Colors}Colors;');
@@ -4243,6 +4320,9 @@ begin
   Add('  if ''p'' in {@Chars}Chars then ; ');
   Add('  if 7 in {@MyInts}MyInts then ; ');
   Add('  if 7 in [1+2,(3*4)+5,(-2+6)..(8-3)] then ; ');
+  Add('  if ''p'' not in {@Chars}Chars then ; ');
+  Add('  if 7 not in {@MyInts}MyInts then ; ');
+  Add('  if true not in {@MyBools}MyBools then ; ');
   Add('  if [red,blue]*s=[red,blue] then ;');
   Add('  if {@s}s = t then;');
   Add('  if {@s}s = {@Colors}Colors then;');
@@ -4256,6 +4336,369 @@ begin
   Add('  if {@s}s >= t then;');
   Add('  if {@s}s >= {@Colors}Colors then;');
   Add('  if {@Colors}Colors >= {@s}s then;');
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestSet_NotInOtherEnumFail;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TFlag = (Red, Green);',
+  '  TAnimal = (Cat, Dog);',
+  '  TAnimals = set of TAnimal;',
+  'var',
+  '  f: TFlag;',
+  '  a: TAnimals;',
+  'begin',
+  '  if f not in a then ;',
+  '']);
+  CheckResolverException('set of TFlag expected, but set of TAnimal found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestIfExpr;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnimal = class end;',
+  '  TDog = class(TAnimal) end;',
+  'var',
+  '  b: boolean;',
+  '  i: longint;',
+  '  by: byte;',
+  '  s: string;',
+  '  c: char;',
+  '  a: TAnimal;',
+  '  d: TDog;',
+  'function GetStr: string;',
+  'begin',
+  'end;',
+  'begin',
+  '  s:=if b then ''yes'' else ''no'';',
+  '  s:=if b then c else s;',
+  '  s:=if b then ''a'' else ''abc'';',
+  '  i:=if b then by else i;',
+  '  i:=if b then 1 else if i>2 then 3 else 4;',
+  '  i:=1+if b then 2 else 3;',
+  '  a:=if b then a else d;',
+  '  a:=if b then d else a;',
+  '  a:=if b then d else nil;',
+  '  a:=if b then nil else d;',
+  '  s:=if b then GetStr else ''x'';',
+  '  if (if b then i else by)>3 then ;',
+  '  if if b then true else false then ;',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestIfExpr_CondNotBoolFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  'begin',
+  '  i:=if i then 1 else 2;',
+  '']);
+  CheckResolverException('Boolean expected, but Longint found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestIfExpr_IntAndStringFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  b: boolean;',
+  '  s: string;',
+  'begin',
+  '  s:=if b then 1 else ''abc'';',
+  '']);
+  CheckResolverException('Incompatible types: "Longint" and "String"',
+    nIncompatibleTypesGotExpected);
+end;
+
+procedure TTestResolver.TestIfExpr_NilAndIntFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  b: boolean;',
+  '  p: pointer;',
+  'begin',
+  '  p:=if b then nil else 1;',
+  '']);
+  CheckResolverException('Incompatible types: "Nil" and "Longint"',
+    nIncompatibleTypesGotExpected);
+end;
+
+procedure TTestResolver.TestIfExpr_AssignFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  b: boolean;',
+  '  i: longint;',
+  'begin',
+  '  (if b then i else i):=3;',
+  '']);
+  CheckResolverException(sVariableIdentifierExpected,nVariableIdentifierExpected);
+end;
+
+procedure TTestResolver.TestIfExpr_ConstEval;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type TMyInt = 0..0;',
+  'const',
+  '  c = if 3>2 then 1 else 0;',
+  '  d = if 3<2 then 1 else 0;',
+  'var i: TMyInt;',
+  'begin',
+  '  i:=d;',
+  '  i:=c;']);
+  ParseProgram;
+  // only c is 1, which is out of range
+  CheckResolverHint(mtWarning,nRangeCheckEvaluatingConstantsVMinMax,
+    'range check error while evaluating constants (1 is not between 0 and 0)');
+  CheckResolverUnexpectedHints;
+end;
+
+procedure TTestResolver.TestIfExpr_Generic;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TBird<T> = class',
+  '    function Pick(b: boolean; x, y: T): T;',
+  '  end;',
+  'function TBird<T>.Pick(b: boolean; x, y: T): T;',
+  'begin',
+  '  Result:=if b then x else y;',
+  'end;',
+  'var',
+  '  Bird: TBird<word>;',
+  '  w: word;',
+  'begin',
+  '  w:=Bird.Pick(true,1,2);',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestIfExpr_CommonAncestor;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnimal = class',
+  '  end;',
+  '  TBird = class(TAnimal)',
+  '  end;',
+  '  TAnt = class(TAnimal)',
+  '  end;',
+  'procedure Eat(Animal: TAnimal);',
+  'begin',
+  'end;',
+  'var',
+  '  b: boolean;',
+  '  Ant: TAnt;',
+  '  Bird: TBird;',
+  'begin',
+  '  Eat(if b then Ant else Bird);',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestIfExpr_ClassRef;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnimal = class',
+  '  end;',
+  '  TBird = class(TAnimal)',
+  '  end;',
+  '  TAnt = class(TAnimal)',
+  '  end;',
+  '  TAnimalClass = class of TAnimal;',
+  '  TAntClass = class of TAnt;',
+  '  TBirdClass = class of TBird;',
+  'procedure Eat(AnimalClass: TAnimalClass);',
+  'begin',
+  'end;',
+  'var',
+  '  b: boolean;',
+  '  AnimalClass: TAnimalClass;',
+  '  AntClass: TAntClass;',
+  '  BirdClass: TBirdClass;',
+  'begin',
+  '  AnimalClass:=if b then TAnt else TBird;',
+  '  Eat(if b then TAnt else TBird);',
+  '  Eat(if b then TAnimal else TAnt);',
+  '  AnimalClass:=if b then AntClass else BirdClass;',
+  '  AnimalClass:=if b then TAnt else BirdClass;',
+  '  AnimalClass:=if b then nil else TAnt;',
+  '  AnimalClass:=if b then TAnt else nil;',
+  '  AntClass:=if b then TAnt else AntClass;',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestIfExpr_ClassRefDescendantFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnimal = class',
+  '  end;',
+  '  TBird = class(TAnimal)',
+  '  end;',
+  '  TAnt = class(TAnimal)',
+  '  end;',
+  '  TAntClass = class of TAnt;',
+  'var',
+  '  b: boolean;',
+  '  AntClass: TAntClass;',
+  'begin',
+  '  AntClass:=if b then TAnt else TBird;',
+  '']);
+  CheckResolverException('Incompatible types: got "TAnimal" expected "class of afile.TAnt"',
+    nIncompatibleTypesGotExpected);
+end;
+
+procedure TTestResolver.TestIfExpr_ClassRefAndInstanceFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnt = class',
+  '  end;',
+  '  TAntClass = class of TAnt;',
+  'var',
+  '  b: boolean;',
+  '  Ant: TAnt;',
+  '  AntClass: TAntClass;',
+  'begin',
+  '  AntClass:=if b then TAnt else Ant;',
+  '']);
+  CheckResolverException('Incompatible types: "class TAnt" and "TAnt"',
+    nIncompatibleTypesGotExpected);
+end;
+
+procedure TTestResolver.TestIfExpr_ShortStrings;
+
+  procedure CheckResultType(Index: integer; Expected: TResolverBaseType);
+  var
+    Assign: TPasImplAssign;
+    IfResolved: TPasResolverResult;
+  begin
+    Assign:=TObject(Module.InitializationSection.Elements[Index]) as TPasImplAssign;
+    ResolverEngine.ComputeElement(Assign.Right as TIfExpr,IfResolved,[]);
+    AssertEquals('statement '+IntToStr(Index)+' type',
+      ResBaseTypeNames[Expected],ResBaseTypeNames[IfResolved.BaseType]);
+  end;
+
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'const MaxLen = 7;',
+  'type TShortStr = string[20];',
+  'var',
+  '  aBool: boolean;',
+  '  aString: string;',
+  '  aShortString3: string[3];',
+  '  aShortString5: string[5];',
+  '  aShortString7: string[MaxLen];',
+  '  aShortStr20, aShortStr20b: TShortStr;',
+  '  aShortString: ShortString;',
+  'begin',
+  '  aString:=if aBool then aShortString3 else aShortString5;',
+  '  aString:=if aBool then aShortString5 else aShortString7;',
+  '  aString:=if aBool then aShortStr20 else aShortString;',
+  '  aString:=if aBool then aShortString3 else aShortString3;',
+  '  aString:=if aBool then aShortStr20 else aShortStr20b;',
+  '']);
+  ParseProgram;
+  CheckResolverUnexpectedHints;
+  // two different shortstrings -> String
+  CheckResultType(0,btString);
+  CheckResultType(1,btString);
+  CheckResultType(2,btString);
+  // same shortstring type -> keep it
+  CheckResultType(3,btShortString);
+  CheckResultType(4,btShortString);
+end;
+
+procedure TTestResolver.TestIfExpr_Variant;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  aBool: boolean;',
+  '  aVariant: Variant;',
+  'begin',
+  '  aVariant:=if aBool then ''Foo'' else Variant(''Bar'');',
+  '']);
+  ParseProgram;
+  CheckResolverUnexpectedHints;
+end;
+
+procedure TTestResolver.TestIfExpr_CharOverloadWideChar;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'procedure {#A}Fly(c: AnsiChar); overload;',
+  'begin',
+  'end;',
+  'procedure {#W}Fly(c: WideChar); overload;',
+  'begin',
+  'end;',
+  'var aBool: boolean;',
+  'begin',
+  '  {@W}Fly(if aBool then #65 else WideChar(''A''));',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestIfExpr_FloatConstOverloadDouble;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'procedure {#D}Fly(d: double); overload;',
+  'begin',
+  'end;',
+  'procedure {#S}Fly(s: single); overload;',
+  'begin',
+  'end;',
+  'var b: boolean;',
+  'begin',
+  '  {@S}Fly(if b then single(1.5) else single(2.5));',
+  '  {@D}Fly(if b then 1.5 else 2.5);',
+  '  {@S}Fly(if b then single(1.5) else 2);',
+  '']);
   ParseProgram;
 end;
 
@@ -5586,6 +6029,412 @@ begin
   '  k:=gettypekind(k);',
   '']);
   ParseProgram;
+end;
+
+procedure TTestResolver.TestNameOf;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  integer = longint;',
+  '  TEnum = (Red, Green);',
+  '  TRec = record',
+  '    Field: integer;',
+  '  end;',
+  '  TObject = class',
+  '    ClassField: integer;',
+  '    property Fld: integer read ClassField;',
+  '    procedure DoIt;',
+  '  end;',
+  'const',
+  '  MyConst = 3;',
+  'var',
+  '  s: string;',
+  '  i: integer;',
+  '  r: TRec;',
+  '  o: TObject;',
+  '  e: TEnum;',
+  'procedure TObject.DoIt;',
+  'begin',
+  '  s:=nameof(TObject.DoIt);',
+  '  s:=nameof(DoIt);', // Delphi does not support this, maybe a bug in Delphi?
+  'end;',
+  'procedure Run(Arg: integer);',
+  'begin',
+  '  s:=nameof(Arg);',
+  'end;',
+  'function GetIt: integer;',
+  'begin',
+  '  Result:=0;',
+  '  s:=nameof(Result);',
+  'end;',
+  'begin',
+  '  s:=nameof(i);',
+  '  s:=nameof(MyConst);',
+  '  s:=nameof(integer);',
+  '  s:=nameof(TRec);',
+  '  s:=nameof(TObject);',
+  '  s:=nameof(r.Field);',
+  '  s:=nameof(TRec.Field);',
+  '  s:=nameof(o.ClassField);',
+  // '  s:=nameof(TObject.ClassField);', not supported, works by accident
+  // '  s:=nameof(TObject.DoIt);', not supported, works by accident
+  '  s:=nameof(o.Fld);',
+  '  s:=nameof(o.DoIt);',
+  '  s:=nameof(Run);',
+  '  s:=nameof(GetIt);',
+  '  s:=nameof(Red);',
+  '  s:=nameof(e);',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestNameOf_Const;
+var
+  V: TResEvalValue;
+begin
+  StartProgram(false);
+  Add([
+  'var MyVar: longint;',
+  'const',
+  '  c = nameof(myvar);',
+  'begin',
+  '']);
+  ParseProgram;
+  V:=EvalProgramConst('c');
+  try
+    AssertNotNull('nameof(myvar) folds',V);
+    AssertEquals('nameof(myvar) is a string',ord(revkString),ord(V.Kind));
+    AssertEquals('nameof(myvar) keeps the declared case','MyVar',
+      String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+end;
+
+procedure TTestResolver.TestNameOf_Qualified;
+var
+  V: TResEvalValue;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TRec = record',
+  '    MyField: longint;',
+  '  end;',
+  'var r: TRec;',
+  'const',
+  '  c = nameof(r.myfield);',
+  'begin',
+  '']);
+  ParseProgram;
+  V:=EvalProgramConst('c');
+  try
+    AssertNotNull('nameof(r.myfield) folds',V);
+    AssertEquals('nameof(r.myfield) is the last identifier','MyField',
+      String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+end;
+
+procedure TTestResolver.TestNameOf_Unit;
+var
+  V: TResEvalValue;
+begin
+  AddModuleWithIntfImplSrc('unit2.pp',
+    LinesToStr([
+    'var Some: longint;',
+    '']),
+    '');
+  StartProgram(true);
+  Add([
+  'uses unit2;',
+  'const',
+  '  c = nameof(unit2);',
+  'begin',
+  '']);
+  ParseProgram;
+  V:=EvalProgramConst('c');
+  try
+    AssertNotNull('nameof(unit2) folds',V);
+    AssertEquals('nameof(unit2)','unit2',String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+end;
+
+procedure TTestResolver.TestNameOf_Generic;
+var
+  V: TResEvalValue;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TBird<T> = class',
+  '    Wings: longint;',
+  '    procedure Fly;',
+  '  end;',
+  'procedure TBird<T>.Fly;',
+  'begin',
+  'end;',
+  'var b: TBird<boolean>;',
+  'const',
+  '  c = nameof(tbird<boolean>);',
+  '  d = nameof(tbird<boolean>.fly);',
+  '  e = nameof(b.wings);',
+  '  f = nameof(b);',
+  'begin',
+  '']);
+  ParseProgram;
+  V:=EvalProgramConst('c');
+  try
+    AssertNotNull('nameof(tbird<boolean>) folds',V);
+    AssertEquals('nameof(tbird<boolean>) is the generic name','TBird',
+      String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+  V:=EvalProgramConst('d');
+  try
+    AssertEquals('nameof(tbird<boolean>.fly)','Fly',String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+  V:=EvalProgramConst('e');
+  try
+    AssertEquals('nameof(b.wings)','Wings',String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+  V:=EvalProgramConst('f');
+  try
+    AssertEquals('nameof(b)','b',String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+end;
+
+procedure TTestResolver.TestNameOf_GenericSpecialize;
+var
+  V: TResEvalValue;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode objfpc}',
+  'type',
+  '  TObject = class end;',
+  '  generic TBird<T> = class',
+  '  end;',
+  'const',
+  '  c = nameof(specialize tbird<boolean>);',
+  'begin',
+  '']);
+  ParseProgram;
+  V:=EvalProgramConst('c');
+  try
+    AssertNotNull('nameof(specialize tbird<boolean>) folds',V);
+    AssertEquals('nameof(specialize tbird<boolean>) is the generic name','TBird',
+      String(TResEvalString(V).S));
+  finally
+    ReleaseEvalValue(V);
+  end;
+end;
+
+procedure TTestResolver.TestNameOfStringLiteralFail;
+begin
+  StartProgram(false);
+  Add([
+  'var s: string;',
+  'begin',
+  '  s:=nameof(''abc'');',
+  '']);
+  CheckResolverException('identifier expected, but String found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestNameOfExprFail;
+begin
+  StartProgram(false);
+  Add([
+  'var',
+  '  s: string;',
+  '  i: longint;',
+  'begin',
+  '  s:=nameof(i+i);',
+  '']);
+  CheckResolverException('identifier expected, but Binary found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestNameOfArrayElementFail;
+begin
+  StartProgram(false);
+  Add([
+  'var',
+  '  s: string;',
+  '  a: array of longint;',
+  'begin',
+  '  s:=nameof(a[1]);',
+  '']);
+  CheckResolverException('identifier expected, but ArrayParams found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestNameOfNoParamsFail;
+begin
+  StartProgram(false);
+  Add([
+  'var s: string;',
+  'begin',
+  '  s:=nameof();',
+  '']);
+  CheckResolverException('Wrong number of parameters specified for call to "function NameOf(identifier): String"',
+    nWrongNumberOfParametersForCallTo);
+end;
+
+procedure TTestResolver.TestNameOfTwoParamsFail;
+begin
+  StartProgram(false);
+  Add([
+  'var',
+  '  s: string;',
+  '  i: longint;',
+  'begin',
+  '  s:=nameof(i,i);',
+  '']);
+  CheckResolverException('Wrong number of parameters specified for call to "function NameOf(identifier): String"',
+    nWrongNumberOfParametersForCallTo);
+end;
+
+procedure TTestResolver.TestIsConstValue;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TEnum = (Red, Green);',
+  'const',
+  '  c = 3;',
+  '  tc: longint = 4;',
+  'var',
+  '  b: boolean;',
+  '  i: longint;',
+  '  e: TEnum;',
+  'function GetIt: longint;',
+  'begin',
+  '  Result:=0;',
+  'end;',
+  'begin',
+  '  b:=IsConstValue(3);',
+  '  b:=IsConstValue(c);',
+  '  b:=IsConstValue(c+1);',
+  '  b:=IsConstValue(''abc'');',
+  '  b:=IsConstValue(Red);',
+  '  b:=IsConstValue(tc);',
+  '  b:=IsConstValue(i);',
+  '  b:=IsConstValue(i+1);',
+  '  b:=IsConstValue(e);',
+  '  b:=IsConstValue(GetIt);',
+  '  b:=IsConstValue(GetIt());',
+  '  if IsConstValue(i) then ;',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestIsConstValue_Const;
+
+  procedure CheckBool(const ConstName: string; Expected: boolean);
+  var
+    V: TResEvalValue;
+  begin
+    V:=EvalProgramConst(ConstName);
+    try
+      AssertNotNull(ConstName+' folds',V);
+      AssertEquals(ConstName+' is a boolean',ord(revkBool),ord(V.Kind));
+      AssertEquals(ConstName,Expected,TResEvalBool(V).B);
+    finally
+      ReleaseEvalValue(V);
+    end;
+  end;
+
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TEnum = (Red, Green);',
+  'const',
+  '  c = 3;',
+  '  tc: longint = 4;',
+  'var',
+  '  i: longint;',
+  'const',
+  '  IsLiteral = IsConstValue(3);',
+  '  IsConst = IsConstValue(c);',
+  '  IsConstExpr = IsConstValue(c*2+1);',
+  '  IsString = IsConstValue(''abc'');',
+  '  IsEnum = IsConstValue(Red);',
+  '  IsTypedConst = IsConstValue(tc);',
+  '  IsVar = IsConstValue(i);',
+  '  IsVarExpr = IsConstValue(i+1);',
+  'begin',
+  '']);
+  ParseProgram;
+  CheckBool('IsLiteral',true);
+  CheckBool('IsConst',true);
+  CheckBool('IsConstExpr',true);
+  CheckBool('IsString',true);
+  CheckBool('IsEnum',true);
+  CheckBool('IsTypedConst',false);
+  CheckBool('IsVar',false);
+  CheckBool('IsVarExpr',false);
+end;
+
+procedure TTestResolver.TestIsConstValueNoParamsFail;
+begin
+  StartProgram(false);
+  Add([
+  'var b: boolean;',
+  'begin',
+  '  b:=IsConstValue();',
+  '']);
+  CheckResolverException('Wrong number of parameters specified for call to "function IsConstValue(Value): Boolean"',
+    nWrongNumberOfParametersForCallTo);
+end;
+
+procedure TTestResolver.TestIsConstValueTypeFail;
+begin
+  StartProgram(false);
+  Add([
+  'var b: boolean;',
+  'begin',
+  '  b:=IsConstValue(longint);',
+  '']);
+  CheckResolverException('value expected, but Longint found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestTypeQualifiedInstanceMemberFail;
+// NameOf allows TObject.DoIt, an ordinary call must still require an instance
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TObject = class',
+  '    procedure DoIt;',
+  '  end;',
+  'procedure TObject.DoIt;',
+  'begin',
+  'end;',
+  'procedure Foo(Arg: longint);',
+  'begin',
+  'end;',
+  'begin',
+  '  Foo(TObject.DoIt);',
+  '']);
+  CheckResolverException('Instance member "DoIt" inaccessible here',
+    nInstanceMemberXInaccessible);
 end;
 
 procedure TTestResolver.TestForLoop;
@@ -11371,9 +12220,14 @@ begin
   Add('  {#v}{=A}v: TClassA;');
   Add('begin');
   Add('  if {@o}o is {@A}TClassA then;');
+  Add('  if {@o}o is not {@A}TClassA then;');
+  Add('  if ({@o}o is not {@A}TClassA) and true then;');
   Add('  if {@v}v is {@A}TClassA then;');
+  Add('  if {@v}v is not {@A}TClassA then;');
   Add('  if {@v}v is {@TOBJ}TObject then;');
+  Add('  if {@v}v is not {@TOBJ}TObject then;');
   Add('  if {@v}v.{@Sub}Sub is {@A}TClassA then;');
+  Add('  if {@v}v.{@Sub}Sub is not {@A}TClassA then;');
   Add('  {@v}v:={@o}o as {@A}TClassA;');
   ParseProgram;
 end;
@@ -11391,6 +12245,23 @@ begin
   Add('  {#v}{=A}v: TClassA;');
   Add('begin');
   Add('  if {@o}o is {@v}v then;');
+  CheckResolverException('class type expected, but class found',
+    nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestClass_OperatorIsNotOnNonTypeFail;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  {#TOBJ}TObject = class');
+  Add('  end;');
+  Add('  {#A}TClassA = class');
+  Add('  end;');
+  Add('var');
+  Add('  {#o}{=TOBJ}o: TObject;');
+  Add('  {#v}{=A}v: TClassA;');
+  Add('begin');
+  Add('  if {@o}o is not {@v}v then;');
   CheckResolverException('class type expected, but class found',
     nXExpectedButYFound);
 end;
@@ -13133,8 +14004,11 @@ begin
   Add('  D: TCars;');
   Add('begin');
   Add('  if C is TCar then;');
+  Add('  if C is not TCar then;');
   Add('  if C is TCars then;');
+  Add('  if C is not TCars then;');
   Add('  if C is D then ;');
+  Add('  if C is not D then ;');
   ParseProgram;
 end;
 

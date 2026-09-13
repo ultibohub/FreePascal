@@ -2548,6 +2548,10 @@ begin
       else ParseExc(nErrUnknownOperatorType,SErrUnknownOperatorType,[ExprKindNames[TParamsExpr(Expr).Kind]]);
     end;
     end
+  else if C=TIfExpr then
+    Result:='if '+ExprToText(TIfExpr(Expr).ConditionExpr)
+      +' then '+ExprToText(TIfExpr(Expr).ThenExpr)
+      +' else '+ExprToText(TIfExpr(Expr).ElseExpr)
   else
     ParseExc(nErrUnknownOperatorType,SErrUnknownOperatorType,['TPasParser.ExprToText: '+Expr.ClassName]);
 end;
@@ -2831,6 +2835,7 @@ var
   SrcPos, ScrPos: TPasSourcePos;
   ProcType: TProcType;
   ProcExpr: TProcedureExpr;
+  IfExpr: TIfExpr;
   AllowKWAsSubIdent : Boolean;
   OldEndExpr: set of TToken;
 
@@ -2961,6 +2966,24 @@ begin
         begin
         CheckToken(tkBraceClose);
         end;
+      end;
+    tkif:
+      begin
+      // if-expression: if Cond then A else B
+      if not (msStatementExpressions in CurrentModeswitches) then
+        ParseExcExpectedIdentifier;
+      IfExpr:=TIfExpr(CreateElement(TIfExpr,'',AParent,CurTokenPos));
+      NextToken;
+      IfExpr.ConditionExpr:=DoParseExpression(IfExpr);
+      CheckToken(tkthen);
+      NextToken;
+      IfExpr.ThenExpr:=DoParseExpression(IfExpr);
+      CheckToken(tkelse);
+      NextToken;
+      // lowest precedence: the else-part extends as far as possible
+      IfExpr.ElseExpr:=DoParseExpression(IfExpr);
+      // no postfix operators, CurToken is already the token behind the expression
+      exit(IfExpr);
       end
   else
     ParseExcExpectedIdentifier;
@@ -3133,6 +3156,7 @@ function TPasParser.DoParseExpression(AParent: TPaselement; InitExpr: TPasExpr;
 type
   TOpStackItem = record
     Token: TToken;
+    Negated: Boolean; // tkis: "is not", tkin: "not in"
     SrcPos: TPasSourcePos;
   end;
 
@@ -3170,6 +3194,7 @@ const
     if OpStackTop=length(OpStack) then
       SetLength(OpStack,length(OpStack)*2+4);
     OpStack[OpStackTop].Token:=Token;
+    OpStack[OpStackTop].Negated:=false;
     OpStack[OpStackTop].SrcPos:=CurTokenPos;
   end;
 
@@ -3198,7 +3223,9 @@ const
     xleft   : TPasExpr;
     bin     : TBinaryExpr;
     SrcPos: TPasSourcePos;
+    IsNegated: Boolean;
   begin
+    IsNegated:=(OpStackTop>=0) and OpStack[OpStackTop].Negated;
     t:=PopOper(SrcPos);
     xright:=PopExp;
     xleft:=PopExp;
@@ -3207,6 +3234,10 @@ const
       bin:=CreateBinaryExpr(AParent,xleft,xright,eopNone,SrcPos);
       bin.Kind:=pekRange;
       end
+    else if IsNegated and (t=tkis) then
+      bin:=CreateBinaryExpr(AParent,xleft,xright,eopIsNot,SrcPos)
+    else if IsNegated and (t=tkin) then
+      bin:=CreateBinaryExpr(AParent,xleft,xright,eopNotIn,SrcPos)
     else
       bin:=CreateBinaryExpr(AParent,xleft,xright,TokenToExprOp(t),SrcPos);
     ExpStack.Add(bin);
@@ -3214,7 +3245,8 @@ const
 
 Var
   AllowedBinaryOps : Set of TToken;
-  SrcPos: TPasSourcePos;
+  SrcPos, NotSrcPos: TPasSourcePos;
+  IsNotIn: Boolean;
 
 begin
   AllowedBinaryOps:=BinaryOP-FEndExprTokenExtra;
@@ -3299,6 +3331,17 @@ begin
         ExpStack.Add(InitExpr);
         InitExpr:=nil;
         end;
+      IsNotIn:=false;
+      if (CurToken=tknot) and (tkin in AllowedBinaryOps) then
+        begin
+        // a "not" after an operand can only be the start of "not in"
+        NotSrcPos:=CurTokenPos;
+        NextToken;
+        if CurToken=tkin then
+          IsNotIn:=true
+        else
+          UngetToken;
+        end;
       if (CurToken in AllowedBinaryOPs) then
         begin
         // process operators of higher precedence than next operator
@@ -3309,7 +3352,19 @@ begin
           TempOp:=PeekOper;
         end;
         PushOper(CurToken);
+        if IsNotIn then
+          begin
+          // "not in": same precedence as "in", element starts at the "not"
+          OpStack[OpStackTop].Negated:=true;
+          OpStack[OpStackTop].SrcPos:=NotSrcPos;
+          end;
         NextToken;
+        if (OpStack[OpStackTop].Token=tkis) and (CurToken=tknot) then
+          begin
+          // "is not": the "not" belongs to the "is", not to the right operand
+          OpStack[OpStackTop].Negated:=true;
+          NextToken;
+          end;
         end;
        //Writeln('Bin ',NotBinary ,' or EOE ',isEndOfExp, ' Ex ',Assigned(x),' stack ',ExpStack.Count);
     until NotBinary or isEndOfExp(AllowEqual, NotBinary);

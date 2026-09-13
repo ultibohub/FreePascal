@@ -1358,7 +1358,8 @@ const
     msMultiHelpers,
     msImplicitFunctionSpec,
     msMultilineStrings,
-    msDelphiMultilineStrings];
+    msDelphiMultilineStrings,
+    msStatementExpressions];
 
   bsAllPas2jsBoolSwitchesReadOnly = [
     bsLongStrings
@@ -2328,6 +2329,8 @@ type
     Function ConvertBuiltIn_DeleteArray(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
     Function ConvertBuiltIn_TypeInfo(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
     Function ConvertBuiltIn_GetTypeKind(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
+    Function ConvertBuiltIn_NameOf(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
+    Function ConvertBuiltIn_IsConstValue(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
     Function ConvertBuiltIn_Assert(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
     Function ConvertBuiltIn_New(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
     Function ConvertBuiltIn_Dispose(El: TParamsExpr; AContext: TConvertContext): TJSElement; virtual;
@@ -2348,6 +2351,7 @@ type
     Function ConvertIdentifierExpr(El: TPasExpr; const aName: string; AContext : TConvertContext): TJSElement; virtual;
     Function ConvertUnaryExpression(El: TUnaryExpr; AContext: TConvertContext): TJSElement; virtual;
     Function ConvertInlineSpecializeExpr(El: TInlineSpecializeExpr; AContext: TConvertContext): TJSElement; virtual;
+    Function ConvertIfExpr(El: TIfExpr; AContext: TConvertContext): TJSElement; virtual;
     // Convert declarations
     Function ConvertElement(El : TPasElement; AContext: TConvertContext) : TJSElement; virtual;
     Function ConvertProperty(El: TPasProperty; AContext: TConvertContext ): TJSElement; virtual;
@@ -5873,7 +5877,7 @@ begin
   if (LeftResolved.BaseType=btCustom)
       or (RightResolved.BaseType=btCustom) then
     case Bin.OpCode of
-    eopIs:
+    eopIs,eopIsNot:
       if IsJSBaseType(LeftResolved,pbtJSValue,true) then
         begin
         // aJSValue is x
@@ -8927,6 +8931,36 @@ begin
   Result:=ConvertExpression(El.NameExpr,AContext);
 end;
 
+function TPasToJSConverter.ConvertIfExpr(El: TIfExpr; AContext: TConvertContext
+  ): TJSElement;
+// convert "if a then b else c" to "a ? b : c"
+var
+  CondExpr: TJSConditionalExpression;
+  A, B, C: TJSElement;
+begin
+  Result:=nil;
+  A:=nil;
+  B:=nil;
+  C:=nil;
+  try
+    A:=ConvertExpression(El.ConditionExpr,AContext);
+    B:=ConvertExpression(El.ThenExpr,AContext);
+    C:=ConvertExpression(El.ElseExpr,AContext);
+    CondExpr:=TJSConditionalExpression(CreateElement(TJSConditionalExpression,El));
+    CondExpr.A:=A;
+    CondExpr.B:=B;
+    CondExpr.C:=C;
+    Result:=CondExpr;
+  finally
+    if Result=nil then
+      begin
+      A.Free;
+      B.Free;
+      C.Free;
+      end;
+  end;
+end;
+
 function TPasToJSConverter.GetExpressionValueType(El: TPasExpr;
   AContext: TConvertContext): TJSType;
 
@@ -9099,7 +9133,9 @@ Const
    TJSRelationalExpressionLE,
    TJSRelationalExpressionGE,
    Nil, // In
+   Nil, // not in
    TJSRelationalExpressionInstanceOf, // is
+   TJSRelationalExpressionInstanceOf, // is not, negated below
    Nil, // As
    Nil, // Symmetrical diff
    Nil, // Address,
@@ -9208,7 +9244,13 @@ begin
       aResolver.ComputeElement(El.right,RightResolved,Flags);
 
       Result:=ConvertBinaryExpressionRes(El,AContext,LeftResolved,RightResolved,A,B);
-      if Result<>nil then exit;
+      if Result<>nil then
+        begin
+        if El.OpCode=eopIsNot then
+          // "a is not b" -> "!<is-expression>"
+          Result:=CreateUnaryNot(Result,El);
+        exit;
+        end;
       {$IFDEF VerbosePas2JS}
       writeln('TPasToJSConverter.ConvertBinaryExpression Left=',GetResolverResultDbg(LeftResolved),' Right=',GetResolverResultDbg(RightResolved));
       {$ENDIF}
@@ -9409,6 +9451,9 @@ begin
         // convert "a div b" to "rtl.trunc(a/b)"
         Result:=CreateTruncFloor(El,Result,true);
         end;
+      eopIsNot:
+        // convert "a is not b" to "!(a instanceof b)"
+        Result:=CreateUnaryNot(Result,El);
       end;
 
       if (bsOverflowChecks in AContext.ScannerBoolSwitches) and (aResolver<>nil) then
@@ -9525,9 +9570,10 @@ begin
     Result:=Call;
     exit;
     end
-  else if (El.OpCode=eopIn) and (RightResolved.BaseType in [btSet,btArrayOrSet])  then
+  else if (El.OpCode in [eopIn,eopNotIn]) and (RightResolved.BaseType in [btSet,btArrayOrSet])  then
     begin
     // a in b -> a in b
+    // a not in b -> !(a in b)
     if not (A is TJSLiteral) or (TJSLiteral(A).Value.ValueType<>jstNumber) then
       begin
       FreeAndNil(A);
@@ -9537,6 +9583,8 @@ begin
     InOp.A:=A; A:=nil;
     InOp.B:=B; B:=nil;
     Result:=InOp;
+    if El.OpCode=eopNotIn then
+      Result:=CreateUnaryNot(Result,El);
     exit;
     end
   else if (El.OpCode=eopAdd)
@@ -9737,9 +9785,9 @@ begin
       DoError(20180423114246,nIllegalQualifierInFrontOf,sIllegalQualifierInFrontOf,
         [OpcodeStrings[El.OpCode],aResolver.GetResolverResultDescription(RightResolved,true)],El);
     end
-  else if (El.OpCode=eopIs) then
+  else if (El.OpCode in [eopIs,eopIsNot]) then
     begin
-    // "A is B"
+    // "A is B" / "A is not B" (the negation is added by the caller)
     Call:=CreateCallExpression(El);
     Result:=Call;
     Call.AddArg(A); A:=nil;
@@ -12298,6 +12346,8 @@ begin
           bfDeleteArray: Result:=ConvertBuiltIn_DeleteArray(El,AContext);
           bfTypeInfo: Result:=ConvertBuiltIn_TypeInfo(El,AContext);
           bfGetTypeKind: Result:=ConvertBuiltIn_GetTypeKind(El,AContext);
+          bfNameOf: Result:=ConvertBuiltIn_NameOf(El,AContext);
+          bfIsConstValue: Result:=ConvertBuiltIn_IsConstValue(El,AContext);
           bfAssert:
             begin
             Result:=ConvertBuiltIn_Assert(El,AContext);
@@ -15118,6 +15168,54 @@ begin
   end;
 end;
 
+function TPasToJSConverter.ConvertBuiltIn_IsConstValue(El: TParamsExpr;
+  AContext: TConvertContext): TJSElement;
+// IsConstValue(Value) is a constant boolean, Value is not evaluated
+var
+  aResolver: TPas2JSResolver;
+  Value: TResEvalValue;
+begin
+  Result:=nil;
+  aResolver:=AContext.Resolver;
+  aResolver.BI_IsConstValue_OnEval(aResolver.BuiltInProcs[bfIsConstValue],El,[],Value);
+  try
+    if not (Value is TResEvalBool) then
+      RaiseNotSupported(El,AContext,20260911200101,'IsConstValue');
+    Result:=CreateLiteralBoolean(El,TResEvalBool(Value).B);
+  finally
+    ReleaseEvalValue(Value);
+  end;
+end;
+
+function TPasToJSConverter.ConvertBuiltIn_NameOf(El: TParamsExpr;
+  AContext: TConvertContext): TJSElement;
+// nameof(identifier) is a constant string
+var
+  aResolver: TPas2JSResolver;
+  Value: TResEvalValue;
+begin
+  Result:=nil;
+  aResolver:=AContext.Resolver;
+  aResolver.BI_NameOf_OnEval(aResolver.BuiltInProcs[bfNameOf],El,[refConst],Value);
+  try
+    if Value=nil then
+      RaiseNotSupported(El,AContext,20260908160001,'nameof');
+    case Value.Kind of
+    {$IFDEF FPC_HAS_CPSTRING}
+    revkString:
+      Result:=CreateLiteralJSString(El,TJSString(
+        aResolver.ExprEvaluator.GetUnicodeStr(TResEvalString(Value).S,El)));
+    {$ENDIF}
+    revkUnicodeString:
+      Result:=CreateLiteralJSString(El,TJSString(TResEvalUTF16(Value).S));
+    else
+      RaiseNotSupported(El,AContext,20260908160002,GetObjName(Value));
+    end;
+  finally
+    ReleaseEvalValue(Value);
+  end;
+end;
+
 function TPasToJSConverter.ConvertBuiltIn_Assert(El: TParamsExpr;
   AContext: TConvertContext): TJSElement;
 // throw pas.SysUtils.EAssertionFailed.$create("Create");
@@ -15606,6 +15704,8 @@ begin
     Result:=ConvertArrayValues(TArrayValues(El),AContext)
   else if C=TInlineSpecializeExpr then
     Result:=ConvertInlineSpecializeExpr(TInlineSpecializeExpr(El),AContext)
+  else if C=TIfExpr then
+    Result:=ConvertIfExpr(TIfExpr(El),AContext)
   else
     RaiseNotSupported(El,AContext,20161024191314);
 end;

@@ -2939,7 +2939,7 @@ begin
   if not (aExpr is TBinaryExpr) then
     Exit;
   lBinary := TBinaryExpr(aExpr);
-  if lBinary.OpCode <> eopIn then
+  if not (lBinary.OpCode in [eopIn, eopNotIn]) then
     Exit;
   if not ComputeGuarded(lBinary.Left, lRes) then
     Exit;
@@ -9039,7 +9039,7 @@ var
         if NamesParam(lBin.left, aParam) then
           Exit(True);
       end
-      else if lBin.OpCode in [eopIs, eopAs] then
+      else if lBin.OpCode in [eopIs, eopIsNot, eopAs] then
       begin
         if SameText(IdentName(lBin.left), aParam)
           or SameText(IdentName(lBin.right), aParam) then
@@ -10690,6 +10690,12 @@ var
     end
     else if aExpr is TInlineSpecializeExpr then
       CollectRefs(TInlineSpecializeExpr(aExpr).NameExpr)
+    else if aExpr is TIfExpr then
+    begin
+      CollectRefs(TIfExpr(aExpr).ConditionExpr);
+      CollectRefs(TIfExpr(aExpr).ThenExpr);
+      CollectRefs(TIfExpr(aExpr).ElseExpr);
+    end
     // An anonymous method body is an operand, not a declaration-list entry.
     else if aExpr is TProcedureExpr then
       lAnswered := False

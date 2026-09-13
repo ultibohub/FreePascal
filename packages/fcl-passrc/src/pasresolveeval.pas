@@ -15,47 +15,6 @@
 
 Abstract:
   Evaluation of Pascal constants.
-
-Works:
-- Emitting range check warnings
-- Error on overflow
-- bool:
-  - not, =, <>, and, or, xor, low(), high(), pred(), succ(), ord()
-  - boolean(0), boolean(1)
-- int/uint
-  - unary +, -
-  - binary: +, -, *, div, mod, ^^, =, <>, <, >, <=, >=, and, or, xor, not, shl, shr
-  - Low(), High(), Pred(), Succ(), Ord(), Lo(), Hi()
-  - typecast longint(-1), word(-2), intsingle(-1), uintsingle(1)
-- float:
-  - typecast single(double), double(single), float(integer)
-  - +, -, /, *, =, <>, <, >, <=, >=
-- string:
-  - #65, '', 'a', 'ab'
-  - +, =, <>, <, >, <=, >=
-  - pred(), succ(), chr(), ord(), low(AnsiChar), high(AnsiChar)
-  - s[]
-  - length(string)
-  - #$DC00
-  - unicodestring
-- enum
-  - ord(), low(), high(), pred(), succ()
-  - typecast enumtype(integer)
-- set of enum, set of AnsiChar, set of bool, set of int
-  - [a,b,c..d]
-  - +, -, *, ><, =, <>, >=, <=, in
-  - error on duplicate in const set
-- arrays
-  - length()
-  - array of int, charm enum, bool
-
-ToDo:
-- arrays
-  - [], [a..b], multi dim [a,b], concat with +
-  - array of record
-  - array of string
-  - error on: array[1..2] of longint = (1,2,3);
-- anonymous enum range: type f=(a,b,c,d); g=b..c;
 }
 {$IFNDEF FPC_DOTTEDUNITS}
 unit PasResolveEval;
@@ -270,6 +229,7 @@ resourcestring
   sExprTypeMustBeClassOrRecordTypeGot = 'Expression type must be class or record type, got %s';
   sPropertyNotWritable = 'No member is provided to access property';
   sIncompatibleTypesGotExpected = 'Incompatible types: got "%s" expected "%s"';
+  sIncompatibleTypesXAndY = 'Incompatible types: "%s" and "%s"'; // uses nIncompatibleTypesGotExpected
   sTypesAreNotRelatedXY = 'Types are not related: "%s" and "%s"';
   sAbstractMethodsCannotBeCalledDirectly = 'Abstract methods cannot be called directly';
   sMissingParameterX = 'Missing parameter %s';
@@ -760,6 +720,7 @@ type
     procedure RaiseDivByZero(id: TMaxPrecInt; ErrorEl: TPasElement);
     function EvalUnaryExpr(Expr: TUnaryExpr; Flags: TResEvalFlags): TResEvalValue; virtual;
     function EvalBinaryExpr(Expr: TBinaryExpr; Flags: TResEvalFlags): TResEvalValue;
+    function EvalIfExpr(Expr: TIfExpr; Flags: TResEvalFlags): TResEvalValue; virtual;
     function EvalBinaryRangeExpr(Expr: TBinaryExpr; LeftValue, RightValue: TResEvalValue): TResEvalValue;
     function EvalBinaryAddExpr(Expr: TBinaryExpr; LeftValue, RightValue: TResEvalValue): TResEvalValue;
     function EvalBinarySubExpr(Expr: TBinaryExpr; LeftValue, RightValue: TResEvalValue): TResEvalValue;
@@ -1687,6 +1648,11 @@ begin
         Result:=EvalBinaryLessGreaterExpr(Expr,LeftValue,RightValue);
       eopIn:
         Result:=EvalBinaryInExpr(Expr,LeftValue,RightValue);
+      eopNotIn:
+        begin
+        Result:=EvalBinaryInExpr(Expr,LeftValue,RightValue);
+        TResEvalBool(Result).B:=not TResEvalBool(Result).B;
+        end;
       eopSymmetricaldifference:
         Result:=EvalBinarySymmetricaldifferenceExpr(Expr,LeftValue,RightValue);
       else
@@ -4922,6 +4888,8 @@ begin
     Result:=EvalParamsExpr(TParamsExpr(Expr),Flags)
   else if C=TArrayValues then
     Result:=EvalArrayValuesExpr(TArrayValues(Expr),Flags)
+  else if C=TIfExpr then
+    Result:=EvalIfExpr(TIfExpr(Expr),Flags)
   else if [refConst,refConstExt]*Flags<>[] then
     RaiseConstantExprExp(20170518213800,Expr);
   {$IFDEF VerbosePasResEval}
@@ -5167,6 +5135,33 @@ begin
     {$ENDIF}
     RaiseNotYetImplemented(20170714195815,ValueExpr);
   end;
+end;
+
+function TResExprEvaluator.EvalIfExpr(Expr: TIfExpr; Flags: TResEvalFlags
+  ): TResEvalValue;
+// only the chosen branch is evaluated
+var
+  CondValue: TResEvalValue;
+  IsTrue: Boolean;
+begin
+  Result:=nil;
+  CondValue:=Eval(Expr.ConditionExpr,Flags);
+  if CondValue=nil then exit;
+  try
+    if CondValue.Kind<>revkBool then
+      begin
+      if [refConst,refConstExt]*Flags<>[] then
+        RaiseConstantExprExp(20260910120000,Expr.ConditionExpr);
+      exit;
+      end;
+    IsTrue:=TResEvalBool(CondValue).B;
+  finally
+    ReleaseEvalValue(CondValue);
+  end;
+  if IsTrue then
+    Result:=Eval(Expr.ThenExpr,Flags)
+  else
+    Result:=Eval(Expr.ElseExpr,Flags);
 end;
 
 function TResExprEvaluator.IsConst(Expr: TPasExpr): boolean;

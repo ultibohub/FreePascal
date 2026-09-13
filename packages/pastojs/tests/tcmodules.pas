@@ -302,6 +302,8 @@ type
     Procedure TestVarExternalOtherUnit;
     Procedure TestVarAbsoluteFail;
     Procedure TestConstExternal;
+    Procedure TestNameOf;
+    Procedure TestIsConstValue;
 
     // numbers
     Procedure TestDouble;
@@ -429,6 +431,10 @@ type
     Procedure TestSet_Property;
     Procedure TestSet_EnumConst;
     Procedure TestSet_IntConst;
+    Procedure TestSet_NotIn;
+    Procedure TestIfExpr;
+    Procedure TestIfExpr_Record;
+    Procedure TestIfExpr_ClassRef;
     Procedure TestSet_IntRange;
     Procedure TestSet_AnonymousEnumType;
     Procedure TestSet_AnonymousEnumTypeChar; // ToDo
@@ -632,6 +638,7 @@ type
     Procedure TestClassOf_Call;
     Procedure TestClassOf_Assign;
     Procedure TestClassOf_Is;
+    Procedure TestClassOf_IsNot;
     Procedure TestClassOf_Compare;
     Procedure TestClassOf_ClassVar;
     Procedure TestClassOf_ClassMethod;
@@ -855,6 +862,7 @@ type
     Procedure TestJSValue_Not;
     Procedure TestJSValue_Enum;
     Procedure TestJSValue_ClassInstance;
+    Procedure TestJSValue_ClassInstanceIsNot;
     Procedure TestJSValue_ClassOf;
     Procedure TestJSValue_ArrayOfJSValue;
     Procedure TestJSValue_ArrayLit;
@@ -1731,8 +1739,8 @@ begin
   FEngine.Source:=Src;
   FileResolver.AddStream(FileName,TStringStream.Create(Src));
   Scanner.OpenFile(FileName);
-  Writeln('// Test : ',Self.TestName);
-  Writeln(Src);
+  //Writeln('// Test : ',Self.TestName);
+  //Writeln(Src);
 end;
 
 procedure TCustomTestModule.ParseModuleQueue;
@@ -7240,6 +7248,161 @@ begin
     '']));
 end;
 
+procedure TTestModule.TestSet_NotIn;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TEnums = set of Byte;',
+  'const',
+  '  Orange = 0;',
+  '  c = 3 not in [1,2];',
+  'var',
+  '  Enums: tenums;',
+  '  b: boolean;',
+  'begin',
+  '  if orange not in enums then;',
+  '  if orange not in [orange,1] then;',
+  '  b:=c;']);
+  ConvertProgram;
+  CheckSource('TestSet_NotIn',
+    LinesToStr([ // statements
+    'this.Orange = 0;',
+    'this.c = !(3 in rtl.createSet(1, 2));',
+    'this.Enums = {};',
+    'this.b = false;',
+    '']),
+    LinesToStr([
+    'if (!(0 in $mod.Enums)) ;',
+    'if (!(0 in rtl.createSet(0, 1))) ;',
+    '$mod.b = true;',
+    '']));
+end;
+
+procedure TTestModule.TestIfExpr;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  b: boolean;',
+  '  i: longint;',
+  '  s: string;',
+  '  c: char;',
+  'function GetStr: string;',
+  'begin',
+  'end;',
+  'begin',
+  '  s:=if b then ''True'' else ''False'';',
+  '  i:=if b then 1 else if i>2 then 3 else 4;',
+  '  i:=1+if b then 2 else 3;',
+  '  s:=if b then c else GetStr;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestIfExpr',
+    LinesToStr([ // statements
+    'this.b = false;',
+    'this.i = 0;',
+    'this.s = "";',
+    'this.c = "\x00";',
+    'this.GetStr = function () {',
+    '  var Result = "";',
+    '  return Result;',
+    '};',
+    '']),
+    LinesToStr([
+    '$mod.s = ($mod.b ? "True" : "False");',
+    '$mod.i = ($mod.b ? 1 : ($mod.i > 2 ? 3 : 4));',
+    '$mod.i = 1 + ($mod.b ? 2 : 3);',
+    '$mod.s = ($mod.b ? $mod.c : $mod.GetStr());',
+    '']));
+end;
+
+procedure TTestModule.TestIfExpr_Record;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TRec = record',
+  '    x: longint;',
+  '  end;',
+  'var',
+  '  b: boolean;',
+  '  r, r1, r2: TRec;',
+  'begin',
+  '  r:=if b then r1 else r2;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestIfExpr_Record',
+    LinesToStr([ // statements
+    'rtl.recNewT(this, "TRec", function () {',
+    '  this.x = 0;',
+    '  this.$eq = function (b) {',
+    '    return this.x === b.x;',
+    '  };',
+    '  this.$assign = function (s) {',
+    '    this.x = s.x;',
+    '    return this;',
+    '  };',
+    '});',
+    'this.b = false;',
+    'this.r = this.TRec.$new();',
+    'this.r1 = this.TRec.$new();',
+    'this.r2 = this.TRec.$new();',
+    '']),
+    LinesToStr([
+    '$mod.r.$assign(($mod.b ? $mod.r1 : $mod.r2));',
+    '']));
+end;
+
+procedure TTestModule.TestIfExpr_ClassRef;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnimal = class end;',
+  '  TBird = class(TAnimal) end;',
+  '  TAnt = class(TAnimal) end;',
+  '  TAnimalClass = class of TAnimal;',
+  'procedure Eat(AnimalClass: TAnimalClass);',
+  'begin',
+  'end;',
+  'var',
+  '  b: boolean;',
+  '  AnimalClass: TAnimalClass;',
+  'begin',
+  '  AnimalClass:=if b then TAnt else TBird;',
+  '  Eat(if b then TAnt else AnimalClass);',
+  '']);
+  ConvertProgram;
+  CheckSource('TestIfExpr_ClassRef',
+    LinesToStr([ // statements
+    'rtl.createClass(this, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '});',
+    'rtl.createClass(this, "TAnimal", this.TObject, function () {',
+    '});',
+    'rtl.createClass(this, "TBird", this.TAnimal, function () {',
+    '});',
+    'rtl.createClass(this, "TAnt", this.TAnimal, function () {',
+    '});',
+    'this.Eat = function (AnimalClass) {',
+    '};',
+    'this.b = false;',
+    'this.AnimalClass = null;',
+    '']),
+    LinesToStr([
+    '$mod.AnimalClass = ($mod.b ? $mod.TAnt : $mod.TBird);',
+    '$mod.Eat(($mod.b ? $mod.TAnt : $mod.AnimalClass));',
+    '']));
+end;
+
 procedure TTestModule.TestSet_IntRange;
 begin
   StartProgram(false);
@@ -7834,6 +7997,89 @@ begin
     LinesToStr([
     '$mod.d = Global.PI;',
     '$mod.d = $mod.Tau + Global.PI;'
+    ]));
+end;
+
+procedure TTestModule.TestNameOf;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TRec = record',
+  '    MyField: longint;',
+  '  end;',
+  'var',
+  '  MyVar: longint;',
+  '  r: TRec;',
+  '  s: string;',
+  'const',
+  '  c = nameof(myvar);',
+  'procedure DoIt;',
+  'begin',
+  'end;',
+  'begin',
+  '  s:=nameof(myvar);',
+  '  s:=nameof(r.myfield);',
+  '  s:=nameof(doit);',
+  '  s:=c;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestNameOf',
+    LinesToStr([
+    'rtl.recNewT(this, "TRec", function () {',
+    '  this.MyField = 0;',
+    '  this.$eq = function (b) {',
+    '    return this.MyField === b.MyField;',
+    '  };',
+    '  this.$assign = function (s) {',
+    '    this.MyField = s.MyField;',
+    '    return this;',
+    '  };',
+    '});',
+    'this.MyVar = 0;',
+    'this.r = this.TRec.$new();',
+    'this.s = "";',
+    'this.c = "MyVar";',
+    'this.DoIt = function () {',
+    '};'
+    ]),
+    LinesToStr([
+    '$mod.s = "MyVar";',
+    '$mod.s = "MyField";',
+    '$mod.s = "DoIt";',
+    '$mod.s = $mod.c;'
+    ]));
+end;
+
+procedure TTestModule.TestIsConstValue;
+begin
+  StartProgram(false);
+  Add([
+  'const',
+  '  c = 3;',
+  '  IsC = IsConstValue(c);',
+  'var',
+  '  i: longint;',
+  '  b: boolean;',
+  'begin',
+  '  b:=IsConstValue(3);',
+  '  b:=IsConstValue(c+1);',
+  '  b:=IsConstValue(i);',
+  '  b:=IsC;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestIsConstValue',
+    LinesToStr([
+    'this.c = 3;',
+    'this.IsC = true;',
+    'this.i = 0;',
+    'this.b = false;'
+    ]),
+    LinesToStr([
+    '$mod.b = true;',
+    '$mod.b = true;',
+    '$mod.b = false;',
+    '$mod.b = true;'
     ]));
 end;
 
@@ -18100,6 +18346,44 @@ begin
     LinesToStr([ // $mod.$main
     'if(rtl.is($mod.C,$mod.TCar));',
     'if(rtl.is($mod.C,$mod.TCar));',
+    '']));
+end;
+
+procedure TTestModule.TestClassOf_IsNot;
+begin
+  StartProgram(false);
+  Add('type');
+  Add('  TClass = class of TObject;');
+  Add('  TObject = class');
+  Add('  end;');
+  Add('  TCar = class');
+  Add('  end;');
+  Add('  TCars = class of TCar;');
+  Add('var');
+  Add('  Obj: tobject;');
+  Add('  C: tclass;');
+  Add('  Cars: tcars;');
+  Add('begin');
+  Add('  if c is not tcar then ;');
+  Add('  if c is not tcars then ;');
+  ConvertProgram;
+  CheckSource('TestClassOf_IsNot',
+    LinesToStr([ // statements
+    'rtl.createClass(this, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '});',
+    'rtl.createClass(this, "TCar", this.TObject, function () {',
+    '});',
+    'this.Obj = null;',
+    'this.C = null;',
+    'this.Cars = null;'
+    ]),
+    LinesToStr([ // $mod.$main
+    'if(!rtl.is($mod.C,$mod.TCar));',
+    'if(!rtl.is($mod.C,$mod.TCar));',
     '']));
 end;
 
@@ -30971,6 +31255,38 @@ begin
     '$mod.o = rtl.getObject($mod.v);',
     '$mod.o = rtl.getObject($mod.v);',
     'if (rtl.isExt($mod.v, $mod.TObject, 1)) ;',
+    '']));
+end;
+
+procedure TTestModule.TestJSValue_ClassInstanceIsNot;
+begin
+  StartProgram(false);
+  Add([
+  'type',
+  '  TObject = class',
+  '  end;',
+  'var',
+  '  v: jsvalue;',
+  '  o: TObject;',
+  'begin',
+  '  if v is not TObject then ;',
+  '  if o is not TObject then ;',
+  '']);
+  ConvertProgram;
+  CheckSource('TestJSValue_ClassInstanceIsNot',
+    LinesToStr([ // statements
+    'rtl.createClass(this, "TObject", null, function () {',
+    '  this.$init = function () {',
+    '  };',
+    '  this.$final = function () {',
+    '  };',
+    '});',
+    'this.v = undefined;',
+    'this.o = null;',
+    '']),
+    LinesToStr([ // $mod.$main
+    'if (!rtl.isExt($mod.v, $mod.TObject, 1)) ;',
+    'if (!$mod.TObject.isPrototypeOf($mod.o)) ;',
     '']));
 end;
 
