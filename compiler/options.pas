@@ -5731,7 +5731,7 @@ begin
         if not option.FPUSetExplicitly then
           begin
             include(init_settings.moduleswitches,cs_fp_emulation);
-            init_settings.fputype:=fpu_soft;
+            init_settings.fputype:=fpu_none;
           end;
       end;
     else

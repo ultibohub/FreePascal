@@ -2552,6 +2552,8 @@ begin
     Result:='if '+ExprToText(TIfExpr(Expr).ConditionExpr)
       +' then '+ExprToText(TIfExpr(Expr).ThenExpr)
       +' else '+ExprToText(TIfExpr(Expr).ElseExpr)
+  else if (C=TCaseExpr) or (C=TTryExceptExpr) then
+    Result:=Expr.GetDeclaration(true)
   else
     ParseExc(nErrUnknownOperatorType,SErrUnknownOperatorType,['TPasParser.ExprToText: '+Expr.ClassName]);
 end;
@@ -2836,6 +2838,12 @@ var
   ProcType: TProcType;
   ProcExpr: TProcedureExpr;
   IfExpr: TIfExpr;
+  CaseExpr: TCaseExpr;
+  CaseBranch: TCaseExprBranch;
+  TryExpr: TTryExceptExpr;
+  TryOn: TTryExceptExprOn;
+  OnTypeEl: TPasType;
+  OnSrcPos: TPasSourcePos;
   AllowKWAsSubIdent : Boolean;
   OldEndExpr: set of TToken;
 
@@ -2984,6 +2992,108 @@ begin
       IfExpr.ElseExpr:=DoParseExpression(IfExpr);
       // no postfix operators, CurToken is already the token behind the expression
       exit(IfExpr);
+      end;
+    tkcase:
+      begin
+      // case-expression: case Expr of Label1, Label2: Value1; ... else ElseValue end
+      if not (msStatementExpressions in CurrentModeswitches) then
+        ParseExcExpectedIdentifier;
+      CaseExpr:=TCaseExpr(CreateElement(TCaseExpr,'',AParent,CurTokenPos));
+      Last:=CaseExpr;
+      NextToken;
+      CaseExpr.CaseExpr:=DoParseExpression(CaseExpr);
+      CheckToken(tkof);
+      NextToken;
+      if CurToken in [tkelse,tkotherwise,tkend] then
+        ParseExc(nParserExpectCase,SParserExpectCase);
+      repeat
+        CaseBranch:=TCaseExprBranch(CreateElement(TCaseExprBranch,'',CaseExpr,CurTokenPos));
+        CaseExpr.Branches.Add(CaseBranch);
+        // read labels
+        repeat
+          CaseBranch.AddLabel(DoParseExpression(CaseBranch));
+          if CurToken=tkComma then
+            NextToken
+          else if CurToken<>tkColon then
+            ParseExcTokenError(TokenInfos[tkColon]);
+        until CurToken=tkColon;
+        NextToken;
+        CaseBranch.Value:=DoParseExpression(CaseBranch);
+        if CurToken=tkSemicolon then
+          NextToken
+        else if not (CurToken in [tkelse,tkotherwise,tkend]) then
+          ParseExcTokenError(TokenInfos[tkSemicolon]);
+      until CurToken in [tkelse,tkotherwise,tkend];
+      if CurToken in [tkelse,tkotherwise] then
+        begin
+        NextToken;
+        CaseExpr.ElseExpr:=DoParseExpression(CaseExpr);
+        if CurToken=tkSemicolon then
+          NextToken;
+        end;
+      CheckToken(tkend);
+      // CurToken is 'end', the NextToken below reads the postfix operators
+      end;
+    tktry:
+      begin
+      // try-except-expression:
+      //   try Expr except Value end
+      //   try Expr except on E: Type do Value1; on Type do Value2; else Value3 end
+      if not (msStatementExpressions in CurrentModeswitches) then
+        ParseExcExpectedIdentifier;
+      TryExpr:=TTryExceptExpr(CreateElement(TTryExceptExpr,'',AParent,CurTokenPos));
+      Last:=TryExpr;
+      NextToken;
+      TryExpr.TryExpr:=DoParseExpression(TryExpr);
+      CheckToken(tkexcept);
+      NextToken;
+      if (CurToken=tkIdentifier) and (CompareText(CurTokenString,'on')=0) then
+        begin
+        repeat
+          if (CurToken<>tkIdentifier) or (CompareText(CurTokenString,'on')<>0) then
+            ParseExcExpectedAorB('else','on');
+          TryOn:=TTryExceptExprOn(CreateElement(TTryExceptExprOn,'',TryExpr,CurTokenPos));
+          TryExpr.OnBranches.Add(TryOn);
+          ExpectIdentifier;
+          OnSrcPos:=CurSourcePos;
+          aName:=CurTokenString;
+          NextToken;
+          if CurToken=tkColon then
+            begin
+            // on E: Type do
+            NextToken;
+            OnTypeEl:=ParseSimpleType(TryOn,OnSrcPos,'');
+            TryOn.TypeEl:=OnTypeEl;
+            TryOn.VarEl:=TPasVariable(CreateElement(TPasVariable,aName,TryOn,OnSrcPos));
+            TryOn.VarEl.VarType:=OnTypeEl;
+            if OnTypeEl.Parent=TryOn then
+              OnTypeEl.Parent:=TryOn.VarEl;
+            end
+          else
+            begin
+            // on Type do
+            UngetToken;
+            TryOn.TypeEl:=ParseSimpleType(TryOn,OnSrcPos,'');
+            end;
+          Engine.FinishScope(stExceptOnExpr,TryOn);
+          ExpectToken(tkdo);
+          NextToken;
+          TryOn.Value:=DoParseExpression(TryOn);
+          Engine.FinishScope(stExceptOnStatement,TryOn);
+          if CurToken=tkSemicolon then
+            NextToken
+          else if not (CurToken in [tkelse,tkend]) then
+            ParseExcTokenError(TokenInfos[tkSemicolon]);
+        until CurToken in [tkelse,tkend];
+        // an else-branch is required
+        CheckToken(tkelse);
+        NextToken;
+        end;
+      TryExpr.ElseExpr:=DoParseExpression(TryExpr);
+      if CurToken=tkSemicolon then
+        NextToken;
+      CheckToken(tkend);
+      // CurToken is 'end', the NextToken below reads the postfix operators
       end
   else
     ParseExcExpectedIdentifier;
@@ -8339,6 +8449,15 @@ begin
     NextToken;
     end;
   Repeat
+    // Empty const section guard: a visibility specifier or "final" may follow
+    // "const" directly (empty generator output, IFDEF'ed-out bodies). Do not
+    // consume such a token as a constant name.
+    case CurToken of
+    tkAbsolute,
+    tkIdentifier:
+      if CheckVisibility(AVisibility) or CheckCurtokenIsFinal(aType) then
+        Exit;
+    end;
     SaveIdentifierPosition;
     C:=ParseConstDecl(AType);
     if assigned(C) then

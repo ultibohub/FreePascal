@@ -290,6 +290,8 @@ type
     procedure UseExprRef(El: TPasElement; Expr: TPasExpr;
       Access: TResolvedRefAccess; UseFull: boolean); virtual;
     procedure UseInheritedExpr(El: TInheritedExpr); virtual;
+    procedure UseCaseExpr(El: TCaseExpr); virtual;
+    procedure UseTryExceptExpr(El: TTryExceptExpr); virtual;
     procedure UseInlineSpecializeExpr(El: TInlineSpecializeExpr); virtual;
     procedure UseScopeReferences(Refs: TPasScopeReferences); virtual;
     procedure UseProcedure(Proc: TPasProcedure); virtual;
@@ -1931,10 +1933,47 @@ begin
     UseExpr(TIfExpr(El).ThenExpr);
     UseExpr(TIfExpr(El).ElseExpr);
     end
+  else if C=TCaseExpr then
+    UseCaseExpr(TCaseExpr(El))
+  else if C=TTryExceptExpr then
+    UseTryExceptExpr(TTryExceptExpr(El))
   else if C=TInlineSpecializeExpr then
     UseInlineSpecializeExpr(TInlineSpecializeExpr(El))
   else
     RaiseNotSupported(20170307085444,El);
+end;
+
+procedure TPasAnalyzer.UseCaseExpr(El: TCaseExpr);
+var
+  i, j: Integer;
+  Branch: TCaseExprBranch;
+begin
+  UseExpr(El.CaseExpr);
+  for i:=0 to El.Branches.Count-1 do
+    begin
+    Branch:=TCaseExprBranch(El.Branches[i]);
+    for j:=0 to Branch.Labels.Count-1 do
+      UseExpr(TPasExpr(Branch.Labels[j]));
+    UseExpr(Branch.Value);
+    end;
+  if El.ElseExpr<>nil then
+    UseExpr(El.ElseExpr);
+end;
+
+procedure TPasAnalyzer.UseTryExceptExpr(El: TTryExceptExpr);
+var
+  i: Integer;
+  Branch: TTryExceptExprOn;
+begin
+  UseExpr(El.TryExpr);
+  for i:=0 to El.OnBranches.Count-1 do
+    begin
+    Branch:=TTryExceptExprOn(El.OnBranches[i]);
+    // Note: VarEl is marked when actually used
+    UseElType(Branch,Branch.TypeEl,paumElement);
+    UseExpr(Branch.Value);
+    end;
+  UseExpr(El.ElseExpr);
 end;
 
 procedure TPasAnalyzer.UseExprRef(El: TPasElement; Expr: TPasExpr;

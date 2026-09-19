@@ -402,6 +402,27 @@ type
     Procedure TestIfExpr_CharOverloadWideChar;
     Procedure TestIfExpr_FloatConstOverloadDouble;
 
+    // case-expression
+    Procedure TestCaseExpr;
+    Procedure TestCaseExpr_IntAndStringFail;
+    Procedure TestCaseExpr_EnumNotCoveredFail;
+    Procedure TestCaseExpr_IntNoElseFail;
+    Procedure TestCaseExpr_StringNoElseFail;
+    Procedure TestCaseExpr_DuplicateLabelFail;
+    Procedure TestCaseExpr_AssignFail;
+    Procedure TestCaseExpr_ConstEval;
+    Procedure TestCaseExpr_Generic;
+    Procedure TestCaseExpr_ShortStrings;
+
+    // try-except-expression
+    Procedure TestTryExceptExpr;
+    Procedure TestTryExceptExpr_IncompatibleFail;
+    Procedure TestTryExceptExpr_AssignFail;
+    Procedure TestTryExceptExpr_OnNonClassFail;
+    Procedure TestTryExceptExpr_OnVarOutOfScopeFail;
+    Procedure TestTryExceptExpr_ConstFail;
+    Procedure TestTryExceptExpr_Generic;
+
     // misc built-in functions
     Procedure TestHighLow;
     Procedure TestStr_BaseTypes;
@@ -4698,6 +4719,333 @@ begin
   '  {@S}Fly(if b then single(1.5) else single(2.5));',
   '  {@D}Fly(if b then 1.5 else 2.5);',
   '  {@S}Fly(if b then single(1.5) else 2);',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestCaseExpr;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TAnimal = class end;',
+  '  TDog = class(TAnimal) end;',
+  '  TEnum = (red, green, blue);',
+  'var',
+  '  b: boolean;',
+  '  i: longint;',
+  '  by: byte;',
+  '  s: string;',
+  '  c: char;',
+  '  e: TEnum;',
+  '  a: TAnimal;',
+  '  d: TDog;',
+  'begin',
+  '  s:=case e of red: ''r''; green: ''g''; blue: ''b'' end;',
+  '  s:=case e of red: ''r''; else ''other'' end;',
+  '  s:=case e of red..green: ''r''; blue: ''b''; end;',
+  '  s:=case i of 1: ''a''; 2..4, 6: c; otherwise s end;',
+  '  s:=case s of ''a'': ''x''; ''b''..''d'': ''y''; else s end;',
+  '  i:=case b of false: by; true: i end;',
+  '  i:=case i of 1: 2; else if b then 3 else 4 end;',
+  '  i:=1+case i of 1: 2; else 3 end;',
+  '  a:=case i of 1: a; 2: d; 3: nil; else d end;',
+  '  i:=case e of red: 1; else case b of true: 2; false: 3 end end;',
+  '  if case i of 1: true; else false end then ;',
+  '']);
+  ParseProgram;
+  CheckResolverUnexpectedHints;
+end;
+
+procedure TTestResolver.TestCaseExpr_IntAndStringFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  '  s: string;',
+  'begin',
+  '  s:=case i of 0: ''Foo''; 5: 32; else ''FooBar'' end;',
+  '']);
+  CheckResolverException('Incompatible types: "String" and "Longint"',
+    nIncompatibleTypesGotExpected);
+end;
+
+procedure TTestResolver.TestCaseExpr_EnumNotCoveredFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TEnum = (red, green, blue);',
+  'var',
+  '  e: TEnum;',
+  '  s: string;',
+  'begin',
+  '  s:=case e of red: ''r''; green: ''g'' end;',
+  '']);
+  CheckResolverException(sCaseExprNotCovered,nCaseExprNotCovered);
+end;
+
+procedure TTestResolver.TestCaseExpr_IntNoElseFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  'begin',
+  '  i:=case i of 1: 2; end;',
+  '']);
+  CheckResolverException(sCaseExprNotCovered,nCaseExprNotCovered);
+end;
+
+procedure TTestResolver.TestCaseExpr_StringNoElseFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  s: string;',
+  'begin',
+  '  s:=case s of ''Foo'': ''Foo''; ''Bar'': ''Bar'' end;',
+  '']);
+  CheckResolverException(sCaseExprNotCovered,nCaseExprNotCovered);
+end;
+
+procedure TTestResolver.TestCaseExpr_DuplicateLabelFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  'begin',
+  '  i:=case i of 1: 2; 1: 3; else 4 end;',
+  '']);
+  CheckResolverException('Duplicate case value "1", other at afile.pp(6,16)',
+    nDuplicateCaseValueXatY);
+end;
+
+procedure TTestResolver.TestCaseExpr_AssignFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  'begin',
+  '  (case i of 1: i; else i end):=3;',
+  '']);
+  CheckResolverException(sVariableIdentifierExpected,nVariableIdentifierExpected);
+end;
+
+procedure TTestResolver.TestCaseExpr_ConstEval;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type TMyInt = 0..0;',
+  'const',
+  '  c = case 3 of 1: 0; 2..4: 1; else 0 end;',
+  '  d = case ''b'' of ''a'': 1; ''b'', ''c'': 0; else 1 end;',
+  'var i: TMyInt;',
+  'begin',
+  '  i:=d;',
+  '  i:=c;']);
+  ParseProgram;
+  // c is 1, which is out of range
+  CheckResolverHint(mtWarning,nRangeCheckEvaluatingConstantsVMinMax,
+    'range check error while evaluating constants (1 is not between 0 and 0)');
+  CheckResolverUnexpectedHints;
+end;
+
+procedure TTestResolver.TestCaseExpr_Generic;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  TBird<T> = class',
+  '    function Pick(b: boolean; x, y: T): T;',
+  '  end;',
+  'function TBird<T>.Pick(b: boolean; x, y: T): T;',
+  'begin',
+  '  Result:=case b of true: x; false: y end;',
+  'end;',
+  'var',
+  '  Bird: TBird<word>;',
+  '  w: word;',
+  'begin',
+  '  w:=Bird.Pick(true,1,2);',
+  '']);
+  ParseProgram;
+end;
+
+procedure TTestResolver.TestCaseExpr_ShortStrings;
+
+  procedure CheckResultType(Index: integer; Expected: TResolverBaseType);
+  var
+    Assign: TPasImplAssign;
+    CaseResolved: TPasResolverResult;
+  begin
+    Assign:=TObject(Module.InitializationSection.Elements[Index]) as TPasImplAssign;
+    ResolverEngine.ComputeElement(Assign.Right as TCaseExpr,CaseResolved,[]);
+    AssertEquals('statement '+IntToStr(Index)+' type',
+      ResBaseTypeNames[Expected],ResBaseTypeNames[CaseResolved.BaseType]);
+  end;
+
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type TShortStr = string[20];',
+  'var',
+  '  i: longint;',
+  '  aString: string;',
+  '  aShortString3: string[3];',
+  '  aShortString5: string[5];',
+  '  aShortStr20, aShortStr20b: TShortStr;',
+  'begin',
+  '  aString:=case i of 1: aShortString3; 2: aShortString3; else aShortString5 end;',
+  '  aString:=case i of 1: aShortStr20; else aShortStr20b end;',
+  '']);
+  ParseProgram;
+  CheckResolverUnexpectedHints;
+  // two different shortstrings -> String
+  CheckResultType(0,btString);
+  // same shortstring type -> keep it
+  CheckResultType(1,btShortString);
+end;
+
+procedure TTestResolver.TestTryExceptExpr;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class',
+  '    Name: string;',
+  '  end;',
+  '  TAnimal = class end;',
+  '  TDog = class(TAnimal) end;',
+  'function Get: string;',
+  'begin',
+  'end;',
+  'var',
+  '  b: boolean;',
+  '  i: longint;',
+  '  s: string;',
+  '  a: TAnimal;',
+  '  d: TDog;',
+  'begin',
+  '  s:=try Get except ''Error'' end;',
+  '  s:=try Get except on {#E1}E: TObject do {@E1}E.Name; else ''Error'' end;',
+  '  s:=try Get except on TObject do ''TObject''; on {#E2}E: TAnimal do {@E2}E.Name; else s; end;',
+  '  a:=try d except on TObject do a; else nil end;',
+  '  i:=1+try i except 2 end;',
+  '  i:=try if b then 1 else 2 except case i of 1: 3; else 4 end end;',
+  '  if try b except false end then ;',
+  '']);
+  ParseProgram;
+  CheckResolverUnexpectedHints;
+end;
+
+procedure TTestResolver.TestTryExceptExpr_IncompatibleFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  s: string;',
+  'begin',
+  '  s:=try s except 32 end;',
+  '']);
+  CheckResolverException('Incompatible types: "String" and "Longint"',
+    nIncompatibleTypesGotExpected);
+end;
+
+procedure TTestResolver.TestTryExceptExpr_AssignFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  'begin',
+  '  (try i except i end):=3;',
+  '']);
+  CheckResolverException(sVariableIdentifierExpected,nVariableIdentifierExpected);
+end;
+
+procedure TTestResolver.TestTryExceptExpr_OnNonClassFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'var',
+  '  i: longint;',
+  'begin',
+  '  i:=try i except on longint do 1; else 2 end;',
+  '']);
+  CheckResolverException('class expected, but Longint found',nXExpectedButYFound);
+end;
+
+procedure TTestResolver.TestTryExceptExpr_OnVarOutOfScopeFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class',
+  '    Name: string;',
+  '  end;',
+  'var',
+  '  s: string;',
+  'begin',
+  '  s:=try s except on E: TObject do E.Name; else E.Name end;',
+  '']);
+  CheckResolverException('identifier not found "E"',nIdentifierNotFound);
+end;
+
+procedure TTestResolver.TestTryExceptExpr_ConstFail;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'const',
+  '  c = try 1 except 2 end;',
+  'begin',
+  '']);
+  CheckResolverException(sConstantExpressionExpected,nConstantExpressionExpected);
+end;
+
+procedure TTestResolver.TestTryExceptExpr_Generic;
+begin
+  StartProgram(false);
+  Add([
+  '{$mode delphi}',
+  'type',
+  '  TObject = class end;',
+  '  EMsg<T> = class',
+  '    Msg: T;',
+  '  end;',
+  '  TBird<T> = class',
+  '    function Pick(x, y: T): T;',
+  '  end;',
+  'function TBird<T>.Pick(x, y: T): T;',
+  'begin',
+  '  Result:=try x except on E: EMsg<T> do E.Msg; on TObject do x; else y end;',
+  'end;',
+  'var',
+  '  Bird: TBird<word>;',
+  '  w: word;',
+  'begin',
+  '  w:=Bird.Pick(1,2);',
   '']);
   ParseProgram;
 end;

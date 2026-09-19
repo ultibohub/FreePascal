@@ -209,7 +209,7 @@ type
   TPasExprKind = (pekIdent, pekNumber, pekString, pekStringMultiLine, pekSet,
      pekNil, pekBoolConst,
      pekRange, pekUnary, pekBinary, pekFuncParams, pekArrayParams, pekListOfExp,
-     pekInherited, pekSelf, pekSpecialize, pekProcedure, pekNamedArg, pekIf);
+     pekInherited, pekSelf, pekSpecialize, pekProcedure, pekNamedArg, pekIf, pekCase, pekTry);
 
   TExprOpCode = (eopNone,
                  eopAdd,eopSubtract,eopMultiply,eopDivide{/}, eopDiv{div},eopMod, eopPower,// arithmetic
@@ -1415,6 +1415,67 @@ type
       const Arg: Pointer); override;
   end;
 
+  { TCaseExprBranch - one branch of a case-expression: Label1, Label2: Value }
+
+  TCaseExprBranch = class(TPasElement)
+  public
+    Labels: TFPList; // list of TPasExpr, e.g. values or ranges
+    Value: TPasExpr;
+    constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
+    destructor Destroy; override;
+    procedure FreeChildren(Prepare: boolean); override;
+    procedure AddLabel(const Expr: TPasExpr);
+    function GetDeclaration(full: Boolean): TPasTreeString; override;
+    procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
+      const Arg: Pointer); override;
+  end;
+
+  { TCaseExpr - case CaseExpr of Branches else ElseExpr end }
+
+  TCaseExpr = class(TPasExpr)
+  public
+    CaseExpr: TPasExpr;
+    Branches: TFPList; // list of TCaseExprBranch
+    ElseExpr: TPasExpr; // can be nil
+    constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
+    destructor Destroy; override;
+    procedure FreeChildren(Prepare: boolean); override;
+    function AddBranch: TCaseExprBranch;
+    function GetDeclaration(full: Boolean): TPasTreeString; override;
+    procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
+      const Arg: Pointer); override;
+  end;
+
+  { TTryExceptExprOn - one on-branch of a try-except-expression: on E: TypeEl do Value }
+
+  TTryExceptExprOn = class(TPasElement)
+  public
+    VarEl: TPasVariable; // can be nil
+    TypeEl: TPasType; // if VarEl<>nil then TypeEl=VarEl.VarType
+    Value: TPasExpr;
+    procedure FreeChildren(Prepare: boolean); override;
+    function GetDeclaration(full: Boolean): TPasTreeString; override;
+    procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
+      const Arg: Pointer); override;
+    procedure ClearTypeReferences(aType: TPasElement); override;
+  end;
+
+  { TTryExceptExpr - try TryExpr except OnBranches else ElseExpr end
+    or try TryExpr except ElseExpr end }
+
+  TTryExceptExpr = class(TPasExpr)
+  public
+    TryExpr: TPasExpr;
+    OnBranches: TFPList; // list of TTryExceptExprOn
+    ElseExpr: TPasExpr;
+    constructor Create(const AName: TPasTreeString; AParent: TPasElement); override;
+    destructor Destroy; override;
+    procedure FreeChildren(Prepare: boolean); override;
+    function GetDeclaration(full: Boolean): TPasTreeString; override;
+    procedure ForEachCall(const aMethodCall: TOnForEachPasElement;
+      const Arg: Pointer); override;
+  end;
+
   { TPasMethodResolution }
 
   TPasMethodResolution = class(TPasElement)
@@ -1888,7 +1949,9 @@ const
       'Specialize',
       'Procedure',
       'NamedArg',
-      'If');
+      'If',
+      'Case',
+      'Try');
 
   OpcodeStrings : Array[TExprOpCode] of TPasTreeString = (
         '','+','-','*','/','div','mod','**',
@@ -2721,6 +2784,212 @@ begin
   inherited ForEachCall(aMethodCall, Arg);
   ForEachChildCall(aMethodCall,Arg,ConditionExpr,false);
   ForEachChildCall(aMethodCall,Arg,ThenExpr,false);
+  ForEachChildCall(aMethodCall,Arg,ElseExpr,false);
+end;
+
+{ TCaseExprBranch }
+
+constructor TCaseExprBranch.Create(const AName: TPasTreeString;
+  AParent: TPasElement);
+begin
+  inherited Create(AName,AParent);
+  Labels:=TFPList.Create;
+end;
+
+destructor TCaseExprBranch.Destroy;
+begin
+  FreeAndNil(Labels);
+  inherited Destroy;
+end;
+
+procedure TCaseExprBranch.FreeChildren(Prepare: boolean);
+begin
+  FreeChildList(Labels,Prepare);
+  Value:=TPasExpr(FreeChild(Value,Prepare));
+  inherited FreeChildren(Prepare);
+end;
+
+procedure TCaseExprBranch.AddLabel(const Expr: TPasExpr);
+begin
+  Labels.Add(Expr);
+end;
+
+function TCaseExprBranch.GetDeclaration(full: Boolean): TPasTreeString;
+var
+  i: Integer;
+begin
+  Result:='';
+  for i:=0 to Labels.Count-1 do
+    begin
+    if i>0 then
+      Result:=Result+', ';
+    Result:=Result+TPasExpr(Labels[i]).GetDeclaration(full);
+    end;
+  Result:=Result+': ';
+  if Value<>nil then
+    Result:=Result+Value.GetDeclaration(full);
+end;
+
+procedure TCaseExprBranch.ForEachCall(const aMethodCall: TOnForEachPasElement;
+  const Arg: Pointer);
+var
+  i: Integer;
+begin
+  inherited ForEachCall(aMethodCall, Arg);
+  for i:=0 to Labels.Count-1 do
+    ForEachChildCall(aMethodCall,Arg,TPasElement(Labels[i]),false);
+  ForEachChildCall(aMethodCall,Arg,Value,false);
+end;
+
+{ TCaseExpr }
+
+constructor TCaseExpr.Create(const AName: TPasTreeString; AParent: TPasElement);
+begin
+  inherited Create(AName,AParent);
+  Kind:=pekCase;
+  OpCode:=eopNone;
+  Branches:=TFPList.Create;
+end;
+
+destructor TCaseExpr.Destroy;
+begin
+  FreeAndNil(Branches);
+  inherited Destroy;
+end;
+
+procedure TCaseExpr.FreeChildren(Prepare: boolean);
+begin
+  CaseExpr:=TPasExpr(FreeChild(CaseExpr,Prepare));
+  FreeChildList(Branches,Prepare);
+  ElseExpr:=TPasExpr(FreeChild(ElseExpr,Prepare));
+  inherited FreeChildren(Prepare);
+end;
+
+function TCaseExpr.AddBranch: TCaseExprBranch;
+begin
+  Result:=TCaseExprBranch.Create('',Self);
+  Branches.Add(Result);
+end;
+
+function TCaseExpr.GetDeclaration(full: Boolean): TPasTreeString;
+var
+  i: Integer;
+begin
+  Result:='case ';
+  if CaseExpr<>nil then
+    Result:=Result+CaseExpr.GetDeclaration(full);
+  Result:=Result+' of ';
+  for i:=0 to Branches.Count-1 do
+    begin
+    if i>0 then
+      Result:=Result+'; ';
+    Result:=Result+TCaseExprBranch(Branches[i]).GetDeclaration(full);
+    end;
+  if ElseExpr<>nil then
+    Result:=Result+'; else '+ElseExpr.GetDeclaration(full);
+  Result:=Result+' end';
+end;
+
+procedure TCaseExpr.ForEachCall(const aMethodCall: TOnForEachPasElement;
+  const Arg: Pointer);
+var
+  i: Integer;
+begin
+  inherited ForEachCall(aMethodCall, Arg);
+  ForEachChildCall(aMethodCall,Arg,CaseExpr,false);
+  for i:=0 to Branches.Count-1 do
+    ForEachChildCall(aMethodCall,Arg,TPasElement(Branches[i]),false);
+  ForEachChildCall(aMethodCall,Arg,ElseExpr,false);
+end;
+
+{ TTryExceptExprOn }
+
+procedure TTryExceptExprOn.FreeChildren(Prepare: boolean);
+begin
+  VarEl:=TPasVariable(FreeChild(VarEl,Prepare));
+  TypeEl:=TPasType(FreeChild(TypeEl,Prepare));
+  Value:=TPasExpr(FreeChild(Value,Prepare));
+  inherited FreeChildren(Prepare);
+end;
+
+function TTryExceptExprOn.GetDeclaration(full: Boolean): TPasTreeString;
+begin
+  Result:='on ';
+  if VarEl<>nil then
+    Result:=Result+VarEl.Name+': ';
+  if TypeEl<>nil then
+    Result:=Result+TypeEl.GetDeclaration(false);
+  Result:=Result+' do ';
+  if Value<>nil then
+    Result:=Result+Value.GetDeclaration(full);
+end;
+
+procedure TTryExceptExprOn.ForEachCall(const aMethodCall: TOnForEachPasElement;
+  const Arg: Pointer);
+begin
+  inherited ForEachCall(aMethodCall, Arg);
+  ForEachChildCall(aMethodCall,Arg,VarEl,false);
+  ForEachChildCall(aMethodCall,Arg,TypeEl,true);
+  ForEachChildCall(aMethodCall,Arg,Value,false);
+end;
+
+procedure TTryExceptExprOn.ClearTypeReferences(aType: TPasElement);
+begin
+  if TypeEl=aType then
+    TypeEl:=nil;
+end;
+
+{ TTryExceptExpr }
+
+constructor TTryExceptExpr.Create(const AName: TPasTreeString;
+  AParent: TPasElement);
+begin
+  inherited Create(AName,AParent);
+  Kind:=pekTry;
+  OpCode:=eopNone;
+  OnBranches:=TFPList.Create;
+end;
+
+destructor TTryExceptExpr.Destroy;
+begin
+  FreeAndNil(OnBranches);
+  inherited Destroy;
+end;
+
+procedure TTryExceptExpr.FreeChildren(Prepare: boolean);
+begin
+  TryExpr:=TPasExpr(FreeChild(TryExpr,Prepare));
+  FreeChildList(OnBranches,Prepare);
+  ElseExpr:=TPasExpr(FreeChild(ElseExpr,Prepare));
+  inherited FreeChildren(Prepare);
+end;
+
+function TTryExceptExpr.GetDeclaration(full: Boolean): TPasTreeString;
+var
+  i: Integer;
+begin
+  Result:='try ';
+  if TryExpr<>nil then
+    Result:=Result+TryExpr.GetDeclaration(full);
+  Result:=Result+' except ';
+  for i:=0 to OnBranches.Count-1 do
+    Result:=Result+TTryExceptExprOn(OnBranches[i]).GetDeclaration(full)+'; ';
+  if OnBranches.Count>0 then
+    Result:=Result+'else ';
+  if ElseExpr<>nil then
+    Result:=Result+ElseExpr.GetDeclaration(full);
+  Result:=Result+' end';
+end;
+
+procedure TTryExceptExpr.ForEachCall(const aMethodCall: TOnForEachPasElement;
+  const Arg: Pointer);
+var
+  i: Integer;
+begin
+  inherited ForEachCall(aMethodCall, Arg);
+  ForEachChildCall(aMethodCall,Arg,TryExpr,false);
+  for i:=0 to OnBranches.Count-1 do
+    ForEachChildCall(aMethodCall,Arg,TPasElement(OnBranches[i]),false);
   ForEachChildCall(aMethodCall,Arg,ElseExpr,false);
 end;
 
