@@ -658,9 +658,11 @@ Type
 {TBits Class}
 
 type
-   TBitsBase = PtrInt;
+   TBitsBase = PtrUint;
    PBitsBase = ^TBitsBase;
-   TBitsBaseUnsigned = PtrUint;
+   TBitsBaseSigned = PtrInt;
+   TBitsOpTruth = 0 .. 15 {%1111};
+   TBitsOpCallback = function(A, B: TBitsBase): TBitsBase;
 
 const
    MaxBitFlags = High(SizeInt) - (bitsizeof(TBitsBase) - 1);
@@ -672,8 +674,8 @@ type
       FSize : SizeInt;  { total TBitsBases currently allocated }
       FBSize: SizeInt;  {total bits currently allocated}
       findIndex : SizeInt;
-      findXorMask : int8; { 0 (all zeros) or -1 (all ones), sign-extended to TBitsBase on read.
-                            0 is for searching ones, -1 is for searching zeros. }
+      findXorMask : TBitsBase; { 0 (all zeros) or High(TBitsBase) (all ones).
+                                 0 is for searching ones, High(TBitsBase) is for searching zeros. }
 
       function ScanFor1(start : SizeInt; xorMask : TBitsBase) : SizeInt;
       function ScanFor1Rev(start : SizeInt; xorMask : TBitsBase) : SizeInt;
@@ -684,7 +686,7 @@ type
    Protected
       procedure CheckBitIndex (Bit : SizeInt;CurrentSize : Boolean);
    public
-      constructor Create(TheSize : longint = 0); virtual;
+      constructor Create(aSize : SizeInt = 0); virtual;
       destructor Destroy; override;
       function  GetFSize : SizeInt;
       procedure SetOn(Bit : SizeInt);
@@ -699,15 +701,122 @@ type
       procedure Grow(NBit : SizeInt);
       function  Equals(Obj : TObject): Boolean; override; overload;
       function  Equals(BitSet : TBits) : Boolean; overload;
+
       procedure SetIndex(Index : SizeInt);
       function  FindFirstBit(State : boolean) : SizeInt;
       function  FindNextBit : SizeInt;
       function  FindPrevBit : SizeInt;
 
+      { Searches that store no state inside TBits. }
+      function Find(State: boolean; StartIndex: SizeInt): SizeInt;
+      function FindRev(State: boolean; StartIndex: SizeInt): SizeInt;
+      function Find0(StartIndex: SizeInt): SizeInt;
+      function Find0Rev(StartIndex: SizeInt): SizeInt;
+      function Find1(StartIndex: SizeInt): SizeInt;
+      function Find1Rev(StartIndex: SizeInt): SizeInt;
+
       { functions and properties to match TBits class }
       function OpenBit: SizeInt;
       property Bits[Bit: SizeInt]: Boolean read get write SetBit; default;
       property Size: SizeInt read FBSize write setSize;
+
+      { Bit moves. }
+      class procedure MoveRange(SrcBf: TBits; SrcPos: SizeInt; DstBf: TBits; DstPos, Count: SizeInt); static;
+      procedure MoveRange(SrcPos, DstPos, Count: SizeInt); inline;
+   private
+      procedure ValidateRange(Pos, Count: SizeInt);
+      procedure FitRange(Pos, Count: SizeInt);
+      procedure ThrowBadRange(Pos, Count: SizeInt);
+      class procedure MoveUnalignedSrcToAlignedDest(Src, Dst: PBitsBase; Count, Src1Bits: SizeInt); static;
+      class procedure MoveUnalignedSrcToAlignedDestRightToLeft(SrcR, DstR: PBitsBase; Count, Src0Bits: SizeInt); static;
+      class function ReadSmall(Src: PBitsBase; Pos, Count: SizeInt): TBitsBase; static;
+      class procedure Write1(Dst: PBitsBase; Pos, Count: SizeInt; Value: TBitsBase); static;
+
+   public
+      { Interpreting bits as numbers. }
+      function GetUint(Pos, Count: SizeInt): Cardinal;
+      procedure SetUint(Pos, Count: SizeInt; Value: Cardinal);
+
+      { Bitwise operations on subranges. }
+      procedure NotRange(Pos, Count: SizeInt);
+      procedure AndRange(Pos: SizeInt; B: TBits; BPos, Count: SizeInt); inline;
+      procedure OrRange(Pos: SizeInt; B: TBits; BPos, Count: SizeInt); inline;
+      procedure XorRange(Pos: SizeInt; B: TBits; BPos, Count: SizeInt); inline;
+      procedure AndNotRange(Pos: SizeInt; B: TBits; BPos, Count: SizeInt); inline;
+
+      { Generic two-input boolean operation. OpTruth is %XYZW of truth table:
+        A B | R
+        0 0 | W
+        0 1 | Z
+        1 0 | Y
+        1 1 | X }
+      procedure OpRange(Pos: SizeInt; BBf: TBits; BPos, Count: SizeInt; OpTruth: TBitsOpTruth);
+   private
+      class procedure OpAlignedAB(A, B: PBitsBase; Count: SizeInt; Op: TBitsOpCallback); static;
+      class procedure OpAlignedAUnalignedB(A, B: PBitsBase; Count, B1Bits: SizeInt; Op: TBitsOpCallback); static;
+      class procedure OpAlignedABRightToLeft(AR, BR: PBitsBase; Count: SizeInt; Op: TBitsOpCallback); static;
+      class procedure OpAlignedAUnalignedBRightToLeft(AR, BR: PBitsBase; Count, B0Bits: SizeInt; Op: TBitsOpCallback); static;
+
+      class function _0001_Nor(A, B: TBitsBase): TBitsBase; static;
+      class function _0010_AInhibitsB(A, B: TBitsBase): TBitsBase; static;
+      class function _0100_BInhibitsA(A, B: TBitsBase): TBitsBase; static;
+      class function _0110_Xor(A, B: TBitsBase): TBitsBase; static;
+      class function _0111_Nand(A, B: TBitsBase): TBitsBase; static;
+      class function _1000_And(A, B: TBitsBase): TBitsBase; static;
+      class function _1001_Equiv(A, B: TBitsBase): TBitsBase; static;
+      class function _1011_AImpliesB(A, B: TBitsBase): TBitsBase; static;
+      class function _1101_BImpliesA(A, B: TBitsBase): TBitsBase; static;
+      class function _1110_Or(A, B: TBitsBase): TBitsBase; static;
+
+   public
+      { Fill subrange with 0s or 1s. }
+      procedure ClearRange(Pos, Count: SizeInt);
+      procedure SetRange(Pos, Count: SizeInt);
+
+      { Count 1s in subrange. }
+      function PopCount(Pos, Count: SizeInt; Lim: SizeInt = High(SizeInt)): SizeInt;
+      { Count 1s in AndRange. }
+      function IntersectionPopCount(Pos: SizeInt; BBf: TBits; BPos, Count: SizeInt; Lim: SizeInt = High(SizeInt)): SizeInt;
+      { Shortcut for "IntersectionPopCount > 0". }
+      function HasIntersection(Pos: SizeInt; B: TBits; BPos, Count: SizeInt): boolean; inline;
+   private
+      class function IntersectionPopCountAlignedAB(A, B: PBitsBase; Count, Lim: SizeInt): SizeInt; static;
+      class function IntersectionPopCountAlignedAUnalignedB(A, B: PBitsBase; Count, B1Bits, Lim: SizeInt): SizeInt; static;
+
+   public
+      { Convert to portable bitfield with byte base type. }
+      function DumpBinary(Pos, Count: SizeInt; Bin: PByte; BinAvail: SizeInt): SizeInt;
+   private
+{$ifndef endian_little}
+      class procedure DumpBinaryAligned(B: PBitsBase; Count: SizeInt; Bin: PByte); static;
+{$endif}
+      class procedure DumpBinaryUnaligned(B: PBitsBase; B1Bits, Count: SizeInt; Bin: PByte); static;
+      class procedure ThrowInsufficientBuffer(Required, Avail: SizeInt); static;
+
+   public
+      { Load from portable bitfield with byte base type. }
+      function LoadBinary(Pos, Count: SizeInt; Bin: PByte; BinAvail: SizeInt): SizeInt;
+   private
+{$ifndef endian_little}
+      class procedure LoadBinaryAligned(B: PBitsBase; Count: SizeInt; Bin: PByte); static;
+{$endif}
+      class procedure LoadBinaryUnaligned(B: PBitsBase; Count: SizeInt; Bin: PByte; Bin1Bits: SizeInt); static;
+      class function ReadSmallBinary(Bin: PByte; Pos, Count: SizeInt): TBitsBase; static;
+
+   public
+      { Convert to text. }
+      function DumpText(Pos, Count: SizeInt; const S0, S1: string; Buf: PChar; BufAvail: SizeInt): SizeInt;
+      function DumpText(Pos, Count: SizeInt; const S0, S1: string): string;
+   private
+      function DumpTextCC(Pos, Count: SizeInt; C0, C1: Char; Buf: PChar; BufAvail: SizeInt): SizeInt;
+
+   public
+      { Load from text. }
+      function LoadText(Pos, Count: SizeInt; const S0, S1: string; Buf: PChar; BufAvail: SizeInt): SizeInt;
+      procedure LoadText(Pos, Count: SizeInt; const S0, S1, Src: string);
+   private
+      function LoadTextCC(Pos, Count: SizeInt; C0, C1: Char; Buf: PChar; BufAvail: SizeInt): SizeInt;
+      class procedure ThrowLoadTextError(BufAvail: SizeInt; const S0, S1: string); static;
    end;
 
 { TPersistent abstract class }
