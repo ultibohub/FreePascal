@@ -199,6 +199,9 @@ const
   nAbsoluteOnlyToVarOrConst = 3096; // same ID as FPC parser_e_absolute_only_to_var_or_const
   nSealedClassCannotHaveAbstractMethod = 3255; // FPC parser_e_sealed_class_cannot_have_abstract_methods
   nForInLoopCannotBeUsedForType = 3265; // FPC parser_e_for_in_loop_cannot_be_used_for_the_type
+  nDuplicateIdentifierX = 5095; // FPC sym_w_duplicate_id
+  nRecordTypeExpected = 5102; // FPC sym_e_type_must_be_record
+  nIdentifierXCannotBeOverloadedForTypeY = 5103; // FPC sym_w_overload_not_possible
 
 // resourcestring patterns of messages
 resourcestring
@@ -358,6 +361,9 @@ resourcestring
   sAbsoluteOnlyToVarOrConst = 'absolute can only be associated with a variable or constant representing an address';
   sSealedClassCannotHaveAbstractMethod = 'SEALED class cannot have an ABSTRACT method';
   sForInLoopCannotBeUsedForType = 'For in loop cannot be used for the type "%s"';
+  sDuplicateIdentifierX = 'Duplicate identifier "%s"';
+  sRecordTypeExpected = 'Record type expected';
+  sIdentifierXCannotBeOverloadedForTypeY = 'Identifier "%s" cannot be overloaded for type "%s"';
 
 type
   { TResolveData - base class for data stored in TPasElement.CustomData }
@@ -2115,15 +2121,23 @@ begin
     UInt:=TResEvalUInt(LeftValue).UInt;
     case RightValue.Kind of
     revkInt:
-      // uint - int
+      // uint - int: a small uint with a signed result, or a big uint minus a
+      // negative int, must not trip the range check of the qword conversion
+      // (SynEdit)
       try
         {$Q+}
-        UInt:=UInt - TResEvalInt(RightValue).Int;
+        if UInt<=TMaxPrecUInt(High(TMaxPrecInt)) then
+          Result:=TResEvalInt.CreateValue(TMaxPrecInt(UInt) - TResEvalInt(RightValue).Int)
+        else if TResEvalInt(RightValue).Int<0 then
+          Result:=TResEvalUInt.CreateValue(UInt + TMaxPrecUInt(-(TResEvalInt(RightValue).Int+1))+1)
+        else
+          Result:=TResEvalUInt.CreateValue(UInt - TMaxPrecUInt(TResEvalInt(RightValue).Int));
         {$IFNDEF OverflowCheckOn}{$Q-}{$ENDIF}
-        Result:=TResEvalUInt.CreateValue(UInt);
       except
         on E: EOverflow do
           RaiseOverflowArithmetic(20170711151405,Expr);
+        on E: ERangeError do
+          RaiseOverflowArithmetic(20260927150000,Expr);
       end;
     revkUInt:
       // uint - uint
@@ -3997,7 +4011,12 @@ begin
         if Result.ElKind=revskNone then
           begin
           Result.ElKind:=revskEnum;
-          Result.ElType:=Value.IdentEl.Parent as TPasEnumType;
+          // The value's own enum type: IdentEl may be a constant naming the
+          // enum value, whose parent is a section.
+          if TResEvalEnum(Value).ElType<>nil then
+            Result.ElType:=TResEvalEnum(Value).ElType
+          else
+            Result.ElType:=Value.IdentEl.Parent as TPasEnumType;
           end
         else if Result.ElKind<>revskEnum then
           RaiseNotYetImplemented(20170713143559,El)
@@ -5719,6 +5738,31 @@ end;
 
 function TResExprEvaluator.EnumTypeCast(EnumType: TPasEnumType; Expr: TPasExpr;
   Flags: TResEvalFlags): TResEvalEnum;
+
+  function SetBitMask(aSet: TResEvalSet): Integer;
+  // bit N set for element N, as a small set is stored
+  var
+    i, j, lo, hi: Integer;
+  begin
+    Result:=0;
+    for i:=0 to length(aSet.Ranges)-1 do
+      begin
+      // only bits 0..30 fit; clip first, a loop variable must be an Integer
+      if (aSet.Ranges[i].RangeEnd<0) or (aSet.Ranges[i].RangeStart>30) then
+        continue;
+      if aSet.Ranges[i].RangeStart<0 then
+        lo:=0
+      else
+        lo:=aSet.Ranges[i].RangeStart;
+      if aSet.Ranges[i].RangeEnd>30 then
+        hi:=30
+      else
+        hi:=aSet.Ranges[i].RangeEnd;
+      for j:=lo to hi do
+        Result:=Result or (1 shl j);
+      end;
+  end;
+
 var
   Value: TResEvalValue;
   MaxIndex, Index: Integer;
@@ -5749,6 +5793,9 @@ begin
           IntToStr(TResEvalEnum(Value).Index),'0',IntToStr(MaxIndex),Expr,mtError)
       else
         Index:=TResEvalEnum(Value).Index;
+    revkSetOfInt:
+      // a small set reinterpreted as an enum (FPC): its bit mask is the ordinal
+      Index:=SetBitMask(TResEvalSet(Value));
     else
       RaiseNotYetImplemented(20170713105625,Expr);
     end;
