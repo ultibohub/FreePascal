@@ -34,7 +34,7 @@ uses dynlibs;
 {$ENDIF FPC_DOTTEDUNITS}
 
 type
-  UErrorCode = SizeInt;
+  UErrorCode = longint;
   int32_t = longint;
   uint32_t = longword;
   PUConverter = pointer;
@@ -98,6 +98,7 @@ begin
   err:=0;
   Result:=ucnv_open(PAnsiChar(name), err);
   if Result <> nil then begin
+    err:=0;
     ucnv_setSubstChars(Result, '?', 1, err);
     ucnv_setFallback(Result, True);
   end;
@@ -295,7 +296,7 @@ begin
     Result:=_CompareStr(s1, s2);
     exit;
   end;
-  if (coIgnoreCase in Options) then begin
+  if (Options*[coIgnoreCase,coLingIgnoreCase]<>[]) then begin
     err:=0;
     Result:=u_strCaseCompare(PUnicodeChar(s1), Length(s1), PUnicodeChar(s2), Length(s2), U_COMPARE_CODE_POINT_ORDER, err);
   end

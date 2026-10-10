@@ -3963,14 +3963,21 @@ begin
         end;
       revkUInt:
         begin
+        // Note: when FPC compares int64 with qword it converts the qword to an int64
+        if TResEvalUInt(Value).UInt>HighIntAsUInt then
+          begin
+          if AsArray then
+            begin
+            ReleaseEvalValue(Value);
+            continue;
+            end;
+          EmitRangeCheckConst(20170713201306,Value.AsString,
+            '0',IntToStr(High(TMaxPrecInt)),El,mtError);
+          end;
         if Result.ElKind=revskNone then
           Result.ElKind:=revskInt
         else if Result.ElKind<>revskInt then
-          RaiseNotYetImplemented(20170713201230,El)
-        // Note: when FPC compares int64 with qword it converts the qword to an int64
-        else if TResEvalUInt(Value).UInt>HighIntAsUInt then
-          EmitRangeCheckConst(20170713201306,Value.AsString,
-            '0',IntToStr(High(TMaxPrecInt)),El,mtError);
+          RaiseNotYetImplemented(20170713201230,El);
         RangeStart:=TResEvalUInt(Value).UInt;
         RangeEnd:=RangeStart;
         end;
@@ -4040,14 +4047,21 @@ begin
         end;
       revkRangeUInt:
         begin
+        // Note: when FPC compares int64 with qword it converts the qword to an int64
+        if TResEvalRangeUInt(Value).RangeEnd>HighIntAsUInt then
+          begin
+          if AsArray then
+            begin
+            ReleaseEvalValue(Value);
+            continue;
+            end;
+          EmitRangeCheckConst(20170713203034,Value.AsString,
+            '0',IntToStr(High(TMaxPrecInt)),El,mtError);
+          end;
         if Result.ElKind=revskNone then
           Result.ElKind:=revskInt
         else if Result.ElKind<>revskInt then
-          RaiseNotYetImplemented(20170713202934,El)
-        // Note: when FPC compares int64 with qword it converts the qword to an int64
-        else if TResEvalRangeUInt(Value).RangeEnd>HighIntAsUInt then
-          EmitRangeCheckConst(20170713203034,Value.AsString,
-            '0',IntToStr(High(TMaxPrecInt)),El,mtError);
+          RaiseNotYetImplemented(20170713202934,El);
         RangeStart:=TResEvalRangeUInt(Value).RangeStart;
         RangeEnd:=TResEvalRangeUInt(Value).RangeEnd;
         end
@@ -4621,9 +4635,10 @@ var
       AddHash(u);
       exit;
       end;
-    // non ASCII
+    // non ASCII; a value that is already UTF-16 stays UTF-16
     FetchTargetCP;
-    if (TargetCP=CP_UTF16) or (TargetCP=CP_UTF16BE) or (u>255) then
+    if (TargetCP=CP_UTF16) or (TargetCP=CP_UTF16BE) or (u>255)
+        or (Value.Kind=revkUnicodeString) then
       begin
       ForceUTF16;
       ValueUTF16:=TResEvalUTF16(Value);

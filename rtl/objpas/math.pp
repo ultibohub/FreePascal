@@ -83,6 +83,8 @@ Const
       }
       MinSingle    =  1.1754943508e-38;
       MaxSingle    =  3.4028234664e+38;
+      { distance from 1.0 to the next larger Single, 2^-23 }
+      MachEpsSingle = 1.1920928955078125e-7;
 {$endif FPC_HAS_TYPE_SINGLE}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
     const
@@ -91,13 +93,38 @@ Const
       }
       MinDouble    =  2.2250738585072014e-308;
       MaxDouble    =  1.7976931348623157e+308;
+      { distance from 1.0 to the next larger Double, 2^-52 }
+      MachEpsDouble = 2.220446049250313080847e-16;
 {$endif FPC_HAS_TYPE_DOUBLE}
+
 {$ifdef FPC_HAS_TYPE_EXTENDED}
     const
       MinExtended  =  3.36210314311209350626e-4932;
       MaxExtended  =  1.18973149535723176502e+4932;
+      { distance from 1.0 to the next larger Extended, 2^-63 }
+      MachEpsExtended = 1.084202172485504434007e-19;
+{$ELSE FPC_HAS_TYPE_EXTENDED}
+
+{$IFDEF FPC_HAS_TYPE_DOUBLE}
+    // Delphi defines them too for Win64
+    const
+      MinExtended = MinDouble;
+      MaxExtended = MaxDouble;
+      MachEpsExtended = MachEpsDouble;
+{$ELSE FPC_HAS_TYPE_DOUBLE} 
+
+{$IFDEF FPC_HAS_TYPE_SINGLE}
+    // Delphi defines them too for Win64
+    const
+      MinExtended = MinSingle;
+      MaxExtended = MaxSingle;
+      MachEpsExtended = MachEpsSingle;
+{$ENDIF FPC_HAS_TYPE_SINGLE}     
+
+{$ENDIF FPC_HAS_TYPE_DOUBLE}   
 
 {$endif FPC_HAS_TYPE_EXTENDED}
+
 {$ifdef FPC_HAS_TYPE_COMP}
     const
       MinComp      = -9.223372036854775807e+18;
@@ -116,6 +143,7 @@ Const
       const
          MinFloat = MinFloat128;
          MaxFloat = MaxFloat128;
+         MachEpsFloat = 1.925929944387235853056e-34;
 {$elseif defined(FPC_HAS_TYPE_EXTENDED)}
       type
          Float = extended;
@@ -123,6 +151,7 @@ Const
       const
          MinFloat = MinExtended;
          MaxFloat = MaxExtended;
+         MachEpsFloat = MachEpsExtended;
 {$elseif defined(FPC_HAS_TYPE_DOUBLE)}
       type
          Float = double;
@@ -130,6 +159,7 @@ Const
       const
          MinFloat = MinDouble;
          MaxFloat = MaxDouble;
+         MachEpsFloat = MachEpsDouble;
 {$elseif defined(FPC_HAS_TYPE_SINGLE)}
       type
          Float = single;
@@ -137,6 +167,7 @@ Const
       const
          MinFloat = MinSingle;
          MaxFloat = MaxSingle;
+         MachEpsFloat = MachEpsSingle;
 {$else}
         {$fatal At least one floating point type must be supported}
 {$endif}
@@ -246,6 +277,10 @@ function FMod(const a, b: Extended): Extended;inline;overload;
 {$endif FPC_HAS_TYPE_EXTENDED}
 
 operator mod(const a,b:float) c:float;inline;
+{ a-b*Int(a/b); a result equal to abs(b) is returned as 0. Equal means within
+  Float resolution, or, unless a and b are both integral, within abs(a) times
+  the machine epsilon of Single when a and b are both exactly representable as
+  Single, of Double when both are as Double, of Float otherwise. }
 
 // Sign functions
 Type
@@ -608,7 +643,11 @@ function ExpM1(x : extended) : extended;
 { exponential functions }
 
 function Power(base,exponent : float) : float;
-{ base^exponent }
+{ base^exponent, with the C99 border cases:
+  power(x,0)=1 and power(1,y)=1, also for NaN; otherwise NaN in either argument gives NaN;
+  power(-1,+-Inf)=1; power(x,+Inf) is 0 for abs(x)<1 and +Inf for abs(x)>1;
+  power(x,-Inf) is +Inf for abs(x)<1 and 0 for abs(x)>1;
+  a negative base with an integral exponent beyond the longint range keeps the sign of an odd power }
 function IntPower(base : float;exponent : longint) : float;
 
 operator ** (base,exponent : float) e: float; inline;
@@ -856,6 +895,7 @@ function CompareValue ( const A, B  : Integer) : TValueRelationship; inline;
 function CompareValue ( const A, B  : Int64) : TValueRelationship; inline;
 function CompareValue ( const A, B  : QWord) : TValueRelationship; inline;
 
+function CompareValue(const A, B: Currency): TValueRelationship;
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function CompareValue ( const A, B : Single; delta : Single = 0.0 ) : TValueRelationship; inline;
 {$endif}
@@ -1967,12 +2007,29 @@ end;
 
 function power(base,exponent : float) : float;
   begin
-    if Exponent=0.0 then
+    if (exponent=0.0) or (base=1.0) then
       result:=1.0
+    else if IsNan(base) or IsNan(exponent) then
+      result:=NaN
+    else if IsInfinite(exponent) then
+      begin
+        if abs(base)=1.0 then
+          result:=1.0
+        else if (abs(base)<1.0)=(exponent>0.0) then
+          result:=0.0
+        else
+          result:=Infinity;
+      end
     else if (base=0.0) and (exponent>0.0) then
       result:=0.0
     else if (frac(exponent)=0.0) and (abs(exponent)<=maxint) then
       result:=intpower(base,trunc(exponent))
+    else if (base<0.0) and (frac(exponent)=0.0) then
+      begin
+        result:=exp(exponent*ln(-base));
+        if frac(exponent*0.5)<>0.0 then
+          result:=-result;
+      end
     else
       result:=exp(exponent * ln (base));
   end;
@@ -3775,10 +3832,36 @@ begin
 end;
 {$endif FPC_HAS_TYPE_EXTENDED}
 
+{ Return true if the remainder c of a mod b equals abs(b) within Float resolution,
+  or, for operands that are not both integral, within abs(a) times the machine
+  epsilon of the narrowest type that a and b are both exactly representable in }
+function ModIsFullDivisor(const a,b,c: float): boolean;
+var
+  lEps,lAbsB,lAbsC: float;
+begin
+  lAbsB:=abs(b);
+  lAbsC:=abs(c);
+  if SameValue(lAbsC,lAbsB) then
+    exit(true);
+  if (frac(a)=0.0) and (frac(b)=0.0) then
+    exit(false);
+  lEps:=MachEpsFloat;
+{$if defined(FPC_HAS_TYPE_DOUBLE) and (defined(FPC_HAS_TYPE_EXTENDED) or defined(FPC_HAS_TYPE_FLOAT128))}
+  if (abs(a)<=MaxDouble) and (lAbsB<=MaxDouble) and (double(a)=a) and (double(b)=b) then
+    lEps:=MachEpsDouble;
+{$endif}
+{$if defined(FPC_HAS_TYPE_SINGLE) and (defined(FPC_HAS_TYPE_DOUBLE) or defined(FPC_HAS_TYPE_EXTENDED) or defined(FPC_HAS_TYPE_FLOAT128))}
+  if (abs(a)<=MaxSingle) and (lAbsB<=MaxSingle) and (single(a)=a) and (single(b)=b) then
+    lEps:=MachEpsSingle;
+{$endif}
+  result:=abs(lAbsC-lAbsB)<=abs(a)*lEps;
+end;
+
+
 operator mod(const a,b:float) c:float;inline;
 begin
   c:= a-b * Int(a/b);
-  if SameValue(abs(c),abs(b)) then
+  if ModIsFullDivisor(a,b,c) then
     c:=0.0;
 end;
 
@@ -3831,6 +3914,14 @@ begin
    if a<b then
      result:=LessThanValue;
 end;
+
+function CompareValue(const A, B: Currency): TValueRelationship;
+begin
+  if A=B then Result:=EqualsValue
+  else if A<B then Result:=LessThanValue
+  else Result:=GreaterThanValue;
+end;
+
 
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function CompareValue(const A, B: Single; delta: Single = 0.0): TValueRelationship;
