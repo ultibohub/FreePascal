@@ -156,6 +156,13 @@ procedure RegisterASCIITab;
                              IMPLEMENTATION
 {<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>}
 
+{$ifdef USE_RESOURCESTRING}
+  resourcestring
+{$else}
+  const
+{$endif}
+                sASCII_table = 'ASCII Table';
+
 {***************************************************************************}
 {                              OBJECT METHODS                               }
 {***************************************************************************}
@@ -365,7 +372,7 @@ var
   R : Trect;
 begin
   R.Assign(0,0,34,12);
-  Inherited Init(R,'ASCII Table',wnNoNumber);
+  Inherited Init(R,sASCII_table,wnNoNumber);
   Flags:=Flags and not (wfGrow or wfZoom);
   Palette:=wpGrayWindow;
   R.Assign(1,10,33,11);

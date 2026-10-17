@@ -1298,6 +1298,58 @@ end;
 
 {$ifndef FPUNONE}
 
+// Returns true when S, after leading spaces and a sign, starts like a number instead of an Inf or Nan text
+Function IsNumericFloatText(const S: String): Boolean;
+
+Var
+  I: Integer;
+
+Begin
+  I:=1;
+  While (I<=Length(S)) and (S[I]=' ') do
+    Inc(I);
+  If (I<=Length(S)) and ((S[I]='+') or (S[I]='-')) then
+    Inc(I);
+  Result:=(I<=Length(S)) and (((S[I]>='0') and (S[I]<='9')) or (S[I]='.') or (S[I]='E') or (S[I]='e'));
+End;
+
+
+{$IF SIZEOF(CHAR)=2}
+// Returns true when S, after leading spaces and a sign, starts like a number instead of an Inf or Nan text
+Function IsNumericFloatText(const S: AnsiString): Boolean;
+
+Var
+  I: Integer;
+
+Begin
+  I:=1;
+  While (I<=Length(S)) and (S[I]=' ') do
+    Inc(I);
+  If (I<=Length(S)) and ((S[I]='+') or (S[I]='-')) then
+    Inc(I);
+  Result:=(I<=Length(S)) and (((S[I]>='0') and (S[I]<='9')) or (S[I]='.') or (S[I]='E') or (S[I]='e'));
+End;
+{$ENDIF}
+
+
+// Returns true when Value of type ValueType holds an infinity
+Function IsInfiniteFloat(const Value; ValueType: TFloatValue): Boolean;
+
+Begin
+  case ValueType of
+    fvExtended:
+      Result:=Extended(Value).IsInfinity;
+    fvDouble,
+    fvReal:
+      Result:=Double(Value).IsInfinity;
+    fvSingle:
+      Result:=Single(Value).IsInfinity;
+  else
+    Result:=False;
+  end;
+End;
+
+
 Function InternalTextToFloat(S: String; Out Value; ValueType: TFloatValue;
   Const FormatSettings: TFormatSettings): Boolean;
 
@@ -1352,7 +1404,7 @@ Begin
   except
     E:=1;
   end;
-  Result:=(E=0);
+  Result:=(E=0) and not (IsInfiniteFloat(Value,ValueType) and IsNumericFloatText(S));
 End;
 
 Function InternalTextToFloat(S: String; Out Value: Extended;
@@ -1394,7 +1446,7 @@ Begin
   except
     E:=1;
   end;
-  Result:=(E=0);
+  Result:=(E=0) and not (Value.IsInfinity and IsNumericFloatText(S));
 End;
 
 {$IF SIZEOF(CHAR)=2}
@@ -1456,7 +1508,7 @@ Begin
   except
     E:=1;
   end;
-  Result:=(E=0);
+  Result:=(E=0) and not (IsInfiniteFloat(Value,ValueType) and IsNumericFloatText(S));
 End;
 {$ENDIF}
 
@@ -1552,6 +1604,18 @@ const
   maxdigits = 15;
 {$endif}
 
+// Returns the largest number of significant digits FloatToStrF produces for ValueType
+Function MaxFloatPrecision(ValueType: TFloatValue): Integer;
+
+begin
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+  if ValueType=fvExtended then
+    Exit(21);
+{$endif}
+  Result:=17;
+end;
+
+
 Function FloatToStrFIntl(const Value; format: TFloatFormat; Precision, Digits: Integer; ValueType: TFloatValue; Const FormatSettings: TFormatSettings): String;
 Var
   P, PE, Q, Exponent: Integer;
@@ -1592,7 +1656,10 @@ Begin
           fvCurrency:
               If (Precision = -1) Or (Precision > 19) Then Precision := 19;
           else
-              If (Precision = -1) Or (Precision > maxdigits) Then Precision := maxdigits;
+              If (Precision = -1) Then
+                Precision := maxdigits
+              Else If (Precision > MaxFloatPrecision(ValueType)) Then
+                Precision := MaxFloatPrecision(ValueType);
         end;
         { First convert to scientific format, with correct precision }
         case ValueType of
@@ -1687,7 +1754,10 @@ Begin
     ffExponent:
 
       Begin
-        If (Precision = -1) Or (Precision > maxdigits) Then Precision := maxdigits;
+        If (Precision = -1) Then
+          Precision := maxdigits
+        Else If (Precision > MaxFloatPrecision(ValueType)) Then
+          Precision := MaxFloatPrecision(ValueType);
         case ValueType of
           fvDouble:
             Str(Double(Extended(Aligned(Value))):Precision+7, Result);
@@ -2321,18 +2391,22 @@ var
   InfNan: string[3];
   Error, N, L, Start, C: Integer;
   GotNonZeroBeforeDot, BeforeDot : boolean;
-
+  ValueAsCur: Currency absolute Value;
 begin
   case ValueType of
     fvExtended:
-      Str(Extended(Value):25, Buffer);
+      if Precision>17 then
+        // 19 significant digits, the size of TFloatRec.Digits
+        Str(Extended(Value):27, Buffer)
+      else
+        Str(Extended(Value):25, Buffer);
     fvDouble,
     fvReal:
       Str(Double(Value):23, Buffer);
     fvSingle:
       Str(Single(Value):16, Buffer);
     fvCurrency:
-      Str(Currency(Value):25, Buffer);
+      Str(ValueAsCur:25, Buffer);
     fvComp:
       Str(Currency(Value):23, Buffer);
   end;
@@ -2402,8 +2476,8 @@ begin
     N := Decimals + Result.Exponent
   Else
     N := Precision;
-  if N >= L Then
-    N := L-1;
+  if N > L Then
+    N := L;
   if N = 0 Then
     begin
       if Result.Digits[0] >= '5' Then
@@ -2417,7 +2491,7 @@ begin
     end  //N=0
   Else if N > 0 Then
     begin
-      if Result.Digits[N] >= '5' Then
+      if (N < L) and (Result.Digits[N] >= '5') Then
         begin
           Repeat
             Result.Digits[N] := #0;
@@ -2432,7 +2506,10 @@ begin
         end
       Else
         begin
-          Result.Digits[N] := '0';
+          if N = L then
+            Dec(N)
+          else
+            Result.Digits[N] := '0';
           While (N > -1) And (Result.Digits[N] = '0') Do
             begin
               Result.Digits[N] := #0;
@@ -2475,8 +2552,13 @@ begin
 end;
 
 Function FormatCurr(const Format: string; Value: Currency; Const FormatSettings: TFormatSettings): string;
-begin
-  Result := FormatFloat(Format, Value,FormatSettings);
+Var
+  buf : Array[0..1024] of Char;
+  Len: Integer;
+
+Begin
+  Len:=IntFloatToTextFmt(PChar(@Buf[0]),Value,fvCurrency,PChar(Format),FormatSettings);
+  SetString(Result,PChar(@Buf[0]),Len);
 end;
 
 function FormatCurr(const Format: string; Value: Currency): string;
@@ -2556,6 +2638,19 @@ end;
 {$define SRPCHAR:=PAnsiChar}
 {$define SRCHAR:=AnsiChar}
 
+{$if sizeof(SizeInt)>sizeof(Integer)}
+// Returns aCount limited to the Integer range
+Function ReplaceCountToInteger(aCount: SizeInt): Integer; inline;
+
+begin
+  if aCount>High(Integer) then
+    Result:=High(Integer)
+  else
+    Result:=aCount;
+end;
+{$endif}
+
+
 Function StringReplace(const S, OldPattern, NewPattern: Ansistring;  Flags: TReplaceFlags): Ansistring;
 
 Var
@@ -2565,9 +2660,26 @@ begin
   Result:=StringReplace(S,OldPattern,NewPattern,Flags,C);
 end;
 
+{$if sizeof(SizeInt)>sizeof(Integer)}
+function StringReplace(const S, OldPattern, NewPattern: Ansistring;  Flags: TReplaceFlags; Out aCount : SizeInt): Ansistring;
+
+{$i syssr.inc}
+
+
+function StringReplace(const S, OldPattern, NewPattern: Ansistring;  Flags: TReplaceFlags; Out aCount : Integer): Ansistring;
+
+Var
+  C : SizeInt;
+
+begin
+  Result:=StringReplace(S,OldPattern,NewPattern,Flags,C);
+  aCount:=ReplaceCountToInteger(C);
+end;
+{$else}
 function StringReplace(const S, OldPattern, NewPattern: Ansistring;  Flags: TReplaceFlags; Out aCount : Integer): Ansistring;
 
 {$i syssr.inc}
+{$endif}
 
 {$undef INSTRINGREPLACE}
 {$undef SRString}
@@ -2734,7 +2846,8 @@ Var
   L : String;
   C,LQ,BC : AnsiChar;
   P,BLen,Len : Integer;
-  HB,IBC : Boolean;
+  lLastBreak,lCut : Integer;
+  HB : Boolean;
 
 begin
   Result:='';
@@ -2750,8 +2863,9 @@ begin
     P:=1;
     LQ:=#0;
     HB:=False;
-    IBC:=False;
-    While ((P<=Len) and ((P<=MaxCol) or not IBC)) and ((LQ<>#0) or Not HB) do
+    lLastBreak:=0;
+    lCut:=0;
+    While (P<=Len) and (lCut=0) and ((LQ<>#0) or Not HB) do
       begin
       C:=L[P];
       If (C=LQ) then
@@ -2767,13 +2881,22 @@ begin
           Inc(P,Blen)
         else
           begin
-          If (P>=MaxCol) then
-            IBC:=C in BreakChars;
+          // Cut after the last break character within MaxCol, else after the first one beyond it
+          If (P>MaxCol) and (lLastBreak>0) then
+            lCut:=lLastBreak
+          else If (C in BreakChars) then
+            begin
+            If (P<=MaxCol) then
+              lLastBreak:=P
+            else
+              lCut:=P;
+            end;
           Inc(P);
           end;
         end;
-//      Writeln('"',C,'" : IBC : ',IBC,' HB  : ',HB,' LQ  : ',LQ,' P>MaxCol : ',P>MaxCol);
       end;
+    If (lCut>0) then
+      P:=lCut+1;
     Result:=Result+Copy(L,1,P-1);
     Delete(L,1,P-1);
     Len:=Length(L);
@@ -2851,7 +2974,7 @@ const
 
 {$endif FPC_NOGENERICANSIROUTINES}
 
-function sscanf(const s: string; const fmt : string;const Pointers : array of Pointer) : Integer;
+function sscanf(const s: string; const fmt : string;const Pointers : array of Pointer) : SizeInt;
   var
     i,j,n,m : SizeInt;
     s1      : string;
