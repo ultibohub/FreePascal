@@ -25,6 +25,7 @@ unit Rtti;
 {$mode objfpc}{$H+}
 {$modeswitch advancedrecords}
 {$modeswitch functionreferences}
+{$modeswitch arrayoperators}
 {$goto on}
 {$Assertions on}
 
@@ -207,10 +208,16 @@ type
     procedure DoCastFromVariant(out aRes: Boolean; out ADest: TValue; aDestType: PTypeInfo);
     // Cast entry
     procedure CastFromType(out aRes: Boolean; out ADest: TValue; aDestType: PTypeInfo);
+    // Shared implementation of Make (ACopy=True) and MakeWithoutCopy (ACopy=False)
+    class procedure DoMake(ABuffer: pointer; ATypeInfo: PTypeInfo; ACopy: Boolean; out Result: TValue); static;
+    // Address of element AIndex of the array data and the element type
+    function GetArrayElementData(AIndex: SizeInt; out AElType: PTypeInfo): Pointer;
   public
     class function Empty: TValue; static;
     class procedure Make(ABuffer: pointer; ATypeInfo: PTypeInfo; out result: TValue); static;
     class procedure Make(AValue: NativeInt; ATypeInfo: PTypeInfo; out Result: TValue); static; inline;
+    // Like Make, but takes over the references in ABuffer without incrementing them; the caller must not finalize ABuffer. AIsMoved is accepted for Delphi compatibility and has no effect.
+    class procedure MakeWithoutCopy(ABuffer: pointer; ATypeInfo: PTypeInfo; out Result: TValue; AIsMoved: Boolean = False); static;
     { Note: a TValue based on an open array is only valid until the routine having the open array parameter is left! }
     class procedure MakeOpenArray(AArray: Pointer; ALength: SizeInt; ATypeInfo: PTypeInfo; out Result: TValue); static;
     generic class procedure Make<T>(const AValue: T; out Result: TValue); static; inline;
@@ -235,6 +242,8 @@ type
     function IsClass: boolean; inline;
     function AsClass: TClass;
     function IsObject: boolean; inline;
+    // True when the value has a class type, also when the instance is nil
+    function IsObjectInstance: boolean; inline;
     function AsObject: TObject;
     function IsOrdinal: boolean; inline;
     function AsOrdinal: Int64;
@@ -262,11 +271,17 @@ type
     function AsInterface: IInterface;
     function AsPointer : Pointer;
     function AsVariant : Variant;
+    // Value converted to a type that AsVarRec accepts: floating point types become Extended, other types are unchanged
+    function CastToVarRec: TValue;
+    // TVarRec for an array of const argument; pointers in it refer to the data of this TValue and are valid while it is unchanged
+    function AsVarRec: TVarRec;
     function ToString: String; overload;
     function ToString(aSettings: TFormatSettings): String; overload;
     function GetArrayLength: SizeInt;
     function GetArrayElement(AIndex: SizeInt): TValue;
     procedure SetArrayElement(AIndex: SizeInt; constref AValue: TValue);
+    // Address of element AIndex in the array data, without range check
+    function GetReferenceToRawArrayElement(AIndex: SizeInt): Pointer;
     function IsType(aTypeInfo: PTypeInfo): boolean; inline;
     function IsType(aTypeInfo: PTypeInfo; const EmptyAsAnyType: Boolean) : Boolean;
     function IsInstanceOf(aClass : TClass): boolean; inline;
@@ -386,6 +401,7 @@ type
     FMethods: TRttiMethodArray;
     FFields : TRttiFieldArray;
     FProperties : TRttiPropertyArray;
+    FPropertiesInDeclOrder : TRttiPropertyArray;
     FIndexedProperties : TRttiIndexedPropertyArray;
     function GetAsInstance: TRttiInstanceType;
     function GetAsOrdinal: TRttiOrdinalType;
@@ -402,6 +418,9 @@ type
     function GetTypeKind: TTypeKind; virtual;
     function GetTypeSize: integer; virtual;
     function GetBaseType: TRttiType; virtual;
+    // Name of the unit declaring the type, empty when the RTTI does not contain it
+    function GetDeclaringUnitName: string; virtual;
+    function GetQualifiedName: string; virtual;
   public
     constructor Create(ATypeInfo : PTypeInfo);
     constructor Create(ATypeInfo : PTypeInfo; aUsePublishedOnly : Boolean);
@@ -415,6 +434,7 @@ type
     function GetDeclaredIndexedProperties: TRttiIndexedPropertyArray; virtual;
     function GetProperty(const AName: string): TRttiProperty; virtual;
     function GetProperties: TRttiPropertyArray; virtual;
+    function GetPropertiesInDeclOrder: TRttiPropertyArray; virtual;
     function GetIndexedProperty(const AName: string): TRttiIndexedProperty; virtual;
     function GetIndexedProperties: TRttiIndexedPropertyArray; virtual;
     function GetMethods: TRttiMethodArray; virtual; overload;
@@ -434,6 +454,8 @@ type
     property AsRecord: TRttiRecordType read GetAsRecord;
     property TypeKind: TTypeKind read GetTypeKind;
     property TypeSize: integer read GetTypeSize;
+    // Unit name and type name separated by a dot; the type name alone when the unit name is unknown
+    property QualifiedName: string read GetQualifiedName;
   end;
 
   { TRttiFloatType }
@@ -468,7 +490,11 @@ type
   TRttiEnumerationType = class(TRttiOrdinalType)
   private
     function GetUnderlyingType: TRttiType;
+  protected
+    function GetDeclaringUnitName: string; override;
   public
+    // Name of the unit declaring the enumeration
+    property DeclaringUnitName: string read GetDeclaringUnitName;
     function GetNames: TStringDynArray;
     generic class function GetName<T{: enum}>(AValue: T): string; reintroduce; static;
     generic class function GetValue<T{: enum}>(const AName: string): T; static;
@@ -529,10 +555,11 @@ type
 
   TRttiDynamicArrayType = class(TRttiType)
   private
-    function GetDeclaringUnitName: String; inline;
     function GetElementSize: SizeUInt; inline;
     function GetElementType: TRttiType; inline;
     function GetOleAutoVarType: TVarType; inline;
+  protected
+    function GetDeclaringUnitName: String; override;
   public
     property DeclaringUnitName: String read GetDeclaringUnitName;
     property ElementSize: SizeUInt read GetElementSize;
@@ -850,7 +877,6 @@ type
     function MethodTable: PIntfMethodTable; virtual; abstract;
     function GetBaseType: TRttiType; override;
     function GetIntfBaseType: TRttiInterfaceType; virtual; abstract;
-    function GetDeclaringUnitName: String; virtual; abstract;
     function GetGUID: TGUID; virtual; abstract;
     function GetGUIDStr: String; virtual;
     function GetIntfFlags: TIntfFlags; virtual; abstract;
@@ -877,7 +903,6 @@ type
     FDeclaredMethods : TRttiMethodArray;
     FDeclaredProperties : TRttiPropertyArray;
     FDeclaredIndexedProperties : TRttiIndexedPropertyArray;
-    function GetDeclaringUnitName: string;
     function GetMetaClassType: TClass;
     procedure ResolveClassicDeclaredProperties;
     procedure ResolveExtendedDeclaredProperties;
@@ -888,6 +913,7 @@ type
     function GetIsInstance: boolean; override;
     function GetTypeSize: integer; override;
     function GetBaseType: TRttiType; override;
+    function GetDeclaringUnitName: string; override;
   public
     function GetDeclaredFields: TRttiFieldArray; override;
     function GetDeclaredMethods: TRttiMethodArray; override;
@@ -922,6 +948,7 @@ type
     function GetFields : TRttiFieldArray; override;
     function GetMethods: TRttiMethodArray; override;
     function GetProperties: TRttiPropertyArray; override;
+    function GetPropertiesInDeclOrder: TRttiPropertyArray; override;
     function GetDeclaredFields: TRttiFieldArray; override;
     function GetDeclaredMethods: TRttiMethodArray; override;
     function GetDeclaredProperties: TRttiPropertyArray; override;
@@ -1319,8 +1346,9 @@ type
     FIsCopy: Boolean;
     FUseAddRef: Boolean;
   public
-    constructor CreateCopy(ACopyFromBuffer: Pointer; ALen: SizeInt; ATypeInfo: PTypeInfo; AAddRef: Boolean);
-    constructor CreateRef(AData: Pointer; ATypeInfo: PTypeInfo; AAddRef: Boolean);
+    // AAddRef: the data is managed; AMove: take over the references in the source without incrementing them
+    constructor CreateCopy(ACopyFromBuffer: Pointer; ALen: SizeInt; ATypeInfo: PTypeInfo; AAddRef: Boolean; AMove: Boolean = False);
+    constructor CreateRef(AData: Pointer; ATypeInfo: PTypeInfo; AAddRef: Boolean; AMove: Boolean = False);
     destructor Destroy; override;
     procedure ExtractRawData(ABuffer: pointer);
     procedure ExtractRawDataNoCopy(ABuffer: pointer);
@@ -2710,7 +2738,7 @@ procedure IntAddRef(APointer, ATypeInfo: Pointer);
 function IntCopy(ASource, ADest, ATypeInfo: Pointer): SizeInt;
   external name 'FPC_COPY';
 
-constructor TValueDataIntImpl.CreateCopy(ACopyFromBuffer: Pointer; ALen: SizeInt; ATypeInfo: PTypeInfo; AAddRef: Boolean);
+constructor TValueDataIntImpl.CreateCopy(ACopyFromBuffer: Pointer; ALen: SizeInt; ATypeInfo: PTypeInfo; AAddRef: Boolean; AMove: Boolean);
 begin
   FTypeInfo := ATypeInfo;
   FDataSize:=ALen;
@@ -2725,14 +2753,14 @@ begin
   FIsCopy := True;
   FUseAddRef := AAddRef;
   if AAddRef and (ALen > 0) then begin
-    if Assigned(ACopyFromBuffer) then
-      IntAddRef(FBuffer, FTypeInfo)
-    else
-      IntInitialize(FBuffer, FTypeInfo);
+    if not Assigned(ACopyFromBuffer) then
+      IntInitialize(FBuffer, FTypeInfo)
+    else if not AMove then
+      IntAddRef(FBuffer, FTypeInfo);
   end;
 end;
 
-constructor TValueDataIntImpl.CreateRef(AData: Pointer; ATypeInfo: PTypeInfo; AAddRef: Boolean);
+constructor TValueDataIntImpl.CreateRef(AData: Pointer; ATypeInfo: PTypeInfo; AAddRef: Boolean; AMove: Boolean);
 begin
   FTypeInfo := ATypeInfo;
   FDataSize := SizeOf(Pointer);
@@ -2742,7 +2770,7 @@ begin
     FBuffer := Nil;
   FIsCopy := False;
   FUseAddRef := AAddRef;
-  if AAddRef and Assigned(AData) then
+  if AAddRef and Assigned(AData) and not AMove then
     IntAddRef(@FBuffer, FTypeInfo);
 end;
 
@@ -2819,6 +2847,13 @@ function TValue.IsObject: boolean;
 begin
   result := (Kind = tkClass) or ((Kind = tkUnknown) and not Assigned(FData.FAsObject));
 end;
+
+function TValue.IsObjectInstance: boolean;
+
+begin
+  Result := (Kind = tkClass);
+end;
+
 
 function TValue.IsClass: boolean;
 begin
@@ -4097,30 +4132,46 @@ end;
 
 
 class procedure TValue.Make(ABuffer: pointer; ATypeInfo: PTypeInfo; out result: TValue);
+
+begin
+  DoMake(ABuffer, ATypeInfo, True, result);
+end;
+
+
+class procedure TValue.MakeWithoutCopy(ABuffer: pointer; ATypeInfo: PTypeInfo; out Result: TValue; AIsMoved: Boolean);
+
+begin
+  DoMake(ABuffer, ATypeInfo, False, Result);
+end;
+
+
+class procedure TValue.DoMake(ABuffer: pointer; ATypeInfo: PTypeInfo; ACopy: Boolean; out Result: TValue);
 type
   PMethod = ^TMethod;
 var
   td: PTypeData;
+  lMove: Boolean;
 begin
   result.Init;
   result.FData.FTypeInfo:=ATypeInfo;
   if not Assigned(ATypeInfo) then
     Exit;
+  lMove := not ACopy;
   { first handle those types that need a TValueData implementation }
   case ATypeInfo^.Kind of
     tkSString  : begin
                    td := GetTypeData(ATypeInfo);
-                   result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, td^.MaxLength + 1, ATypeInfo, True);
+                   result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, td^.MaxLength + 1, ATypeInfo, True, lMove);
                  end;
     tkWString,
     tkUString,
-    tkAString  : result.FData.FValueData := TValueDataIntImpl.CreateRef(ABuffer, ATypeInfo, True);
-    tkDynArray : result.FData.FValueData := TValueDataIntImpl.CreateRef(ABuffer, ATypeInfo, True);
-    tkArray    : result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, Result.TypeData^.ArrayData.Size, ATypeInfo, IsManaged(ATypeInfo));
+    tkAString  : result.FData.FValueData := TValueDataIntImpl.CreateRef(ABuffer, ATypeInfo, True, lMove);
+    tkDynArray : result.FData.FValueData := TValueDataIntImpl.CreateRef(ABuffer, ATypeInfo, True, lMove);
+    tkArray    : result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, Result.TypeData^.ArrayData.Size, ATypeInfo, IsManaged(ATypeInfo), lMove);
     tkObject,
-    tkRecord   : result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, Result.TypeData^.RecSize, ATypeInfo, IsManaged(ATypeInfo));
-    tkVariant  : result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, SizeOf(Variant), ATypeInfo, True);
-    tkInterface: result.FData.FValueData := TValueDataIntImpl.CreateRef(ABuffer, ATypeInfo, True);
+    tkRecord   : result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, Result.TypeData^.RecSize, ATypeInfo, IsManaged(ATypeInfo), lMove);
+    tkVariant  : result.FData.FValueData := TValueDataIntImpl.CreateCopy(ABuffer, SizeOf(Variant), ATypeInfo, True, lMove);
+    tkInterface: result.FData.FValueData := TValueDataIntImpl.CreateRef(ABuffer, ATypeInfo, True, lMove);
   else
     // Silence compiler warning
   end;
@@ -4876,6 +4927,150 @@ begin
     raise EInvalidCast.Create(SErrInvalidTypecast);
 end;
 
+
+function TValue.CastToVarRec: TValue;
+
+var
+  lExt: Extended;
+
+begin
+  if (Kind = tkFloat) and
+     not (TypeData^.FloatType in [ftCurr, {$ifdef FPC_HAS_TYPE_EXTENDED}ftExtended{$else}ftDouble{$endif}]) then
+    begin
+    lExt := AsExtended;
+    TValue.Make(@lExt, System.TypeInfo(Extended), Result);
+    end
+  else
+    Result := Self;
+end;
+
+
+function TValue.AsVarRec: TVarRec;
+
+begin
+  Result := Default(TVarRec);
+  if not Assigned(FData.FTypeInfo) then
+    raise EInvalidCast.Create(SErrInvalidTypecast);
+  case Kind of
+    tkInteger:
+      begin
+      Result.VType := vtInteger;
+      Result.VInteger := LongInt(AsOrdinal);
+      end;
+    tkBool:
+      begin
+      Result.VType := vtBoolean;
+      Result.VBoolean := AsBoolean;
+      end;
+    tkChar:
+      begin
+      Result.VType := vtChar;
+      Result.VChar := AnsiChar(FData.FAsUByte);
+      end;
+    tkWChar,
+    tkUChar:
+      begin
+      Result.VType := vtWideChar;
+      Result.VWideChar := WideChar(FData.FAsUWord);
+      end;
+    tkInt64:
+      begin
+      Result.VType := vtInt64;
+      Result.VInt64 := @FData.FAsSInt64;
+      end;
+    tkQWord:
+      begin
+      Result.VType := vtQWord;
+      Result.VQWord := @FData.FAsUInt64;
+      end;
+    tkFloat:
+      case TypeData^.FloatType of
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+        ftExtended:
+          begin
+          Result.VType := vtExtended;
+          Result.VExtended := @FData.FAsExtended;
+          end;
+{$else}
+        ftDouble:
+          begin
+          Result.VType := vtExtended;
+          Result.VExtended := @FData.FAsDouble;
+          end;
+{$endif}
+        ftCurr:
+          begin
+          Result.VType := vtCurrency;
+          Result.VCurrency := @FData.FAsCurr;
+          end;
+      else
+        raise EInvalidCast.Create(SErrInvalidTypecast);
+      end;
+    tkSString:
+      begin
+      Result.VType := vtString;
+      Result.VString := GetReferenceToRawData;
+      end;
+    tkAString:
+      begin
+      Result.VType := vtAnsiString;
+      Result.VAnsiString := PPointer(GetReferenceToRawData)^;
+      end;
+    tkUString:
+      begin
+      Result.VType := vtUnicodeString;
+      Result.VUnicodeString := PPointer(GetReferenceToRawData)^;
+      end;
+    tkWString:
+      begin
+      Result.VType := vtWideString;
+      Result.VWideString := PPointer(GetReferenceToRawData)^;
+      end;
+    tkClass:
+      begin
+      Result.VType := vtObject;
+      Result.VObject := TObject(FData.FAsObject);
+      end;
+    tkClassRef:
+      begin
+      Result.VType := vtClass;
+      Result.VClass := FData.FAsClass;
+      end;
+    tkPointer:
+      begin
+      Result.VType := vtPointer;
+      Result.VPointer := FData.FAsPointer;
+      end;
+    tkProcVar:
+      begin
+      Result.VType := vtPointer;
+      Result.VPointer := Pointer(FData.FAsMethod.Code);
+      end;
+    tkInterface:
+      begin
+      Result.VType := vtInterface;
+      Result.VInterface := PPointer(GetReferenceToRawData)^;
+      end;
+    tkInterfaceRaw:
+      begin
+      Result.VType := vtInterface;
+      Result.VInterface := FData.FAsPointer;
+      end;
+    tkVariant:
+      begin
+      Result.VType := vtVariant;
+      Result.VVariant := PVariant(GetReferenceToRawData);
+      end;
+    tkRecord:
+      if FData.FTypeInfo = System.TypeInfo(TVarRec) then
+        Result := PVarRec(GetReferenceToRawData)^
+      else
+        raise EInvalidCast.Create(SErrInvalidTypecast);
+  else
+    raise EInvalidCast.Create(SErrInvalidTypecast);
+  end;
+end;
+
 function TValue.AsInt64: Int64;
 begin
   if Kind in [tkInteger, tkInt64, tkQWord] then
@@ -5032,32 +5227,50 @@ begin
   end;
 end;
 
-function TValue.GetArrayElement(AIndex: SizeInt): TValue;
+function TValue.GetArrayElementData(AIndex: SizeInt; out AElType: PTypeInfo): Pointer;
+
 var
-  data: Pointer;
-  eltype: PTypeInfo;
   elsize: SizeInt;
   td: PTypeData;
+
 begin
   if not IsArray then
     raise EInvalidCast.Create(SErrInvalidTypecast);
   if Kind = tkDynArray then begin
-    data := DynArrayIndex(PPointer(FData.FValueData.GetReferenceToRawData)^, [AIndex], FData.FTypeInfo);
-    eltype := TypeData^.elType2;
+    Result := DynArrayIndex(PPointer(FData.FValueData.GetReferenceToRawData)^, [AIndex], FData.FTypeInfo);
+    AElType := TypeData^.elType2;
   end else begin
     td := TypeData;
-    eltype := td^.ArrayData.ElType;
+    AElType := td^.ArrayData.ElType;
     { open array? }
     if (td^.ArrayData.Size = 0) and (td^.ArrayData.ElCount = 0) then begin
-      data := PPointer(FData.FValueData.GetReferenceToRawData)^;
+      Result := PPointer(FData.FValueData.GetReferenceToRawData)^;
       elsize := FData.FElSize
     end else begin
-      data := FData.FValueData.GetReferenceToRawData;
+      Result := FData.FValueData.GetReferenceToRawData;
       elsize := td^.ArrayData.Size div td^.ArrayData.ElCount;
     end;
-    data := PByte(data) + AIndex * elsize;
+    Result := PByte(Result) + AIndex * elsize;
   end;
-  { MakeWithoutCopy? }
+end;
+
+
+function TValue.GetReferenceToRawArrayElement(AIndex: SizeInt): Pointer;
+
+var
+  lElType: PTypeInfo;
+
+begin
+  Result := GetArrayElementData(AIndex, lElType);
+end;
+
+
+function TValue.GetArrayElement(AIndex: SizeInt): TValue;
+var
+  data: Pointer;
+  eltype: PTypeInfo;
+begin
+  data := GetArrayElementData(AIndex, eltype);
   Make(data, eltype, Result);
 end;
 
@@ -5065,28 +5278,9 @@ procedure TValue.SetArrayElement(AIndex: SizeInt; constref AValue: TValue);
 var
   data: Pointer;
   eltype: PTypeInfo;
-  elsize: SizeInt;
-  td: PTypeData;
   elvalue: TValue;
 begin
-  if not IsArray then
-    raise EInvalidCast.Create(SErrInvalidTypecast);
-  if Kind = tkDynArray then begin
-    data := DynArrayIndex(PPointer(FData.FValueData.GetReferenceToRawData)^, [AIndex], FData.FTypeInfo);
-    eltype := TypeData^.elType2;
-  end else begin
-    td := TypeData;
-    eltype := td^.ArrayData.ElType;
-    { open array? }
-    if (td^.ArrayData.Size = 0) and (td^.ArrayData.ElCount = 0) then begin
-      data := PPointer(FData.FValueData.GetReferenceToRawData)^;
-      elsize := FData.FElSize
-    end else begin
-      data := FData.FValueData.GetReferenceToRawData;
-      elsize := td^.ArrayData.Size div td^.ArrayData.ElCount;
-    end;
-    data := PByte(data) + AIndex * elsize;
-  end;
+  data := GetArrayElementData(AIndex, eltype);
   if not AValue.TryCast(eltype, elvalue) then
     raise EInvalidCast.Create(SErrInvalidTypecast);
   if Assigned(elvalue.FData.FValueData) and (eltype^.Kind <> tkSString) then
@@ -5815,6 +6009,20 @@ function TRttiEnumerationType.GetUnderlyingType: TRttiType;
 
 begin
   Result:=PoolOf(Self).GetType(GetTypeData(Handle)^.BaseType);
+end;
+
+
+function TRttiEnumerationType.GetDeclaringUnitName: string;
+
+var
+  lName: PShortString;
+
+begin
+  { the unit name follows the last value name and precedes a zero byte }
+  lName:=@FTypeData^.NameList;
+  while PByte(Pointer(lName)+Length(lName^)+1)^<>0 do
+    lName:=PShortString(Pointer(lName)+Length(lName^)+1);
+  Result:=lName^;
 end;
 
 
@@ -7357,6 +7565,11 @@ begin
   Result:=GetDeclaredProperties;
 end;
 
+function TRttiRecordType.GetPropertiesInDeclOrder: TRttiPropertyArray;
+begin
+  Result:=GetDeclaredProperties;
+end;
+
 function TRttiRecordType.GetDeclaredFields: TRttiFieldArray;
 begin
   If not FFieldsResolved then
@@ -8095,6 +8308,22 @@ begin
   Result:=FTypeInfo^.Name;
 end;
 
+function TRttiType.GetDeclaringUnitName: string;
+begin
+  Result:='';
+end;
+
+function TRttiType.GetQualifiedName: string;
+var
+  lUnitName: string;
+begin
+  lUnitName:=GetDeclaringUnitName;
+  if lUnitName='' then
+    Result:=Name
+  else
+    Result:=lUnitName+'.'+Name;
+end;
+
 function TRttiType.GetHandle: Pointer;
 begin
   Result := FTypeInfo;
@@ -8189,21 +8418,7 @@ function TRttiType.GetProperties: TRttiPropertyArray;
 var
   parentproperties, selfproperties: TRttiPropertyArray;
   parent: TRttiType;
-  prop: TRttiProperty;
-  NameIndexes : Array of Integer;
-  Idx, IdxCount, aCount, I: Integer;
-
-  Function IndexOfNameIndex(Idx : Integer) : integer;
-  begin
-    Result:=IdxCount-1;
-    While (Result>=0) and (NameIndexes[Result]<>Idx) do
-      Dec(Result);
-  end;
-
 begin
-  NameIndexes:=[];
-  IdxCount:=0;
-
   if Assigned(fProperties) then
     Exit(fProperties);
 
@@ -8216,68 +8431,44 @@ begin
     parentproperties := nil;
 
   if (not Assigned(parent)) or (Length(parentproperties) = 0) then
-  begin
-    fProperties := selfproperties;
-    Exit(fProperties);
-  end
+    fProperties := selfproperties
   else if Length(selfproperties) = 0 then
-  begin
-    fProperties := parentproperties;
-    Exit(fProperties);
-  end;
-
-  aCount := Length(parentproperties) + Length(selfproperties);
-  SetLength(fProperties,aCount);
-  SetLength(NameIndexes,aCount);
-
-  IdxCount := 0;
-
-  For I:=0 to Length(selfproperties)-1 do
-  begin
-    prop := selfproperties[I];
-
-    NameIndexes[IdxCount]:=Prop.FPropInfo^.NameIndex;
-    fProperties[IdxCount]:=Prop;
-    Inc(IdxCount);
-  end;
-
-  For I:=0 to Length(parentproperties)-1 do
-  begin
-    Prop := parentproperties[I];
-    Idx:=IndexOfNameIndex(Prop.FPropInfo^.NameIndex);
-
-    if Idx = -1 then
-    begin
-      NameIndexes[IdxCount]:=Prop.FPropInfo^.NameIndex;
-      fProperties[IdxCount]:=Prop;
-      Inc(IdxCount);
-    end;
-  end;
-
-  SetLength(fProperties, IdxCount);
-
+    fProperties := parentproperties
+  else
+    fProperties := selfproperties + parentproperties;
   Result := fProperties;
+end;
+
+function TRttiType.GetPropertiesInDeclOrder: TRttiPropertyArray;
+var
+  parentproperties, selfproperties: TRttiPropertyArray;
+  parent: TRttiType;
+begin
+  if Assigned(fPropertiesInDeclOrder) then
+    Exit(fPropertiesInDeclOrder);
+
+  selfproperties := GetDeclaredProperties;
+
+  parent := GetBaseType;
+  if Assigned(parent) then
+    parentproperties := parent.GetPropertiesInDeclOrder
+  else
+    parentproperties := nil;
+
+  if (not Assigned(parent)) or (Length(parentproperties) = 0) then
+    fPropertiesInDeclOrder := selfproperties
+  else if Length(selfproperties) = 0 then
+    fPropertiesInDeclOrder := parentproperties
+  else
+    fPropertiesInDeclOrder := parentproperties + selfproperties;
+  Result := fPropertiesInDeclOrder;
 end;
 
 function TRttiType.GetIndexedProperties: TRttiIndexedPropertyArray;
 var
   parentproperties, selfproperties: TRttiIndexedPropertyArray;
   parent: TRttiType;
-  iprop: TRttiIndexedProperty;
-  NameIndexes : Array of Integer;
-  Idx, IdxCount, aCount, I: Integer;
-
-  Function IndexOfNameIndex(Idx : Integer) : integer;
-  begin
-    Result:=IdxCount-1;
-    While (Result>=0) and (NameIndexes[Result]<>Idx) do
-      Dec(Result);
-  end;
-
 begin
-  NameIndexes:=[];
-  IdxCount:=0;
-
   if Assigned(fIndexedProperties) then
     Exit(fIndexedProperties);
 
@@ -8290,46 +8481,11 @@ begin
     parentproperties := nil;
 
   if (not Assigned(parent)) or (Length(parentproperties) = 0) then
-  begin
-    fIndexedProperties := selfproperties;
-    Exit(fIndexedProperties);
-  end
+    fIndexedProperties := selfproperties
   else if Length(selfproperties) = 0 then
-  begin
-    fIndexedProperties := parentproperties;
-    Exit(fIndexedProperties);
-  end;
-
-  aCount := Length(parentproperties) + Length(selfproperties);
-  SetLength(fIndexedProperties,aCount);
-  SetLength(NameIndexes,aCount);
-
-  IdxCount := 0;
-
-  For I:=0 to Length(selfproperties)-1 do
-  begin
-    IProp := selfproperties[I];
-
-    NameIndexes[IdxCount]:=IProp.FPropInfo^.NameIndex;
-    fIndexedProperties[IdxCount]:=IProp;
-    Inc(IdxCount);
-  end;
-
-  For I:=0 to Length(parentproperties)-1 do
-  begin
-    IProp := parentproperties[I];
-    Idx:=IndexOfNameIndex(IProp.FPropInfo^.NameIndex);
-
-    if Idx = -1 then
-    begin
-      NameIndexes[IdxCount]:=IProp.FPropInfo^.NameIndex;
-      fIndexedProperties[IdxCount]:=IProp;
-      Inc(IdxCount);
-    end;
-  end;
-
-  SetLength(fIndexedProperties, IdxCount);
-
+    fIndexedProperties := parentproperties
+  else
+    fIndexedProperties := selfproperties + parentproperties;
   Result := fIndexedProperties;
 end;
 
@@ -9269,7 +9425,6 @@ begin
   begin
     case aInstance.Kind of
       tkPointer:
-        { temporary implementation, before TValue.MakeWithoutCopy is added }
         inst := aInstance;
       tkRecord:
         inst := aInstance;

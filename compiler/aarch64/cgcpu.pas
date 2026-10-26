@@ -45,7 +45,8 @@ interface
         { simplifies "ref" so it can be used with "op". If "ref" can be used
           with a different load/Store operation that has the same meaning as the
           original one, "op" will be replaced with the alternative }
-        procedure make_simple_ref(list:TAsmList; var op: tasmop; size: tcgsize; oppostfix: toppostfix; var ref: treference; preferred_newbasereg: tregister);
+        procedure make_simple_ref(list: TAsmList; var op: tasmop; size: tcgsize; oppostfix: toppostfix; var ref: treference; preferred_newbasereg: tregister;
+         allowpageoffset: boolean);
         function getfpuregister(list: TAsmList; size: Tcgsize): Tregister; override;
         procedure handle_reg_imm12_reg(list: TAsmList; op: Tasmop; size: tcgsize; src: tregister; a: tcgint; dst: tregister; tmpreg: tregister; setflags, usedest: boolean);
         procedure init_register_allocators;override;
@@ -103,7 +104,7 @@ interface
         procedure g_save_registers(list: TAsmList);override;
         procedure g_concatcopy(list: TAsmList; const source, dest: treference; len: tcgint);override;
         procedure g_adjust_self_value(list: TAsmList; procdef: tprocdef; ioffset: tcgint);override;
-        procedure g_check_for_fpu_exception(list: TAsmList; force, clear: boolean);override;
+        procedure g_check_for_fpu_exception(list: TAsmList; force, clear, preserve_flags: boolean);override;
         procedure g_local_unwind(list: TAsmList; l: TAsmLabel);override;
         procedure adjust_exceptfilter_ref(var ref: treference; for_finalization: boolean);override;
         procedure g_profilecode(list: TAsmList);override;
@@ -138,7 +139,19 @@ implementation
     procinfo,cpupi,psub;
 
 
-    procedure tcgaarch64.make_simple_ref(list:TAsmList; var op: tasmop; size: tcgsize; oppostfix: toppostfix; var ref: treference; preferred_newbasereg: tregister);
+    { can the symbol be accessed PC-relative (adrp + page offset) instead of
+      through the GOT? }
+    function is_direct_access_symbol(sym: tasmsymbol): boolean;
+      begin
+        { hidden (AB_PRIVATE_EXTERN) symbols cannot be preempted, so they
+          can be accessed directly as well, even in PIC code }
+        result:=((sym.typ in [AT_FUNCTION,AT_LABEL,AT_DATA]) and
+                 (sym.bind in [AB_LOCAL,AB_GLOBAL,AB_PRIVATE_EXTERN])) or
+                (target_info.system=system_aarch64_win64);
+      end;
+
+
+    procedure tcgaarch64.make_simple_ref(list:TAsmList; var op: tasmop; size: tcgsize; oppostfix: toppostfix; var ref: treference; preferred_newbasereg: tregister; allowpageoffset: boolean);
       var
         href: treference;
         so: tshifterop;
@@ -185,11 +198,7 @@ implementation
               preferred_newbasereg:=getaddressregister(list);
             { load the (GOT) page }
             reference_reset_symbol(href,ref.symbol,0,8,[]);
-            if ((ref.symbol.typ in [AT_FUNCTION,AT_LABEL,AT_DATA]) and
-                (ref.symbol.bind in [AB_LOCAL,AB_GLOBAL])) or
-               ((ref.symbol.typ=AT_DATA) and
-                (ref.symbol.bind=AB_LOCAL)) or
-               (target_info.system=system_aarch64_win64) then
+            if is_direct_access_symbol(ref.symbol) then
               href.refaddr:=addr_page
             else
               href.refaddr:=addr_gotpage;
@@ -197,17 +206,32 @@ implementation
             { load the GOT entry (= address of the variable) }
             reference_reset_base(href,preferred_newbasereg,0,ctempposinvalid,sizeof(pint),[]);
             href.symbol:=ref.symbol;
-            { code symbols defined in the current compilation unit do not
+            { symbols defined in the current compilation unit do not
               have to be accessed via the GOT }
-            if ((ref.symbol.typ in [AT_FUNCTION,AT_LABEL,AT_DATA]) and
-                (ref.symbol.bind in [AB_LOCAL,AB_GLOBAL])) or
-               ((ref.symbol.typ=AT_DATA) and
-                (ref.symbol.bind=AB_LOCAL)) or
-               (target_info.system=system_aarch64_win64) then
+            if is_direct_access_symbol(ref.symbol) then
               begin
-                href.base:=NR_NO;
-                href.refaddr:=addr_pageoffset;
-                list.concat(taicpu.op_reg_reg_ref(A_ADD,preferred_newbasereg,preferred_newbasereg,href));
+                { can we put the page offset into the reference? The linker
+                  requires that the page offset of a scaled load/store is a
+                  multiple of the access size, so the symbol must be
+                  sufficiently aligned }
+                if allowpageoffset and
+                   (op in [A_LDR,A_STR]) and
+                   (ref.addressmode=AM_OFFSET) and
+                   (ref.base=NR_NO) and
+                   (ref.index=NR_NO) and
+                   (ref.offset=0) and
+                   (ref.alignment>=(1 shl tcgsizep2size[size])) then
+                  begin
+                    ref.base:=preferred_newbasereg;
+                    ref.refaddr:=addr_pageoffset;
+                    exit;
+                  end
+                else
+                  begin
+                    href.base:=NR_NO;
+                    href.refaddr:=addr_pageoffset;
+                    list.concat(taicpu.op_reg_reg_ref(A_ADD,preferred_newbasereg,preferred_newbasereg,href));
+                  end;
               end
             else
               begin
@@ -465,7 +489,7 @@ implementation
 
     function tcgaarch64.handle_load_store(list: TAsmList; op: tasmop; size: tcgsize; oppostfix: toppostfix; reg: tregister; ref: treference):treference;
       begin
-        make_simple_ref(list,op,size,oppostfix,ref,NR_NO);
+        make_simple_ref(list,op,size,oppostfix,ref,NR_NO,true);
         list.concat(setoppostfix(taicpu.op_reg_ref(op,reg,ref),oppostfix));
         result:=ref;
       end;
@@ -1113,7 +1137,7 @@ implementation
         href:=ref;
         { simplify as if we're going to perform a regular 64 bit load, using
           "r" as the new base register if possible/necessary }
-        make_simple_ref(list,op,OS_ADDR,PF_None,href,r);
+        make_simple_ref(list,op,OS_ADDR,PF_None,href,r,false);
         { load literal? }
         if assigned(href.symbol) then
           begin
@@ -2372,14 +2396,16 @@ implementation
                   basereplaced:=true;
                 end;
               if simple_ref_type(scaledop,opsize,postfix,ref)<>sr_simple then
-                make_simple_ref(list,scaledop,opsize,postfix,ref,NR_NO);
+                make_simple_ref(list,scaledop,opsize,postfix,ref,NR_NO,false);
               exit;
             end;
 {$endif dummy}
           if not forcepostindexing then
             begin
               ref.addressmode:=AM_OFFSET;
-              make_simple_ref(list,scaledop,opsize,postfix,ref,NR_NO);
+              { the offset of ref is changed after each copy operation, so
+                the page offset cannot be integrated into the reference }
+              make_simple_ref(list,scaledop,opsize,postfix,ref,NR_NO,false);
               { this may still cause problems if the final offset is no longer
                 a simple ref; it's a bit complicated to pass all information
                 through at all places and check that here, so play safe: we
@@ -2690,9 +2716,9 @@ implementation
       end;
 
 
-    procedure tcgaarch64.g_check_for_fpu_exception(list: TAsmList;force,clear : boolean);
+    procedure tcgaarch64.g_check_for_fpu_exception(list: TAsmList;force,clear,preserve_flags : boolean);
       var
-        r, tmpreg: TRegister;
+        r, rnzcv, tmpreg: TRegister;
         ai: taicpu;
         l1,l2: TAsmLabel;
       begin
@@ -2702,6 +2728,14 @@ implementation
           begin
             r:=getintregister(list,OS_INT);
             tmpreg:=getintregister(list,OS_INT);
+            if preserve_flags then
+              begin
+                rnzcv:=getintregister(list,OS_INT);
+                list.concat(taicpu.op_reg_reg(A_MRS,rnzcv,NR_NZCV));
+              end
+            else
+              { avoid warning }
+              rnzcv:=NR_WZR;
             list.concat(taicpu.op_reg_reg(A_MRS,r,NR_FPSR));
             list.concat(taicpu.op_reg_reg_const(A_AND,tmpreg,r,$1f));
             current_asmdata.getjumplabel(l1);
@@ -2718,6 +2752,8 @@ implementation
             cg.a_call_name(list,'FPC_THROWFPUEXCEPTION',false);
             dealloccpuregisters(list,R_INTREGISTER,paramanager.get_volatile_registers_int(pocall_default));
             a_label(list,l2);
+            if preserve_flags then
+              list.concat(taicpu.op_reg_reg(A_MSR,NR_NZCV,rnzcv));
             if clear then
               current_procinfo.FPUExceptionCheckNeeded:=false;
           end;

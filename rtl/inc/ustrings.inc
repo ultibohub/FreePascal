@@ -1381,6 +1381,38 @@ begin
       Val(SS,fpc_Val_Real_UnicodeStr,code);
     end;
 end;
+
+
+{$ifndef CPU16}
+Function fpc_Val_Single_UnicodeStr(Const S : UnicodeString; out Code : ValSInt): Single; [public, alias:'FPC_VAL_SINGLE_UNICODESTR']; compilerproc;
+Var
+  SS: ShortString;
+begin
+  fpc_Val_Single_UnicodeStr:=0;
+  if length(S)>255 then
+    code:=256
+  else
+    begin
+      SS:=ShortString(S);
+      fpc_Val_Single_UnicodeStr:=val_single(SS,code);
+    end;
+end;
+
+
+Function fpc_Val_Double_UnicodeStr(Const S : UnicodeString; out Code : ValSInt): Double; [public, alias:'FPC_VAL_DOUBLE_UNICODESTR']; compilerproc;
+Var
+  SS: ShortString;
+begin
+  fpc_Val_Double_UnicodeStr:=0;
+  if length(S)>255 then
+    code:=256
+  else
+    begin
+      SS:=ShortString(S);
+      fpc_Val_Double_UnicodeStr:=val_double(SS,code);
+    end;
+end;
+{$endif CPU16}
 {$endif}
 
 
@@ -1427,7 +1459,7 @@ begin
   else
     begin
       SS:=ShortString(S);
-      Val(SS,fpc_Val_UInt_UnicodeStr,code);
+      fpc_Val_UInt_UnicodeStr := int_Val_UInt_ShortStr({$ifndef VER3_2}DestSize,{$endif VER3_2}SS,Code);
     end;
 end;
 

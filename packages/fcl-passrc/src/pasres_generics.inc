@@ -1260,7 +1260,8 @@ var
       else
         break;
       end;
-    List.Insert(i+1,NewEl);
+    inc(i);
+    List.Insert(i,NewEl);
   end;
 
 var
@@ -1773,7 +1774,6 @@ var
   GenProcType, NewProcType: TPasProcedureType;
   GenProc, NewProc: TPasProcedure;
   OldScopeState: TScopeStashState;
-  PendingItem: TPRSpecializedItem;
 begin
   if SpecializedItem.Step<>prssNone then
     exit;
@@ -2363,6 +2363,8 @@ begin
     MarkRangeChecked(SpecEl);
   if IsOverflowChecked(GenEl) then
     MarkOverflowChecked(SpecEl);
+  if pesfAssertions in GenEl.States then
+    Include(SpecEl.States,pesfAssertions);
 
   C:=GenEl.ClassType;
   // expressions

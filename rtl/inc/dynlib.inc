@@ -107,6 +107,22 @@ begin
 end;
 
 
+Function GetSymbolByAddress(Addr: CodePointer; out Info: TSymbolAddressInfo): Boolean;
+begin
+  if Assigned(CurrentDLM.GetSymbolByAddr) then
+    Result:=CurrentDLM.GetSymbolByAddr(Addr,Info)
+  else
+    Result:=False;
+  if not Result then
+    begin
+    Info.SymbolName:='';
+    Info.SymbolAddr:=nil;
+    Info.ModuleName:='';
+    Info.ModuleOffset:=0;
+    end;
+end;
+
+
 Function FreeLibrary(Lib : TLibHandle) : Boolean;
 begin
   Result:=UnloadLibrary(lib);
@@ -201,6 +217,7 @@ const
     GetProcAddressOrdinal: @NoGetProcAddressOrdinal;
     UnloadLibrary: @NoUnloadLibrary;
     GetLoadErrorStr: @NoGetLoadErrorStr;
+    GetSymbolByAddr: nil;
   );
 
 procedure SetNoDynLibsManager;

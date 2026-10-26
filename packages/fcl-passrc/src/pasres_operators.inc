@@ -1169,6 +1169,15 @@ begin
   if RightResolved.BaseType=btNone then ;
 end;
 
+function TPasResolver.TryResolveCompoundOperator(El: TPasImplAssign;
+  const LeftResolved, RightResolved: TPasResolverResult): Boolean;
+begin
+  Result := False;
+  if El=nil then ;
+  if LeftResolved.BaseType=btNone then ;
+  if RightResolved.BaseType=btNone then ;
+end;
+
 function TPasResolver.TryResolveUnaryOperator(El: TUnaryExpr;
   var ResolvedEl: TPasResolverResult;
   Flags: TPasResolverComputeFlags): Boolean;
@@ -2475,6 +2484,9 @@ begin
         // type is - fcl-db's TDataSet.DataConvert writes
         // `TDateTimeRec(aDest^) := ..` through an untyped Pointer parameter.
         if (not KeepWriteFlags) and OperandIsLValueExpr then
+          KeepWriteFlags:=true;
+        // A reinterpretation the resolver accepts as an l-value, e.g. TObject(StringVar) in pas2llvm.
+        if (not KeepWriteFlags) and TypeCastKeepsLValue(ToLoType,ParamResolved) then
           KeepWriteFlags:=true;
         end
       else

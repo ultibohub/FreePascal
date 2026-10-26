@@ -1894,12 +1894,17 @@ begin
     NewCnt:=(NewCnt div 32 +1) *32;
     SetLength(Keywords,NewCnt);
   end;
+  if length(KeywordTokens)<length(Keywords) then
+    SetLength(KeywordTokens,length(Keywords));
 
   First:=KeywordCount;
   for i:=0 to length(Names)-1 do
   begin
     Last:=KeywordCount;
     Keywords[Last]:=Names[i];
+    SetLength(KeywordTokens[Last],3);
+    KeywordTokens[Last][0]:=ord(rtkKeyword);
+    PWord(@KeywordTokens[Last][1])^:=Last;
     FHashLists[nikKeyword].Add(Names[i],{%H-}Pointer(Last));
     inc(FKeywordCount);
   end;
@@ -2703,7 +2708,9 @@ begin
     for i:=0 to length(AllowedKeywordIDs)-1 do
       if KeywordID=AllowedKeywordIDs[i] then
       begin
-        if not ReadNext then
+        if ReadNext then
+          exit(false)
+        else
           exit(true);
       end;
   rtkFunction:
@@ -3876,12 +3883,14 @@ begin
     CloseBracket:=']'
   else
     CloseBracket:=')';
+  inc(p);
   repeat
-    inc(p);
     case p^ of
     #0,'{','}',';': exit;
-    '''','"': SkipString(p);
-    '(','[': SkipBrackets(p,Lvl+1);
+    '''','"':
+      if not SkipString(p) then exit;
+    '(','[':
+      if not SkipBrackets(p,Lvl+1) then exit;
     ')',']':
       if p^=CloseBracket then
       begin
@@ -3891,6 +3900,8 @@ begin
         SkipToEndOfAttribute(p);
         exit;
       end;
+    else
+      inc(p);
     end;
   until false;
 end;
@@ -5308,12 +5319,14 @@ begin
     CloseBracket:=']'
   else
     CloseBracket:=')';
+  inc(p);
   repeat
-    inc(p);
     case p^ of
     #0,'{','}',';': exit;
-    '''','"': SkipString(p);
-    '(','[': SkipBrackets(p,Lvl+1);
+    '''','"':
+      if not SkipString(p) then exit;
+    '(','[':
+      if not SkipBrackets(p,Lvl+1) then exit;
     ')',']':
       if p^=CloseBracket then
       begin
@@ -5323,6 +5336,8 @@ begin
         SkipToEndOfAttribute(p);
         exit;
       end;
+    else
+      inc(p);
     end;
   until false;
 end;

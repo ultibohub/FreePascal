@@ -91,39 +91,11 @@ begin
   Result:=AnsiChar(B) in LeadBytes;
 end;
 
-Function InternalChangeCase(Const S : AnsiString; const Chars: TSysCharSet; const Adjustment: Longint): AnsiString;
-  var
-    i : Integer;
-    P : PAnsiChar;
-    Unique : Boolean;
-  begin
-    Result := S;
-    if Result='' then
-      exit;
-    Unique:=false;
-    P:=PAnsiChar(Result);
-    for i:=1 to Length(Result) do
-      begin
-        if CharInSet(P^,Chars) then
-          begin
-            if not Unique then
-              begin
-                UniqueString(Result);
-                p:=@Result[i];
-                Unique:=true;
-              end;
-            P^:=AnsiChar(Ord(P^)+Adjustment);
-          end;
-        Inc(P);
-      end;
-  end;
-
-
 {   UpperCase returns a copy of S where all lowercase characters ( from a to z )
     have been converted to uppercase   }
 Function UpperCase(Const S : AnsiString) : AnsiString;
   begin
-    Result:=InternalChangeCase(S,['a'..'z'],-32);
+    Result:=System.UpCase(S);
   end;
 
 
@@ -139,7 +111,7 @@ function UpperCase(const s: ansistring; LocaleOptions: TLocaleOptions): ansistri
     have been converted to lowercase  }
 Function Lowercase(Const S : AnsiString) : AnsiString;
   begin
-    Result:=InternalChangeCase(S,['A'..'Z'],32);
+    Result:=System.LowerCase(S);
   end;
 
 
@@ -2396,7 +2368,7 @@ begin
   case ValueType of
     fvExtended:
       if Precision>17 then
-        // 19 significant digits, the size of TFloatRec.Digits
+        // 19 significant digits
         Str(Extended(Value):27, Buffer)
       else
         Str(Extended(Value):25, Buffer);
@@ -2870,21 +2842,21 @@ begin
       C:=L[P];
       If (C=LQ) then
         LQ:=#0
-      else If (C in Quotes) then
+      else If (LQ=#0) and (C in Quotes) then
         LQ:=C;
       If (LQ<>#0) then
         Inc(P)
       else
         begin
-        HB:=((C=BC) and (BreakStr=Copy(L,P,BLen)));
+        HB:=(BLen>0) and (C=BC) and (BreakStr=Copy(L,P,BLen));
         If HB then
           Inc(P,Blen)
         else
           begin
-          // Cut after the last break character within MaxCol, else after the first one beyond it
+          // Cut after the last break character within MaxCol, else after the first one beyond it; never after the first character
           If (P>MaxCol) and (lLastBreak>0) then
             lCut:=lLastBreak
-          else If (C in BreakChars) then
+          else If (P>1) and (C in BreakChars) then
             begin
             If (P<=MaxCol) then
               lLastBreak:=P
@@ -3007,6 +2979,9 @@ function sscanf(const s: string; const fmt : string;const Pointers : array of Po
           inc(n);
         end;
       Result := Length(s1);
+      { a sign without digits is no number }
+      if (Result=1) and (s1[1] in ['+','-']) then
+        Result:=0;
     end;
 
 
@@ -3041,47 +3016,53 @@ function sscanf(const s: string; const fmt : string;const Pointers : array of Po
 
   function ScanStr(c : AnsiChar) : Boolean;
     begin
-      while (Length(s) > n) and (s[n] <> c) do
+      Result := (n <= Length(s)) and (s[n] = c);
+      if Result then
         inc(n);
-      inc(n);
-      If (n <= Length(s)) then
-        Result := True
-      else
-        Result := False;
     end;
 
 
   function GetFmt : Integer;
     begin
       Result := -1;
-      while true do
+      while (m <= Length(fmt)) do
         begin
-
-          while (Length(fmt) > m) and (fmt[m] = ' ') do
-            inc(m);
-
-          if (m >= Length(fmt)) then
-            break;
+          { whitespace in the format matches any amount of whitespace in the input }
+          if (fmt[m] = ' ') then
+            begin
+              while (m <= Length(fmt)) and (fmt[m] = ' ') do
+                inc(m);
+              while (n <= Length(s)) and (s[n] = ' ') do
+                inc(n);
+              continue;
+            end;
 
           if (fmt[m] = '%') then
             begin
               inc(m);
-              case fmt[m] of
-                'd':
-                  Result:=vtInteger;
+              if (m > Length(fmt)) then
+                raise EFormatError.CreateFmt(SInvalidFormat,[fmt]);
+              if (fmt[m] <> '%') then
+                begin
+                  case fmt[m] of
+                    'd':
+                      Result:=vtInteger;
+                    'u':
+                      Result:=vtQWord;
 {$ifndef FPUNONE}
-                'f':
-                  Result:=vtExtended;
+                    'f':
+                      Result:=vtExtended;
 {$endif}
-                's':
-                  Result:=vtString;
-                'c':
-                  Result:=vtChar;
-                else
-                  raise EFormatError.CreateFmt(SInvalidFormat,[fmt]);
-              end;
-              inc(m);
-              break;
+                    's':
+                      Result:=vtString;
+                    'c':
+                      Result:=vtChar;
+                    else
+                      raise EFormatError.CreateFmt(SInvalidFormat,[fmt]);
+                  end;
+                  inc(m);
+                  break;
+                end;
             end;
 
           if not(ScanStr(fmt[m])) then
@@ -3112,9 +3093,21 @@ function sscanf(const s: string; const fmt : string;const Pointers : array of Po
 
             end;
 
+          { %u }
+          vtQWord :
+            begin
+              if GetInt(true)>0 then
+                begin
+                  pLongWord(Pointers[i])^:=StrToDWord(s1);
+                  inc(Result);
+                end
+              else
+                break;
+            end;
+
           vtchar :
             begin
-              if Length(s)>n then
+              if Length(s)>=n then
                 begin
                   PChar(Pointers[i])^:=s[n];
                   inc(n);

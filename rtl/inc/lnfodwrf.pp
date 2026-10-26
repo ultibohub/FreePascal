@@ -40,11 +40,15 @@ type
   CodePointer = Pointer;
 {$ENDIF}
 
+// Returns the routine and source line of the instruction at addr.
 function GetLineInfo(addr:codeptruint;var func,source:shortstring;var line:longint) : boolean;
+// Formats a backtrace line for the return address addr.
 function DwarfBackTraceStr(addr: CodePointer): shortstring;
 procedure CloseDwarf;
 
 var
+  // When True, GetLineInfo treats addr as a return address and reports the instruction before it.
+  GetLineInfoReturnAddress: Boolean = False;
   // Allows more efficient operation by reusing previously loaded debug data
   // when the target module filename is the same. However, if an invalid memory
   // address is supplied then further calls may result in an undefined behaviour.
@@ -1249,14 +1253,10 @@ begin
         first_row := false;
       end;
 
-      { when we have found the address we need to return the previous
-        line because that contains the call instruction
-        Note that there may not be any call instruction, because this may
-        be the actual instruction that crashed, and it may be on the first
-        line of the function }
+      { the previous row contains addr }
       if (state.segment > segment) or
          ((state.segment = segment) and
-          (state.address >= addr)) then
+          (state.address > addr)) then
         found:=true
       else
         begin
@@ -1277,12 +1277,6 @@ begin
 
   if (found) then
     begin
-      { can happen if the crash happens on the first instruction with line info }
-      if prev_line = 0 then
-        begin
-          prev_line := state.line;
-          prev_file := state.file_id;
-        end;
       line := prev_line;
       source := GetFullFilename(er, file_names, include_directories, prev_file);
     end;
@@ -1710,7 +1704,8 @@ begin
 end;
 
 
-function GetLineInfo(addr : codeptruint; var func, source : shortstring; var line : longint) : boolean;
+{ Returns the routine and source line containing the instruction at addr }
+function LookupLineInfo(addr : codeptruint; var func, source : shortstring; var line : longint) : boolean;
 var
   current_offset, next_offset,
   end_offset, debug_info_offset_from_aranges : QWord;
@@ -1719,11 +1714,15 @@ var
   found, found_aranges : Boolean;
   er: TEReader;
   abbrevs: TAbbrevs; { To reuse allocations between ParseCompilationUnitForFunctionName calls. }
+{$ifdef has_LineInfoCache}
+  lCacheAddr : CodePointer;
+{$endif has_LineInfoCache}
 
 begin
 {$ifdef has_LineInfoCache}
+  lCacheAddr := CodePointer(addr);
   Lock(LiCacheLock);
-  result := liCache.TryGet(CodePointer(addr), func, source, line);
+  result := liCache.TryGet(lCacheAddr, func, source, line);
   Unlock(LiCacheLock);
   if result then exit((func <> '') or (source <> '') or (line <> 0));
 {$endif has_LineInfoCache}
@@ -1731,7 +1730,7 @@ begin
   func := '';
   source := '';
   line := 0;
-  GetLineInfo:=false;
+  LookupLineInfo:=false;
 
   Lock(DwarfLock);
   if not OpenDwarf(codepointer(addr)) then
@@ -1739,7 +1738,7 @@ begin
     Unlock(DwarfLock);
   {$ifdef has_LineInfoCache}
     Lock(LiCacheLock);
-    liCache.Put(CodePointer(addr), '', '', 0); { Cache the failure, too; in particular, on Win64 some frames above main() point into kernel32 or something. }
+    liCache.Put(lCacheAddr, '', '', 0); { Cache the failure, too; in particular, on Win64 some frames above main() point into kernel32 or something. }
     Unlock(LiCacheLock);
   {$endif has_LineInfoCache}
     exit;
@@ -1822,10 +1821,30 @@ begin
 
 {$ifdef has_LineInfoCache}
   Lock(LiCacheLock);
-  liCache.Put(CodePointer(addr), func, source, line);
+  liCache.Put(lCacheAddr, func, source, line);
   Unlock(LiCacheLock);
 {$endif has_LineInfoCache}
-  GetLineInfo:=true;
+  LookupLineInfo:=true;
+end;
+
+
+{ Returns the address of the instruction before the return address addr }
+function CallSiteAddress(addr : codeptruint) : codeptruint;
+
+begin
+  if addr > 0 then
+    CallSiteAddress := addr - 1
+  else
+    CallSiteAddress := addr;
+end;
+
+
+function GetLineInfo(addr : codeptruint; var func, source : shortstring; var line : longint) : boolean;
+
+begin
+  if GetLineInfoReturnAddress then
+    addr := CallSiteAddress(addr);
+  GetLineInfo := LookupLineInfo(addr, func, source, line);
 end;
 
 
@@ -1845,10 +1864,12 @@ begin
   Success:=false;
   Store := BackTraceStrFunc;
   BackTraceStrFunc := @SysBackTraceStr;
-  Success:=GetLineInfo(codeptruint(addr), func, source, line);
+  Success:=LookupLineInfo(CallSiteAddress(codeptruint(addr)), func, source, line);
   { create string }
   DwarfBackTraceStr :='  $' + HexStr(addr);
-  if Success then
+  if not Success then
+    DwarfBackTraceStr := SysBackTraceStr(addr)
+  else
   begin
     if func<>'' then
       DwarfBackTraceStr := DwarfBackTraceStr + '  ' + func;
