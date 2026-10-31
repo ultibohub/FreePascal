@@ -41,6 +41,7 @@ uses
 {$DEFINE HAS_OSERROR}
 {$DEFINE HAS_OSCONFIG}
 {$DEFINE HAS_OSUSERDIR}
+{$DEFINE HAS_TEMPDIR}
 {$DEFINE HAS_CREATEGUID}
 {$DEFINE HAS_LOCALTIMEZONEOFFSET}
 {$DEFINE HAS_GETTICKCOUNT}
@@ -292,10 +293,28 @@ begin
   Result:= FlushFileBuffers(Handle);
 end;
 
+{ CreateFile share flags for the fmShare* bits of aMode; fmShareDenyNone uses
+  System.fmShareDenyNoneFlags, unknown values share nothing. }
+function ShareModeFlags(aMode : Integer) : DWord;
+
+var
+  lShare : Integer;
+
+begin
+  lShare:=(aMode and $F0) shr 4;
+  if lShare=(fmShareDenyNone shr 4) then
+    Result:=fmShareDenyNoneFlags
+  else if lShare<=High(ShareModes) then
+    Result:=DWord(ShareModes[lShare])
+  else
+    Result:=0;
+end;
+
+
 Function FileOpen (Const FileName : unicodestring; Mode : Integer) : THandle;
 begin
   result := CreateFileW(PWideChar(FileName), dword(AccessMode[Mode and 3]),
-                       dword(ShareModes[(Mode and $F0) shr 4]), nil, OPEN_EXISTING,
+                       ShareModeFlags(Mode), nil, OPEN_EXISTING,
                        FILE_ATTRIBUTE_NORMAL, 0);
   //if fail api return feInvalidHandle (INVALIDE_HANDLE=feInvalidHandle=-1)
 end;
@@ -313,7 +332,7 @@ end;
 Function FileCreate (Const FileName : UnicodeString; ShareMode : Integer; Rights : Integer) : THandle;
 begin
   Result := CreateFileW(PwideChar(FileName), GENERIC_READ or GENERIC_WRITE,
-                       dword(ShareModes[(ShareMode and $F0) shr 4]), nil, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+                       ShareModeFlags(ShareMode), nil, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 end;
 
 Function FileRead (Handle : THandle; out Buffer; Count : longint) : Longint;
@@ -1765,6 +1784,56 @@ begin
   Result:=GetWindowsSpecialDir(CSIDL_PROFILE);
 end;
 
+
+{ Temporary directory from GetTempPathW, or from TEMP or TMP when that fails. }
+function GetTempDirUnicode: UnicodeString;
+
+var
+  lLen: DWord;
+
+begin
+  SetLength(Result,MAX_PATH+1);
+  lLen:=GetTempPathW(Length(Result),PWideChar(Result));
+  if lLen>DWord(Length(Result)) then
+    begin
+    SetLength(Result,lLen);
+    lLen:=GetTempPathW(Length(Result),PWideChar(Result));
+    end;
+  if (lLen=0) or (lLen>DWord(Length(Result))) then
+    Result:=''
+  else
+    SetLength(Result,lLen);
+  if Result='' then
+    Result:=GetEnvironmentVariable(UnicodeString('TEMP'));
+  if Result='' then
+    Result:=GetEnvironmentVariable(UnicodeString('TMP'));
+end;
+
+
+Function GetTempDir(Global : Boolean) : String;
+
+{$ifndef UNICODERTL}
+var
+  lDir: UnicodeString;
+{$endif UNICODERTL}
+
+begin
+  If Assigned(OnGetTempDir) then
+    Result:=OnGetTempDir(Global)
+  else
+    begin
+{$ifdef UNICODERTL}
+    Result:=GetTempDirUnicode;
+{$else UNICODERTL}
+    lDir:=GetTempDirUnicode;
+    Result:='';
+    widestringmanager.Unicode2AnsiMoveProc(PUnicodeChar(lDir),RawByteString(Result),DefaultRTLFileSystemCodePage,Length(lDir));
+{$endif UNICODERTL}
+    end;
+  if (Result<>'') then
+    Result:=IncludeTrailingPathDelimiter(Result);
+end;
+
 Procedure InitSysConfigDir;
 
 begin
@@ -1805,24 +1874,44 @@ function DoCompareStringW(P1, P2: PWideChar; L1, L2: PtrUInt; Flags: DWORD): Ptr
 
 const
   WinAPICompareFlags : array [TCompareOption] of LongWord
-    = (LINGUISTIC_IGNORECASE, {LINGUISTIC_IGNOREDIACRITIC, }NORM_IGNORECASE{,
+    = (LINGUISTIC_IGNORECASE, LINGUISTIC_IGNOREDIACRITIC, NORM_IGNORECASE,
        NORM_IGNOREKANATYPE, NORM_IGNORENONSPACE, NORM_IGNORESYMBOLS, NORM_IGNOREWIDTH,
-       NORM_LINGUISTIC_CASING, SORT_DIGITSASNUMBERS, SORT_STRINGSORT});
+       NORM_LINGUISTIC_CASING, SORT_DIGITSASNUMBERS, SORT_STRINGSORT);
 
 var
   { LINGUISTIC_IGNORECASE if CompareString supports it, NORM_IGNORECASE otherwise }
   IgnoreCaseCompareFlag : DWORD = NORM_IGNORECASE;
+  { LINGUISTIC_IGNOREDIACRITIC if CompareString supports it, NORM_IGNORENONSPACE otherwise }
+  IgnoreDiacriticCompareFlag : DWORD = NORM_IGNORENONSPACE;
+  { Flags of WinAPICompareFlags that CompareString rejects on this Windows version }
+  UnsupportedCompareFlags : DWORD = 0;
 
-// Set IgnoreCaseCompareFlag to LINGUISTIC_IGNORECASE if CompareString accepts it
-procedure InitIgnoreCaseCompareFlag;
+// True if CompareStringW accepts aFlag
+function CompareFlagSupported(aFlag : DWORD) : Boolean;
 
 begin
-  if CompareStringA(LOCALE_USER_DEFAULT,LINGUISTIC_IGNORECASE,'a',1,'A',1)<>0 then
-    IgnoreCaseCompareFlag:=LINGUISTIC_IGNORECASE;
+  Result:=CompareStringW(LOCALE_USER_DEFAULT,aFlag,'a',1,'A',1)<>0;
 end;
 
 
-// Convert compare options to CompareString flags, coLingIgnoreCase takes precedence over coIgnoreCase
+// Determine which compare flags of newer Windows versions are available
+procedure InitCompareFlags;
+
+begin
+  { IgnoreCaseCompareFlag is also passed to CompareStringA }
+  if CompareStringA(LOCALE_USER_DEFAULT,LINGUISTIC_IGNORECASE,'a',1,'A',1)<>0 then
+    IgnoreCaseCompareFlag:=LINGUISTIC_IGNORECASE;
+  if CompareFlagSupported(LINGUISTIC_IGNOREDIACRITIC) then
+    IgnoreDiacriticCompareFlag:=LINGUISTIC_IGNOREDIACRITIC;
+  if not CompareFlagSupported(NORM_LINGUISTIC_CASING) then
+    UnsupportedCompareFlags:=UnsupportedCompareFlags or NORM_LINGUISTIC_CASING;
+  if not CompareFlagSupported(SORT_DIGITSASNUMBERS) then
+    UnsupportedCompareFlags:=UnsupportedCompareFlags or SORT_DIGITSASNUMBERS;
+end;
+
+
+{ Convert compare options to CompareString flags. coLingIgnoreCase and coLingIgnoreDiacritic
+  fall back to NORM_IGNORECASE and NORM_IGNORENONSPACE; other unsupported flags are dropped. }
 function CompareOptionsToFlags(aOptions : TCompareOptions) : DWORD;
 
 var
@@ -1834,6 +1923,9 @@ begin
     Result:=Result or WinAPICompareFlags[lOption];
   if coLingIgnoreCase in aOptions then
     Result:=(Result and not (NORM_IGNORECASE or LINGUISTIC_IGNORECASE)) or IgnoreCaseCompareFlag;
+  if coLingIgnoreDiacritic in aOptions then
+    Result:=(Result and not LINGUISTIC_IGNOREDIACRITIC) or IgnoreDiacriticCompareFlag;
+  Result:=Result and not UnsupportedCompareFlags;
 end;
 
 
@@ -1954,7 +2046,7 @@ procedure InitWin32Widestrings;
       0 if NULL character,
       > 0 if that's the length in bytes of the code point }
 //!!!!    CodePointLengthProc : function(const Str: PAnsiChar; MaxLookAead: PtrInt): Ptrint;
-    InitIgnoreCaseCompareFlag;
+    InitCompareFlags;
     widestringmanager.CompareWideStringProc:=@Win32CompareWideString;
     widestringmanager.UpperAnsiStringProc:=@Win32AnsiUpperCase;
     widestringmanager.LowerAnsiStringProc:=@Win32AnsiLowerCase;
@@ -1974,6 +2066,7 @@ procedure InitWin32Widestrings;
 function WinExceptionObject(code: Longint; const rec: TExceptionRecord): Exception;
 var
   entry: PExceptMapEntry;
+  info: TExceptObject;
 begin
   entry := FindExceptMapEntry(code);
   if assigned(entry) then
@@ -1983,6 +2076,10 @@ begin
 
   if result is EExternal then
     EExternal(result).FExceptionRecord:=rec;
+  FillChar(info,SizeOf(info),0);
+  info.FObject:=result;
+  info.Addr:=rec.ExceptionAddress;
+  result.RaisingException(@info);
 end;
 
 function WinExceptionClass(code: longint): ExceptClass;

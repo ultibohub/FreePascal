@@ -383,7 +383,7 @@ function WinTryEnterCriticalSection(var cs : TRTLCriticalSection):longint;
 
     function SysBeginThread(sa : Pointer;stacksize : ptruint;
                          ThreadFunction : tthreadfunc;p : pointer;
-                         creationFlags : dword;var ThreadId : TThreadID) : TThreadID;
+                         creationFlags : dword;var ThreadId : TThreadID) : TThreadHandle;
       var
         ti : pthreadinfo;
         _threadid : dword;
@@ -391,14 +391,7 @@ function WinTryEnterCriticalSection(var cs : TRTLCriticalSection):longint;
 {$ifdef DEBUG_MT}
         writeln('Creating new thread');
 {$endif DEBUG_MT}
-        { Initialize multithreading if not done }
-        SysInitTLS;
-        if not IsMultiThread then
-          begin
-           { lazy initialize thread support }
-            LazyInitThreading;
-            IsMultiThread:=true;
-          end;
+        InitMultiThreading;
 
         { the only way to pass data to the newly created thread
           in a MT safe way, is to use the heap }
@@ -438,19 +431,19 @@ function WinTryEnterCriticalSection(var cs : TRTLCriticalSection):longint;
     end;
 
 
-    function  SysSuspendThread (threadHandle : TThreadID) : dword;
+    function  SysSuspendThread (threadHandle : TThreadHandle) : dword;
     begin
       SysSuspendThread:=WinSuspendThread(threadHandle);
     end;
 
 
-    function  SysResumeThread  (threadHandle : TThreadID) : dword;
+    function  SysResumeThread  (threadHandle : TThreadHandle) : dword;
     begin
       SysResumeThread:=WinResumeThread(threadHandle);
     end;
 
 
-    function  SysKillThread (threadHandle : TThreadID) : dword;
+    function  SysKillThread (threadHandle : TThreadHandle) : dword;
     var exitCode : dword;
     begin
       if not TerminateThread (threadHandle, exitCode) then
@@ -459,12 +452,12 @@ function WinTryEnterCriticalSection(var cs : TRTLCriticalSection):longint;
         SysKillThread := 0;
     end;
 
-    function  SysCloseThread (threadHandle : TThreadID) : dword;
+    function  SysCloseThread (threadHandle : TThreadHandle) : dword;
     begin
       SysCloseThread:=winCloseHandle(threadHandle);
     end;
 
-    function  SysWaitForThreadTerminate (threadHandle : TThreadID; TimeoutMs : longint) : dword;
+    function  SysWaitForThreadTerminate (threadHandle : TThreadHandle; TimeoutMs : longint) : dword;
     var
       lExitCode : dword;
     begin
@@ -479,13 +472,13 @@ function WinTryEnterCriticalSection(var cs : TRTLCriticalSection):longint;
     end;
 
 
-    function  SysThreadSetPriority (threadHandle : TThreadID; Prio: longint): boolean;            {-15..+15, 0=normal}
+    function  SysThreadSetPriority (threadHandle : TThreadHandle; Prio: longint): boolean;            {-15..+15, 0=normal}
     begin
       SysThreadSetPriority:=WinThreadSetPriority(threadHandle,Prio);
     end;
 
 
-    function  SysThreadGetPriority (threadHandle : TThreadID): longint;
+    function  SysThreadGetPriority (threadHandle : TThreadHandle): longint;
     begin
       SysThreadGetPriority:=WinThreadGetPriority(threadHandle);
     end;
@@ -771,6 +764,7 @@ begin
     RTLEventResetEvent     :=@intRTLEventResetEvent;
     RTLEventWaitFor        :=@intRTLEventWaitFor;
     RTLEventWaitForTimeout :=@intRTLEventWaitForTimeout;
+    InitMultiThreading     :=@SysInitTLS;
     end;
   SetThreadManager(WinThreadManager);
   ThreadID := GetCurrentThreadID;

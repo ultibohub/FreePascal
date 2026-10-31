@@ -347,6 +347,46 @@ function SameValue(const A, B: Double; Epsilon: Double): Boolean; overload;
 {$endif}
 function SameValue(const A, B: Single; Epsilon: Single): Boolean; overload;
 
+{ NextAfter returns the floating-point value next to X in the direction of Y.
+  It returns Y when X=Y, a NaN when X or Y is a NaN, and the smallest denormal
+  with the sign of the direction when X is zero. }
+function NextAfter(const X, Y: Single): Single; overload;
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function NextAfter(const X, Y: Double): Double; overload;
+{$endif FPC_HAS_TYPE_DOUBLE}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function NextAfter(const X, Y: Extended): Extended; overload;
+{$endif FPC_HAS_TYPE_EXTENDED}
+
+// Smallest floating-point value greater than X; NextUp(Infinity) is Infinity.
+function NextUp(const X: Single): Single; overload;
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function NextUp(const X: Double): Double; overload;
+{$endif FPC_HAS_TYPE_DOUBLE}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function NextUp(const X: Extended): Extended; overload;
+{$endif FPC_HAS_TYPE_EXTENDED}
+
+// Largest floating-point value less than X; NextDown(NegInfinity) is NegInfinity.
+function NextDown(const X: Single): Single; overload;
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function NextDown(const X: Double): Double; overload;
+{$endif FPC_HAS_TYPE_DOUBLE}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function NextDown(const X: Extended): Extended; overload;
+{$endif FPC_HAS_TYPE_EXTENDED}
+
+{ ULP returns the distance from |X| to the next value away from zero, or to the
+  previous value when |X| is the largest finite value. ULP(0) is the smallest
+  denormal, ULP of an infinity is Infinity and ULP of a NaN is that NaN. }
+function ULP(const X: Single): Single; overload;
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+function ULP(const X: Double): Double; overload;
+{$endif FPC_HAS_TYPE_DOUBLE}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function ULP(const X: Extended): Extended; overload;
+{$endif FPC_HAS_TYPE_EXTENDED}
+
 type
   TRoundToRange = -37..37;
 
@@ -924,6 +964,19 @@ type
   TFPUPrecisionMode = system.TFPUPrecisionMode;
   TFPUException = system.TFPUException;
   TFPUExceptionMask = system.TFPUExceptionMask;
+  // Floating-point exception, Delphi name of TFPUException.
+  TArithmeticException = TFPUException;
+  // Set of floating-point exception flags.
+  TArithmeticExceptions = TFPUExceptionMask;
+  // Set of masked floating-point exceptions.
+  TArithmeticExceptionMask = TFPUExceptionMask;
+
+const
+  exAllArithmeticExceptions = [exInvalidOp, exDenormalized, exZeroDivide, exOverflow, exUnderflow, exPrecision];
+  // Default flags of ClearExceptions and RaiseExceptions: all pending exceptions.
+  DefaultExceptionFlags = [];
+  // Value of DefaultExceptionFlags in Delphi versions before 12.
+  LegacyExceptionFlags = [exInvalidOp, exZeroDivide, exOverflow];
 
 function GetRoundMode: TFPURoundingMode;
 function SetRoundMode(const RoundMode: TFPURoundingMode): TFPURoundingMode;
@@ -931,7 +984,16 @@ function GetPrecisionMode: TFPUPrecisionMode;
 function SetPrecisionMode(const Precision: TFPUPrecisionMode): TFPUPrecisionMode;
 function GetExceptionMask: TFPUExceptionMask;
 function SetExceptionMask(const Mask: TFPUExceptionMask): TFPUExceptionMask;
-procedure ClearExceptions(RaisePending: Boolean =true);
+{ Clear pending floating-point exception flags. With ExceptionFlags=[] all flags are cleared,
+  otherwise only the given ones. RaisePending first raises the pending exceptions that are
+  not masked. }
+procedure ClearExceptions(RaisePending: Boolean = true; ExceptionFlags: TArithmeticExceptions = DefaultExceptionFlags);
+// Return the cumulative floating-point exception flags.
+function GetExceptions: TArithmeticExceptions;
+// Set the cumulative floating-point exception flags and return the previous ones.
+function SetExceptions(const Exceptions: TArithmeticExceptions): TArithmeticExceptions;
+// Raise the pending unmasked exceptions among ExceptionFlags (all when []) and clear those flags.
+procedure RaiseExceptions(const ExceptionFlags: TArithmeticExceptions = DefaultExceptionFlags);
 
 
 implementation
@@ -940,6 +1002,69 @@ function copysign(x,y: float): float; forward;    { returns abs(x)*sign(y) }
 
 { include cpu specific stuff }
 {$i mathu.inc}
+
+{$ifndef FPC_MATH_HAS_EXCEPTION_FLAGS}
+function GetExceptions: TArithmeticExceptions;
+begin
+  Result:=softfloat_exception_flags;
+end;
+
+
+function SetExceptions(const Exceptions: TArithmeticExceptions): TArithmeticExceptions;
+begin
+  Result:=softfloat_exception_flags;
+  softfloat_exception_flags:=Exceptions;
+end;
+{$endif FPC_MATH_HAS_EXCEPTION_FLAGS}
+
+
+{ Runtime error, passed to ErrorProc first, for an exception of aFlags that is not
+  masked; the error codes are those of float_raise. }
+procedure RaiseUnmaskedExceptions(aFlags: TArithmeticExceptions);
+var
+  lCode: Longint;
+begin
+  aFlags:=aFlags-GetExceptionMask;
+  if exInvalidOp in aFlags then
+    lCode:=207
+  else if exZeroDivide in aFlags then
+    lCode:=208
+  else if exOverflow in aFlags then
+    lCode:=205
+  else if exUnderflow in aFlags then
+    lCode:=206
+  else if exPrecision in aFlags then
+    lCode:=207
+  else if exDenormalized in aFlags then
+    lCode:=216
+  else
+    exit;
+  if Assigned(ErrorProc) then
+    ErrorProc(lCode,get_caller_addr(get_frame),get_caller_frame(get_frame));
+  RunError(lCode);
+end;
+
+
+procedure ClearExceptions(RaisePending: Boolean; ExceptionFlags: TArithmeticExceptions);
+var
+  lPending: TArithmeticExceptions;
+begin
+  if ExceptionFlags=[] then
+    ClearAllExceptions(RaisePending)
+  else
+    begin
+    lPending:=GetExceptions*ExceptionFlags;
+    SetExceptions(GetExceptions-ExceptionFlags);
+    if RaisePending then
+      RaiseUnmaskedExceptions(lPending);
+    end;
+end;
+
+
+procedure RaiseExceptions(const ExceptionFlags: TArithmeticExceptions);
+begin
+  ClearExceptions(True,ExceptionFlags);
+end;
 
 ResourceString
   SMathError = 'Math Error : %s';
@@ -3828,6 +3953,245 @@ begin
   else
     Result:=((B-A)<=Epsilon);
 end;
+
+
+function NextAfter(const X, Y: Single): Single;
+
+var
+  lRec: TSingleRec;
+
+begin
+  if IsNan(X) then
+    Exit(X);
+  if IsNan(Y) or (X=Y) then
+    Exit(Y);
+  lRec.Value:=X;
+  if (lRec.Data and $7FFFFFFF)=0 then
+    begin
+    lRec.Data:=1;
+    if Y<X then
+      lRec.Data:=lRec.Data or $80000000;
+    end
+  else if (X<Y)=(X>0) then
+    Inc(lRec.Data)
+  else
+    Dec(lRec.Data);
+  Result:=lRec.Value;
+end;
+
+
+function NextUp(const X: Single): Single;
+
+begin
+  Result:=NextAfter(X,Single(Infinity));
+end;
+
+
+function NextDown(const X: Single): Single;
+
+begin
+  Result:=NextAfter(X,Single(NegInfinity));
+end;
+
+
+function ULP(const X: Single): Single;
+
+var
+  lAbs, lNext: Single;
+
+begin
+  if IsNan(X) then
+    Exit(X);
+  if IsInfinite(X) then
+    Exit(Single(Infinity));
+  lAbs:=Abs(X);
+  lNext:=NextUp(lAbs);
+  if IsInfinite(lNext) then
+    Result:=lAbs-NextDown(lAbs)
+  else
+    Result:=lNext-lAbs;
+end;
+
+
+{$ifdef FPC_HAS_TYPE_DOUBLE}
+{ Bits of D as a QWord with the sign in bit 63. }
+function DoubleToBits(const D: Double): QWord; inline;
+
+var
+  lRec: TDoubleRec;
+
+begin
+  lRec.Value:=D;
+{$ifdef FPC_DOUBLE_HILO_SWAPPED}
+  Result:=(lRec.Data shl 32) or (lRec.Data shr 32);
+{$else FPC_DOUBLE_HILO_SWAPPED}
+  Result:=lRec.Data;
+{$endif FPC_DOUBLE_HILO_SWAPPED}
+end;
+
+
+{ Double whose bits are B, with the sign in bit 63. }
+function BitsToDouble(const B: QWord): Double; inline;
+
+var
+  lRec: TDoubleRec;
+
+begin
+{$ifdef FPC_DOUBLE_HILO_SWAPPED}
+  lRec.Data:=(B shl 32) or (B shr 32);
+{$else FPC_DOUBLE_HILO_SWAPPED}
+  lRec.Data:=B;
+{$endif FPC_DOUBLE_HILO_SWAPPED}
+  Result:=lRec.Value;
+end;
+
+
+function NextAfter(const X, Y: Double): Double;
+
+var
+  lBits: QWord;
+
+begin
+  if IsNan(X) then
+    Exit(X);
+  if IsNan(Y) or (X=Y) then
+    Exit(Y);
+  lBits:=DoubleToBits(X);
+  if (lBits and QWord($7FFFFFFFFFFFFFFF))=0 then
+    begin
+    lBits:=1;
+    if Y<X then
+      lBits:=lBits or QWord($8000000000000000);
+    end
+  else if (X<Y)=(X>0) then
+    Inc(lBits)
+  else
+    Dec(lBits);
+  Result:=BitsToDouble(lBits);
+end;
+
+
+function NextUp(const X: Double): Double;
+
+begin
+  Result:=NextAfter(X,Double(Infinity));
+end;
+
+
+function NextDown(const X: Double): Double;
+
+begin
+  Result:=NextAfter(X,Double(NegInfinity));
+end;
+
+
+function ULP(const X: Double): Double;
+
+var
+  lAbs, lNext: Double;
+
+begin
+  if IsNan(X) then
+    Exit(X);
+  if IsInfinite(X) then
+    Exit(Double(Infinity));
+  lAbs:=Abs(X);
+  lNext:=NextUp(lAbs);
+  if IsInfinite(lNext) then
+    Result:=lAbs-NextDown(lAbs)
+  else
+    Result:=lNext-lAbs;
+end;
+{$endif FPC_HAS_TYPE_DOUBLE}
+
+
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function NextAfter(const X, Y: Extended): Extended;
+
+var
+  lRec: TExtended80Rec;
+  lExp: Word;
+
+begin
+  if IsNan(X) then
+    Exit(X);
+  if IsNan(Y) or (X=Y) then
+    Exit(Y);
+  lRec.Value:=X;
+  lExp:=lRec._Exp and $7FFF;
+  if (lExp=0) and (lRec.Frac=0) then
+    begin
+    lRec.Frac:=1;
+    if Y<X then
+      lRec._Exp:=$8000
+    else
+      lRec._Exp:=0;
+    end
+  else if (X<Y)=(X>0) then
+    begin
+    // Away from zero; the integer bit of the mantissa is explicit
+    if lRec.Frac=QWord($FFFFFFFFFFFFFFFF) then
+      begin
+      lRec.Frac:=QWord($8000000000000000);
+      Inc(lRec._Exp);
+      end
+    else
+      begin
+      Inc(lRec.Frac);
+      if (lExp=0) and (lRec.Frac=QWord($8000000000000000)) then
+        Inc(lRec._Exp);
+      end;
+    end
+  else
+    begin
+    // Towards zero
+    if (lRec.Frac=QWord($8000000000000000)) and (lExp>0) then
+      begin
+      Dec(lRec._Exp);
+      if lExp>1 then
+        lRec.Frac:=QWord($FFFFFFFFFFFFFFFF)
+      else
+        lRec.Frac:=QWord($7FFFFFFFFFFFFFFF);
+      end
+    else
+      Dec(lRec.Frac);
+    end;
+  Result:=lRec.Value;
+end;
+
+
+function NextUp(const X: Extended): Extended;
+
+begin
+  Result:=NextAfter(X,Extended(Infinity));
+end;
+
+
+function NextDown(const X: Extended): Extended;
+
+begin
+  Result:=NextAfter(X,Extended(NegInfinity));
+end;
+
+
+function ULP(const X: Extended): Extended;
+
+var
+  lAbs, lNext: Extended;
+
+begin
+  if IsNan(X) then
+    Exit(X);
+  if IsInfinite(X) then
+    Exit(Extended(Infinity));
+  lAbs:=Abs(X);
+  lNext:=NextUp(lAbs);
+  if IsInfinite(lNext) then
+    Result:=lAbs-NextDown(lAbs)
+  else
+    Result:=lNext-lAbs;
+end;
+{$endif FPC_HAS_TYPE_EXTENDED}
 
 // Some CPUs probably allow a faster way of doing this in a single operation...
 // There we should define  FPC_MATH_HAS_CPUDIVMOD in the header mathuh.inc and implement it using asm.

@@ -103,7 +103,7 @@ Var
                             Overloaded functions
 *****************************************************************************}
 
-    function BeginThread(ThreadFunction : tthreadfunc) : TThreadID;
+    function BeginThread(ThreadFunction : tthreadfunc) : TThreadHandle;
       var
         dummy : TThreadID;
       begin
@@ -111,7 +111,7 @@ Var
       end;
 
 
-    function BeginThread(ThreadFunction : tthreadfunc;p : pointer) : TThreadID;
+    function BeginThread(ThreadFunction : tthreadfunc;p : pointer) : TThreadHandle;
       var
         dummy : TThreadID;
       begin
@@ -119,15 +119,138 @@ Var
       end;
 
 
-    function BeginThread(ThreadFunction : tthreadfunc;p : pointer;var ThreadId : TThreadID) : TThreadID;
+    function BeginThread(ThreadFunction : tthreadfunc;p : pointer;var ThreadId : TThreadID) : TThreadHandle;
       begin
         BeginThread:=BeginThread(nil,DefaultStackSize,ThreadFunction,p,0,ThreadId);
       end;
 
     function BeginThread(ThreadFunction : tthreadfunc;p : pointer;
-                     var ThreadId : TThreadID; const stacksize: SizeUInt) : TThreadID;
+                     var ThreadId : TThreadID; const stacksize: SizeUInt) : TThreadHandle;
       begin
         BeginThread:=BeginThread(nil,stacksize,ThreadFunction,p,0,ThreadId);
+      end;
+
+type
+  PSuspendedStart = ^TSuspendedStart;
+  TSuspendedStart = record
+    Next : PSuspendedStart;
+    Handle : TThreadHandle;
+    Func : TThreadFunc; { Reset to nil to signal it shouldn’t run. }
+    Param : Pointer;
+    StartEvent : PRTLEvent;
+  end;
+
+const
+  SuspendedStartList : PSuspendedStart = nil;
+  SuspendedStartLock : longint = 0;
+
+{ Acquire the spinlock protecting SuspendedStartList. }
+procedure LockSuspendedStarts;
+
+begin
+  while InterlockedExchange(SuspendedStartLock,1)<>0 do
+    ThreadSwitch;
+end;
+
+
+{ Release the spinlock protecting SuspendedStartList. }
+procedure UnlockSuspendedStarts;
+
+begin
+  InterlockedExchange(SuspendedStartLock,0);
+end;
+
+
+{ Searches and unregisters the suspended start of aHandle (returns true if found).
+  Sets its StartEvent, and if “cancel”, signals it to skip the user body (used by Kill/CloseThread). }
+function PulseSuspendedStart(aHandle : TThreadHandle; cancel : boolean) : boolean;
+
+var
+  lPrev,lThis : PSuspendedStart;
+
+begin
+  Result:=false;
+  if SuspendedStartList=nil then
+    exit;
+  LockSuspendedStarts;
+  lPrev:=nil;
+  lThis:=SuspendedStartList;
+  while assigned(lThis) and (lThis^.Handle<>aHandle) do
+    begin
+    lPrev:=lThis;
+    lThis:=lThis^.Next;
+    end;
+  if assigned(lThis) then
+    begin
+    if assigned(lPrev) then
+      lPrev^.Next:=lThis^.Next
+    else
+      SuspendedStartList:=lThis^.Next;
+    end;
+  UnlockSuspendedStarts;
+  if assigned(lThis) then
+    begin
+    Result:=true;
+    if cancel then
+      lThis^.Func:=nil;
+    RTLEventSetEvent(lThis^.StartEvent);
+    end;
+end;
+
+
+{ Thread function of a suspended thread: waits for its start event, then runs the user function. }
+function SuspendedStartMain(aStart : pointer) : ptrint;
+
+var
+  lFunc : TThreadFunc;
+  lParam : Pointer;
+
+begin
+  RTLEventWaitFor(PSuspendedStart(aStart)^.StartEvent);
+  RTLEventDestroy(PSuspendedStart(aStart)^.StartEvent);
+  lFunc:=PSuspendedStart(aStart)^.Func;
+  lParam:=PSuspendedStart(aStart)^.Param;
+  Dispose(PSuspendedStart(aStart));
+  Result:=0;
+  if assigned(lFunc) then
+    Result:=lFunc(lParam);
+end;
+
+
+{ Start a thread that waits in SuspendedStartMain until ResumeThread is called on the returned handle. }
+function BeginSuspendedThread(sa : Pointer;stacksize : SizeUInt; ThreadFunction : tthreadfunc;p : pointer;
+  creationFlags : dword; var ThreadId : TThreadID) : TThreadHandle;
+
+var
+  lStart : PSuspendedStart;
+
+begin
+  New(lStart);
+  lStart^.Func:=ThreadFunction;
+  lStart^.Param:=p;
+  lStart^.StartEvent:=RTLEventCreate;
+  Result:=CurrentTM.BeginThread(sa,stacksize,@SuspendedStartMain,lStart,creationFlags,ThreadId);
+  if Result=TThreadHandle(0) then
+    begin
+    RTLEventDestroy(lStart^.StartEvent);
+    Dispose(lStart);
+    exit;
+    end;
+  lStart^.Handle:=Result;
+  LockSuspendedStarts;
+  lStart^.Next:=SuspendedStartList;
+  SuspendedStartList:=lStart;
+  UnlockSuspendedStarts;
+end;
+
+
+    function BeginThread(ThreadFunction : tthreadfunc;p : pointer; var ThreadId : TThreadID;
+                     Suspended : Boolean; const stacksize: SizeUInt) : TThreadHandle;
+      begin
+        if Suspended then
+          Result:=BeginSuspendedThread(nil,stacksize,ThreadFunction,p,0,ThreadId)
+        else
+          Result:=BeginThread(nil,stacksize,ThreadFunction,p,0,ThreadId);
       end;
 
     procedure EndThread;
@@ -135,10 +258,28 @@ Var
         EndThread(0);
       end;
 
-function BeginThread(sa : Pointer;stacksize : SizeUInt; ThreadFunction : tthreadfunc;p : pointer;creationFlags : dword;  var ThreadId : TThreadID) : TThreadID;
+function InitMultiThreading : Boolean;
 
 begin
-  Result:=CurrentTM.BeginThread(sa,stacksize,threadfunction,P,creationflags,ThreadID);
+  Result:=IsMultiThread;
+  if assigned(CurrentTM.InitMultiThreading) then
+    CurrentTM.InitMultiThreading;
+  if not IsMultiThread then
+    begin
+    LazyInitThreading;
+    IsMultiThread:=true;
+    end;
+end;
+
+function BeginThread(sa : Pointer;stacksize : SizeUInt; ThreadFunction : tthreadfunc;p : pointer;creationFlags : dword;  var ThreadId : TThreadID) : TThreadHandle;
+
+begin
+{$ifndef HAS_CREATE_SUSPENDED}
+  if (creationFlags and CREATE_SUSPENDED)<>0 then
+    Result:=BeginSuspendedThread(sa,stacksize,threadfunction,P,creationFlags and not CREATE_SUSPENDED,ThreadID)
+  else
+{$endif HAS_CREATE_SUSPENDED}
+    Result:=CurrentTM.BeginThread(sa,stacksize,threadfunction,P,creationflags,ThreadID);
 end;
 
 procedure FlushThread;
@@ -155,21 +296,25 @@ begin
   CurrentTM.EndThread(ExitCode);
 end;
 
-function  SuspendThread (threadHandle : TThreadID) : dword;
+function  SuspendThread (threadHandle : TThreadHandle) : dword;
 
 begin
   Result:=CurrentTM.SuspendThread(ThreadHandle);
 end;
 
-function ResumeThread  (threadHandle : TThreadID) : dword;
+function ResumeThread  (threadHandle : TThreadHandle) : dword;
 
 begin
-  Result:=CurrentTM.ResumeThread(ThreadHandle);
+  if PulseSuspendedStart(threadHandle,false) then
+    Result:=1
+  else
+    Result:=CurrentTM.ResumeThread(ThreadHandle);
 end;
 
-function CloseThread  (threadHandle : TThreadID):dword;
+function CloseThread  (threadHandle : TThreadHandle):dword;
 
 begin
+  PulseSuspendedStart(threadHandle,true);
   result:=CurrentTM.CloseThread(ThreadHandle);
 end;
 
@@ -179,24 +324,25 @@ begin
   CurrentTM.ThreadSwitch;
 end;
 
-function  KillThread (threadHandle : TThreadID) : dword;
+function  KillThread (threadHandle : TThreadHandle) : dword;
 
 begin
+  PulseSuspendedStart(threadHandle,true);
   Result:=CurrentTM.KillThread(ThreadHandle);
 end;
 
-function  WaitForThreadTerminate (threadHandle : TThreadID; TimeoutMs : longint) : dword;
+function  WaitForThreadTerminate (threadHandle : TThreadHandle; TimeoutMs : longint) : dword;
 
 begin
   Result:=CurrentTM.WaitForThreadTerminate(ThreadHandle,TimeOutMS);
 end;
 
-function  ThreadSetPriority (threadHandle : TThreadID; Prio: longint): boolean;
+function  ThreadSetPriority (threadHandle : TThreadHandle; Prio: longint): boolean;
 begin
   Result:=CurrentTM.ThreadSetPriority(ThreadHandle,Prio);
 end;
 
-function  ThreadGetPriority (threadHandle : TThreadID): longint;
+function  ThreadGetPriority (threadHandle : TThreadHandle): longint;
 
 begin
   Result:=CurrentTM.ThreadGetPriority(ThreadHandle);
@@ -433,10 +579,10 @@ end;
 
 function NoBeginThread(sa : Pointer;stacksize : PtrUInt;
                      ThreadFunction : tthreadfunc;p : pointer;
-                     creationFlags : dword; var ThreadId : TThreadID) : TThreadID;
+                     creationFlags : dword; var ThreadId : TThreadID) : TThreadHandle;
 begin
   NoThreadError;
-  result:=tthreadid(-1);
+  result:=TThreadHandle(-1);
 end;
 
 procedure NoEndThread(ExitCode : DWord);
@@ -444,25 +590,25 @@ begin
   NoThreadError;
 end;
 
-function  NoThreadHandler (threadHandle : TThreadID) : dword;
+function  NoThreadHandler (threadHandle : TThreadHandle) : dword;
 begin
   NoThreadError;
   result:=dword(-1);
 end;
 
-function  NoWaitForThreadTerminate (threadHandle : TThreadID; TimeoutMs : longint) : dword;  {0=no timeout}
+function  NoWaitForThreadTerminate (threadHandle : TThreadHandle; TimeoutMs : longint) : dword;  {0=no timeout}
 begin
   NoThreadError;
   result:=dword(-1);
 end;
 
-function  NoThreadSetPriority (threadHandle : TThreadID; Prio: longint): boolean; {-15..+15, 0=normal}
+function  NoThreadSetPriority (threadHandle : TThreadHandle; Prio: longint): boolean; {-15..+15, 0=normal}
 begin
   NoThreadError;
   result:=false;
 end;
 
-function  NoThreadGetPriority (threadHandle : TThreadID): longint;
+function  NoThreadGetPriority (threadHandle : TThreadHandle): longint;
 begin
   NoThreadError;
   result:=-1;
@@ -622,6 +768,7 @@ const
          RTLEventResetEvent     : TRTLEventHandler(@NoThreadError);
          RTLEventWaitFor        : TRTLEventHandler(@NoThreadError);
          RTLEventwaitfortimeout : TRTLEventHandlerTimeout(@NoThreadError);
+         InitMultiThreading     : @NoThreadError;
 {$else defined(EMBEDDED) or defined(ULTIBO)}
          BeginThread            : @NoBeginThread;
          EndThread              : @NoEndThread;
@@ -658,6 +805,7 @@ const
          RTLEventResetEvent     : @NoRTLEvent;
          RTLEventWaitFor        : @NoRTLEvent;
          RTLEventWaitforTimeout : @NoRTLEventWaitForTimeout;
+         InitMultiThreading     : @NoThreadError;
 {$endif defined(EMBEDDED) or defined(ULTIBO)}
       );
 

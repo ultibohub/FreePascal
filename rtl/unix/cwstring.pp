@@ -80,7 +80,8 @@ Uses
   UnixApi.Types,
   System.InitC,
   System.DynLibs,
-  UnixApi.CP;
+  UnixApi.CP,
+  System.CompareOpts;
 {$ELSE FPC_DOTTEDUNITS}
 Uses
   BaseUnix,
@@ -89,7 +90,8 @@ Uses
   unixtype,
   initc,
   dynlibs,
-  unixcp;
+  unixcp,
+  compareopts;
 {$ENDIF FPC_DOTTEDUNITS}
 
 Const
@@ -116,6 +118,8 @@ function towlower(__wc:wint_t):wint_t;cdecl;external clib name 'towlower';
 function towupper(__wc:wint_t):wint_t;cdecl;external clib name 'towupper';
 
 function wcscoll (__s1:pwchar_t; __s2:pwchar_t):cint;cdecl;external clib name 'wcscoll';
+function iswpunct(__wc:wint_t):cint;cdecl;external clib name 'iswpunct';
+function iswspace(__wc:wint_t):cint;cdecl;external clib name 'iswspace';
 function strcoll (__s1:PAnsiChar; __s2:PAnsiChar):cint;cdecl;external clib name 'strcoll';
 {$ifdef netbsd}
   { NetBSD has a new setlocale function defined in /usr/include/locale.h
@@ -254,6 +258,8 @@ Const
 threadvar
   iconv_ansi2wide,
   iconv_wide2ansi : iconv_t;
+  { UTF-16 to DefaultSystemCodePage without transliteration, opened on first use }
+  iconv_wide2ansi_exact : iconv_t;
   { since we cache the iconv_t converters, we have to do the same
     for the DefaultSystemCodePage variable since if it changes, we
     have to re-initialize the converters too. We can't do that via
@@ -306,6 +312,9 @@ begin
     iconv_close(iconv_wide2ansi);
   if (iconv_ansi2wide <> iconv_t(-1)) then
     iconv_close(iconv_ansi2wide);
+  if (iconv_wide2ansi_exact <> nil) and (iconv_wide2ansi_exact <> iconv_t(-1)) then
+    iconv_close(iconv_wide2ansi_exact);
+  iconv_wide2ansi_exact:=nil;
 end;
 
 
@@ -634,6 +643,236 @@ procedure Ansi2WideMove(source:PAnsiChar; cp:TSystemCodePage; var dest:widestrin
   end;
 
 
+{ Opens a converter from UTF-16 to cp without transliteration, iconv_t(-1) if there is none. }
+function open_exact_iconv_from_unicode(cp: TSystemCodePage): iconv_t;
+  var
+    lIndex: longint;
+  begin
+    Result:=iconv_t(-1);
+    lIndex:=GetCodepageData(cp);
+    if lIndex=-1 then
+      begin
+        if cp=CP_UTF8 then
+          Result:=iconv_open('UTF-8',unicode_encoding2);
+        exit;
+      end;
+    repeat
+      Result:=iconv_open(PAnsiChar(UnixCpMap[lIndex].name),unicode_encoding2);
+      inc(lIndex);
+    until (Result<>iconv_t(-1)) or
+          (lIndex>high(UnixCpMap)) or
+          (UnixCpMap[lIndex].cp<>cp);
+  end;
+
+
+{ Returns the converter between cp and UTF-16 used by the buffer procs, iconv_t(-1) if there is none.
+  aFree is set when the caller has to close it. }
+function buffer_iconv(cp: TSystemCodePage; aToUnicode: boolean; out aFree: boolean): iconv_t;
+  begin
+    aFree:=false;
+    if cp=DefaultSystemCodePage then
+      begin
+        if current_DefaultSystemCodePage<>DefaultSystemCodePage then
+          begin
+            FiniThread;
+            InitThread;
+          end;
+        if aToUnicode then
+          begin
+            Result:=iconv_ansi2wide;
+            if Result=nil then
+              Result:=iconv_t(-1);
+          end
+        else
+          begin
+            if iconv_wide2ansi_exact=nil then
+              iconv_wide2ansi_exact:=open_exact_iconv_from_unicode(cp);
+            Result:=iconv_wide2ansi_exact;
+          end;
+        exit;
+      end;
+    aFree:=true;
+    if aToUnicode then
+      Result:=open_iconv_for_cps(cp,unicode_encoding2,true)
+    else
+      Result:=open_exact_iconv_from_unicode(cp);
+  end;
+
+
+{ Ansi2UnicodeBufProc of the widestring manager. }
+function Ansi2UnicodeBuf(Source: PAnsiChar; SourceLen: SizeInt; CodePage: TSystemCodePage; Flags: Cardinal;
+  Dest: PUnicodeChar; DestLen: SizeInt): SizeInt;
+  var
+    lIconv: iconv_t;
+    lFree, lOk: boolean;
+    lScratch: array[0..255] of UnicodeChar;
+    lStart, lSrc, lOut, lNil: PAnsiChar;
+    lSrcLeft, lOutLeft, l0: size_t;
+    lCounted: SizeInt;
+    lErr: cint;
+
+  { Empties the scratch buffer when counting; false when writing to Dest. }
+  function MakeRoom: boolean;
+    begin
+      Result:=DestLen=0;
+      if Result then
+        begin
+          inc(lCounted,lOut-lStart);
+          lOut:=lStart;
+          lOutLeft:=SizeOf(lScratch);
+        end;
+    end;
+
+  begin
+    lIconv:=buffer_iconv(CodePage,true,lFree);
+    if lIconv=iconv_t(-1) then
+      exit(-1);
+    lNil:=nil;
+    l0:=0;
+    iconv(lIconv,@lNil,@l0,@lNil,@l0);
+    lCounted:=0;
+    if DestLen=0 then
+      begin
+        lStart:=PAnsiChar(@lScratch[0]);
+        lOutLeft:=SizeOf(lScratch);
+      end
+    else
+      begin
+        lStart:=PAnsiChar(Dest);
+        lOutLeft:=DestLen*SizeOf(UnicodeChar);
+      end;
+    lOut:=lStart;
+    lSrc:=Source;
+    lSrcLeft:=SourceLen;
+    lOk:=true;
+    while lOk and (iconv(lIconv,@lSrc,@lSrcLeft,@lOut,@lOutLeft)=size_t(-1)) do
+      begin
+        lErr:=fpgetCerrno;
+        case lErr of
+          ESysE2BIG:
+            lOk:=MakeRoom;
+          ESysEINVAL,
+          ESysEILSEQ:
+            begin
+              if (lOutLeft<SizeOf(UnicodeChar)) and not MakeRoom then
+                lOk:=false
+              else
+                begin
+                  PUnicodeChar(lOut)^:='?';
+                  inc(lOut,SizeOf(UnicodeChar));
+                  dec(lOutLeft,SizeOf(UnicodeChar));
+                  inc(lSrc);
+                  dec(lSrcLeft);
+                  iconv(lIconv,@lNil,@l0,@lNil,@l0);
+                  if lErr=ESysEINVAL then
+                    break;
+                end;
+            end;
+          else
+            lOk:=false;
+        end;
+      end;
+    if lOk then
+      Result:=(lCounted+(lOut-lStart)) div SizeOf(UnicodeChar)
+    else
+      Result:=0;
+    if lFree then
+      iconv_close(lIconv);
+  end;
+
+
+{ Unicode2AnsiBufProc of the widestring manager. }
+function Unicode2AnsiBuf(Source: PUnicodeChar; SourceLen: SizeInt; CodePage: TSystemCodePage; Flags: Cardinal;
+  Dest: PAnsiChar; DestLen: SizeInt; DefaultChar: PAnsiChar; UsedDefaultChar: PLongBool): SizeInt;
+  var
+    lIconv: iconv_t;
+    lFree, lOk, lUsed: boolean;
+    lScratch: array[0..1023] of AnsiChar;
+    lStart, lSrc, lOut, lNil: PAnsiChar;
+    lSrcLeft, lOutLeft, l0: size_t;
+    lCounted: SizeInt;
+    lErr: cint;
+
+  { Empties the scratch buffer when counting; false when writing to Dest. }
+  function MakeRoom: boolean;
+    begin
+      Result:=DestLen=0;
+      if Result then
+        begin
+          inc(lCounted,lOut-lStart);
+          lOut:=lStart;
+          lOutLeft:=SizeOf(lScratch);
+        end;
+    end;
+
+  begin
+    lIconv:=buffer_iconv(CodePage,false,lFree);
+    if lIconv=iconv_t(-1) then
+      exit(-1);
+    lNil:=nil;
+    l0:=0;
+    iconv(lIconv,@lNil,@l0,@lNil,@l0);
+    lCounted:=0;
+    if DestLen=0 then
+      begin
+        lStart:=@lScratch[0];
+        lOutLeft:=SizeOf(lScratch);
+      end
+    else
+      begin
+        lStart:=Dest;
+        lOutLeft:=DestLen;
+      end;
+    lOut:=lStart;
+    lSrc:=PAnsiChar(Source);
+    lSrcLeft:=SourceLen*SizeOf(UnicodeChar);
+    lOk:=true;
+    lUsed:=false;
+    while lOk and (iconv(lIconv,@lSrc,@lSrcLeft,@lOut,@lOutLeft)=size_t(-1)) do
+      begin
+        lErr:=fpgetCerrno;
+        case lErr of
+          ESysE2BIG:
+            lOk:=MakeRoom;
+          ESysEINVAL,
+          ESysEILSEQ:
+            begin
+              if (lOutLeft<1) and not MakeRoom then
+                lOk:=false
+              else
+                begin
+                  if assigned(DefaultChar) then
+                    lOut^:=DefaultChar^
+                  else
+                    lOut^:='?';
+                  inc(lOut);
+                  dec(lOutLeft);
+                  lUsed:=true;
+                  inc(lSrc,SizeOf(UnicodeChar));
+                  dec(lSrcLeft,SizeOf(UnicodeChar));
+                  iconv(lIconv,@lNil,@l0,@lNil,@l0);
+                  if lErr=ESysEINVAL then
+                    break;
+                end;
+            end;
+          else
+            lOk:=false;
+        end;
+      end;
+    { write the shift sequence that returns a stateful encoding to its initial state }
+    while lOk and (iconv(lIconv,nil,nil,@lOut,@lOutLeft)=size_t(-1)) do
+      lOk:=(fpgetCerrno=ESysE2BIG) and MakeRoom;
+    if lOk then
+      Result:=lCounted+(lOut-lStart)
+    else
+      Result:=0;
+    if assigned(UsedDefaultChar) then
+      UsedDefaultChar^:=lUsed;
+    if lFree then
+      iconv_close(lIconv);
+  end;
+
+
 function LowerWideString(const s : WideString) : WideString;
   var
     i : SizeInt;
@@ -876,26 +1115,103 @@ function WideStringToUCS4StringNoNulls(const s : WideString) : UCS4String;
   end;
 
 
-function CompareWideString(const s1, s2 : WideString; Options : TCompareOptions) : PtrInt;
+{$i cwnonspc.inc}
+
+// True if aChar is in a range of NonSpaceMarks
+function IsNonSpaceMark(aChar : Word) : Boolean;
+
+var
+  lLow, lHigh, lMid : Integer;
+
+begin
+  lLow:=Low(NonSpaceMarks);
+  lHigh:=High(NonSpaceMarks);
+  while lLow<=lHigh do
+    begin
+    lMid:=(lLow+lHigh) div 2;
+    if aChar<NonSpaceMarks[lMid,0] then
+      lHigh:=lMid-1
+    else if aChar>NonSpaceMarks[lMid,1] then
+      lLow:=lMid+1
+    else
+      Exit(True);
+    end;
+  Result:=False;
+end;
+
+
+// Base letter of aChar according to NonSpaceBase, aChar itself if it has none
+function NonSpaceBaseOf(aChar : Word) : Word;
+
+var
+  lLow, lHigh, lMid : Integer;
+
+begin
+  Result:=aChar;
+  if aChar<NonSpaceBase[Low(NonSpaceBase),0] then
+    Exit;
+  lLow:=Low(NonSpaceBase);
+  lHigh:=High(NonSpaceBase);
+  while lLow<=lHigh do
+    begin
+    lMid:=(lLow+lHigh) div 2;
+    if aChar<NonSpaceBase[lMid,0] then
+      lHigh:=lMid-1
+    else if aChar>NonSpaceBase[lMid,0] then
+      lLow:=lMid+1
+    else
+      Exit(NonSpaceBase[lMid,1]);
+    end;
+end;
+
+
+{ Apply coIgnoreWidth, coIgnoreKanaType, coIgnoreNonSpace, coLingIgnoreDiacritic and
+  coIgnoreSymbols of aOptions to aText; the other options are left to the caller. }
+function ApplyCompareOptions(const aText : WideString; aOptions : TCompareOptions) : WideString;
+
+var
+  i, lLen : SizeInt;
+  lChar : Word;
+  lIgnoreNonSpace : Boolean;
+
+begin
+  if aOptions*[coIgnoreWidth,coIgnoreKanaType,coIgnoreNonSpace,coLingIgnoreDiacritic,coIgnoreSymbols]=[] then
+    Exit(aText);
+  lIgnoreNonSpace:=aOptions*[coIgnoreNonSpace,coLingIgnoreDiacritic]<>[];
+  SetLength(Result,Length(aText));
+  lLen:=0;
+  for i:=1 to Length(aText) do
+    begin
+    lChar:=Word(aText[i]);
+    if coIgnoreWidth in aOptions then
+      lChar:=Word(NormalWidthChar(WideChar(lChar)));
+    if coIgnoreKanaType in aOptions then
+      lChar:=Word(HiraganaChar(WideChar(lChar)));
+    if lIgnoreNonSpace then
+      begin
+      if IsNonSpaceMark(lChar) then
+        Continue;
+      lChar:=NonSpaceBaseOf(Word(StrokelessChar(WideChar(lChar))));
+      end;
+    if (coIgnoreSymbols in aOptions) and ((iswpunct(wint_t(lChar))<>0) or (iswspace(wint_t(lChar))<>0)) then
+      Continue;
+    Inc(lLen);
+    Result[lLen]:=WideChar(lChar);
+    end;
+  SetLength(Result,lLen);
+end;
+
+
+// Compare s1 and s2 with wcscoll
+function CollateWideString(const s1, s2 : WideString) : PtrInt;
 {$if not(defined (aix) and defined(cpupowerpc32))}
   var
     hs1,hs2 : UCS4String;
-    us1,us2 : WideString;
 
   begin
     { wcscoll interprets null chars as end-of-string -> filter out }
-    if Options*[coIgnoreCase,coLingIgnoreCase]<>[] then
-      begin
-      us1:=UpperWideString(s1);
-      us2:=UpperWideString(s2);
-      end
-    else
-      begin
-      us1:=s1;
-      us2:=s2;
-      end;
-    hs1:=WideStringToUCS4StringNoNulls(us1);
-    hs2:=WideStringToUCS4StringNoNulls(us2);
+    hs1:=WideStringToUCS4StringNoNulls(s1);
+    hs2:=WideStringToUCS4StringNoNulls(s2);
     result:=wcscoll(pwchar_t(hs1),pwchar_t(hs2));
   end;
 {$else}
@@ -905,16 +1221,8 @@ function CompareWideString(const s1, s2 : WideString; Options : TCompareOptions)
     us1,us2 : WideString;
     hs1, hs2: array of widechar;
   begin
-    if Options*[coIgnoreCase,coLingIgnoreCase]<>[] then
-      begin
-      us1:=UpperWideString(s1);
-      us2:=UpperWideString(s2);
-      end
-    else
-      begin
-      us1:=s1;
-      us2:=s2;
-      end;
+    us1:=s1;
+    us2:=s2;
     len:=length(us1);
     setlength(hs1,len+1);
     for i:=1 to len do
@@ -935,6 +1243,28 @@ function CompareWideString(const s1, s2 : WideString; Options : TCompareOptions)
     result:=wcscoll(pwchar_t(hs1),pwchar_t(hs2));
   end;
 {$endif}
+
+
+{ coLingCasing and coStringSort are ignored: towupper already follows the locale
+  and wcscoll has no string sort. }
+function CompareWideString(const s1, s2 : WideString; Options : TCompareOptions) : PtrInt;
+
+var
+  us1,us2 : WideString;
+
+begin
+  us1:=ApplyCompareOptions(s1,Options);
+  us2:=ApplyCompareOptions(s2,Options);
+  if Options*[coIgnoreCase,coLingIgnoreCase]<>[] then
+    begin
+    us1:=UpperWideString(us1);
+    us2:=UpperWideString(us2);
+    end;
+  if coDigitAsNumbers in Options then
+    Result:=CompareDigitsAsNumbers(us1,us2,@CollateWideString)
+  else
+    Result:=CollateWideString(us1,us2);
+end;
 
 
 
@@ -1230,6 +1560,8 @@ begin
       CompareUnicodeStringProc:=@CompareWideString;
       { CodePage }
       GetStandardCodePageProc:=@GetStandardCodePage;
+      Ansi2UnicodeBufProc:=@Ansi2UnicodeBuf;
+      Unicode2AnsiBufProc:=@Unicode2AnsiBuf;
     end;
   SetUnicodeStringManager(CWideStringManager);
 end;

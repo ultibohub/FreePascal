@@ -577,7 +577,15 @@ implementation
           A_LOOPZ,
           A_LCALL,
           A_LJMP,
-          A_Jcc :
+          A_Jcc,
+          A_RET,
+          A_RETF,
+          A_IRETD,
+          A_IRETW,
+{$ifdef x86_64}
+          A_IRETQ,
+{$endif x86_64}
+          A_IRET :
             is_calljmp:=true;
           else
             is_calljmp:=false;

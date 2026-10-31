@@ -1369,36 +1369,34 @@ unit aoptx86;
         );
 
         { Now check to see if the memory itself is written to }
-        if not Result then
-          begin
-            while assigned(p1) and assigned(p2) and GetNextInstruction(p1,p1) and (p1<>p2) do
-              if p1.typ = ait_instruction then
+        while not(Result) and assigned(p1) and assigned(p2) and GetNextInstruction(p1,p1) and (p1<>p2) do
+          if p1.typ = ait_instruction then
+            begin
+              CurrentP1Size := topsize2memsize[taicpu(p1).opsize] shr 3; { Convert to bytes }
+              with insprop[taicpu(p1).opcode] do
                 begin
-                  CurrentP1Size := topsize2memsize[taicpu(p1).opsize] shr 3; { Convert to bytes }
-                  with insprop[taicpu(p1).opcode] do
-                    for X := 0 to taicpu(p1).ops - 1 do
-                      if (taicpu(p1).oper[X]^.typ = top_ref) and
-                        RefsAlmostEqual(Ref, taicpu(p1).oper[X]^.ref^) and
-                        { Catch any potential overlaps }
-                        (
-                          (RefSize = 0) or
-                          ((taicpu(p1).oper[X]^.ref^.offset - Ref.offset) < RefSize)
-                        ) and
-                        (
-                          (CurrentP1Size = 0) or
-                          ((Ref.offset - taicpu(p1).oper[X]^.ref^.offset) < CurrentP1Size)
-                        ) and
-                        { Reference is used, but does the instruction write to it? }
-                        (
-                          (Ch_All in Ch) or
-                          InsChangeWritesOp(Ch, X)
-                        ) then
-                        begin
-                          Result := True;
-                          Break;
-                        end;
+                  { calls and string instructions might write to any memory location }
+                  if ([Ch_All,Ch_WMemEDI]*Ch)<>[] then
+                    begin
+                      Result := True;
+                      Break;
+                    end;
+                  for X := 0 to taicpu(p1).ops - 1 do
+                    if (taicpu(p1).oper[X]^.typ = top_ref) and
+                      { Reference is used, but does the instruction write to it? }
+                      InsChangeWritesOp(Ch, X) and
+                      { catch any potential overlaps }
+                      (
+                        (RefSize = 0) or
+                        (CurrentP1Size = 0) or
+                        RefsMightOverlap(Ref, taicpu(p1).oper[X]^.ref^, RefSize, CurrentP1Size)
+                      ) then
+                      begin
+                        Result := True;
+                        Break;
+                      end;
                 end;
-          end;
+            end;
       end;
 
 {$ifdef DEBUG_AOPTCPU}
@@ -8609,6 +8607,56 @@ unit aoptx86;
 
     function TX86AsmOptimizer.OptPass1FSTP(var p: tai): boolean;
       { returns true if a "continue" should be done after this optimization }
+
+      { checks if the temp at ref, written by p, is released within a few instructions
+        after hp and not accessed in between }
+      function TempReleasedSoon(const ref: treference; hp: tai): boolean;
+        const
+          { maximum size of a memory operand, used if the opsize does not tell it }
+          MaxOperSize = 64;
+        var
+          i, count, opersize: longint;
+        begin
+          Result:=false;
+          count:=0;
+          while assigned(hp) do
+            begin
+              case hp.typ of
+                ait_tempalloc:
+                  if not(tai_tempalloc(hp).allocation) and
+                    (tai_tempalloc(hp).temppos=ref.offset) then
+                    begin
+                      { the released temp must cover everything written by p }
+                      Result:=tai_tempalloc(hp).tempsize>=topsize2memsize[taicpu(p).opsize] shr 3;
+                      exit;
+                    end;
+                ait_instruction:
+                  begin
+                    inc(count);
+                    if (count>4) or
+                      is_calljmp(taicpu(hp).opcode) then
+                      exit;
+                    { only accept memory accesses which are known to be disjoint from the temp }
+                    opersize:=topsize2memsize[taicpu(hp).opsize] shr 3;
+                    if opersize=0 then
+                      opersize:=MaxOperSize;
+                    for i:=0 to taicpu(hp).ops-1 do
+                      if (taicpu(hp).oper[i]^.typ=top_ref) and
+                        RefsMightOverlap(taicpu(hp).oper[i]^.ref^,ref,opersize,topsize2memsize[taicpu(p).opsize] shr 3) then
+                        exit;
+                  end;
+                ait_label:
+                  if tai_label(hp).labsym.is_used then
+                    exit;
+                ait_marker:
+                  exit;
+                else
+                  ;
+              end;
+              hp:=tai(hp.next);
+            end;
+        end;
+
       var
         hp1, hp2, hp3: tai;
       begin
@@ -8627,74 +8675,80 @@ unit aoptx86;
           begin
             { replacing fstp f;fld f by fst f is only valid for extended because of rounding or if fastmath is on }
             if ((taicpu(p).opsize=S_FX) or (cs_opt_fastmath in current_settings.optimizerswitches)) and
-               GetNextInstruction(hp1, hp2) and
-               (((hp2.typ = ait_instruction) and
-               IsExitCode(hp2) and
-               (taicpu(p).oper[0]^.ref^.base = current_procinfo.FramePointer) and
-               not(assigned(current_procinfo.procdef.funcretsym) and
-                   (taicpu(p).oper[0]^.ref^.offset < tabstractnormalvarsym(current_procinfo.procdef.funcretsym).localloc.reference.offset)) and
-               (taicpu(p).oper[0]^.ref^.index = NR_NO)) or
-               { fstp <temp>
-                 fld  <temp>
-                 <dealloc> <temp>
-               }
-               ((taicpu(p).oper[0]^.ref^.base = current_procinfo.FramePointer) and
-                (taicpu(p).oper[0]^.ref^.index = NR_NO) and
-                SetAndTest(FindTempDeAlloc(taicpu(p).oper[0]^.ref^.offset,tai(hp1.next)),hp2) and
-                (tai_tempalloc(hp2).temppos=taicpu(p).oper[0]^.ref^.offset) and
-                (((taicpu(p).opsize=S_FX) and (tai_tempalloc(hp2).tempsize=16)) or
-                 ((taicpu(p).opsize in [S_IQ,S_FL]) and (tai_tempalloc(hp2).tempsize=8)) or
-                 ((taicpu(p).opsize=S_FS) and (tai_tempalloc(hp2).tempsize=4))
-                )
-               )
-               ) then
+              (taicpu(p).oper[0]^.ref^.base = current_procinfo.FramePointer) and
+              (taicpu(p).oper[0]^.ref^.index = NR_NO) then
               begin
-                DebugMsg(SPeepholeOptimization + 'FstpFld2<Nop>',p);
-                RemoveInstruction(hp1);
-                RemoveCurrentP(p, hp2);
-                { first case: exit code }
-                if hp2.typ = ait_instruction then
-                  RemoveLastDeallocForFuncRes(p);
-                Result := true;
-              end
-            else
-              { we can do this only in fast math mode as fstp is rounding ...
-                ... still disabled as it breaks the compiler and/or rtl }
-              if { (cs_opt_fastmath in current_settings.optimizerswitches) or }
-                { ... or if another fstp equal to the first one follows }
-                GetNextInstruction(hp1,hp2) and
-                (hp2.typ = ait_instruction) and
-                (taicpu(p).opcode=taicpu(hp2).opcode) and
-                (taicpu(p).opsize=taicpu(hp2).opsize) then
-                begin
-                  if (taicpu(p).oper[0]^.ref^.base = current_procinfo.FramePointer) and
-                    (taicpu(p).oper[0]^.ref^.index = NR_NO) and
-                    SetAndTest(FindTempDeAlloc(taicpu(p).oper[0]^.ref^.offset,tai(hp2.next)),hp3) and
-                    MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[0]^) and
-                    (tai_tempalloc(hp3).temppos=taicpu(p).oper[0]^.ref^.offset) and
-                    (((taicpu(p).opsize=S_FX) and (tai_tempalloc(hp3).tempsize=16)) or
-                     ((taicpu(p).opsize in [S_IQ,S_FL]) and (tai_tempalloc(hp3).tempsize=8)) or
-                     ((taicpu(p).opsize=S_FS) and (tai_tempalloc(hp3).tempsize=4))
-                    ) then
-                    begin
-                      DebugMsg(SPeepholeOptimization + 'FstpFldFstp2Fstp',p);
-                      RemoveCurrentP(p,hp2);
-                      RemoveInstruction(hp1);
-                      Result := true;
-                    end
-                  else if { fst can't store an extended/comp value }
-                    (taicpu(p).opsize <> S_FX) and
-                    (taicpu(p).opsize <> S_IQ) then
-                    begin
-                      if (taicpu(p).opcode = A_FSTP) then
-                        taicpu(p).opcode := A_FST
-                      else
-                        taicpu(p).opcode := A_FIST;
-                      DebugMsg(SPeepholeOptimization + 'FstpFld2Fst',p);
-                      RemoveInstruction(hp1);
-                      Result := true;
-                    end;
-                end;
+                { fstp <local>
+                  fld  <local>
+                  <exit code>
+                }
+                if GetNextInstruction(hp1, hp2) and
+                  (hp2.typ = ait_instruction) and
+                  IsExitCode(hp2) and
+                  not(assigned(current_procinfo.procdef.funcretsym) and
+                      (taicpu(p).oper[0]^.ref^.offset < tabstractnormalvarsym(current_procinfo.procdef.funcretsym).localloc.reference.offset)) then
+                  begin
+                    DebugMsg(SPeepholeOptimization + 'FstpFld2<Nop>',p);
+                    RemoveInstruction(hp1);
+                    RemoveCurrentP(p, hp2);
+                    RemoveLastDeallocForFuncRes(p);
+                    Result := true;
+                    exit;
+                  end;
+                { fstp <temp>
+                  fld  <temp>
+                  <a few instructions not accessing temp>
+                  <dealloc> <temp>
+                }
+                if not(assigned(taicpu(p).oper[0]^.ref^.symbol)) and
+                  TempReleasedSoon(taicpu(p).oper[0]^.ref^,tai(hp1.next)) then
+                  begin
+                    DebugMsg(SPeepholeOptimization + 'FstpFld2<Nop>',p);
+                    hp2:=tai(hp1.next);
+                    RemoveInstruction(hp1);
+                    RemoveCurrentP(p, hp2);
+                    Result := true;
+                    exit;
+                  end;
+              end;
+
+            { we can do this only in fast math mode as fstp is rounding ...
+              ... still disabled as it breaks the compiler and/or rtl }
+            if { (cs_opt_fastmath in current_settings.optimizerswitches) or }
+              { ... or if another fstp equal to the first one follows }
+              GetNextInstruction(hp1,hp2) and
+              (hp2.typ = ait_instruction) and
+              (taicpu(p).opcode=taicpu(hp2).opcode) and
+              (taicpu(p).opsize=taicpu(hp2).opsize) then
+              begin
+                if (taicpu(p).oper[0]^.ref^.base = current_procinfo.FramePointer) and
+                  (taicpu(p).oper[0]^.ref^.index = NR_NO) and
+                  SetAndTest(FindTempDeAlloc(taicpu(p).oper[0]^.ref^.offset,tai(hp2.next)),hp3) and
+                  MatchOperand(taicpu(p).oper[0]^,taicpu(hp1).oper[0]^) and
+                  (tai_tempalloc(hp3).temppos=taicpu(p).oper[0]^.ref^.offset) and
+                  (((taicpu(p).opsize=S_FX) and (tai_tempalloc(hp3).tempsize=16)) or
+                   ((taicpu(p).opsize in [S_IQ,S_FL]) and (tai_tempalloc(hp3).tempsize=8)) or
+                   ((taicpu(p).opsize=S_FS) and (tai_tempalloc(hp3).tempsize=4))
+                  ) then
+                  begin
+                    DebugMsg(SPeepholeOptimization + 'FstpFldFstp2Fstp',p);
+                    RemoveCurrentP(p,hp2);
+                    RemoveInstruction(hp1);
+                    Result := true;
+                  end
+                else if { fst can't store an extended/comp value }
+                  (taicpu(p).opsize <> S_FX) and
+                  (taicpu(p).opsize <> S_IQ) then
+                  begin
+                    if (taicpu(p).opcode = A_FSTP) then
+                      taicpu(p).opcode := A_FST
+                    else
+                      taicpu(p).opcode := A_FIST;
+                    DebugMsg(SPeepholeOptimization + 'FstpFld2Fst',p);
+                    RemoveInstruction(hp1);
+                    Result := true;
+                  end;
+              end;
           end;
       end;
 
@@ -12173,8 +12227,10 @@ unit aoptx86;
 
                     DebugMsg(SPeepholeOptimization + 'Simplified register usage so ' + debug_regname(ThisReg) + ' = ' + debug_regname(taicpu(p).oper[1]^.reg), p);
 
-                    TransferUsedRegs(TmpUsedRegs);
-                    AllocRegBetween(ThisReg, p, hp1, TmpUsedRegs);
+                    { use UsedRegs and not a copy of it: the allocation of ThisReg is moved
+                      before p which UsedRegs has already passed, so UsedRegs must be updated
+                      as well, else ThisReg is not considered as being in use after p }
+                    AllocRegBetween(ThisReg, p, hp1, UsedRegs);
 
                     DebugMsg(SPeepholeOptimization + 'Movzx2Nop 3', hp1);
                     if p = hp1 then

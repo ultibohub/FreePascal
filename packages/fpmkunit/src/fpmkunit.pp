@@ -7001,7 +7001,7 @@ Var
   D,S : String;
   Fin,FOut : TFileStream;
   Count : Int64;
-  A : Integer;
+  A : Int64;
 {$ifdef UNIX}
   FileStat: stat;
 {$endif UNIX}
@@ -7529,7 +7529,7 @@ end;
 function TBuildEngine.FileNewer(const Src, Dest: String): Boolean;
 
 Var
-  DS,DD : Longint;
+  DS,DD : Int64;
   D1,D2 : TDateTime;
 
 begin
