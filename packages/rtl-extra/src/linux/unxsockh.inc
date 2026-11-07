@@ -139,7 +139,16 @@ const
 { Maximum queue length specifiable by listen.  }
   SOMAXCONN = 4096;
 
+{ Flags for the socket type in fpsocket and for fpaccept4 }
+  SOCK_CLOEXEC  = O_CLOEXEC;
+  SOCK_NONBLOCK = O_NONBLOCK;
+
 { For setsockoptions(2) }
+{$if defined(cpumips)}
+{$i sockopt-mips.inc}
+{$elseif defined(cpusparcgen)}
+{$i sockopt-sparc.inc}
+{$else}
          SOL_SOCKET  =   1;
          SO_DEBUG    =   1;
          SO_REUSEADDR=   2;
@@ -179,6 +188,7 @@ const
          SO_TIMESTAMP    = 29;
          SCM_TIMESTAMP   = SO_TIMESTAMP;
          SO_ACCEPTCONN   = 30;
+{$endif}
 
 // Following from kernel 2.6.14-1.1637_FC4
 
@@ -337,6 +347,17 @@ const
         IPV6_PKTOPTIONS       = 6;
         IPV6_CHECKSUM         = 7;
         IPV6_HOPLIMIT         = 52;
+        IPV6_RECVPKTINFO      = 49;
+        IPV6_RECVHOPLIMIT     = 51;
+        IPV6_RECVHOPOPTS      = 53;
+        IPV6_RTHDRDSTOPTS     = 55;
+        IPV6_RECVRTHDR        = 56;
+        IPV6_RECVDSTOPTS      = 58;
+        IPV6_RECVPATHMTU      = 60;
+        IPV6_PATHMTU          = 61;
+        IPV6_DONTFRAG         = 62;
+        IPV6_RECVTCLASS       = 66;
+        IPV6_TCLASS           = 67;
 
         SCM_SRCRT             = IPV6_RXSRCRT;
 

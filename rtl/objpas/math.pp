@@ -300,13 +300,17 @@ function Sign(const AValue: Int64): TValueSign;inline; overload;
 {$ifdef FPC_HAS_TYPE_SINGLE}
 function Sign(const AValue: Single): TValueSign;inline; overload;
 {$endif}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
 function Sign(const AValue: Double): TValueSign;inline; overload;
+{$endif}
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function Sign(const AValue: Extended): TValueSign;inline; overload;
 {$endif}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function IsZero(const A: Single; Epsilon: Single): Boolean; overload;
 function IsZero(const A: Single): Boolean;inline; overload;
+{$endif FPC_HAS_TYPE_SINGLE}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function IsZero(const A: Double; Epsilon: Double): Boolean; overload;
 function IsZero(const A: Double): Boolean;inline; overload;
@@ -316,7 +320,9 @@ function IsZero(const A: Extended; Epsilon: Extended): Boolean; overload;
 function IsZero(const A: Extended): Boolean;inline; overload;
 {$endif FPC_HAS_TYPE_EXTENDED}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function IsNan(const d : Single): Boolean; overload;
+{$endif FPC_HAS_TYPE_SINGLE}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function IsNan(const d : Double): Boolean; overload;
 {$endif FPC_HAS_TYPE_DOUBLE}
@@ -324,7 +330,9 @@ function IsNan(const d : Double): Boolean; overload;
 function IsNan(const d : Extended): Boolean; overload;
 {$endif FPC_HAS_TYPE_EXTENDED}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function IsInfinite(const d : Single): Boolean; overload;
+{$endif FPC_HAS_TYPE_SINGLE}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function IsInfinite(const d : Double): Boolean; overload;
 {$endif FPC_HAS_TYPE_DOUBLE}
@@ -338,14 +346,18 @@ function SameValue(const A, B: Extended): Boolean;inline; overload;
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function SameValue(const A, B: Double): Boolean;inline; overload;
 {$endif}
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function SameValue(const A, B: Single): Boolean;inline; overload;
+{$endif}
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function SameValue(const A, B: Extended; Epsilon: Extended): Boolean; overload;
 {$endif}
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function SameValue(const A, B: Double; Epsilon: Double): Boolean; overload;
 {$endif}
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function SameValue(const A, B: Single; Epsilon: Single): Boolean; overload;
+{$endif}
 
 { NextAfter returns the floating-point value next to X in the direction of Y.
   It returns Y when X=Y, a NaN when X or Y is a NaN, and the smallest denormal
@@ -950,7 +962,15 @@ function CompareValue ( const A, B : Double; delta : Double = 0.0) : TValueRelat
 function CompareValue ( const A, B : Extended; delta : Extended = 0.0 ) : TValueRelationship; inline;
 {$endif}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function RandomFrom(const AValues: array of Single): Single; overload;
+{$endif}
+{$ifdef FPC_HAS_TYPE_DOUBLE}
 function RandomFrom(const AValues: array of Double): Double; overload;
+{$endif}
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function RandomFrom(const AValues: array of Extended): Extended; overload;
+{$endif}
 function RandomFrom(const AValues: array of Integer): Integer; overload;
 function RandomFrom(const AValues: array of Int64): Int64; overload;
 {$if FPC_FULLVERSION >=30101}
@@ -1066,21 +1086,6 @@ begin
   ClearExceptions(True,ExceptionFlags);
 end;
 
-ResourceString
-  SMathError = 'Math Error : %s';
-  SInvalidArgument = 'Invalid argument';
-
-Procedure DoMathError(Const S : String);
-begin
-  Raise EMathError.CreateFmt(SMathError,[S]);
-end;
-
-Procedure InvalidArgument;
-
-begin
-  Raise EInvalidArgument.Create(SInvalidArgument);
-end;
-
 
 function Sign(const AValue: Integer): TValueSign;inline;
 
@@ -1118,11 +1123,13 @@ end;
 {$endif}
 
 
+{$ifdef FPC_HAS_TYPE_DOUBLE}
 function Sign(const AValue: Double): TValueSign;inline;
 
 begin
   Result:=ord(AValue>0.0)-ord(AValue<0.0);
 end;
+{$endif}
 
 {$ifdef FPC_HAS_TYPE_EXTENDED}
 function Sign(const AValue: Extended): TValueSign;inline;
@@ -3745,6 +3752,7 @@ Const
   SZeroResolution = Single(1E-4);
 
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function IsZero(const A: Single; Epsilon: Single): Boolean;
 
 begin
@@ -3758,6 +3766,7 @@ function IsZero(const A: Single): Boolean;inline;
 begin
   Result:=IsZero(A,single(SZeroResolution));
 end;
+{$endif FPC_HAS_TYPE_SINGLE}
 
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function IsZero(const A: Double; Epsilon: Double): Boolean;
@@ -3802,10 +3811,12 @@ type
     w: word;
   end;
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function IsNan(const d : Single): Boolean; overload;
   begin
     result:=(longword(d) and $7fffffff)>$7f800000;
   end;
+{$endif FPC_HAS_TYPE_SINGLE}
 
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function IsNan(const d : Double): Boolean;
@@ -3841,10 +3852,12 @@ function IsNan(const d : Extended): Boolean; overload;
   end;
 {$endif FPC_HAS_TYPE_EXTENDED}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function IsInfinite(const d : Single): Boolean; overload;
   begin
     result:=(longword(d) and $7fffffff)=$7f800000;
   end;
+{$endif FPC_HAS_TYPE_SINGLE}
 
 {$ifdef FPC_HAS_TYPE_DOUBLE}
 function IsInfinite(const d : Double): Boolean; overload;
@@ -3937,6 +3950,7 @@ begin
 end;
 {$endif FPC_HAS_TYPE_DOUBLE}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
 function SameValue(const A, B: Single): Boolean;inline;
 
 begin
@@ -3953,6 +3967,7 @@ begin
   else
     Result:=((B-A)<=Epsilon);
 end;
+{$endif FPC_HAS_TYPE_SINGLE}
 
 
 function NextAfter(const X, Y: Single): Single;
@@ -4497,10 +4512,26 @@ begin
 end;
 {$endif}
 
+{$ifdef FPC_HAS_TYPE_SINGLE}
+function RandomFrom(const AValues: array of Single): Single; overload;
+begin
+  result:=AValues[random(High(AValues)+1)];
+end;
+{$endif}
+
+{$ifdef FPC_HAS_TYPE_DOUBLE}
 function RandomFrom(const AValues: array of Double): Double; overload;
 begin
   result:=AValues[random(High(AValues)+1)];
 end;
+{$endif}
+
+{$ifdef FPC_HAS_TYPE_EXTENDED}
+function RandomFrom(const AValues: array of Extended): Extended; overload;
+begin
+  result:=AValues[random(High(AValues)+1)];
+end;
+{$endif}
 
 function RandomFrom(const AValues: array of Integer): Integer; overload;
 begin

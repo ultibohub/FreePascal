@@ -556,6 +556,9 @@ type
     function GetAsString: string; override;
     procedure SetAsString(const AValue: string); override;
 
+    function GetAsAnsiString: AnsiString; override;
+    procedure SetAsAnsiString(const AValue: AnsiString); override;
+
     function GetAsVariant: Variant; override;
     procedure SetVarValue(const AValue: Variant); override;
 
@@ -1210,6 +1213,7 @@ type
     FObjectType: string;
     FUnNamed: boolean;
   protected
+    class procedure CheckTypeSize(AValue: Longint); override;
     function GetAsVariant: Variant; override;
     function GetFieldCount: Integer;
     function GetFields: TFields; virtual;
@@ -2583,7 +2587,7 @@ constructor EUpdateError.Create(NativeError, Context : String;
                                 ErrCode, PrevError : integer; E: Exception);
 
 begin
-  Inherited CreateFmt(NativeError,[Context]);
+  Inherited Create(NativeError);
   FContext := Context;
   FErrorCode := ErrCode;
   FPreviousError := PrevError;

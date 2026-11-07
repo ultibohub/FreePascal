@@ -111,6 +111,12 @@ begin
             AddInclude('mvecimp.inc');
             AddInclude('mmatimp.inc');
           end;
+        T:=P.Targets.AddUnit('matrixo.pp',MatrixOSes);
+        with T.Dependencies do
+          begin
+            AddInclude('mvecimp.inc');
+            AddInclude('mmatimp.inc');
+          end;
       end;
 
     T:=P.Targets.AddUnit('objects.pp',ObjectsOSes);
@@ -140,10 +146,17 @@ begin
        addinclude('sockets.inc');
        addinclude('sockovl.inc');
        addinclude('unxsockh.inc',UnixLikes);
+       addinclude('sockopt-mips.inc',[linux,android]);
+       addinclude('sockopt-sparc.inc',[linux]);
        addinclude('stdsock.inc',socklibc);
        addinclude('unixsock.inc',socksyscall);
      end;
     T:=P.Targets.AddUnit('unixsockets.pp',[linux]);
+    with T.Dependencies do
+     begin
+       addinclude('unixsocketsh.inc');
+       addinclude('unixsockets.inc');
+     end;
 
     T:=P.Targets.AddUnit('ipc.pp',IPCOSes);
     with T.Dependencies do

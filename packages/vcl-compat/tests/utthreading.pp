@@ -292,6 +292,7 @@ type
     procedure WaitForWorkDoneCount(out Done : Boolean);
     procedure DoBurnCyclesExecute(Sender: TObject);
     procedure DoSimpleExecute(Sender: TObject);
+    procedure DoEmptyExecute(Sender: TObject);
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -307,6 +308,8 @@ type
     procedure TestExecuteLotsOfWork;
     // Frees a pool whose worker threads have just been created
     procedure TestFreeWithNewThreads;
+    // Queues one item in a new pool and frees it at once, several times
+    procedure TestFreeAfterQueueRepeated;
   end;
 
   { TTestTask }
@@ -397,6 +400,7 @@ type
     procedure CheckLocal;
     procedure DoEvent(aSender: TObject; aIndex: Integer);
     procedure DoEvent64(aSender: TObject; aIndex: Int64);
+    procedure DoCountThreadEvent(aSender: TObject; aIndex: Integer);
   Protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -406,6 +410,8 @@ type
     {$IFDEF CPU64}
     Procedure TestForEvent64;
     {$ENDIF}
+    // Runs the first loop of several new pools and checks that each uses more than one thread
+    Procedure TestForNewPoolUsesThreads;
   end;
 
 
@@ -1711,6 +1717,31 @@ begin
   AssertEquals('Threads all stopped',FThreadsStarted,FThreadsTerminated);
 end;
 
+procedure TTestThreading.DoEmptyExecute(Sender: TObject);
+
+begin
+end;
+
+
+procedure TTestThreading.TestFreeAfterQueueRepeated;
+
+var
+  lPool: TThreadPool;
+  lStart: TDateTime;
+  lRound: Integer;
+
+begin
+  for lRound:=1 to 5 do
+    begin
+    lPool:=TThreadPool.Create;
+    lStart:=Now;
+    lPool.QueueWorkItem(Self,@DoEmptyExecute);
+    lPool.Free;
+    AssertTrue('Pool freed within 5 seconds in round '+IntToStr(lRound),MilliSecondsBetween(Now,lStart)<5000);
+    end;
+end;
+
+
 procedure TTestThreading.SetUp;
 begin
   Inherited;
@@ -2174,6 +2205,50 @@ begin
   AssertTrue('Correct result',L.Completed);
   CheckLocal;
 end;
+
+threadvar
+  ThreadCountRound: Integer;
+
+var
+  CountRound: Integer;
+  ThreadsUsed: Integer;
+
+procedure TTestParallel.DoCountThreadEvent(aSender: TObject; aIndex: Integer);
+
+begin
+  if ThreadCountRound<>CountRound then
+    begin
+    ThreadCountRound:=CountRound;
+    AtomicIncrement(ThreadsUsed);
+    end;
+  Sleep(10);
+end;
+
+
+procedure TTestParallel.TestForNewPoolUsesThreads;
+
+var
+  lPool: TThreadPool;
+  lRound: Integer;
+  L: TParallel.TLoopResult;
+
+begin
+  for lRound:=1 to 5 do
+    begin
+    CountRound:=lRound;
+    ThreadsUsed:=0;
+    lPool:=TThreadPool.Create;
+    try
+      L:=TParallel.&For(Self,1,40,@DoCountThreadEvent,lPool);
+    finally
+      lPool.Free;
+    end;
+    AssertTrue('Loop completed in round '+IntToStr(lRound),L.Completed);
+    AssertTrue('More than one thread ran the first loop of a new pool in round '+IntToStr(lRound)
+               +', threads used: '+IntToStr(ThreadsUsed),ThreadsUsed>1);
+    end;
+end;
+
 
 {$IFDEF CPU64}
 procedure TTestParallel.TestForEvent64;

@@ -324,6 +324,7 @@ Const
   FpmkExt = '.fpm';
 
   FPMakePPFile = 'fpmake.pp';
+  PackageFpcFile = 'Package.fpc';
   ManifestFile = 'manifest.xml';
   DocProjectFileExt = '-docs.xml';
   PkgListFileBase = 'pkg-';
@@ -1045,6 +1046,8 @@ Type
     Function  GetPackageUnitInstallDir(ACPU:TCPU; AOS : TOS; const aSubTarget : String):String;
     Procedure SetPackageUnitInstallDir(AValue: string);
     Function  GetBinOutputDir(const aTarget : TCompileTarget) : String;
+    // Output directory of example units and programs: the examples subdirectory of the units output directory.
+    Function  GetExamplesOutputDir(const aTarget : TCompileTarget) : String;
     Procedure GetCleanFiles(List : TStrings; const aTarget : TCompileTarget); virtual;
     procedure GetInstallFiles(List: TStrings;Types : TTargetTypes; const aTarget : TCompileTarget); virtual;
     procedure GetInstallSourceFiles(List: TStrings; SourceTypes : TSourceTypes; TargetTypes : TTargetTypes); virtual;
@@ -1171,6 +1174,7 @@ Type
     FFPUnitSourcePath: String;
     FIgnoreInvalidOptions: Boolean;
     FInstallExamples: Boolean;
+    FBuildExamples: Boolean;
     FMkDir: String;
     FMove: String;
     FNamespaces: Boolean;
@@ -1324,6 +1328,8 @@ Type
     Property BuildMode: TBuildMode read FBuildMode write FBuildMode;
     Property SingleFPDocFile : Boolean Read FSingleFPDocFile Write FSingleFPDocFile;
     Property Namespaces : Boolean Read FNamespaces Write FNameSpaces;
+    // Compile example units and programs, into the examples directory of the units output directory.
+    Property BuildExamples: Boolean read FBuildExamples write FBuildExamples;
     // Installation options
     Property InstallExamples: Boolean read FInstallExamples write FInstallExamples;
     Property SkipCrossPrograms: boolean read FSkipCrossPrograms write FSkipCrossPrograms;
@@ -1378,6 +1384,8 @@ Type
 {$endif HAS_TAR_SUPPORT}
     procedure AddFileToArchive(const APackage: TPackage; Const ASourceFileName, ADestFileName : String);
     procedure FinishArchive(Sender: TObject);
+    // Compile Packages when one of the packages to install is not compiled yet.
+    procedure CompileBeforeInstall(Packages: TPackages);
   Protected
     Procedure Error(const Msg : String);
     Procedure Error(const Fmt : String; const Args : Array of const);
@@ -1396,6 +1404,8 @@ Type
     Function GetCompiler : String;
     Function InstallPackageFiles(APAckage : TPackage; tt : TTargetTypes; Const Dest : String; Const InstallMode: TInstallMode):Boolean;
     Procedure InstallUnitConfigFile(APAckage : TPackage; Const Dest : String);
+    // Write an fpcmake Package.fpc for APackage and the current target, and install it in Dest.
+    Procedure InstallPackageFpcFile(APackage : TPackage; Const Dest : String);
     function GetUnitConfigFilesInstallDir(ABaseDir: string): String;
 
     Function InstallPackageSourceFiles(APAckage : TPackage; stt : TSourceTypes; ttt : TTargetTypes; Const Dest : String; Const InstallMode: TInstallMode):Boolean;
@@ -1919,6 +1929,8 @@ ResourceString
   SErrAlreadyInitialized = 'Installer can only be initialized once';
   SErrInvalidState      = 'Invalid state for target %s';
   SErrCouldNotCompile   = 'Could not compile target %s from package %s';
+  SErrPackageNotCompiled = 'Package %s is not compiled, cannot install it';
+  SErrPackagesNotReady  = 'Cannot compile packages with unresolved dependencies: %s';
   SErrUnsupportedBuildmode = 'Package does not support this buildmode';
   SErrPackVarNotExist   = 'There is no package variant with the name "%s"';
   SErrEventNotSupported = 'Unsupported event type';
@@ -2066,6 +2078,7 @@ ResourceString
   SHelpDebug          = 'Add debug information when working.';
   SHelpInteractive    = 'Allow to interact with child processes';
   SHelpInstExamples   = 'Install the example-sources.';
+  SHelpBuildExamples  = 'Compile the example units and programs.';
   SHelpSkipCrossProgs = 'Skip programs when cross-compiling/installing';
   SHelpSkipAllProgs   = 'Skip all programs even if native-compiling/installing';
   SHelpIgnoreInvOpt   = 'Ignore further invalid options.';
@@ -2117,6 +2130,7 @@ Const
   KeyDocInstallDir      = 'DocInstallDir';
   KeyExamplesInstallDir = 'ExamplesInstallDir';
   KeyInstallExamples    = 'InstallExamples';
+  KeyBuildExamples      = 'BuildExamples';
   KeySkipCrossPrograms  = 'SkipCrossPrograms';
   KeySkipAllPrograms    = 'SkipAllPrograms';
   // Keys for unit config
@@ -3103,7 +3117,8 @@ begin
     Proc.Free;
   end;
   SetLength(Result,Count);
-  Move(Buf,Result[1],Count);
+  if Count>0 then
+    Move(Buf,Result[1],Count);
 end;
 
 // Convenience function
@@ -3497,7 +3512,7 @@ begin
           // latter to detect packages compiled using old style Makefile's, like
           // the rtl). These directories which are not packages may exist in
           // Lazarus-source-repositories.
-          if not ABuildEngine.SysFileExists(ConcatPaths([PackageBaseDir, 'Package.fpc'])) then
+          if not ABuildEngine.SysFileExists(ConcatPaths([PackageBaseDir, PackageFpcFile])) then
             begin
               if IsPackageSourceLocation then
                 begin
@@ -4470,6 +4485,12 @@ begin
   Result:='bin'+PathDelim+MakeTargetString(aTarget);
 end;
 
+
+function TPackage.GetExamplesOutputDir(const aTarget : TCompileTarget): String;
+begin
+  Result:=IncludeTrailingPathDelimiter(GetUnitsOutputDir(aTarget))+'examples';
+end;
+
 function TPackage.GetBinOutputDir(ACPU: TCPU; AOS: TOS; const aSubTarget: String
   ): String;
 
@@ -4498,8 +4519,9 @@ end;
 
 procedure TPackage.GetCleanFiles(List: TStrings; const aTarget: TCompileTarget);
 Var
-  OB,OU : String;
+  OB,OU,OE : String;
   I : Integer;
+  T : TTarget;
 begin
   OB:=IncludeTrailingPathDelimiter(GetBinOutputDir(aTarget));
   if Not DirectoryExists(OB) then
@@ -4507,11 +4529,20 @@ begin
   OU:=IncludeTrailingPathDelimiter(GetUnitsOutputDir(aTarget));
   if not DirectoryExists(OU) then
     OU:='';
+  OE:=IncludeTrailingPathDelimiter(GetExamplesOutputDir(aTarget));
+  if not DirectoryExists(OE) then
+    OE:='';
   List.Add(GetUnitConfigOutputFilename(aTarget));
   List.Add(ManifestFile);
   AddConditionalStrings(Self, List,CleanFiles,aTarget);
   For I:=0 to FTargets.Count-1 do
-    FTargets.TargetItems[I].GetCleanFiles(List, OU, OB, aTarget);
+    begin
+    T:=FTargets.TargetItems[I];
+    if T.TargetType in [ttExampleUnit,ttExampleProgram] then
+      T.GetCleanFiles(List, OE, OE, aTarget)
+    else
+      T.GetCleanFiles(List, OU, OB, aTarget);
+    end;
 end;
 
 
@@ -5467,7 +5498,7 @@ function TCustomDefaults.GetDocInstallDir: String;
 begin
   If (FDocInstallDir<>'') then
     Result:=FDocInstallDir
-  else if (Defaults.BuildOS=freebsd) or (Defaults.BuildOS=dragonfly) then
+  else if UnixPaths and ((Defaults.BuildOS=freebsd) or (Defaults.BuildOS=dragonfly)) then
     Result:=Prefix+'share'+PathDelim+'doc'+PathDelim+'fpc-$(CompilerVersion)'+PathDelim+'$(PackageName)'
   else If UnixPaths then
     Result:=Prefix+'share'+PathDelim+'doc'+PathDelim+'fpc-$(CompilerVersion)'+PathDelim+'$(PackageName)'
@@ -5480,7 +5511,7 @@ function TCustomDefaults.GetExamplesInstallDir: String;
 begin
   If (FExamplesInstallDir<>'') then
     Result:=FExamplesInstallDir
-  else if (Defaults.BuildOS=freebsd) or (Defaults.BuildOS=dragonfly) then
+  else if UnixPaths and ((Defaults.BuildOS=freebsd) or (Defaults.BuildOS=dragonfly)) then
     Result:=Prefix+'share'+PathDelim+'examples'+PathDelim+'fpc-$(CompilerVersion)'+PathDelim+'$(PackageName)'+PathDelim+'examples'
   else If UnixPaths then
     Result:=Prefix+'share'+PathDelim+'doc'+PathDelim+'fpc-$(CompilerVersion)'+PathDelim+'$(PackageName)'+PathDelim+'examples'
@@ -5927,6 +5958,8 @@ begin
         Values[KeyUseEnv]:='Y';
       if FInstallExamples then
           Values[KeyInstallExamples]:='Y';
+      if FBuildExamples then
+        Values[KeyBuildExamples]:='Y';
       if FSkipCrossPrograms then
         Values[KeySkipCrossPrograms]:='Y';
       if FSkipAllPrograms then
@@ -5989,6 +6022,7 @@ begin
       FDocInstallDir:=Values[KeyDocInstallDir];
       FExamplesInstallDir:=Values[KeyExamplesInstallDir];
       FInstallExamples:=(Upcase(Values[KeyInstallExamples])='Y');
+      FBuildExamples:=(Upcase(Values[KeyBuildExamples])='Y');
       FSkipCrossPrograms:=(Upcase(Values[KeySkipCrossPrograms])='Y');
       FSkipAllPrograms:=(Upcase(Values[KeySkipAllPrograms])='Y');
       FNoFPCCfg:=(Upcase(Values[KeyNoFPCCfg])='Y');
@@ -6461,6 +6495,8 @@ begin
       DefaultsFileName:=OptionArg(I)
     else if CheckOption(I,'ie','installexamples') then
       Defaults.InstallExamples:=true
+    else if CheckOption(I,'be','buildexamples') then
+      Defaults.BuildExamples:=true
     else if CheckOption(I,'sap','skipallprograms') then
       Defaults.SkipAllPrograms:=true
     else if CheckOption(I,'scp','skipcrossprograms') then
@@ -6549,6 +6585,7 @@ begin
   LogOption('e', 'useenv', sHelpUseEnvironment);
 {$endif}
   LogOption('ie','installexamples',SHelpInstExamples);
+  LogOption('be','buildexamples',SHelpBuildExamples);
   LogOption('bu','buildunit',SHelpUseBuildUnit);
   LogOption('sap','skipallprograms',SHelpSkipAllProgs);
   LogOption('scp','skipcrossprograms',SHelpSkipCrossProgs);
@@ -6964,7 +7001,8 @@ begin
       finally
         ConsoleOutput.Seek(0, soBeginning);
         SetLength(Result,ConsoleOutput.Size);
-        ConsoleOutput.Read(Result[1],ConsoleOutput.Size);
+        if ConsoleOutput.Size>0 then
+          ConsoleOutput.Read(Result[1],ConsoleOutput.Size);
         ConsoleOutput.Free;
       end;
     end;
@@ -8099,9 +8137,18 @@ begin
   else If Defaults.Mode<>cmFPC then
     Args.Add('-M'+ModeToString(Defaults.Mode));
   // Output file paths
-  If ATarget.TargetType in ProgramTargets then
-    Args.Add('-FE'+AddPathPrefix(APackage,APackage.GetBinOutputDir(Defaults.CompileTarget)));
-  Args.Add('-FU'+AddPathPrefix(APackage,APackage.GetUnitsOutputDir(Defaults.CompileTarget)));
+  If ATarget.TargetType in [ttExampleUnit,ttExampleProgram] then
+    begin
+    Args.Add('-FE'+AddPathPrefix(APackage,APackage.GetExamplesOutputDir(Defaults.CompileTarget)));
+    Args.Add('-FU'+AddPathPrefix(APackage,APackage.GetExamplesOutputDir(Defaults.CompileTarget)));
+    Args.Add('-Fu'+AddPathPrefix(APackage,APackage.GetUnitsOutputDir(Defaults.CompileTarget)));
+    end
+  else
+    begin
+    If ATarget.TargetType in ProgramTargets then
+      Args.Add('-FE'+AddPathPrefix(APackage,APackage.GetBinOutputDir(Defaults.CompileTarget)));
+    Args.Add('-FU'+AddPathPrefix(APackage,APackage.GetUnitsOutputDir(Defaults.CompileTarget)));
+    end;
   // Object Path
   L:=TUnsortedDuplicatesStringList.Create;
   L.Duplicates:=dupIgnore;
@@ -8280,6 +8327,22 @@ begin
           break;
         end;
     end;
+
+  //and an examples directory when examples are compiled
+  if Defaults.BuildExamples then
+    For i := 0 to Pred(APackage.Targets.Count) do
+      begin
+        if APackage.Targets.TargetItems[i].TargetType in [ttExampleUnit,ttExampleProgram] then
+          begin
+            D:=AddPathPrefix(APackage,APackage.GetExamplesOutputDir(Defaults.CompileTarget));
+            If not SysDirectoryExists(D) then
+              begin
+                Log(vlInfo,SInfoCreatingOutputDir,[D]);
+                CmdCreateDir(D);
+              end;
+            break;
+          end;
+      end;
 end;
 
 
@@ -8361,16 +8424,16 @@ Var
 begin
   Result:=False;
 
+  // Examples are only compiled on request
+  if (ATarget.TargetType in [ttExampleUnit, ttExampleProgram]) and not Defaults.BuildExamples then
+    Exit;
+
   // Forced recompile?
   if FForceCompile then
     begin
     Result:=true;
     CompileReason:=SDbgForcedCompile;
     end;
-
-  // For now examples are not compiled at all
-  if ATarget.TargetType in [ttExampleUnit, ttExampleProgram] then
-    Exit;
 
   // Files which should not be compiled on this target can not trigger a compile.
   if not TargetOK(ATarget, Defaults.CompileTarget) then
@@ -8379,7 +8442,9 @@ begin
   // Check output file
   if not result then
     begin
-      if ATarget.TargetType in ProgramTargets then
+      if ATarget.TargetType in [ttExampleUnit, ttExampleProgram] then
+        OD:=APackage.GetExamplesOutputDir(Defaults.CompileTarget)
+      else if ATarget.TargetType in ProgramTargets then
         OD:=APackage.GetBinOutputDir(Defaults.CompileTarget)
       else
         OD:=APackage.GetUnitsOutputDir(Defaults.CompileTarget);
@@ -8472,7 +8537,7 @@ begin
     ExecuteCommands(ATarget.Commands,caBeforeCompile);
     If Assigned(ATarget.BeforeCompile) then
       ATarget.BeforeCompile(ATarget);
-    if (APackage.BuildMode=bmBuildUnit) and not (ATarget.TargetType in [ttProgram,ttSharedLibrary,ttExampleProgram]) then
+    if (APackage.BuildMode=bmBuildUnit) and not (ATarget.TargetType in [ttProgram,ttSharedLibrary,ttExampleUnit,ttExampleProgram]) then
       begin
         begin
         FN:=ExtractFileName(ATarget.TargetSourceFileName);
@@ -8979,6 +9044,14 @@ begin
           end;
       end;
 
+    if Defaults.BuildExamples then
+      For I:=0 to APackage.Targets.Count-1 do
+        begin
+          T:=APackage.Targets.TargetItems[i];
+          if T.TargetType in [ttExampleUnit,ttExampleProgram] then
+            ProcessCompileTarget;
+        end;
+
     if RegenerateUnitconfigFile then
       begin
         UC:=AddPathPrefix(APackage, APackage.GetUnitConfigOutputFilename(Defaults.CompileTarget));
@@ -9141,6 +9214,47 @@ begin
   end;
 end;
 
+
+procedure TBuildEngine.InstallPackageFpcFile(APackage: TPackage; const Dest: String);
+
+var
+  lContent, lList: TStringList;
+  lFileName, lRequires: String;
+  lIndex: Integer;
+  lDependency: TDependency;
+
+begin
+  lRequires:='rtl';
+  for lIndex:=0 to APackage.Dependencies.Count-1 do
+    begin
+      lDependency:=APackage.Dependencies[lIndex];
+      if (lDependency.DependencyType=depPackage)
+         and (Defaults.CPU in lDependency.CPUs) and (Defaults.OS in lDependency.OSes)
+         and not SameText(lDependency.Value,'rtl') then
+        lRequires:=lRequires+' '+lDependency.Value;
+    end;
+  lFileName:=IncludeTrailingPathDelimiter(APackage.GetUnitsOutputDir(Defaults.CompileTarget))+PackageFpcFile;
+  lContent:=TStringList.Create;
+  try
+    lContent.Add('[package]');
+    lContent.Add('name='+APackage.Name);
+    lContent.Add('version='+APackage.Version);
+    lContent.Add('[require]');
+    lContent.Add('packages_'+OSToString(Defaults.OS)+'_'+CPUToString(Defaults.CPU)+'='+lRequires);
+    lContent.SaveToFile(AddPathPrefix(APackage,lFileName));
+  finally
+    lContent.Free;
+  end;
+  lList:=TStringList.Create;
+  try
+    lList.Add(lFileName);
+    CmdCopyFiles(lList,Dest,APackage);
+  finally
+    lList.Free;
+  end;
+end;
+
+
 function TBuildEngine.InstallPackageSourceFiles(APAckage: TPackage;
   stt: TSourceTypes; ttt: TTargetTypes; const Dest: String;
   const InstallMode: TInstallMode): Boolean;
@@ -9192,6 +9306,8 @@ Var
 begin
   If (Apackage.State<>tsCompiled) then
     MaybeCompile(APackage);
+  if APackage.State=tsNeutral then
+    Error(SErrPackageNotCompiled,[APackage.Name]);
   Log(vlCommand,SInfoInstallingPackage,[APackage.Name]);
   if AnArchiveFiles then
     FinishArchive(APackage);
@@ -9217,7 +9333,10 @@ begin
       B:=true;
     D:=FixPath(APackage.Dictionary.ReplaceStrings(Defaults.UnitInstallDir), True)+ExcludeLeadingPathDelimiter(APackage.GetPackageUnitInstallDir(Defaults.CPU,Defaults.OS, Defaults.SubTarget));
     if InstallPackageFiles(APackage,[ttUnit, ttImplicitUnit],D, imInstall) then
+      begin
       B:=true;
+      InstallPackageFpcFile(APackage,IncludeTrailingPathDelimiter(D));
+      end;
     // By default do not install the examples. Maybe add an option for this later
     //if InstallPackageFiles(APAckage,ttExampleUnit,D) then
     //  B:=true;
@@ -9283,6 +9402,7 @@ begin
   InstallPackageFiles(APackage,[],D,imUnInstall);
   D:=FixPath(APackage.Dictionary.ReplaceStrings(Defaults.UnitInstallDir), True)+APackage.GetPackageUnitInstallDir(Defaults.CPU,Defaults.OS, Defaults.SubTarget);
   InstallPackageFiles(APackage,[ttUnit, ttImplicitUnit],D, imUnInstall);
+  SysDeleteFile(IncludeTrailingPathDelimiter(D)+PackageFpcFile);
   SysDeleteDirectory(D);
 
   // Unit (dependency) configuration
@@ -9527,6 +9647,8 @@ begin
         DirectoryList.Clear;
         if DirectoryExists(APackage.GetBinOutputDir(aTarget)) then
           DirectoryList.Add(APackage.GetBinOutputDir(aTarget));
+        if DirectoryExists(APackage.GetExamplesOutputDir(aTarget)) then
+          DirectoryList.Add(APackage.GetExamplesOutputDir(aTarget));
         if DirectoryExists(APackage.GetUnitsOutputDir(aTarget)) then
           DirectoryList.Add(APackage.GetUnitsOutputDir(aTarget));
         CmdRemoveDirs(DirectoryList);
@@ -9628,10 +9750,57 @@ Var
   ErrorMessage: string;
   NotifyThreadWaiting : PRTLEvent;
   Threads : array of TCompileWorkerThread;
+  lPending : Integer;
 {$endif NO_THREADING}
   P : TPackage;
 
 {$ifndef NO_THREADING}
+  // True if a worker thread has not yet reported back
+  function AnyThreadBusy: Boolean;
+
+  var
+    lThr: Integer;
+
+  begin
+    Result:=False;
+    for lThr:=0 to Length(Threads)-1 do
+      if Assigned(Threads[lThr]) and not Threads[lThr].Done then
+        Exit(True);
+  end;
+
+
+  // The number of packages that are neither compiled nor skipped
+  function PendingCount: Integer;
+
+  var
+    lIdx: Integer;
+
+  begin
+    Result:=0;
+    for lIdx:=0 to Packages.Count-1 do
+      if Packages.PackageItems[lIdx].State=tsNeutral then
+        Inc(Result);
+  end;
+
+
+  // Comma-separated names of the packages that are neither compiled nor skipped
+  function PendingNames: String;
+
+  var
+    lIdx: Integer;
+
+  begin
+    Result:='';
+    for lIdx:=0 to Packages.Count-1 do
+      if Packages.PackageItems[lIdx].State=tsNeutral then
+        begin
+        if Result<>'' then
+          Result:=Result+', ';
+        Result:=Result+Packages.PackageItems[lIdx].Name;
+        end;
+  end;
+
+
   procedure ProcessThreadResult(ATHread: TCompileWorkerThread);
   var
     StartI: integer;
@@ -9746,10 +9915,23 @@ begin
           // When a thread notifies this thread that it is ready, loop on all
           // threads to check their state and if possible assign a new package
           // to them to compile.
+          // With all threads idle, scan again as long as a scan skips packages.
+          lPending:=-1;
           while not Finished do
             begin
-              RTLeventWaitFor(NotifyThreadWaiting);
-              RTLeventResetEvent(NotifyThreadWaiting);
+              if AnyThreadBusy then
+                begin
+                RTLeventWaitFor(NotifyThreadWaiting);
+                RTLeventResetEvent(NotifyThreadWaiting);
+                end
+              else if PendingCount=lPending then
+                begin
+                ErrorMessage:=Format(SErrPackagesNotReady,[PendingNames]);
+                ErrorState:=true;
+                Finished:=true;
+                Break;
+                end;
+              lPending:=PendingCount;
               for Thr:=0 to Defaults.ThreadsAmount-1 do
                 if assigned(Threads[Thr]) and not Finished then
                   ProcessThreadResult(Threads[Thr]);
@@ -9796,11 +9978,31 @@ begin
 end;
 
 
+procedure TBuildEngine.CompileBeforeInstall(Packages: TPackages);
+
+Var
+  I : Integer;
+  P : TPackage;
+
+begin
+  For I:=0 to Packages.Count-1 do
+    begin
+      P:=Packages.PackageItems[i];
+      If PackageOK(P) and not (P.State in [tsCompiled,tsNoCompile]) then
+        begin
+          Compile(Packages);
+          Exit;
+        end;
+    end;
+end;
+
+
 procedure TBuildEngine.Install(Packages: TPackages);
 Var
   I : Integer;
   P : TPackage;
 begin
+  CompileBeforeInstall(Packages);
   NotifyEventCollection.CallEvents(neaBeforeInstall, Self);
   For I:=0 to Packages.Count-1 do
     begin
@@ -9821,10 +10023,15 @@ procedure TBuildEngine.ZipInstall(Packages: TPackages);
 var
   I : Integer;
   P : TPackage;
+  lOldUnixPaths : Boolean;
 
 begin
+  CompileBeforeInstall(Packages);
   NotifyEventCollection.CallEvents(neaBeforeInstall, Self);
 
+  { An archive has the directory layout of the target OS, not of the build OS }
+  lOldUnixPaths:=Defaults.UnixPaths;
+  Defaults.UnixPaths:=Defaults.OS in AllUnixOSes;
   if Defaults.UnixPaths then
     Defaults.IntSetBaseInstallDir('lib/fpc/' + Defaults.FCompilerVersion+ '/')
   else
@@ -9844,6 +10051,7 @@ begin
       end;
   finally
     FinishArchive(P);
+    Defaults.UnixPaths:=lOldUnixPaths;
   end;
 
   NotifyEventCollection.CallEvents(neaAfterInstall, Self);

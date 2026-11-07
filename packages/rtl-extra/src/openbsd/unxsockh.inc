@@ -117,6 +117,10 @@ Const
 { Maximum queue length specifiable by listen.  }
   SOMAXCONN     = 128;
 
+{ Flags for the socket type in fpsocket and for fpaccept4 }
+  SOCK_CLOEXEC  = $8000;
+  SOCK_NONBLOCK = $4000;
+
         SOL_SOCKET 	 = $FFFF;
         SO_DEBUG         = $0001;        { turn on debugging info recording }
         SO_ACCEPTCONN    = $0002;        { socket has had listen() }
@@ -341,11 +345,11 @@ Const
   MSG_CTRUNC    = $0020;              { Control data lost before delivery }
   MSG_WAITALL   = $0040;              { Wait for a full request }
   MSG_DONTWAIT  = $0080;              { Non-blocking I/O }
-  MSG_EOF       = $0100;
-  MSG_NBIO      = $4000;
-  MSG_COMPAT    = $8000;
-  MSG_SOCALLBCK = $10000;
-  MSG_NOSIGNAL  = $20000;              { Do not generate SIGPIPE }
+  MSG_BCAST     = $0100;              { Received as broadcast }
+  MSG_MCAST     = $0200;              { Received as multicast }
+  MSG_NOSIGNAL  = $0400;              { Do not generate SIGPIPE }
+  MSG_CMSG_CLOEXEC = $0800;           { Close-on-exec for received descriptors }
+  MSG_WAITFORONE = $1000;             { recvmmsg: wait for one message }
 
   INVALID_SOCKET = -1;
   SOCKET_ERROR = -1;

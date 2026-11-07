@@ -26,7 +26,7 @@ unit chmwriter;
 interface
 
 {$IFDEF FPC_DOTTEDUNITS}
-uses System.Generics.Collections,System.Classes, Chm.Base, Chm.Types, Chm.SpecialFiles, Chm.HtmlIndexer, Chm.Sitemap, System.Contnrs, Fcl.Streams.Extra, Fcl.AVLTree, Chm.Lzx.Compressthread;
+uses System.Generics.Collections,System.Classes, Chm.Base, Chm.Types, Chm.SpecialFiles, Chm.HtmlIndexer, Chm.Sitemap, System.Contnrs, Fcl.Streams.Extra, Fcl.AVLTree, Chm.Lzx.CompressThread;
 {$ELSE FPC_DOTTEDUNITS}
 uses Generics.Collections,Classes, ChmBase, chmtypes, chmspecialfiles, HtmlIndexer, chmsitemap, contnrs, StreamEx, Avl_Tree, lzxcompressthread;
 {$ENDIF FPC_DOTTEDUNITS}
@@ -209,7 +209,6 @@ Type
     procedure CheckFileMakeSearchable(AStream: TStream; AFileEntry: TFileEntryRec);
     function AddTopic(ATitle,AnUrl:AnsiString;code:integer=-1):integer;
     function AddTopicindex(ATitle,AnUrl:AnsiString;code:integer=-1):integer;
-    procedure ScanSitemap(asitemap:TCHMSiteMap);
     function NextTopicIndex: Integer;
     procedure Setwindows (AWindowList:TObjectList);
     procedure SetMergefiles(src:TStringList);
@@ -218,6 +217,7 @@ Type
     destructor Destroy; override;
     procedure AppendTOC(AStream: TStream);
     procedure AppendBinaryTOCFromSiteMap(ASiteMap: TChmSiteMap);
+    procedure ScanSitemap(asitemap:TCHMSiteMap);
     procedure AppendBinaryIndexFromSiteMap(ASiteMap: TChmSiteMap;chw:boolean);
     procedure AppendBinaryTOCStream(AStream: TStream);
     procedure AppendBinaryIndexStream(IndexStream,DataStream,MapStream,Propertystream: TStream;chw:boolean);
@@ -245,9 +245,9 @@ Function CompareStrings(Node1, Node2: Pointer): integer; // also used in filewri
 
 implementation
 {$IFDEF FPC_DOTTEDUNITS}
-uses System.DateUtils, System.SysUtils, Chm.Lzx.Compress, Chm.FiftiMain;
+uses System.DateUtils, System.SysUtils, Chm.Lzx.Compress, Chm.FiftiMain, Chm.HtmlUtil;
 {$ELSE FPC_DOTTEDUNITS}
-uses dateutils, sysutils, paslzxcomp, chmFiftiMain;
+uses dateutils, sysutils, paslzxcomp, chmFiftiMain, HTMLUtil;
 {$ENDIF FPC_DOTTEDUNITS}
 
 const
@@ -269,6 +269,18 @@ var n1,n2 : TStringIndex;
 begin
   n1:=TStringIndex(Node1); n2:=TStringIndex(Node2);
   Result := CompareText(n1.TheString, n2.TheString);
+  if Result < 0 then Result := -1
+  else if Result > 0 then Result := 1;
+end;
+
+
+// The strings in #STRINGS are titles and such, which can differ only in case:
+// "GetFileName" and "GetFilename" must not share one.
+Function CompareStringsCaseSensitive(Node1, Node2: Pointer): integer;
+var n1,n2 : TStringIndex;
+begin
+  n1:=TStringIndex(Node1); n2:=TStringIndex(Node2);
+  Result := CompareStr(n1.TheString, n2.TheString);
   if Result < 0 then Result := -1
   else if Result > 0 then Result := 1;
 end;
@@ -1615,8 +1627,6 @@ begin
   WriteITBITS;
   // This creates and writes the #SYSTEM file to section0
   WriteSystem;
-  if Assigned(FTocSM)  then
-   Scansitemap(FTocSM);
 end;
 
 procedure TChmWriter.WriteFinalCompressedFiles;
@@ -1655,7 +1665,7 @@ begin
   FFiftiMainStream := TMemoryStream.Create;
   FIndexedFiles := TIndexedWordList.Create;
   FAVLTopicdedupe  :=TAVLTree.Create(@CompareStrings);  // dedupe filenames in topics.
-  FAvlStrings   := TAVLTree.Create(@CompareStrings);    // dedupe strings
+  FAvlStrings   := TAVLTree.Create(@CompareStringsCaseSensitive);    // dedupe strings
   FAvlURLStr    := TAVLTree.Create(@CompareUrlStrs);    // dedupe urltbl + binindex must resolve URL to topicid
   SpareString   := TStringIndex.Create;                 // We need an object to search in avltree
   SpareUrlStr   := TUrlStrIndex.Create;                 //    to avoid create/free circles we keep one in spare
@@ -1704,7 +1714,7 @@ begin
   if FStringsStream.Size = 0 then FStringsStream.WriteByte(0);
 
   SpareString.TheString:=AString;
-  n:=fAvlStrings.FindKey(SpareString,@CompareStrings);
+  n:=fAvlStrings.FindKey(SpareString,@CompareStringsCaseSensitive);
   if assigned(n) then
     exit(TStringIndex(n.data).strid);
 
@@ -1807,19 +1817,36 @@ begin
  end;
 end;
 
+// The key under which the topic of an URL is remembered. The URLs of the
+// files and those of the TOC and index entries are not written the same way:
+// "/dir/page.html" for the first, "dir\page.html" or "Dir/Page.html" for the
+// others.
+function TopicUrlKey(const AnUrl: AnsiString): AnsiString;
+begin
+  Result:=LowerCase(StringReplace(AnUrl, '\', '/', [rfReplaceAll]));
+  if (Length(Result) > 0) and (Result[1] = '/') then
+    Delete(Result,1,1);
+end;
+
 function TChmWriter.AddTopic(ATitle,AnUrl:AnsiString;code:integer=-1):integer;
 
 var
     TopicEntry: TTopicEntry;
+    UrlKey: AnsiString;
 
 begin
-    ATitle :=StringReplace(Atitle, '&x27;', '', [rfReplaceAll]);
+    // the titles come from HTML, where a '<' for instance is written &lt;
+    ATitle := DecodeCharRefs(ATitle);
     anurl:=StringReplace(anurl, '\', '/', [rfReplaceAll]);
     if ATitle <> '' then
       TopicEntry.StringsOffset := AddString(ATitle)
     else
       TopicEntry.StringsOffset := $FFFFFFFF;
     result:=NextTopicIndex;
+    // so that the TOC and index entries of a page share the topic of the page
+    UrlKey := TopicUrlKey(AnUrl);
+    if not FDictTopicsUrlInd.ContainsKey(UrlKey) then
+      FDictTopicsUrlInd.Add(UrlKey, Result);
     TopicEntry.URLTableOffset := AddURL(AnUrl, Result);
     if code=-1 then
       begin
@@ -1850,16 +1877,10 @@ function TChmWriter.AddTopicindex(ATitle, AnUrl: AnsiString; code: integer
   ): integer;
 
 begin
-   ATitle :=StringReplace(Atitle, '&x27;', '', [rfReplaceAll]);
-
-  // adhoc substitutions. Replace with real code if exact behaviour is known.
-{  Atitle:=StringReplace(atitle, '&x27;', '''', [rfReplaceAll]);
-  if length(atitle)>0 then
-    atitle[1]:=uppercase(atitle[1])[1];}
   {$ifdef binindex}
   writeln('Enter ',ATitle,' ',AnUrl);
   {$endif}
-  if FDictTopicsUrlInd.trygetvalue(anurl,result) then
+  if FDictTopicsUrlInd.trygetvalue(TopicUrlKey(anurl),result) then
    begin
      {$ifdef binindex}
        writeln('found:',result);
@@ -1868,26 +1889,25 @@ begin
    else
     begin
       result:=addtopic(atitle,anurl);
-      FDictTopicsUrlInd.add(anurl,result);
     end;
 end;
 
+// Adds a topic for each entry of the TOC whose URL has none yet, in the order
+// of the TOC, as the Microsoft compiler does: these are mostly the entries
+// pointing to an anchor. It has to be done before the binary index adds the
+// topics of its own entries.
 procedure TChmWriter.ScanSitemap(asitemap:TCHMSiteMap);
 procedure scanitems(it:TChmSiteMapItems);
 
 var i : integer;
     x : TChmSiteMapItem;
-    s : string;
-    strrec : TStringIndex;
 
 begin
   for i:=0 to it.count -1 do
     begin
       x:=it.item[i];
-//      if sanitizeurl(fbasepath,x.local,S) then   // sanitize, remove stuff etc.
-//        begin
-//          writeln(x.text,' : ',x.local,' ',x.url,' ' ,x.merge);
-
+      if x.local<>'' then
+        AddTopicIndex(x.text,x.local);
       if assigned(x.children) and (x.children.count>0) then
         scanitems(x.children);
     end;
@@ -1987,7 +2007,7 @@ begin
       begin
         // Write #TOPICS entry
         TopicEntry.TocOffset      := NtoLE(DWord(4096 + EntryInfoStream.Position));
-        TopicEntry.StringsOffset  := NtoLE(AddString(MenuItem.Text));
+        TopicEntry.StringsOffset  := NtoLE(AddString(DecodeCharRefs(MenuItem.Text)));
         TopicEntry.URLTableOffset := NtoLE(AddURL(MenuItem.Local, NextTopicIndex));
         TopicEntry.InContents     := NtoLE(Word( 2 ));
         TopicEntry.Unknown        := 0;
@@ -2007,7 +2027,7 @@ begin
       end
       else
       begin
-        EntryInfo.TopicsIndexOrStringsOffset := NtoLE(AddString(MenuItem.Text));
+        EntryInfo.TopicsIndexOrStringsOffset := NtoLE(AddString(DecodeCharRefs(MenuItem.Text)));
       end;
 
         // write TOCEntryInfo
@@ -2259,7 +2279,7 @@ begin
      write('!seealso');
      {$endif}
      WriteDword(p,1);
-     WritestrNT(p,item.seealso)
+     WritestrNT(p,DecodeCharRefs(item.seealso))
    end
   else
     begin
@@ -2374,7 +2394,6 @@ procedure CombineWithChildren(ParentItem:TChmSiteMapItem;Str:UnicodeString;comma
 var i    : Integer;
     llItem : TChmSiteMapItem;
 begin
-   str:=StringReplace(str, '&x27;', '', [rfReplaceAll]);
    {$ifdef binindex}
      writeln('i:',level,' ',str);
    {$endif}
@@ -2394,7 +2413,7 @@ begin
 {        if level=0 Then
           CombineWithChildren(Item,str+', '+item.text,0,level+1)
         else}
-          CombineWithChildren(llItem,Str+', '+llitem.text,length(str)+2,level+1);
+          CombineWithChildren(llItem,Str+', '+DecodeCharRefs(llitem.text),length(str)+2,level+1);
       end;
 end;
 
@@ -2458,7 +2477,7 @@ begin
   for i:=0 to ASiteMap.Items.Count-1 do
     begin
       item := TChmSiteMapItem(ASiteMap.Items.Item[i]);
-      key  :=Item.Text;
+      key  :=DecodeCharRefs(Item.Text);
        {$ifdef binindex}
         writeln('item: ',i,' ',key);
        {$endif}

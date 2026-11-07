@@ -616,6 +616,80 @@ begin
 end;
 
 
+{ The value of aSource for a conversion to the integer type aVarType, whose range is aMin..aMax (aMax >= 0):
+  as in Delphi, a value outside the range raises EVariantOverflowError, and a Boolean is taken as its bit
+  pattern without a check (True gives 255 for a Byte). An IDispatch is read by its default value first, as
+  VarUtils' conversions read it. }
+function VariantToIntInRange(const aSource : TVarData; aMin, aMax : Int64; aVarType : TVarType) : Int64;
+var
+  p : PVarData;
+  q : QWord;
+  l : LongInt;
+  code : Word;
+  lValue : TVarData;
+begin
+  p := @aSource;
+  while ((p^.vType and not varByRef) = varVariant) and Assigned(p^.vPointer) do
+    p := p^.vPointer;
+  if ((p^.vType and not varByRef) = varDispatch) and Assigned(VarDispValueProc) then
+    begin
+      FillChar(lValue, SizeOf(lValue), 0);
+      try
+        VarDispValueProc(lValue, p^);
+        if (lValue.vType and varTypeMask) = varDispatch then
+          raise EVariantError.CreateCode(VAR_TYPEMISMATCH);
+        Result := VariantToIntInRange(lValue, aMin, aMax, aVarType);
+      finally
+        DoVarClear(lValue);
+      end;
+      exit;
+    end;
+  case p^.vType and not varByRef of
+    varBoolean:
+      begin
+        Result := VariantToInt64(aSource);
+        if aMin = 0 then
+          Result := Result and aMax;
+        exit;
+      end;
+    varQWord:
+      begin
+        q := VariantToQWord(aSource);
+        if q > QWord(aMax) then
+          VarOverflowError(aSource.vType, aVarType);
+        Result := Int64(q);
+      end;
+    varOleStr, varString, varUString:
+      { every destination but a dword reads a string as a longint, as Delphi's do, so that a
+        hexadecimal string is a 32-bit pattern }
+      if aMax <= High(LongInt) then
+        begin
+          case p^.vType and not varByRef of
+            varOleStr:
+              Val(VariantToWideString(aSource), l, code);
+            varUString:
+              Val(VariantToUnicodeString(aSource), l, code);
+          else
+            Val(VariantToAnsiString(aSource), l, code);
+          end;
+          if code <> 0 then
+            begin
+              { not a number, which keeps its type mismatch, or one a longint cannot hold }
+              VariantToInt64(aSource);
+              VarOverflowError(aSource.vType, aVarType);
+            end;
+          Result := l;
+        end
+      else
+        Result := VariantToInt64(aSource);
+  else
+    Result := VariantToInt64(aSource);
+  end;
+  if (Result < aMin) or (Result > aMax) then
+    VarOverflowError(aSource.vType, aVarType);
+end;
+
+
 function Sysvartoint (const v : Variant) : Longint;
 var Handler: TCustomVariantType;
     dest: TVarData;
@@ -630,13 +704,13 @@ begin
       VariantInit(dest);
       try
         Handler.CastTo(dest, TVarData(v), varInteger);
-        Result := VariantToLongInt(dest);
+        Result := LongInt(VariantToIntInRange(dest, Low(LongInt), High(LongInt), varInteger));
       finally
         DoVarClear(dest);
       end;
     end
   else
-    Result := VariantToLongInt(TVarData(V));
+    Result := LongInt(VariantToIntInRange(TVarData(V), Low(LongInt), High(LongInt), varInteger));
 end;
 
 function Sysvartoint64 (const v : Variant) : Int64;
@@ -738,6 +812,22 @@ end;
 {$endif}
 
 
+{ VarUtils cannot raise EVariantOverflowError, so it reports a value out of
+  Currency's range with this error code }
+function VarDataToCurrency(const aSource : TVarData) : Currency;
+begin
+  try
+    Result := VariantToCurrency(aSource);
+  except
+    on E: EVariantError do
+      if E.ErrCode = VAR_OVERFLOW then
+        VarOverflowError(aSource.vType, varCurrency)
+      else
+        raise;
+  end;
+end;
+
+
 function sysvartocurr (const v : Variant) : Currency;
 var Handler: TCustomVariantType;
     dest: TVarData;
@@ -752,13 +842,13 @@ begin
       VariantInit(dest);
       try
         Handler.CastTo(dest, TVarData(v), varCurrency);
-        Result := VariantToCurrency(dest);
+        Result := VarDataToCurrency(dest);
       finally
         DoVarClear(dest);
       end;
     end
   else
-    Result := VariantToCurrency(TVarData(V));
+    Result := VarDataToCurrency(TVarData(V));
 end;
 
 function CustomVarToLStr(const v: TVarData; out s: AnsiString): Boolean;
@@ -1433,7 +1523,7 @@ begin
         Result := DoVarCmpWStr(vl, vr, OpCode);
 {$ifndef FPUNONE}
     ctDate:     Result := DoVarCmpFloat(VariantToDate(vl), VariantToDate(vr), OpCode);
-    ctCurrency: Result := DoVarCmpCurr(VariantToCurrency(vl), VariantToCurrency(vr));
+    ctCurrency: Result := DoVarCmpCurr(VarDataToCurrency(vl), VarDataToCurrency(vr));
 {$endif}
     ctString:
       if (vl.vType = varString) and (vr.vType = varString) then
@@ -1719,29 +1809,29 @@ var
 begin
   case OpCode of
     opAdd:
-      c := VariantToCurrency(vl) + VariantToCurrency(vr);
+      c := VarDataToCurrency(vl) + VarDataToCurrency(vr);
     opSubtract:
-      c := VariantToCurrency(vl) - VariantToCurrency(vr);
+      c := VarDataToCurrency(vl) - VarDataToCurrency(vr);
     opMultiply:
       if lct = ctCurrency then
         if rct = ctCurrency then {both Currency}
-          c := VariantToCurrency(vl) * VariantToCurrency(vr)
+          c := VarDataToCurrency(vl) * VarDataToCurrency(vr)
         else {Left Currency}
-          c := VariantToCurrency(vl) * VariantToDouble(vr)
+          c := VarDataToCurrency(vl) * VariantToDouble(vr)
       else
         if rct = ctCurrency then {rigth Currency}
-          c := VariantToDouble(vl) * VariantToCurrency(vr)
+          c := VariantToDouble(vl) * VarDataToCurrency(vr)
         else {non Currency, error}
           VarInvalidOp(vl.vType, vr.vType, OpCode);
     opDivide:
       if lct = ctCurrency then
         if rct = ctCurrency then {both Currency}
-          c := VariantToCurrency(vl) / VariantToCurrency(vr)
+          c := VarDataToCurrency(vl) / VarDataToCurrency(vr)
         else {Left Currency}
-          c := VariantToCurrency(vl) / VariantToDouble(vr)
+          c := VarDataToCurrency(vl) / VariantToDouble(vr)
       else
         if rct = ctCurrency then begin {rigth Currency}
-          d := VariantToCurrency(vl) / VariantToCurrency(vr);
+          d := VarDataToCurrency(vl) / VarDataToCurrency(vr);
           DoVarClearIfComplex(vl);
           vl.vType := varDouble;
           vl.vDouble := d;
@@ -1751,12 +1841,12 @@ begin
     opPower:
       if lct = ctCurrency then
         if rct = ctCurrency then {both Currency}
-          c := VariantToCurrency(vl) ** VariantToCurrency(vr)
+          c := VarDataToCurrency(vl) ** VarDataToCurrency(vr)
         else {Left Currency}
-          c := VariantToCurrency(vl) ** VariantToDouble(vr)
+          c := VarDataToCurrency(vl) ** VariantToDouble(vr)
       else
         if rct = ctCurrency then {rigth Currency}
-          c := VariantToDouble(vl) ** VariantToCurrency(vr)
+          c := VariantToDouble(vl) ** VarDataToCurrency(vr)
         else {non Currency, error}
           VarInvalidOp(vl.vType, vr.vType, OpCode);
   else
@@ -1817,6 +1907,32 @@ begin
     VarInvalidOp(vl.vType, vr.vType, OpCode);
 end;
 
+{ An Empty operand of /, div or mod counts as 0, as in Delphi, so dividing by
+  it is a division by zero; Empty divided by Empty raises at once }
+procedure DoVarOpEmptyDivide(var vl : TVarData; const vr : TVarData; const OpCode : TVarOp);
+var
+  zero : TVarData;
+begin
+  if VarTypeDeRef(vr) = varEmpty then
+    begin
+      if VarTypeDeRef(vl) = varEmpty then
+        if OpCode = opDivide then
+          raise EZeroDivide.Create(SZeroDivide)
+        else
+          raise EDivByZero.Create(SDivByZero);
+      zero.vType := varInteger;
+      zero.vInteger := 0;
+      SysVarOp(Variant(vl), Variant(zero), OpCode);
+    end
+  else
+    begin
+      DoVarClear(vl);
+      vl.vType := varInteger;
+      vl.vInteger := 0;
+      SysVarOp(Variant(vl), Variant(vr), OpCode);
+    end;
+end;
+
 procedure SysVarOp(var Left : Variant; const Right : Variant; OpCode : TVarOp);
 var
   lct: TCommonType;
@@ -1846,10 +1962,8 @@ begin
   case FindOpCommonType[lct, rct] of
     ctEmpty:
       case OpCode of
-        opDivide:
-          Error(reZeroDivide);
-        opIntDivide, opModulus:
-          Error(reDivByZero);
+        opDivide, opIntDivide, opModulus:
+          DoVarOpEmptyDivide(TVarData(Left),TVarData(Right),OpCode);
       else
         DoVarClear(TVarData(Left));
       end;
@@ -1873,7 +1987,7 @@ begin
 {$endif}
     ctBoolean:
       case OpCode of
-        opAdd..opMultiply, opPower:
+        opAdd..opDivide, opPower:
           DoVarOpFloat(TVarData(Left),TVarData(Right),OpCode);
         opIntDivide..opShiftRight:
           DoVarOpLongInt(TVarData(Left),TVarData(Right),OpCode);
@@ -1953,6 +2067,10 @@ procedure sysvarneg(var v: Variant);
 const
   BoolMap: array [Boolean] of SmallInt = (0, -1);
 begin
+  { a nil reference is refused before anything is read through it }
+  if ((TVarData(v).vType and not varTypeMask) = varByRef) and
+     not Assigned(TVarData(v).vPointer) then
+    VarBadTypeError;
   with TVarData(v) do case vType of
     varEmpty: begin
       vSmallInt := 0;
@@ -2165,6 +2283,10 @@ end;
 
 procedure sysvarnot(var v: Variant);
 begin
+  { a nil reference is refused before anything is read through it }
+  if ((TVarData(v).vType and not varTypeMask) = varByRef) and
+     not Assigned(TVarData(v).vPointer) then
+    VarBadTypeError;
   with TVarData(v) do case vType of
     varEmpty:    v := -1;
     varNull:;
@@ -2454,6 +2576,17 @@ begin
   SysVarFromLStr(Variant(aDest), VariantToAnsiString(aSource));
 end;
 
+procedure DoVarCastUStr(var aDest : TVarData; const aSource : TVarData);
+var
+  Value: UnicodeString;
+begin
+  Value := VariantToUnicodeString(aSource);
+  DoVarClearIfComplex(aDest);
+  aDest.vType := varUString;
+  aDest.vustring := nil;
+  UnicodeString(aDest.vustring) := Value;
+end;
+
 procedure DoVarCastDispatch(var aDest : TVarData; const aSource : TVarData);
 var
   Disp: IDispatch;
@@ -2502,6 +2635,11 @@ begin
     DoVarCastFallback(aDest, aSource, aVarType);
 end;
 
+procedure DoVarCastInt(var aDest : TVarData; const aSource : TVarData; aVarType : TVarType; aMin, aMax : Int64; aRange : LongInt);
+begin
+  SysVarFromInt(Variant(aDest), LongInt(VariantToIntInRange(aSource, aMin, aMax, aVarType)), aRange);
+end;
+
 procedure DoVarCast(var aDest : TVarData; const aSource : TVarData; aVarType : LongInt);
 var
   Handler: TCustomVariantType;
@@ -2520,25 +2658,21 @@ begin
           DoVarClearIfComplex(aDest);
           aDest.vType := aVarType;
         end;
-        varSmallInt: SysVarFromInt(Variant(aDest), VariantToSmallInt(aSource), -2);
-        varInteger:  SysVarFromInt(Variant(aDest), VariantToLongInt(aSource), -4);
+        varSmallInt: DoVarCastInt(aDest, aSource, varSmallInt, Low(SmallInt), High(SmallInt), -2);
+        varInteger:  DoVarCastInt(aDest, aSource, varInteger, Low(LongInt), High(LongInt), -4);
 {$ifndef FPUNONE}
         varSingle:   SysVarFromSingle(Variant(aDest), VariantToSingle(aSource));
         varDouble:   SysVarFromDouble(Variant(aDest), VariantToDouble(aSource));
-        varCurrency: SysVarFromCurr(Variant(aDest), VariantToCurrency(aSource));
+        varCurrency: SysVarFromCurr(Variant(aDest), VarDataToCurrency(aSource));
         varDate:     SysVarFromTDateTime(Variant(aDest), VariantToDate(aSource));
 {$endif}
         varOleStr:   DoVarCastWStr(aDest, aSource);
-        varUString:  begin
-          DoVarClearIfComplex(aDest);
-          aDest.vType := aVarType;
-          UnicodeString(aDest.vustring) := VariantToUnicodeString(aSource);
-        end;
+        varUString:  DoVarCastUStr(aDest, aSource);
         varBoolean:  SysVarFromBool(Variant(aDest), VariantToBoolean(aSource));
-        varShortInt: SysVarFromInt(Variant(aDest), VariantToShortInt(aSource), -1);
-        varByte:     SysVarFromInt(Variant(aDest), VariantToByte(aSource), 1);
-        varWord:     SysVarFromInt(Variant(aDest), VariantToLongInt(aSource), 2);
-        varLongWord: SysVarFromInt(Variant(aDest), Integer(VariantToCardinal(aSource)), 4);
+        varShortInt: DoVarCastInt(aDest, aSource, varShortInt, Low(ShortInt), High(ShortInt), -1);
+        varByte:     DoVarCastInt(aDest, aSource, varByte, Low(Byte), High(Byte), 1);
+        varWord:     DoVarCastInt(aDest, aSource, varWord, Low(Word), High(Word), 2);
+        varLongWord: DoVarCastInt(aDest, aSource, varLongWord, Low(LongWord), High(LongWord), 4);
         varInt64:    SysVarFromInt64(Variant(aDest), VariantToInt64(aSource));
         varQWord:    SysVarFromWord64(Variant(aDest), VariantToQWord(aSource));
 
@@ -4259,16 +4393,16 @@ begin
                        StringMap[NextString].ComStr:=StringToOleStr(PAnsiString(ppointer(arg_ptr)^)^);
                        StringMap[NextString].PasStr:=PAnsiString(ppointer(arg_ptr)^);
                        StringMap[NextString].PasWStr:=nil;
-                       arg_data^.vType := arg_data^.vType or varByRef;
-                       arg_data^.volestr:=StringMap[NextString].ComStr;
+                       arg_data^.vType := varOleStr or varByRef;
+                       arg_data^.vPointer:=@StringMap[NextString].ComStr;
                        inc(NextString);
                       end;
           varUStrArg:  begin
                        StringMap[NextString].ComStr:=StringToOleStr(PUnicodeString(ppointer(arg_ptr)^)^);
                        StringMap[NextString].PasStr:=nil;
                        StringMap[NextString].PasWStr:=PUnicodeString(ppointer(arg_ptr)^);
-                       arg_data^.vType := arg_data^.vType or varByRef;
-                       arg_data^.volestr:=StringMap[NextString].ComStr;
+                       arg_data^.vType := varOleStr or varByRef;
+                       arg_data^.vPointer:=@StringMap[NextString].ComStr;
                        inc(NextString);
                       end;
           else
@@ -4324,6 +4458,7 @@ begin
                          StringMap[NextString].ComStr:=StringToOleStr(PAnsiString(arg_ptr)^);
                          StringMap[NextString].PasStr:=nil;
                          StringMap[NextString].PasWStr:=Nil;
+                         arg_data^.vType := varOleStr;
                          arg_data^.volestr:=StringMap[NextString].ComStr;
                          inc(NextString);
                         end;
@@ -4331,6 +4466,7 @@ begin
                          StringMap[NextString].ComStr:=StringToOleStr(PunicodeString(arg_ptr)^);
                          StringMap[NextString].PasStr:=nil;
                          StringMap[NextString].PasWStr:=Nil;
+                         arg_data^.vType := varOleStr;
                          arg_data^.volestr:=StringMap[NextString].ComStr;
                          inc(NextString);
                         end;
@@ -4820,7 +4956,7 @@ Procedure SetPropValue(Instance: TObject; PropInfo: PPropInfo;  const Value: Var
 
 var
  TypeData: PTypeData;
- O: Integer;
+ Handler: TCustomVariantType;
  I64: Int64;
  Qw: QWord;
  S: AnsiString;
@@ -4913,8 +5049,13 @@ begin
          end
        else
          begin
-         O:=Value;
-         SetOrdProp(Instance, PropInfo, O);
+         { a number here is the set's bit mask, not a signed value, so it is read
+           at full width; a custom variant type is still asked for a longint }
+         if FindCustomVariantType(TVarData(Value).vType,Handler) then
+           I64:=LongInt(Value)
+         else
+           I64:=Value;
+         SetOrdProp(Instance, PropInfo, I64);
          end;
        end;
 {$ifndef FPUNONE}

@@ -1523,6 +1523,16 @@ begin
   SetAsUnicodeString(AValue);
 end;
 
+function TWideStringField.GetAsAnsiString: AnsiString;
+begin
+  Result := GetAsUnicodeString;
+end;
+
+procedure TWideStringField.SetAsAnsiString(const AValue: AnsiString);
+begin
+  SetAsUnicodeString(AValue);
+end;
+
 function TWideStringField.GetAsUnicodeString: UnicodeString;
 begin
   if not GetValue(Result) then
@@ -4126,6 +4136,12 @@ begin
 end;
 
 { TObjectField }
+
+class procedure TObjectField.CheckTypeSize(AValue: Longint);
+begin
+  // an object field's size is not a scalar field's -- an array field's is the
+  // number of its elements -- so it is not checked, as in Delphi
+end;
 
 function TObjectField.GetFieldCount: Integer;
 begin

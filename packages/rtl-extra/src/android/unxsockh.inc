@@ -93,7 +93,14 @@ Const
 { Maximum queue length specifiable by listen.  }
   SOMAXCONN     = 128;
 
+{ Flags for the socket type in fpsocket and for fpaccept4 }
+  SOCK_CLOEXEC  = O_CLOEXEC;
+  SOCK_NONBLOCK = O_NONBLOCK;
+
 { For setsockoptions(2) }
+{$ifdef cpumips}
+{$i sockopt-mips.inc}
+{$else cpumips}
          SOL_SOCKET  =   1;
          SO_DEBUG    =   1;
          SO_REUSEADDR=   2;
@@ -133,6 +140,7 @@ Const
          SO_TIMESTAMP    = 29;
          SCM_TIMESTAMP   = SO_TIMESTAMP;
          SO_ACCEPTCONN   = 30;
+{$endif cpumips}
 
 // Following from kernel 2.6.14-1.1637_FC4
 

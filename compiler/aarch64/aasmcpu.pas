@@ -859,9 +859,15 @@ implementation
                   { only supported for 32/64 bit }
                   if not(oppostfix in [PF_W,PF_SW,PF_None]) then
                     exit;
-                  { offset must be a multiple of the access size }
+                  { offset must be a multiple of the access size; if it is
+                    not, it can be folded into the base register, but not in
+                    case of pre-/post-indexing }
                   if (ref.offset mod accesssize)<>0 then
-                    exit;
+                    begin
+                      if ref.addressmode=AM_OFFSET then
+                        result:=sr_complex;
+                      exit;
+                    end;
                   { offset must fit in a signed 7 bit offset }
                   if (ref.offset>=-(1 shl (6+tcgsizep2size[size]))) and
                      (ref.offset<=(1 shl (6+tcgsizep2size[size]))-1) then
@@ -1081,6 +1087,7 @@ implementation
 {$ifdef EXTDEBUG}
            { play save to avoid hard to find bugs, better fail at compile time }
            A_ADD,
+           A_ADR,
            A_ADRP,
            A_AND,
            A_ASR,
@@ -1091,6 +1098,7 @@ implementation
            A_CSEL,
            A_CSET,
            A_CSETM,
+           A_CSINV,
            A_FABS,
            A_EON,
            A_EOR,
@@ -1109,12 +1117,15 @@ implementation
            A_FRINTZ,
            A_FSQRT,
            A_FSUB,
+           A_INS,
+           A_ORN,
            A_ORR,
            A_LSL,
            A_LSLV,
            A_LSR,
            A_LSRV,
            A_MOV,
+           A_MOVI,
            A_MOVN,
            A_MOVZ,
            A_MSUB,
@@ -1148,7 +1159,8 @@ implementation
            A_UMULH,
            A_UXTB,
            A_UXTH,
-           A_MRS:
+           A_MRS,
+           A_MSR:
              if opnr=0 then
                result:=operand_write
              else

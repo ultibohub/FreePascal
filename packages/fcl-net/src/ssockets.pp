@@ -1005,8 +1005,12 @@ end;
 destructor TSocketServer.Destroy;
 
 begin
-  RemoveSelfFromConnections;
-  FreeAndNil(FConnections);
+  { FConnections is nil when a descendant constructor raised before inherited Create. }
+  if Assigned(FConnections) then
+    begin
+    RemoveSelfFromConnections;
+    FreeAndNil(FConnections);
+    end;
   Close;
   FreeAndNil(FHandler);
   Inherited;
@@ -1029,8 +1033,11 @@ var
 begin
 {$if defined(unix)}
   fpShutdown(FSocket.FD,SHUT_RDWR);
+  {$ifdef BSD}
+  Close;
+  {$endif}
 {$elseif defined(windows) or defined(hasamiga)}
-  CloseSocket(FSocket);
+  Close;
 {$else}
   CloseSocket(FSocket);
 {$endif}
@@ -1438,7 +1445,7 @@ end;
 
 constructor TInetServer.Create(const aHost: string; const APort: Word; AHandler: TSocketHandler);
 begin
-  Create(AHost, aPort,nil,False);
+  Create(AHost, aPort,AHandler,False);
 end;
 
 constructor TInetServer.Create(const aHost: TNetworkAddress; const APort: Word;
@@ -1447,6 +1454,9 @@ constructor TInetServer.Create(const aHost: TNetworkAddress; const APort: Word;
 Var S : TFPSocket;
 
 begin
+  FSocket.FD:=-1;
+  { The destructor frees the handler when the constructor raises. }
+  FHandler:=AHandler;
   case aHost.AddressType of
   atIN4:
     S.SocketType:=stIPv4;
@@ -1519,8 +1529,9 @@ Var
 begin
   // Is basically the same except that the handle will be overwritten
   Result:=FSocket;
-  naddr.SocketType:=Result.SocketType;
-  naddr.GetAddrAndSize(AddrPtr,addrSize);
+  naddr:=Default(TAddressUnion);
+  addrPtr:=naddr.GetAddr;
+  addrSize:=SizeOf(TAddressUnion);
   Result.FD:=-1;
 {$IFDEF UNIX}
   R:=ESysEINTR;
@@ -1555,6 +1566,9 @@ Constructor TUnixServer.Create(const AFileName : String; AHandler : TSocketHandl
 Var S : TFPSocket;
 
 begin
+  FSocket.FD:=-1;
+  { The destructor frees the handler when the constructor raises. }
+  FHandler:=AHandler;
   FFileName:=AFileName;
   S.Protocol:=spStream;
   s.SocketType:=stUnixSocket;
@@ -1794,10 +1808,10 @@ begin
           not possible (note to self: rework resolve) }
         If Not NameLookup(FEndPoint.First.Address) then
           raise ESocketError.Create(seHostNotFound, [FEndPoint.First.Address]);
+        addr:=Default(TAddressUnion);
         addr.In4Addr.sin_family := AF_INET;
         addr.In4Addr.sin_port := ShortHostToNet(FEndPoint.Second);
         addr.In4Addr.sin_addr.s_addr := HostToNet(HostAddress.s_addr);
-        addr.SocketType:=stIPv4;
       finally
         free;
       end

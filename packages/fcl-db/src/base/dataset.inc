@@ -564,7 +564,7 @@ begin
   // See notes from mantis bug-report 8204 for more information
   //    ftBytes                   : ;
   //    ftVarBytes                : ;
-      ftWideString              : StrCopy(PWideChar(aDest), PWideChar(aSource));
+      ftWideString, ftFixedWideChar: StrLCopy(PWideChar(aDest), PWideChar(aSource), aField.Size);
       end
     end
   else
@@ -576,7 +576,7 @@ begin
       ftFMTBCD                  : TBcd(aDest^) := TBcd(aSource^);
   //    ftBytes                   : ;
   //    ftVarBytes                : ;
-      ftWideString              : StrCopy(PWideChar(aDest), PWideChar(aSource));
+      ftWideString, ftFixedWideChar: StrLCopy(PWideChar(aDest), PWideChar(aSource), aField.Size);
       end
     end
 end;
@@ -680,8 +680,8 @@ begin
       begin
       GetMem(ADynBuffer,Field.DataSize);
       try
-        DataConvert(Field,Buffer,@AStatBuffer,True);
-        SetfieldData(Field, @AStatBuffer);
+        DataConvert(Field,Buffer,ADynBuffer,True);
+        SetfieldData(Field, ADynBuffer);
       finally
         FreeMem(ADynBuffer);
         end;
