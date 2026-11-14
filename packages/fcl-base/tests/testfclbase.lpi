@@ -166,6 +166,31 @@
         <Filename Value="utcdirwatch.pp"/>
         <IsPartOfProject Value="True"/>
       </Unit>
+      <Unit>
+        <Filename Value="utcthreadpool.pp"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="utcThreadPool"/>
+      </Unit>
+      <Unit>
+        <Filename Value="utceventlog.pp"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="utcEventLog"/>
+      </Unit>
+      <Unit>
+        <Filename Value="utccustapp.pp"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="utcCustApp"/>
+      </Unit>
+      <Unit>
+        <Filename Value="utcfptimer.pp"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="utcFPTimer"/>
+      </Unit>
+      <Unit>
+        <Filename Value="utcgettext.pp"/>
+        <IsPartOfProject Value="True"/>
+        <UnitName Value="utcGetText"/>
+      </Unit>
     </Units>
   </ProjectOptions>
   <CompilerOptions>

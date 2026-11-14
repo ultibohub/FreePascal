@@ -194,6 +194,14 @@ begin
   Changed(False);
 end;
 
+procedure TFieldDef.SetCodePage(const aValue: TSystemCodePage);
+
+begin
+  FCodePage := aValue;
+  Changed(False);
+end;
+
+
 function TFieldDef.GetFieldClass: TFieldClass;
 
 begin
@@ -749,6 +757,15 @@ begin
     Result:=FFieldName;
 end;
 
+function TField.GetFullName: string;
+
+begin
+  if Assigned(FParentField) then
+    Result:=FParentField.FullName+'.'+FFieldName
+  else
+    Result:=FFieldName;
+end;
+
 function TField.IsDisplayLabelStored: Boolean;
 
 begin
@@ -878,6 +895,8 @@ begin
   Inherited Notification(AComponent,Operation);
   if (Operation = opRemove) and (AComponent = FLookupDataSet) then
     FLookupDataSet := nil;
+  if (Operation = opRemove) and (AComponent = FParentField) then
+    FParentField := nil;
 end;
 
 procedure TField.PropertyChanged(LayoutAffected: Boolean);
@@ -1159,8 +1178,33 @@ begin
 end;
 
 procedure TField.SetParentField(AField: TObjectField);
+
+var
+  lAncestor: TField;
+
 begin
   // http://docwiki.embarcadero.com/Libraries/Sydney/en/Data.DB.TField.ParentField
+  if AField=FParentField then
+    Exit;
+  if Assigned(FDataSet) then
+    FDataSet.CheckInactive;
+  if Assigned(AField) then
+    begin
+    lAncestor:=AField;
+    while Assigned(lAncestor) do
+      begin
+      if lAncestor=Self then
+        DatabaseErrorFmt(SErrCircularParentField,[FFieldName],Self);
+      lAncestor:=lAncestor.ParentField;
+      end;
+    if Assigned(FDataSet) and Assigned(AField.DataSet) and (AField.DataSet<>FDataSet) then
+      DatabaseErrorFmt(SErrParentFieldDataset,[AField.FieldName],Self);
+    end;
+  if Assigned(FParentField) then
+    FParentField.RemoveFreeNotification(Self);
+  FParentField:=AField;
+  if Assigned(FParentField) then
+    FParentField.FreeNotification(Self);
 end;
 
 procedure TField.SetReadOnly(const AValue: Boolean);
@@ -1181,6 +1225,17 @@ begin
     end;
 end;
 
+procedure TField.SetAutoGenerateValue(const AValue: TAutoRefreshFlag);
+
+begin
+  if FAutoGenerateValue<>AValue then
+    begin
+    FAutoGenerateValue:=AValue;
+    PropertyChanged(False);
+    end;
+end;
+
+
 
 { ---------------------------------------------------------------------
     TStringField
@@ -1195,7 +1250,9 @@ begin
   FCodePage := CP_ACP;
   FFixedChar := False;
   FTransliterate := False;
-  FSize := 20;
+  { a descendant may have set its size before calling this, as TGuidField does }
+  if FSize = 0 then
+    FSize := 20;
 end;
 
 procedure TStringField.SetFieldType(AValue: TFieldType);
@@ -1397,6 +1454,25 @@ begin
   SetAsString(IntToStr(AValue));
 end;
 
+// Number of bytes of the first aCount code points of the UTF-8 text aText of aLen bytes
+function UTF8CodePointsByteLength(aText: PAnsiChar; aLen, aCount: SizeInt): SizeInt;
+
+var
+  lCPLen: SizeInt;
+
+begin
+  Result:=0;
+  while (aCount>0) and (Result<aLen) do
+    begin
+    lCPLen:=Utf8CodePointLen(aText+Result,aLen-Result,False);
+    if lCPLen<=0 then
+      lCPLen:=1;
+    Inc(Result,lCPLen);
+    Dec(aCount);
+    end;
+end;
+
+
 procedure TStringField.SetValue(AValue: RawByteString);
 var Buf      : TStringFieldBuffer;
     DynBuf   : array of AnsiChar;
@@ -1413,10 +1489,14 @@ begin
     begin
     if StringCodePage(AValue) <> FCodePage then
       SetCodePage(AValue, FCodePage, FCodePage<>CP_NONE);
+    if (FCodePage=CP_UTF8) and (Length(AValue)>Size) then
+      SetLength(AValue,UTF8CodePointsByteLength(PAnsiChar(AValue),Length(AValue),Size));
     if DS <= dsMaxStringSize then
       begin
+      // Translate has no size for its destination, so it gets no more of the
+      // value than fits the buffer
       if FTransliterate then
-        DataSet.Translate(@AValue[1],Buf,True)
+        DataSet.Translate(PAnsiChar(Copy(AValue,1,DS-1)),Buf,True)
       else
         // The data is copied into the buffer, since some TDataset descendents copy
         // the whole buffer-length in SetData. (See bug 8477)
@@ -1429,7 +1509,7 @@ begin
       begin
       SetLength(DynBuf, DataSize);
       if FTransliterate then
-        DataSet.Translate(@AValue[1],@DynBuf[0],True)
+        DataSet.Translate(PAnsiChar(Copy(AValue,1,DS-1)),@DynBuf[0],True)
       else
         StrPLCopy(PAnsiChar(DynBuf), AValue, DS-1);
       SetData(@DynBuf[0]);
@@ -3568,9 +3648,16 @@ begin
 end;
 
 procedure TFMTBCDField.SetAsCurrency(AValue: Currency);
-var bcd: TBCD;
+var
+  bcd: TBCD;
+  decimals: Integer;
 begin
-  if CurrToBCD(AValue, bcd, 32, Size) then
+  { CurrToBCD fails when it has to drop a place, and a currency has four: a
+    field of fewer takes all four, as SetAsBCD takes any other value }
+  decimals:=Size;
+  if decimals<4 then
+    decimals:=4;
+  if CurrToBCD(AValue, bcd, 32, decimals) then
     SetAsBCD(bcd);
 end;
 

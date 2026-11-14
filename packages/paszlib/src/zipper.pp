@@ -547,6 +547,7 @@ Type
     FFiles      : TStrings;
     FUseUTF8    : Boolean;
     FFlat       : Boolean;
+    FConvertBackslashes : Boolean;
     FZipStream  : TStream;     { I/O file variables                         }
     LocalHdr    : Local_File_Header_Type; //Local header, before compressed file data
     LocalZip64Fld   : Zip64_Extended_Info_Field_Type; //header is in LocalZip64ExtHdr
@@ -562,6 +563,7 @@ Type
     FCurrentDecompressor: TDecompressor;
     function CalcTotalSize(AllFiles: Boolean): Int64;
     function IsMatch(I: TFullZipFileEntry): Boolean;
+    function EntryName(const aName: RawByteString; aOS: Byte): RawByteString;
   Protected
     Procedure OpenInput;
     Procedure CloseOutput(Item : TFullZipFileEntry; var OutStream: TStream);
@@ -622,6 +624,8 @@ Type
     Property Entries : TFullZipFileEntries Read FEntries;
     Property UseUTF8 : Boolean Read FUseUTF8 Write FUseUTF8;
     Property Flat : Boolean Read FFlat Write FFlat; // enable flat extraction, like -j when using unzip
+    // Replace \ with / in names of entries created on FAT, NTFS, HPFS or VFAT hosts
+    Property ConvertBackslashes : Boolean Read FConvertBackslashes Write FConvertBackslashes;
     Property Terminated : Boolean Read FTerminated;
   end;
 
@@ -2347,6 +2351,7 @@ Begin
       FZipStream.ReadBuffer(S[1],Filename_Length);
       if Bit_Flag and EFS_LANGUAGE_ENCODING_FLAG <> 0 then
         SetCodePage(S, CP_UTF8, False);
+      S:=EntryName(S,Item.OS);
       Item.ArchiveFileName:=S;
       Item.DiskFileName:=S;
       SavePos:=FZipStream.Position; //after filename, before extra fields
@@ -2381,6 +2386,7 @@ Begin
                   begin
                   SetLength(U,ExtraFieldHdr.Data_Size-5);
                   FZipStream.ReadBuffer(U[1],Length(U));
+                  U:=EntryName(U,Item.OS);
                   Item.UTF8ArchiveFileName:=U;
                   Item.UTF8DiskFileName:=U;
                   end
@@ -2624,6 +2630,7 @@ Begin
       NewNode.FCompressedSize:=Compressed_Size;
       NewNode.CRC32:=CRC32;
       NewNode.OS := MadeBy_Version shr 8;
+      NewNode.ArchiveFileName:=EntryName(S,NewNode.OS);
       if NewNode.OS = OS_UNIX then
         NewNode.Attributes := External_Attributes shr 16
       else
@@ -2671,7 +2678,7 @@ Begin
                 begin
                 SetLength(U,ExtraFieldHeader.Data_Size-5);
 				FZipStream.ReadBuffer(U[1],Length(U));
-                NewNode.UTF8ArchiveFileName:=U;
+                NewNode.UTF8ArchiveFileName:=EntryName(U,NewNode.OS);
                 end
               else
                 FZipStream.Seek(ExtraFieldHeader.Data_Size-5,soFromCurrent);
@@ -2719,6 +2726,7 @@ Var
   IsLink: Boolean;
   IsCustomStream: Boolean;
   IsOpenedHere: Boolean;
+  Complete: Boolean;
   U : UnicodeString;
 
   Procedure SetAttributes;
@@ -2750,9 +2758,11 @@ Var
       end;
   end;
 
-  procedure DoUnzip(const Dest: TStream);
+  // Unzip the entry to Dest; False when extraction was terminated before the end of the entry
+  function DoUnzip(const Dest: TStream): Boolean;
 
   begin
+    Result:=True;
     if ZMethod=0 then
       begin
       if (LocalHdr.Compressed_Size<>0) then
@@ -2776,7 +2786,8 @@ Var
           OnPercent:=Self.OnPercent;
           DeCompress;
           Self.FTotPos := FTotPos;
-          if Item.CRC32 <> Crc32Val then
+          Result:=not Terminated;
+          if Result and (Item.CRC32 <> Crc32Val) then
             raise EZipError.CreateFmt(SErrInvalidCRC,[Item.ArchiveFileName]);
         Finally
           FCurrentDecompressor:=Nil;
@@ -2851,13 +2862,15 @@ Begin
     end
   else
     begin
+    Complete:=True;
     if IsLink then
       begin
       {$IFDEF UNIX}
         LinkTargetStream := TStringStream.Create('');
         try
-          DoUnzip(LinkTargetStream);
-          fpSymlink(PAnsiChar(LinkTargetStream.DataString), PAnsiChar(OutputFileName));
+          Complete:=DoUnzip(LinkTargetStream);
+          if Complete then
+            fpSymlink(PAnsiChar(LinkTargetStream.DataString), PAnsiChar(OutputFileName));
         finally
           LinkTargetStream.Free;
         end;
@@ -2869,14 +2882,19 @@ Begin
       end
     else
       begin
+      Complete:=False;
       try
         OpenOutput(OutputFileName, FOutStream, Item);
-        DoUnzip(FOutStream);
+        Complete:=DoUnzip(FOutStream);
       Finally
         CloseOutput(Item, FOutStream);
       end;
+      // remove the partially written file of a terminated extraction
+      if not Complete then
+        DeleteFile(OutputFileName);
       end;
-    SetAttributes;
+    if Complete then
+      SetAttributes;
     end;
 
   if IsOpenedHere then
@@ -2891,6 +2909,25 @@ begin
   else
     Result:=(FFiles.IndexOf(I.ArchiveFileName)<>-1)
 end;
+
+// aName with \ replaced by / when ConvertBackslashes is set and aOS is a FAT, NTFS, HPFS or VFAT host
+function TUnZipper.EntryName(const aName: RawByteString; aOS: Byte): RawByteString;
+
+var
+  i: Integer;
+
+begin
+  Result:=aName;
+  if not (FConvertBackslashes and (aOS in [OS_FAT,OS_NTFS,OS_OS2,OS_VFAT])) then
+    Exit;
+  if Pos('\',Result)=0 then
+    Exit;
+  UniqueString(Result);
+  for i:=1 to Length(Result) do
+    if Result[i]='\' then
+      Result[i]:='/';
+end;
+
 
 Function TUnZipper.CalcTotalSize(AllFiles : Boolean) : Int64;
 
@@ -3289,7 +3326,12 @@ function TZipFileEntry.GetArchiveFileName: AnsiString;
 begin
   Result:=FArchiveFileName;
   If (Result='') then
+    begin
     Result:=FDiskFileName;
+    // Zip standard: filenames inside the zip archive have / path separator
+    if DirectorySeparator<>'/' then
+      Result:=StringReplace(Result, DirectorySeparator, '/', [rfReplaceAll]);
+    end;
 end;
 
 function TZipFileEntry.GetUTF8ArchiveFileName: UTF8String;

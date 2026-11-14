@@ -55,7 +55,11 @@ type
     mdoAlerts,           // > [!NOTE] alerts
     mdoFootnotes,        // footnote references and definitions
     mdoCaptions,         // Table: captions and implicit figures
-    mdoLinkReferences    // link reference definitions and reference links
+    mdoLinkReferences,   // link reference definitions and reference links
+    mdoAdmonitions,      // !!! type "title" admonitions with an indented body
+    mdoTaskLists,        // - [ ] and - [x] task list items
+    mdoDirectives,       // :::container, ::leaf and :inline generic directives
+    mdoWikiLinks         // [[target#fragment|label]] wiki links
   );
   TMarkdownOptions = set of TMarkdownOption;
 
@@ -84,9 +88,6 @@ type
     function NextLine : TMarkdownLine;
     function Done : Boolean;
     procedure RedoLine(aResetLine: Boolean);
-    // Take off the prefix that this processor's block puts in front of its content lines.
-    // Returns False when the line does not jave it, and so leaves the block.
-    function StripLinePrefix(aLine : TMarkdownLine) : Boolean; virtual;
     // Same, for the enclosing block, when a line is consumed outside the parse loop.
     // Returns True when the line no longer belongs to that block.
     function ParentEndsLine(aLine : TMarkdownLine) : Boolean;
@@ -104,6 +105,9 @@ type
     constructor Create(aParser : TMarkdownParser); virtual;
     // Register for given block type
     class procedure Register(const aBlockType : String);
+    // Take off the prefix that this processor's block puts in front of its content lines.
+    // Returns False when the line does not have it, and so leaves the block.
+    function StripLinePrefix(aLine : TMarkdownLine) : Boolean; virtual;
     // This is called to see whether aLine closes the current block.
     function LineEndsBlock(aBlock : TMarkdownContainerBlock; aLine: TMarkdownLine): Boolean; virtual;
     // Return true if a line this processor would handle should terminate an
@@ -725,13 +729,18 @@ function TMarkdownParser.IsBlock(aParent: TMarkdownBlock; aBlocks: TMarkdownBloc
   end;
 
 var
-  lSkip : integer;
-  lLine,lMarker : TMarkdownString;
+  lSkip,lColons : integer;
+  lLine,lMarker,lName,lLabel,lAttrs : TMarkdownString;
+  lHasLabel : Boolean;
 
 begin
   // Known blocks
   Result:=True;
   if StartsWithWhitespace(aLine, ['*','-','+','#','`','~','>'],lSkip,aWhiteSpaceLen) then
+    Exit;
+  if (mdoDirectives in Options) and StartsWithWhitespace(aLine,'::',lSkip,aWhiteSpaceLen)
+     and ParseDirectiveFence(Copy(aLine,lSkip+1,Length(aLine)-lSkip),lColons,lName,lLabel,lAttrs,lHasLabel)
+     and ((lName<>'') or (lColons>=3)) then
     Exit;
   // Thematic break
   if StartsWithWhitespace(aLine, '___',lSkip) then
@@ -867,6 +876,8 @@ begin
     Processor.GFMExtensions:=mdoGithubFlavoured in Options;
     Processor.Comments:=mdoComments in Options;
     Processor.Footnotes:=mdoFootnotes in Options;
+    Processor.Directives:=mdoDirectives in Options;
+    Processor.WikiLinks:=mdoWikiLinks in Options;
     if mdoLinkReferences in Options then
       Processor.LinkReferences:=FDocument;
     Processor.process(true);
@@ -882,10 +893,16 @@ procedure TMarkdownParser.ProcessInlines(aBlock: TMarkdownBlock; wsMode: TWhites
 var
   I : Integer;
   lTextBlock : TMarkdownTextBlock absolute aBlock;
+  lAlert : TMarkdownAlertBlock absolute aBlock;
+  lDirective : TMarkdownDirectiveBlock absolute aBlock;
 
 begin
   if aBlock is TMarkdownTextBlock then
-    lTextBlock.Nodes:=processText(lTextBlock.Text,wsMode,aBlock.Line);
+    lTextBlock.Nodes:=processText(lTextBlock.Text,wsMode,aBlock.Line)
+  else if (aBlock is TMarkdownAlertBlock) and (lAlert.TitleText<>'') then
+    lAlert.Title:=processText(lAlert.TitleText,wsTrim,aBlock.Line)
+  else if (aBlock is TMarkdownDirectiveBlock) and lDirective.HasLabel then
+    lDirective.LabelNodes:=ProcessText(lDirective.LabelText,wsTrim,aBlock.Line);
   for I:=0 to aBlock.ChildCount-1 do
     processInlines(aBlock.Children[i],aBlock.WhiteSpaceMode);
 end;

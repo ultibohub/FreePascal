@@ -189,6 +189,10 @@ type
     FUserIndexStream: TStream;
     FUserStream: TStream;  // user stream to open
     FUserMemoStream: TStream; // user-provided/expected stream backing memo file storage
+    // Streams the TDbfFile created for memory storage; freed by the destructor
+    FOwnedStream: TStream;
+    FOwnedIndexStream: TStream;
+    FOwnedMemoStream: TStream;
     FTableName: string;    // table path and file name
     FRelativePath: string;
     FAbsolutePath: string;
@@ -258,6 +262,8 @@ type
     procedure SetShowDeleted(Value: Boolean);
     procedure GetFieldDefsFromDbfFieldDefs;
     procedure InitDbfFile(FileOpenMode: TPagedFileMode);
+    procedure TakeCreatedStreams;
+    procedure ReleaseDbfFile;
     function  ParseIndexName(const AIndexName: string): string;
     procedure ParseFilter(const AFilter: string);
     function  GetDbfFieldDefs: TDbfFieldDefs;
@@ -759,9 +765,9 @@ var
   I: Integer;
 begin
   inherited Destroy;
-  FreeAndNil(FUserStream);
-  FreeAndNil(FUserIndexStream);
-  FreeAndNil(FUserMemoStream);
+  FreeAndNil(FOwnedStream);
+  FreeAndNil(FOwnedIndexStream);
+  FreeAndNil(FOwnedMemoStream);
   if FIndexDefs <> nil then
   begin
     for I := FIndexDefs.Count - 1 downto 0 do
@@ -1082,8 +1088,7 @@ begin
   if FParser <> nil then
     FreeAndNil(FParser);
   FreeAndNil(FCursor);
-  if FDbfFile <> nil then
-    FreeAndNil(FDbfFile);
+  ReleaseDbfFile;
 end;
 
 procedure TDbf.InternalCancel;
@@ -1234,6 +1239,38 @@ begin
   InternalInitFieldDefs;
 end;
 
+// Records the streams FDbfFile created for memory storage as owned and as the user streams
+procedure TDbf.TakeCreatedStreams;
+begin
+  if (FDbfFile = nil) or (FStorage <> stoMemory) then
+    Exit;
+  if (FDbfFile.Stream <> FUserStream) and (FDbfFile.Stream <> FOwnedStream) then
+  begin
+    FreeAndNil(FOwnedStream);
+    FOwnedStream := FDbfFile.Stream;
+  end;
+  if (FDbfFile.IndexStream <> FUserIndexStream) and (FDbfFile.IndexStream <> FOwnedIndexStream) then
+  begin
+    FreeAndNil(FOwnedIndexStream);
+    FOwnedIndexStream := FDbfFile.IndexStream;
+  end;
+  if (FDbfFile.MemoStream <> FUserMemoStream) and (FDbfFile.MemoStream <> FOwnedMemoStream) then
+  begin
+    FreeAndNil(FOwnedMemoStream);
+    FOwnedMemoStream := FDbfFile.MemoStream;
+  end;
+  FUserStream := FDbfFile.Stream;
+  FUserIndexStream := FDbfFile.IndexStream;
+  FUserMemoStream := FDbfFile.MemoStream;
+end;
+
+// Takes over the streams FDbfFile created, then frees FDbfFile
+procedure TDbf.ReleaseDbfFile;
+begin
+  TakeCreatedStreams;
+  FreeAndNil(FDbfFile);
+end;
+
 procedure TDbf.InitDbfFile(FileOpenMode: TPagedFileMode);
 const
   FileModeToMemMode: array[TPagedFileMode] of TPagedFileMode =
@@ -1252,6 +1289,7 @@ begin
     FDbfFile.Mode := FileOpenMode;
   end;
   FDbfFile.AutoCreate := false;
+  FDbfFile.UseAutoInc := FUseAutoInc;
   FDbfFile.DateTimeHandling := FDateTimeHandling;
   FDbfFile.OnLocaleError := FOnLocaleError;
   FDbfFile.OnIndexMissing := FOnIndexMissing;
@@ -1274,7 +1312,7 @@ begin
     GetFieldDefsFromDbfFieldDefs;
   finally
     if MustReleaseDbfFile then
-      FreeAndNil(FDbfFile);
+      ReleaseDbfFile;
   end;
 end;
 
@@ -1325,7 +1363,7 @@ var
   I: Integer;
 begin
   // close current file
-  FreeAndNil(FDbfFile);
+  ReleaseDbfFile;
 
   // does file not exist? -> create
   if ((FStorage = stoFile) and
@@ -1654,14 +1692,6 @@ begin
       else
         FDbfFile.FinishCreate(ADbfFieldDefs, 512);
 
-      // if creating memory table, use user-designated stream
-      if FStorage = stoMemory then
-      begin
-        FUserStream := FDbfFile.Stream;
-        FUserIndexStream := FDBfFile.IndexStream;
-        FUserMemoStream := FDbfFile.MemoStream;
-      end;
-
       // create all indexes
       for I := 0 to FIndexDefs.Count-1 do
       begin
@@ -1682,7 +1712,7 @@ begin
     // free temporary fielddefs
     if tempFieldDefs and Assigned(ADbfFieldDefs) then
       ADbfFieldDefs.Free;
-    FreeAndNil(FDbfFile);
+    ReleaseDbfFile;
   end;
 end;
 
@@ -1714,7 +1744,7 @@ begin
     FDbfFile.RestructureTable(ADbfFieldDefs, Pack);
   finally
     // close file
-    FreeAndNil(FDbfFile);
+    ReleaseDbfFile;
   end;
 end;
 
@@ -2804,7 +2834,8 @@ begin
   if FUseAutoInc = ThisUseAutoInc then Exit;
 
   FUseAutoInc := ThisUseAutoInc;
-  DbfFile.UseAutoInc := FUseAutoInc;
+  if Assigned(FDbfFile) then
+    FDbfFile.UseAutoInc := FUseAutoInc;
 end;
 
 function TDbf.GetDbfFieldDefs: TDbfFieldDefs;

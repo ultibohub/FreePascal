@@ -172,6 +172,7 @@ type
     procedure SetNodeInfoWithValue(typ: TXMLNodeType; AName: PHashItem = nil);
     function SetupFakeLF(nextstate: TXMLToken): Boolean;
     function AddId(aNodeData: PNodeData): Boolean;
+    procedure RegisterIDs;
     function QueryInterface(constref iid: TGUID; out obj): HRESULT; {$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
     function _AddRef: Longint; {$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
     function _Release: Longint; {$IFNDEF WINDOWS}cdecl{$ELSE}stdcall{$ENDIF};
@@ -434,6 +435,21 @@ begin
 // This one is not in character-sets.txt, but was used in FPC documentation,
 // and still being used in fcl-registry package
             SameText(AEncoding, 'ISO8859-1');
+end;
+
+// True if AEncoding is a name or alias of US-ASCII in the IANA character set registry
+function Is_US_ASCII(const AEncoding: string): Boolean;
+begin
+  Result := SameText(AEncoding, 'US-ASCII') or
+            SameText(AEncoding, 'ASCII') or
+            SameText(AEncoding, 'ANSI_X3.4-1968') or
+            SameText(AEncoding, 'ANSI_X3.4-1986') or
+            SameText(AEncoding, 'iso-ir-6') or
+            SameText(AEncoding, 'ISO646-US') or
+            SameText(AEncoding, 'us') or
+            SameText(AEncoding, 'IBM367') or
+            SameText(AEncoding, 'cp367') or
+            SameText(AEncoding, 'csASCII');
 end;
 
 
@@ -701,6 +717,8 @@ begin
   FillChar(NewDecoder, sizeof(TDecoder), 0);
   if Is_8859_1(AEncoding) then
     FDecoder.Decode := @Decode_8859_1
+  else if Is_US_ASCII(AEncoding) then
+    FDecoder.Decode := @Decode_US_ASCII
   else if FindDecoder(AEncoding, NewDecoder) then
     FDecoder := NewDecoder
   else
@@ -3484,6 +3502,8 @@ begin
     end;
   end;
 
+  RegisterIDs;
+
   if not IsEmpty then
   begin
     if not FPreserveWhitespace then   // critical for testsuite compliance
@@ -3770,10 +3790,7 @@ var
 begin
   L := Length(attrData^.FValueStr);
   case AttrDef.DataType of
-    dtId: begin
-      if not AddID(attrData) then
-        DoErrorPos(esError, 'The ID ''%s'' is not unique', [attrData^.FValueStr], attrData^.FLoc2);
-    end;
+    dtId: ; // registered by RegisterIDs
 
     dtIdRef, dtIdRefs: begin
       StartPos := 1;
@@ -3828,6 +3845,59 @@ begin
   if Result then
     aNodeData^.FIDEntry := e;
 end;
+
+// Normalize s as an attribute of a non-CDATA type: no leading or trailing spaces, runs of spaces become one
+function NormalizeIDValue(const s: XMLString): XMLString;
+
+var
+  i, j: Integer;
+  lSpace: Boolean;
+
+begin
+  SetLength(Result, Length(s));
+  j := 0;
+  lSpace := False;
+  for i := 1 to Length(s) do
+    if (s[i] = #32) or (s[i] = #9) or (s[i] = #10) or (s[i] = #13) then
+      lSpace := j > 0
+    else
+    begin
+      if lSpace then
+      begin
+        Inc(j);
+        Result[j] := #32;
+        lSpace := False;
+      end;
+      Inc(j);
+      Result[j] := s[i];
+    end;
+  SetLength(Result, j);
+end;
+
+
+// Add the attributes of the current start tag that are IDs to the ID map: those declared as ID and xml:id
+procedure TXMLTextReader.RegisterIDs;
+
+var
+  i: Integer;
+  lAttr: PNodeData;
+  lIsID: Boolean;
+
+begin
+  for i := 1 to FAttrCount do
+  begin
+    lAttr := @FNodeStack[FNesting+i];
+    lIsID := Assigned(lAttr^.FTypeInfo) and (TAttributeDef(lAttr^.FTypeInfo).DataType = dtId);
+    if not lIsID and (lAttr^.FQName^.Key = 'xml:id') then
+    begin
+      lIsID := True;
+      lAttr^.FValueStr := NormalizeIDValue(lAttr^.FValueStr);
+    end;
+    if lIsID and not AddID(lAttr) and FValidate then
+      DoErrorPos(esError, 'The ID ''%s'' is not unique', [lAttr^.FValueStr], lAttr^.FLoc2);
+  end;
+end;
+
 
 function TXMLTextReader.AllocAttributeData: PNodeData;
 begin

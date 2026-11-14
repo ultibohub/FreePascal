@@ -1623,9 +1623,15 @@ Type
     Next     : PExitProcInfo;
     SaveExit : CodePointer;
     Proc     : TProcedure;
+    Pooled   : Boolean;
+    InUse    : Boolean;
   End;
 const
   ExitProcList: PExitProcInfo = nil;
+  ExitProcPoolSize = 8;
+var
+  { records used by AddExitProc before it allocates on the heap }
+  ExitProcPool: array[0..ExitProcPoolSize-1] of TExitProcInfo;
 
 Procedure DoExitProc;
 var
@@ -1636,7 +1642,10 @@ Begin
   ExitProcList:=P^.Next;
   ExitProc:=P^.SaveExit;
   Proc:=P^.Proc;
-  DisPose(P);
+  if P^.Pooled then
+    P^.InUse:=False
+  else
+    DisPose(P);
   Proc();
 End;
 
@@ -1644,8 +1653,23 @@ End;
 Procedure AddExitProc(Proc: TProcedure);
 var
   P : PExitProcInfo;
+  I : Longint;
 Begin
-  New(P);
+  P:=nil;
+  for I:=Low(ExitProcPool) to High(ExitProcPool) do
+    if not ExitProcPool[I].InUse then
+      begin
+      P:=@ExitProcPool[I];
+      break;
+      end;
+  if Assigned(P) then
+    P^.Pooled:=True
+  else
+    begin
+    New(P);
+    P^.Pooled:=False;
+    end;
+  P^.InUse:=True;
   P^.Next:=ExitProcList;
   P^.SaveExit:=ExitProc;
   P^.Proc:=Proc;

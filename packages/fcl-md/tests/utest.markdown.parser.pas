@@ -140,6 +140,13 @@ type
     procedure TestItemFencedCode;
     procedure TestListThenThematicBreak;
     procedure TestSpacedThematicBreakEndsList;
+    procedure TestNumberWithoutSpaceIsText;
+    procedure TestParenWithoutSpaceIsText;
+    procedure TestDateIsText;
+    procedure TestNumberWithoutSpaceInBulletItem;
+    procedure TestOrderedListTabAfterMarker;
+    procedure TestUnorderedListTabAfterMarker;
+    procedure TestUnorderedListTabInNextItem;
   end;
 
   { TTestThematicBreaks }
@@ -249,12 +256,39 @@ type
   published
     procedure TestNote;
     procedure TestCaseInsensitive;
+    procedure TestSuccess;
     procedure TestMarkerOnlyLine;
     procedure TestExtraTextStaysQuote;
     procedure TestUnknownTypeStaysQuote;
     procedure TestAlertWithCodeAndDefinitionList;
     procedure TestAlertAfterList;
     procedure TestAlertsOptionOff;
+  end;
+
+  { TTestAdmonitions }
+
+  TTestAdmonitions = class(TExtensionTestCase)
+  protected
+    procedure SetupAdmon(const aText : TMarkdownString);
+    function Alert(aIndex : Integer) : TMarkdownAlertBlock;
+  published
+    procedure TestTitleAndBody;
+    procedure TestDefaultTitle;
+    procedure TestEmptyTitle;
+    procedure TestUnquotedTitle;
+    procedure TestInlineTitle;
+    procedure TestKeywordTypes;
+    procedure TestUnknownKeywordIsNote;
+    procedure TestNestedBlocks;
+    procedure TestBlankLinesInBody;
+    procedure TestBodyEndsAtUnindentedLine;
+    procedure TestNoBodyFollowedByParagraph;
+    procedure TestNoBodyBlankLineThenParagraph;
+    procedure TestLazyContinuation;
+    procedure TestInListItem;
+    procedure TestNoSpaceIsParagraph;
+    procedure TestIndentedMarkerIsCode;
+    procedure TestAdmonitionsOptionOff;
   end;
 
   { TTestFootnotes }
@@ -303,6 +337,62 @@ type
   end;
 
   { TTestTransformRegistry }
+
+  { TTestTaskLists }
+
+  TTestTaskLists = class(TExtensionTestCase)
+  private
+    function Item(aList : TMarkdownBlock; aIndex : Integer) : TMarkdownListItemBlock;
+  published
+    procedure TestUncheckedAndChecked;
+    procedure TestUpperCaseX;
+    procedure TestOrderedList;
+    procedure TestNoSpaceAfterMarkerIsText;
+    procedure TestMarkerOnlyIsText;
+    procedure TestOtherCharIsText;
+    procedure TestNestedTaskList;
+    procedure TestMarkdownAfterMarker;
+    procedure TestTaskListsOptionOff;
+  end;
+
+  { TTestDirectives }
+
+  TTestDirectives = class(TExtensionTestCase)
+  private
+    function Directive(aBlock : TMarkdownBlock) : TMarkdownDirectiveBlock;
+  published
+    procedure TestContainer;
+    procedure TestContainerLabelAndAttributes;
+    procedure TestContainerBareAttribute;
+    procedure TestContainerUnclosed;
+    procedure TestContainerLongerClosingFence;
+    procedure TestNestedContainers;
+    procedure TestSameFenceClosesOuter;
+    procedure TestContainerWithList;
+    procedure TestContainerWithQuote;
+    procedure TestContainerInQuote;
+    procedure TestContainerInList;
+    procedure TestContainerWithUnclosedCode;
+    procedure TestContainerIndentedCode;
+    procedure TestContainerInterruptsParagraph;
+    procedure TestClosingFenceAloneIsText;
+    procedure TestLeaf;
+    procedure TestLeafWithTrailingTextIsText;
+    procedure TestNameMustStartWithLetter;
+    procedure TestInvalidAttributesIsText;
+    procedure TestContainerID;
+    procedure TestLabelFootnote;
+    procedure TestDirectivesOptionOff;
+  end;
+
+  { TTestWikiLinks }
+
+  TTestWikiLinks = class(TExtensionTestCase)
+  published
+    procedure TestWikiLinkInParagraph;
+    procedure TestWikiLinkPlainText;
+    procedure TestWikiLinksOptionOff;
+  end;
 
   TTestTransformRegistry = class(TTestCase)
   published
@@ -1141,6 +1231,102 @@ begin
 end;
 
 
+procedure TTestLists.TestNumberWithoutSpaceIsText;
+
+begin
+  SetupParser('3.14 is pi');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  AssertTrue('A paragraph, not a list', GetBlock(0) is TMarkDownParagraphBlock);
+  CheckBlockText('Paragraph', GetBlock(0), '3.14 is pi', False);
+end;
+
+
+procedure TTestLists.TestParenWithoutSpaceIsText;
+
+begin
+  SetupParser('1)second');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  AssertTrue('A paragraph, not a list', GetBlock(0) is TMarkDownParagraphBlock);
+  CheckBlockText('Paragraph', GetBlock(0), '1)second', False);
+end;
+
+
+procedure TTestLists.TestDateIsText;
+
+begin
+  SetupParser('2011.06.28 Snapshots');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  AssertTrue('A paragraph, not a list', GetBlock(0) is TMarkDownParagraphBlock);
+  CheckBlockText('Paragraph', GetBlock(0), '2011.06.28 Snapshots', False);
+end;
+
+
+procedure TTestLists.TestNumberWithoutSpaceInBulletItem;
+
+var
+  List: TMarkDownListBlock;
+  Item: TMarkDownListItemBlock;
+
+begin
+  SetupParser('- 2011.06.28 Snapshots');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  List := GetBlock(0) as TMarkDownListBlock;
+  AssertFalse('List should be unordered', List.Ordered);
+  AssertEquals('List should have 1 item', 1, List.Blocks.Count);
+  Item := List.Blocks[0] as TMarkDownListItemBlock;
+  AssertEquals('Item should have 1 block', 1, Item.Blocks.Count);
+  AssertTrue('No list inside the item', Item.Blocks[0] is TMarkDownParagraphBlock);
+  CheckBlockText('Item', Item, '2011.06.28 Snapshots', True);
+end;
+
+
+procedure TTestLists.TestOrderedListTabAfterMarker;
+
+var
+  List: TMarkDownListBlock;
+
+begin
+  SetupParser('1.'#9'one'#10'2.'#9'two');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  List := GetBlock(0) as TMarkDownListBlock;
+  AssertTrue('List should be ordered', List.Ordered);
+  AssertEquals('List should have 2 items', 2, List.Blocks.Count);
+  CheckBlockText('First item', List.Blocks[0], 'one', True);
+  CheckBlockText('Second item', List.Blocks[1], 'two', True);
+end;
+
+
+procedure TTestLists.TestUnorderedListTabAfterMarker;
+
+var
+  List: TMarkDownListBlock;
+
+begin
+  SetupParser('-'#9'one');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  AssertTrue('A list, not a paragraph', GetBlock(0) is TMarkDownListBlock);
+  List := GetBlock(0) as TMarkDownListBlock;
+  AssertFalse('List should be unordered', List.Ordered);
+  AssertEquals('List should have 1 item', 1, List.Blocks.Count);
+  CheckBlockText('Item', List.Blocks[0], 'one', True);
+end;
+
+
+procedure TTestLists.TestUnorderedListTabInNextItem;
+
+var
+  List: TMarkDownListBlock;
+
+begin
+  SetupParser('- one'#10'-'#9'two');
+  AssertEquals('Document should have 1 block', 1, Doc.Blocks.Count);
+  List := GetBlock(0) as TMarkDownListBlock;
+  AssertEquals('List should have 2 items', 2, List.Blocks.Count);
+  CheckBlockText('First item', List.Blocks[0], 'one', True);
+  CheckBlockText('Second item', List.Blocks[1], 'two', True);
+end;
+
+
 procedure TTestLists.TestItemFencedCode;
 var
   Item: TMarkDownListItemBlock;
@@ -1775,6 +1961,16 @@ begin
 end;
 
 
+procedure TTestAlerts.TestSuccess;
+
+begin
+  SetupExt('> [!SUCCESS]'#10'> It worked');
+  AssertEquals('Alert block',TMarkdownAlertBlock,GetBlock(0).ClassType);
+  AssertEquals('Alert type',Ord(atSuccess),Ord(TMarkdownAlertBlock(GetBlock(0)).AlertType));
+  AssertEquals('Marker line removed','It worked',PlainOf(GetBlock(0)));
+end;
+
+
 procedure TTestAlerts.TestMarkerOnlyLine;
 
 var
@@ -1834,6 +2030,199 @@ procedure TTestAlerts.TestAlertsOptionOff;
 begin
   SetupExt('> [!NOTE]'#10'> Text',[]);
   AssertEquals('Ordinary quote',TMarkdownQuoteBlock,GetBlock(0).ClassType);
+end;
+
+{ TTestAdmonitions }
+
+procedure TTestAdmonitions.SetupAdmon(const aText: TMarkdownString);
+
+begin
+  SetupExt(aText,MarkdownDocExtensions+[mdoAdmonitions]);
+end;
+
+
+function TTestAdmonitions.Alert(aIndex: Integer): TMarkdownAlertBlock;
+
+begin
+  AssertEquals('Alert block',TMarkdownAlertBlock,GetBlock(aIndex).ClassType);
+  Result:=TMarkdownAlertBlock(GetBlock(aIndex));
+end;
+
+
+procedure TTestAdmonitions.TestTitleAndBody;
+
+var
+  lAlert : TMarkdownAlertBlock;
+begin
+  SetupAdmon('!!! note "Heads up"'#10'    Body text.');
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  lAlert:=Alert(0);
+  AssertEquals('Alert type',Ord(atNote),Ord(lAlert.AlertType));
+  AssertEquals('Title text','Heads up',lAlert.TitleText);
+  AssertNotNull('Title parsed',lAlert.Title);
+  AssertEquals('Title','Heads up',lAlert.Title.PlainText);
+  AssertEquals('Content indent',4,lAlert.ContentIndent);
+  AssertEquals('Body','Body text.',PlainOf(lAlert));
+end;
+
+
+procedure TTestAdmonitions.TestDefaultTitle;
+
+begin
+  SetupAdmon('!!! warning'#10'    Body');
+  AssertEquals('Alert type',Ord(atWarning),Ord(Alert(0).AlertType));
+  AssertNull('No title',Alert(0).Title);
+end;
+
+
+procedure TTestAdmonitions.TestEmptyTitle;
+
+begin
+  SetupAdmon('!!! tip ""'#10'    Body');
+  AssertEquals('Title text','',Alert(0).TitleText);
+  AssertNull('No title',Alert(0).Title);
+end;
+
+
+procedure TTestAdmonitions.TestUnquotedTitle;
+
+begin
+  SetupAdmon('!!! note Read this'#10'    Body');
+  AssertEquals('Title text','Read this',Alert(0).TitleText);
+end;
+
+
+procedure TTestAdmonitions.TestInlineTitle;
+
+var
+  lAlert : TMarkdownAlertBlock;
+begin
+  SetupAdmon('!!! note "A *bold* move"'#10'    Body');
+  lAlert:=Alert(0);
+  AssertEquals('Title plain text','A bold move',lAlert.Title.PlainText);
+  AssertTrue('Title has emphasis',lAlert.Title.Count>1);
+end;
+
+
+procedure TTestAdmonitions.TestKeywordTypes;
+
+const
+  Keywords : Array[0..7] of TMarkdownString = ('info','hint','question','attention','danger','Caution','success','done');
+  Types : Array[0..7] of TAlertType = (atNote,atTip,atImportant,atWarning,atCaution,atCaution,atSuccess,atSuccess);
+
+var
+  I : Integer;
+begin
+  for I:=0 to High(Keywords) do
+    begin
+    SetupAdmon('!!! '+Keywords[I]+#10'    Body');
+    AssertEquals('Type of '+Keywords[I],Ord(Types[I]),Ord(Alert(0).AlertType));
+    end;
+end;
+
+
+procedure TTestAdmonitions.TestUnknownKeywordIsNote;
+
+begin
+  SetupAdmon('!!! custom-kind'#10'    Body');
+  AssertEquals('Alert type',Ord(atNote),Ord(Alert(0).AlertType));
+end;
+
+
+procedure TTestAdmonitions.TestNestedBlocks;
+
+var
+  lAlert : TMarkdownAlertBlock;
+begin
+  SetupAdmon('!!! warning'#10'    Intro'#10#10'    - one'#10'    - two'#10#10'    ```pascal'#10'    writeln;'#10'    ```');
+  lAlert:=Alert(0);
+  AssertEquals('Paragraph, list, code',3,lAlert.ChildCount);
+  AssertEquals('List',TMarkdownListBlock,lAlert.Children[1].ClassType);
+  AssertEquals('Code block',TMarkdownCodeBlock,lAlert.Children[2].ClassType);
+  AssertEquals('Code line','writeln;',TMarkdownTextBlock(lAlert.Children[2].Children[0]).Text);
+end;
+
+
+procedure TTestAdmonitions.TestBlankLinesInBody;
+
+begin
+  SetupAdmon('!!! note'#10#10'    First'#10#10'    Second');
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  AssertEquals('Two paragraphs',2,Alert(0).ChildCount);
+end;
+
+
+procedure TTestAdmonitions.TestBodyEndsAtUnindentedLine;
+
+begin
+  SetupAdmon('!!! note'#10'    Body'#10#10'Outside');
+  AssertEquals('Alert and paragraph',2,Doc.Blocks.Count);
+  AssertEquals('Body','Body',PlainOf(Alert(0)));
+  AssertEquals('Paragraph after',TMarkdownParagraphBlock,GetBlock(1).ClassType);
+end;
+
+
+procedure TTestAdmonitions.TestNoBodyFollowedByParagraph;
+
+begin
+  SetupAdmon('!!! note "Heads up"'#10'Outside');
+  AssertEquals('Alert and paragraph',2,Doc.Blocks.Count);
+  AssertEquals('Empty alert',0,Alert(0).ChildCount);
+end;
+
+
+procedure TTestAdmonitions.TestNoBodyBlankLineThenParagraph;
+
+begin
+  SetupAdmon('!!! note "Heads up"'#10#10'Outside'#10#10'More');
+  AssertEquals('Alert and two paragraphs',3,Doc.Blocks.Count);
+  AssertEquals('Empty alert',0,Alert(0).ChildCount);
+end;
+
+
+procedure TTestAdmonitions.TestLazyContinuation;
+
+begin
+  SetupAdmon('!!! note'#10'    Body'#10'lazy');
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  AssertEquals('Lazy line joins paragraph','Body'#10'lazy',PlainOf(Alert(0)));
+end;
+
+
+procedure TTestAdmonitions.TestInListItem;
+
+var
+  lItem : TMarkdownBlock;
+begin
+  SetupAdmon('- item'#10#10'  !!! tip'#10'      Body');
+  lItem:=GetBlock(0).Children[0];
+  AssertEquals('Paragraph and alert',2,lItem.ChildCount);
+  AssertEquals('Alert in item',TMarkdownAlertBlock,lItem.Children[1].ClassType);
+  AssertEquals('Body','Body',PlainOf(lItem.Children[1]));
+end;
+
+
+procedure TTestAdmonitions.TestNoSpaceIsParagraph;
+
+begin
+  SetupAdmon('!!!note'#10'    Body');
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
+end;
+
+
+procedure TTestAdmonitions.TestIndentedMarkerIsCode;
+
+begin
+  SetupAdmon('    !!! note');
+  AssertEquals('Code block',TMarkdownCodeBlock,GetBlock(0).ClassType);
+end;
+
+
+procedure TTestAdmonitions.TestAdmonitionsOptionOff;
+
+begin
+  SetupExt('!!! note'#10'    Body');
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
 end;
 
 { TTestFootnotes }
@@ -2143,6 +2532,426 @@ begin
   AssertNull('No definition',Doc.FindLinkRef('foo'));
 end;
 
+{ TTestTaskLists }
+
+function TTestTaskLists.Item(aList: TMarkdownBlock; aIndex: Integer): TMarkdownListItemBlock;
+
+begin
+  AssertEquals('List block',TMarkdownListBlock,aList.ClassType);
+  AssertTrue('Item exists',aIndex<aList.ChildCount);
+  Result:=aList.Children[aIndex] as TMarkdownListItemBlock;
+end;
+
+
+procedure TTestTaskLists.TestUncheckedAndChecked;
+
+begin
+  SetupExt('- [ ] todo'#10'- [x] done',[mdoTaskLists]);
+  AssertEquals('Unchecked item',Ord(tisUnchecked),Ord(Item(GetBlock(0),0).TaskState));
+  AssertEquals('Marker removed from unchecked item','todo',PlainOf(Item(GetBlock(0),0)));
+  AssertEquals('Checked item',Ord(tisChecked),Ord(Item(GetBlock(0),1).TaskState));
+  AssertEquals('Marker removed from checked item','done',PlainOf(Item(GetBlock(0),1)));
+end;
+
+
+procedure TTestTaskLists.TestUpperCaseX;
+
+begin
+  SetupExt('- [X] done',[mdoTaskLists]);
+  AssertEquals('Checked item',Ord(tisChecked),Ord(Item(GetBlock(0),0).TaskState));
+end;
+
+
+procedure TTestTaskLists.TestOrderedList;
+
+begin
+  SetupExt('1. [x] one'#10'2. [ ] two',[mdoTaskLists]);
+  AssertEquals('Checked item',Ord(tisChecked),Ord(Item(GetBlock(0),0).TaskState));
+  AssertEquals('Unchecked item',Ord(tisUnchecked),Ord(Item(GetBlock(0),1).TaskState));
+end;
+
+
+procedure TTestTaskLists.TestNoSpaceAfterMarkerIsText;
+
+begin
+  SetupExt('- [x]done',[mdoTaskLists]);
+  AssertEquals('No task',Ord(tisNone),Ord(Item(GetBlock(0),0).TaskState));
+  AssertEquals('Text kept','[x]done',PlainOf(Item(GetBlock(0),0)));
+end;
+
+
+procedure TTestTaskLists.TestMarkerOnlyIsText;
+
+begin
+  SetupExt('- [ ]',[mdoTaskLists]);
+  AssertEquals('No task',Ord(tisNone),Ord(Item(GetBlock(0),0).TaskState));
+end;
+
+
+procedure TTestTaskLists.TestOtherCharIsText;
+
+begin
+  SetupExt('- [-] maybe',[mdoTaskLists]);
+  AssertEquals('No task',Ord(tisNone),Ord(Item(GetBlock(0),0).TaskState));
+  AssertEquals('Text kept','[-] maybe',PlainOf(Item(GetBlock(0),0)));
+end;
+
+
+procedure TTestTaskLists.TestNestedTaskList;
+
+var
+  lOuter : TMarkdownListItemBlock;
+begin
+  SetupExt('- [ ] outer'#10'  - [x] inner',[mdoTaskLists]);
+  lOuter:=Item(GetBlock(0),0);
+  AssertEquals('Outer unchecked',Ord(tisUnchecked),Ord(lOuter.TaskState));
+  AssertEquals('Outer has paragraph and list',2,lOuter.ChildCount);
+  AssertEquals('Inner checked',Ord(tisChecked),Ord(Item(lOuter.Children[1],0).TaskState));
+end;
+
+
+procedure TTestTaskLists.TestMarkdownAfterMarker;
+
+var
+  lText : TMarkdownTextBlock;
+begin
+  SetupExt('- [ ] **bold** text',[mdoTaskLists]);
+  lText:=TextBlockOf(Item(GetBlock(0),0));
+  AssertEquals('Plain text','bold text',lText.Nodes.PlainText);
+  AssertTrue('First node strong',nsStrong in lText.Nodes[0].Styles);
+end;
+
+
+procedure TTestTaskLists.TestTaskListsOptionOff;
+
+begin
+  SetupExt('- [ ] todo',[mdoGithubFlavoured]);
+  AssertEquals('No task',Ord(tisNone),Ord(Item(GetBlock(0),0).TaskState));
+  AssertEquals('Text kept','[ ] todo',PlainOf(Item(GetBlock(0),0)));
+end;
+
+{ TTestDirectives }
+
+function TTestDirectives.Directive(aBlock: TMarkdownBlock): TMarkdownDirectiveBlock;
+
+begin
+  AssertTrue('Directive block',aBlock is TMarkdownDirectiveBlock);
+  Result:=TMarkdownDirectiveBlock(aBlock);
+end;
+
+
+procedure TTestDirectives.TestContainer;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::note'#10'Some *text*'#10':::'#10'After',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  AssertEquals('Container directive',TMarkdownContainerDirectiveBlock,GetBlock(0).ClassType);
+  lDir:=Directive(GetBlock(0));
+  AssertEquals('Name','note',lDir.DirectiveName);
+  AssertFalse('No label',lDir.HasLabel);
+  AssertNull('No label nodes',lDir.LabelNodes);
+  AssertEquals('Fence length',3,TMarkdownContainerDirectiveBlock(lDir).FenceLength);
+  AssertEquals('One child',1,lDir.ChildCount);
+  AssertEquals('Content','Some text',PlainOf(lDir.Children[0]));
+  AssertEquals('Paragraph after','After',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestContainerLabelAndAttributes;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::warning[Be *careful*]{#w1 .big level=2}'#10'x'#10':::',[mdoDirectives]);
+  lDir:=Directive(GetBlock(0));
+  AssertEquals('Name','warning',lDir.DirectiveName);
+  AssertTrue('Has label',lDir.HasLabel);
+  AssertEquals('Label source','Be *careful*',lDir.LabelText);
+  AssertEquals('Label inline content','Be careful',lDir.LabelNodes.PlainText);
+  AssertEquals('ID','w1',lDir.ID);
+  AssertEquals('One class',1,Length(lDir.Classes));
+  AssertEquals('Class','big',lDir.Classes[0]);
+  AssertEquals('Key value','2',lDir.Attrs.Values['level']);
+end;
+
+
+procedure TTestDirectives.TestContainerBareAttribute;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::details{open}'#10'x'#10':::',[mdoDirectives]);
+  lDir:=Directive(GetBlock(0));
+  AssertTrue('Bare key present',lDir.Attrs.IndexOfName('open')>=0);
+  AssertEquals('Bare key value','',lDir.Attrs.Values['open']);
+end;
+
+
+procedure TTestDirectives.TestContainerUnclosed;
+
+begin
+  SetupExt(':::note'#10'a'#10#10'b',[mdoDirectives]);
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  AssertEquals('Both paragraphs inside',2,Directive(GetBlock(0)).ChildCount);
+end;
+
+
+procedure TTestDirectives.TestContainerLongerClosingFence;
+
+begin
+  SetupExt(':::note'#10'a'#10'::::'#10'b',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  AssertEquals('One child',1,Directive(GetBlock(0)).ChildCount);
+  AssertEquals('Paragraph after','b',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestNestedContainers;
+
+var
+  lOuter,lInner : TMarkdownDirectiveBlock;
+begin
+  SetupExt('::::outer'#10':::inner'#10'a'#10':::'#10'b'#10'::::'#10'c',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  lOuter:=Directive(GetBlock(0));
+  AssertEquals('Outer name','outer',lOuter.DirectiveName);
+  AssertEquals('Outer has inner and paragraph',2,lOuter.ChildCount);
+  lInner:=Directive(lOuter.Children[0]);
+  AssertEquals('Inner name','inner',lInner.DirectiveName);
+  AssertEquals('Inner content','a',PlainOf(lInner.Children[0]));
+  AssertEquals('Outer content','b',PlainOf(lOuter.Children[1]));
+  AssertEquals('Paragraph after','c',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestSameFenceClosesOuter;
+
+var
+  lOuter : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::outer'#10':::inner'#10'a'#10':::'#10'b',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  lOuter:=Directive(GetBlock(0));
+  AssertEquals('Outer has only inner',1,lOuter.ChildCount);
+  AssertEquals('Inner name','inner',Directive(lOuter.Children[0]).DirectiveName);
+  AssertEquals('Paragraph after','b',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestContainerWithList;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::note'#10'- a'#10'- b'#10':::'#10'after',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  lDir:=Directive(GetBlock(0));
+  AssertEquals('One child',1,lDir.ChildCount);
+  AssertEquals('List inside',TMarkdownListBlock,lDir.Children[0].ClassType);
+  AssertEquals('Two items',2,lDir.Children[0].ChildCount);
+  AssertEquals('Last item text','b',PlainOf(lDir.Children[0].Children[1]));
+  AssertEquals('Paragraph after','after',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestContainerWithQuote;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::note'#10'> q'#10':::'#10'after',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  lDir:=Directive(GetBlock(0));
+  AssertEquals('Quote inside',TMarkdownQuoteBlock,lDir.Children[0].ClassType);
+  AssertEquals('Quote text','q',PlainOf(lDir.Children[0]));
+  AssertEquals('Paragraph after','after',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestContainerInQuote;
+
+var
+  lQuote : TMarkdownBlock;
+begin
+  SetupExt('> :::note'#10'> x'#10'> :::'#10'> y',[mdoDirectives]);
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  lQuote:=GetBlock(0);
+  AssertEquals('Quote',TMarkdownQuoteBlock,lQuote.ClassType);
+  AssertEquals('Directive and paragraph',2,lQuote.ChildCount);
+  AssertEquals('Directive content','x',PlainOf(Directive(lQuote.Children[0]).Children[0]));
+  AssertEquals('Paragraph in quote','y',PlainOf(lQuote.Children[1]));
+end;
+
+
+procedure TTestDirectives.TestContainerInList;
+
+var
+  lItem : TMarkdownBlock;
+begin
+  SetupExt('- item'#10#10'  :::note'#10'  x'#10'  :::'#10#10'- two',[mdoDirectives]);
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  AssertEquals('Two items',2,GetBlock(0).ChildCount);
+  lItem:=GetBlock(0).Children[0];
+  AssertEquals('Paragraph and directive',2,lItem.ChildCount);
+  AssertEquals('Directive content','x',PlainOf(Directive(lItem.Children[1]).Children[0]));
+  AssertEquals('Second item','two',PlainOf(GetBlock(0).Children[1]));
+end;
+
+
+procedure TTestDirectives.TestContainerWithUnclosedCode;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt(':::note'#10'```'#10'code'#10':::'#10'after',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  lDir:=Directive(GetBlock(0));
+  AssertEquals('Code block inside',TMarkdownCodeBlock,lDir.Children[0].ClassType);
+  AssertEquals('One code line',1,lDir.Children[0].ChildCount);
+  AssertEquals('Paragraph after','after',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestContainerIndentedCode;
+
+begin
+  SetupExt(':::note'#10'    code'#10':::',[mdoDirectives]);
+  AssertEquals('Indented code inside',TMarkdownCodeBlock,Directive(GetBlock(0)).Children[0].ClassType);
+end;
+
+
+procedure TTestDirectives.TestContainerInterruptsParagraph;
+
+begin
+  SetupExt('para'#10':::note'#10'x'#10':::',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  AssertEquals('Paragraph text','para',PlainOf(GetBlock(0)));
+  Directive(GetBlock(1));
+end;
+
+
+procedure TTestDirectives.TestClosingFenceAloneIsText;
+
+begin
+  SetupExt(':::',[mdoDirectives]);
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
+  AssertEquals('Text kept',':::',PlainOf(GetBlock(0)));
+end;
+
+
+procedure TTestDirectives.TestLeaf;
+
+var
+  lDir : TMarkdownDirectiveBlock;
+begin
+  SetupExt('::youtube[My *video*]{vid=abc}'#10'next',[mdoDirectives]);
+  AssertEquals('Two blocks',2,Doc.Blocks.Count);
+  AssertEquals('Leaf directive',TMarkdownLeafDirectiveBlock,GetBlock(0).ClassType);
+  lDir:=Directive(GetBlock(0));
+  AssertEquals('Name','youtube',lDir.DirectiveName);
+  AssertEquals('Label','My video',lDir.LabelNodes.PlainText);
+  AssertEquals('Attribute','abc',lDir.Attrs.Values['vid']);
+  AssertEquals('No children',0,lDir.ChildCount);
+  AssertEquals('Paragraph after','next',PlainOf(GetBlock(1)));
+end;
+
+
+procedure TTestDirectives.TestLeafWithTrailingTextIsText;
+
+begin
+  SetupExt('::name[x] more',[mdoDirectives]);
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
+end;
+
+
+procedure TTestDirectives.TestNameMustStartWithLetter;
+
+begin
+  SetupExt(':::1abc'#10'x'#10':::',[mdoDirectives]);
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
+end;
+
+
+procedure TTestDirectives.TestInvalidAttributesIsText;
+
+begin
+  SetupExt('::name{=bad}',[mdoDirectives]);
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
+end;
+
+
+procedure TTestDirectives.TestContainerID;
+
+begin
+  SetupExt(':::note{#n1}'#10':::',[mdoDirectives]);
+  AssertTrue('Anchor registered',Doc.FindAnchor('n1')=GetBlock(0));
+end;
+
+
+procedure TTestDirectives.TestLabelFootnote;
+
+var
+  lNode,lRef : TMarkdownTextNode;
+begin
+  SetupExt('::note[See[^1]]'#10#10'[^1]: The note.',MarkdownDocExtensions+[mdoDirectives]);
+  lRef:=Nil;
+  for lNode in Directive(GetBlock(0)).LabelNodes do
+    if lNode.Kind=nkFootnoteRef then
+      lRef:=lNode;
+  AssertNotNull('Footnote reference in label',lRef);
+  AssertEquals('Footnote numbered','1',lRef.Attrs['number']);
+end;
+
+
+procedure TTestDirectives.TestDirectivesOptionOff;
+
+begin
+  SetupExt(':::note'#10'x'#10':::',[]);
+  AssertEquals('One block',1,Doc.Blocks.Count);
+  AssertEquals('Paragraph',TMarkdownParagraphBlock,GetBlock(0).ClassType);
+end;
+
+{ TTestWikiLinks }
+
+procedure TTestWikiLinks.TestWikiLinkInParagraph;
+
+var
+  lText : TMarkdownTextBlock;
+  lNode : TMarkdownTextNode;
+begin
+  SetupExt('See [[Main Page|the *main* page]] now',[mdoWikiLinks]);
+  lText:=TextBlockOf(GetBlock(0));
+  AssertEquals('Three nodes',3,lText.Nodes.Count);
+  lNode:=lText.Nodes[1];
+  AssertTrue('Wiki link node',lNode.Kind=nkWikiLink);
+  AssertEquals('Target','Main Page',lNode.Attrs['target']);
+  AssertEquals('Label','the main page',lNode.Children.PlainText);
+  AssertEquals('Text after',' now',lText.Nodes[2].NodeText);
+end;
+
+
+procedure TTestWikiLinks.TestWikiLinkPlainText;
+
+begin
+  SetupExt('Go to [[FPC#Download]]',[mdoWikiLinks]);
+  AssertEquals('Plain text','Go to FPC#Download',PlainOf(GetBlock(0)));
+end;
+
+
+procedure TTestWikiLinks.TestWikiLinksOptionOff;
+
+var
+  lNode : TMarkdownTextNode;
+begin
+  SetupExt('[[x]]',[]);
+  for lNode in TextBlockOf(GetBlock(0)).Nodes do
+    AssertFalse('No wiki link without option',lNode.Kind=nkWikiLink);
+  AssertEquals('Text kept','[[x]]',PlainOf(GetBlock(0)));
+end;
+
 { TTestTransformRegistry }
 
 procedure TTestTransformRegistry.TestDefaultTransforms;
@@ -2152,7 +2961,7 @@ var
   lNames : Array of TMarkdownString;
   I : Integer;
 begin
-  lNames:=['alerts','captions','footnotes','headingids','markers'];
+  lNames:=['tasklists','alerts','captions','footnotes','headingids','markers'];
   lAll:=TMarkdownTransformFactory.Instance.All;
   AssertTrue('At least the default transforms',Length(lAll)>=Length(lNames));
   for I:=0 to Length(lNames)-1 do
@@ -2167,7 +2976,8 @@ initialization
                           TTestBlockQuotes, TTestLists, TTestThematicBreaks,
                           TTestTables, TTestFrontmatter, TTestInlineProcessorHook]);
   RegisterTests('Extensions',[TTestComments, TTestAttributes, TTestHeadingIDs, TTestDefinitionLists,
-                              TTestAlerts, TTestFootnotes, TTestCaptions, TTestLinkReferences,
+                              TTestAlerts, TTestAdmonitions, TTestFootnotes, TTestCaptions, TTestLinkReferences,
+                              TTestTaskLists, TTestDirectives, TTestWikiLinks,
                               TTestTransformRegistry]);
 end.
 

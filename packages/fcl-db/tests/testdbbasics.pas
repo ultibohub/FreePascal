@@ -57,6 +57,10 @@ type
 
     procedure TestCalculatedField;
     procedure TestCanModifySpecialFields;
+    // FullName of plain fields and of fields with parent fields (bug 8200)
+    procedure TestFieldFullName;
+    // Tests TField.AutoGenerateValue default, setter and streaming
+    procedure TestFieldAutoGenerateValue;
 
     // dataset
     procedure TestDoubleClose;
@@ -159,6 +163,9 @@ type
     procedure TestOnFilter;
     procedure TestIntFilter; //Integer range filter
     procedure TestNegativeIntFilter; //Negative integer filter; bug 25168
+{$ifdef fpc}
+    procedure TestLargeIntFilter;
+{$endif fpc}
     procedure TestStringFilter; //String filter expressions
 
     procedure TestNullAtOpen;
@@ -179,6 +186,8 @@ type
     // fields
     procedure TestFieldOldValueObsolete;
     procedure TestFieldOldValue;
+    // OldValue of the record selected with ActiveRecord (bug 34694)
+    procedure TestFieldOldValueActiveRecord;
     procedure TestChangeBlobFieldBeforePost; //bug 15376
   end;
 
@@ -1099,6 +1108,58 @@ begin
     end;
 end;
 
+procedure TTestCursorDBBasics.TestFieldOldValueActiveRecord;
+
+var
+  lDataset: TDataSet;
+  lDataLink: TDataLink;
+  lDataSource: TDataSource;
+  lSavedRecord, i: Integer;
+
+begin
+  lDataset:=DBConnector.GetNDataset(10);
+  if not (lDataset is TCustomBufDataset) then
+    Ignore('This test only applies to TCustomBufDataset and descendents.');
+  lDataLink:=TDataLink.Create;
+  lDataSource:=TDataSource.Create(nil);
+  try
+    lDataSource.DataSet:=lDataset;
+    lDataLink.DataSource:=lDataSource;
+    lDataLink.BufferCount:=5;
+    lDataset.Open;
+    lDataset.MoveBy(2);
+    CheckEquals(5, lDataLink.RecordCount, 'Records in the data link buffers');
+    lSavedRecord:=lDataLink.ActiveRecord;
+    for i:=0 to lDataLink.RecordCount-1 do
+      begin
+      lDataLink.ActiveRecord:=i;
+      CheckEquals(i+1, lDataset.FieldByName('ID').AsInteger, 'Value of buffer '+IntToStr(i));
+      CheckEquals(i+1, Integer(lDataset.FieldByName('ID').OldValue), 'OldValue of unmodified buffer '+IntToStr(i));
+      end;
+    lDataLink.ActiveRecord:=lSavedRecord;
+    CheckEquals(3, lDataset.FieldByName('ID').AsInteger, 'Value of the current record');
+    lDataset.Edit;
+    lDataset.FieldByName('ID').AsInteger:=-3;
+    for i:=0 to lDataLink.RecordCount-1 do
+      begin
+      lDataLink.ActiveRecord:=i;
+      CheckEquals(i+1, Integer(lDataset.FieldByName('ID').OldValue), 'OldValue of buffer '+IntToStr(i)+' while editing');
+      end;
+    lDataLink.ActiveRecord:=lSavedRecord;
+    lDataset.Post;
+    for i:=0 to lDataLink.RecordCount-1 do
+      begin
+      lDataLink.ActiveRecord:=i;
+      CheckEquals(i+1, Integer(lDataset.FieldByName('ID').OldValue), 'OldValue of buffer '+IntToStr(i)+' after Post');
+      end;
+    lDataLink.ActiveRecord:=lSavedRecord;
+    CheckEquals(-3, lDataset.FieldByName('ID').AsInteger, 'Value of the posted record');
+  finally
+    lDataLink.Free;
+    lDataSource.Free;
+  end;
+end;
+
 procedure TTestCursorDBBasics.TestChangeBlobFieldBeforePost;
 // Edit memo fields should read back new contents even before post
 // Bug 15376
@@ -1466,6 +1527,59 @@ begin
     Close;
     end;
 end;
+
+{$ifdef fpc}
+procedure TTestCursorDBBasics.TestLargeIntFilter;
+
+const
+  cValues: array[0..3] of Int64 = (0, High(Int64), 3556856671915480078, -32767);
+
+var
+  lDataset: TBufDataset;
+  i: Integer;
+
+begin
+  lDataset:=TBufDataset.Create(nil);
+  try
+    lDataset.FieldDefs.Add('prjid',ftLargeint);
+    lDataset.CreateDataset;
+    lDataset.Open;
+    for i:=Low(cValues) to High(cValues) do
+      lDataset.AppendRecord([cValues[i]]);
+    lDataset.Filter:='prjid=-32767 or prjid=3556856671915480078';
+    lDataset.Filtered:=True;
+    lDataset.First;
+    CheckEquals(3556856671915480078,lDataset.FieldByName('prjid').AsLargeInt,'First record of the Int64 literal filter');
+    lDataset.Next;
+    CheckEquals(-32767,lDataset.FieldByName('prjid').AsLargeInt,'Second record of the Int64 literal filter');
+    lDataset.Next;
+    CheckTrue(lDataset.EOF,'Int64 literal filter gives two records');
+
+    lDataset.Filter:='prjid=9223372036854775807';
+    lDataset.First;
+    CheckEquals(High(Int64),lDataset.FieldByName('prjid').AsLargeInt,'Filter on High(Int64)');
+    lDataset.Next;
+    CheckTrue(lDataset.EOF,'Filter on High(Int64) gives one record');
+
+    lDataset.Filter:='prjid>2147483647';
+    lDataset.First;
+    CheckEquals(High(Int64),lDataset.FieldByName('prjid').AsLargeInt,'First record above High(Integer)');
+    lDataset.Next;
+    CheckEquals(3556856671915480078,lDataset.FieldByName('prjid').AsLargeInt,'Second record above High(Integer)');
+    lDataset.Next;
+    CheckTrue(lDataset.EOF,'Filter above High(Integer) gives two records');
+
+    lDataset.Filter:='prjid<0';
+    lDataset.First;
+    CheckEquals(-32767,lDataset.FieldByName('prjid').AsLargeInt,'Integer literal filter on a largeint field');
+    lDataset.Next;
+    CheckTrue(lDataset.EOF,'Integer literal filter on a largeint field gives one record');
+    lDataset.Close;
+  finally
+    lDataset.Free;
+  end;
+end;
+{$endif fpc}
 
 procedure TTestCursorDBBasics.TestStringFilter;
 // Tests string expression filters
@@ -3131,6 +3245,103 @@ begin
     close;
     end;
 end;
+
+procedure TTestDBBasics.TestFieldFullName;
+
+var
+  lParent, lChild: TObjectField;
+  lLeaf: TIntegerField;
+  lRaised: Boolean;
+
+begin
+  with DBConnector.GetNDataset(1) do
+    begin
+    Open;
+    CheckEquals(Fields[0].FieldName, Fields[0].FullName, 'FullName of a dataset field');
+    Close;
+    end;
+  lParent:=TObjectField.Create(nil);
+  lChild:=TObjectField.Create(nil);
+  lLeaf:=TIntegerField.Create(nil);
+  try
+    lParent.FieldName:='ADDRESS';
+    lChild.FieldName:='STREET';
+    lLeaf.FieldName:='NUMBER';
+    CheckEquals('NUMBER', lLeaf.FullName, 'FullName without parent field');
+    lChild.ParentField:=lParent;
+    lLeaf.ParentField:=lChild;
+    CheckSame(lChild, lLeaf.ParentField, 'ParentField after assignment');
+    CheckEquals('ADDRESS.STREET.NUMBER', lLeaf.FullName, 'FullName with two parent fields');
+    lRaised:=False;
+    try
+      lParent.ParentField:=lChild;
+    except
+      on EDatabaseError do
+        lRaised:=True;
+    end;
+    CheckTrue(lRaised, 'Circular parent field raises EDatabaseError');
+    CheckNull(lParent.ParentField, 'ParentField after circular assignment');
+    FreeAndNil(lParent);
+    CheckNull(lChild.ParentField, 'ParentField after freeing the parent field');
+    CheckEquals('STREET.NUMBER', lLeaf.FullName, 'FullName after freeing the top parent field');
+    lLeaf.ParentField:=nil;
+    CheckEquals('NUMBER', lLeaf.FullName, 'FullName after clearing ParentField');
+  finally
+    lLeaf.Free;
+    lChild.Free;
+    lParent.Free;
+  end;
+end;
+
+procedure TTestDBBasics.TestFieldAutoGenerateValue;
+
+  function StreamedText(aField: TField): string;
+  var
+    lBinary, lText: TMemoryStream;
+  begin
+    lBinary:=TMemoryStream.Create;
+    lText:=TMemoryStream.Create;
+    try
+      lBinary.WriteComponent(aField);
+      lBinary.Position:=0;
+      ObjectBinaryToText(lBinary,lText);
+      SetLength(Result,lText.Size);
+      if lText.Size>0 then
+        Move(lText.Memory^,Result[1],lText.Size);
+    finally
+      lText.Free;
+      lBinary.Free;
+    end;
+  end;
+
+var
+  lField, lRead: TIntegerField;
+  lStream: TMemoryStream;
+
+begin
+  lField:=TIntegerField.Create(nil);
+  lRead:=TIntegerField.Create(nil);
+  lStream:=TMemoryStream.Create;
+  try
+    lField.FieldName:='ID';
+    CheckTrue(lField.AutoGenerateValue=arNone, 'Default AutoGenerateValue is arNone');
+    CheckEquals(0, Pos('AutoGenerateValue', StreamedText(lField)), 'arNone is not streamed');
+    lField.AutoGenerateValue:=arAutoInc;
+    CheckTrue(lField.AutoGenerateValue=arAutoInc, 'AutoGenerateValue after setting arAutoInc');
+    CheckTrue(Pos('AutoGenerateValue = arAutoInc', StreamedText(lField))>0, 'arAutoInc is streamed');
+    lField.AutoGenerateValue:=arDefault;
+    lStream.WriteComponent(lField);
+    lStream.Position:=0;
+    lStream.ReadComponent(lRead);
+    CheckTrue(lRead.AutoGenerateValue=arDefault, 'arDefault read back from stream');
+    CheckEquals('ID', lRead.FieldName, 'FieldName read back from stream');
+  finally
+    lStream.Free;
+    lRead.Free;
+    lField.Free;
+  end;
+end;
+
 
 procedure TTestDBBasics.TestFieldDefsUpdate;
 begin

@@ -45,6 +45,12 @@ type
     procedure TestCreationDatasetWithCalcFields;
     // Tests autoincrement field (only in tablelevels that support it)
     procedure TestAutoIncField;
+    // Tests that appended records get increasing autoinc values in tablelevels 7 and 30
+    procedure TestAutoIncValues;
+    // Tests that a memory table's user streams outlive the TDbf and can be opened again
+    procedure TestUserStreamsNotFreed;
+    // Tests that a memory table without user streams keeps its records and memos after Close and Open
+    procedure TestMemoryTableWithoutUserStreams;
     // Tests findfirst moves to first record
     procedure TestFindFirst;
     // Tests findlast moves to last record
@@ -66,6 +72,8 @@ type
     procedure TestLargeString;
     // Tests codepage in created dbf equals requested codepage
     procedure TestCodePage;
+    // Tests large values in a numeric float field of size 20 with 5 decimals
+    procedure TestLargeFloat;
   end;
 
 
@@ -318,6 +326,142 @@ begin
   ds.Free;
 end;
 
+procedure TTestSpecificTDBF.TestAutoIncValues;
+
+const
+  cRecords = 3;
+
+  procedure CheckLevel(aLevel: Integer);
+  var
+    ds: TDbf;
+    i, lFirst: Integer;
+  begin
+    ds := TDbf.Create(nil);
+    try
+      ds.FilePath := GetTempDir;
+      ds.TableName := Format('ai%d_%d.dbf', [aLevel, Random(100000)]);
+      ds.TableLevel := aLevel;
+      ds.FieldDefs.Add('ID', ftAutoInc);
+      ds.FieldDefs.Add('NAME', ftString, 20);
+      ds.CreateTable;
+      ds.Open;
+      for i := 1 to cRecords do
+        begin
+        ds.Append;
+        ds.FieldByName('NAME').AsString := 'Name'+IntToStr(i);
+        ds.Post;
+        end;
+      ds.First;
+      lFirst := 0;
+      for i := 1 to cRecords do
+        begin
+        CheckFalse(ds.FieldByName('ID').IsNull, Format('Tablelevel %d: ID of record %d is not null', [aLevel, i]));
+        if i = 1 then
+          lFirst := ds.FieldByName('ID').AsInteger
+        else
+          CheckEquals(lFirst+i-1, ds.FieldByName('ID').AsInteger, Format('Tablelevel %d: ID of record %d is one more than the previous', [aLevel, i]));
+        ds.Next;
+        end;
+      ds.Close;
+    finally
+      DeleteFile(ds.AbsolutePath+ds.TableName);
+      ds.Free;
+    end;
+  end;
+
+begin
+  CheckLevel(7);
+  CheckLevel(TDBF_TABLELEVEL_VISUALFOXPRO);
+end;
+
+procedure TTestSpecificTDBF.TestUserStreamsNotFreed;
+
+const
+  cRecords = 3;
+
+var
+  lData, lIndex, lMemo: TMemoryStream;
+  ds: TDbf;
+  i: Integer;
+
+  function NewDbf: TDbf;
+  begin
+    Result := TDbf.Create(nil);
+    Result.TableName := 'userstreams';
+    Result.TableLevel := 4;
+    Result.Storage := stoMemory;
+    Result.UserStream := lData;
+    Result.UserIndexStream := lIndex;
+    Result.UserMemoStream := lMemo;
+  end;
+
+begin
+  lData := TMemoryStream.Create;
+  lIndex := TMemoryStream.Create;
+  lMemo := TMemoryStream.Create;
+  try
+    ds := NewDbf;
+    try
+      ds.FieldDefs.Add('ID', ftInteger);
+      ds.FieldDefs.Add('NOTE', ftMemo);
+      ds.CreateTable;
+      ds.Open;
+      for i := 1 to cRecords do
+        ds.AppendRecord([i, 'Note'+IntToStr(i)]);
+      ds.Close;
+    finally
+      ds.Free;
+    end;
+    CheckTrue(lData.Size > 0, 'Data stream has the table after the TDbf is freed');
+    ds := NewDbf;
+    try
+      ds.Open;
+      CheckEquals(cRecords, ds.RecordCount, 'Records read back from the user streams');
+      ds.Last;
+      CheckEquals('Note'+IntToStr(cRecords), ds.FieldByName('NOTE').AsString, 'Memo read back from the user memo stream');
+      ds.Close;
+    finally
+      ds.Free;
+    end;
+  finally
+    lData.Free;
+    lIndex.Free;
+    lMemo.Free;
+  end;
+end;
+
+procedure TTestSpecificTDBF.TestMemoryTableWithoutUserStreams;
+
+const
+  cRecords = 3;
+
+var
+  ds: TDbf;
+  i: Integer;
+
+begin
+  ds := TDbf.Create(nil);
+  try
+    ds.TableName := 'nouserstreams';
+    ds.TableLevel := 4;
+    ds.Storage := stoMemory;
+    ds.FieldDefs.Add('ID', ftInteger);
+    ds.FieldDefs.Add('NOTE', ftMemo);
+    ds.CreateTable;
+    ds.Open;
+    for i := 1 to cRecords do
+      ds.AppendRecord([i, 'Note'+IntToStr(i)]);
+    ds.Close;
+    ds.Open;
+    CheckEquals(cRecords, ds.RecordCount, 'Records after Close and Open');
+    ds.Last;
+    CheckEquals('Note'+IntToStr(cRecords), ds.FieldByName('NOTE').AsString, 'Memo after Close and Open');
+    ds.Close;
+  finally
+    ds.Free;
+  end;
+end;
+
 procedure TTestSpecificTDBF.TestFindFirst;
 const
   NumRecs=8;
@@ -563,6 +707,72 @@ begin
   CheckEquals(CorrespondingCodePage,DS.CodePage,'DBF codepage should match requested codeapage.');
   DS.Close;
   ds.free;
+end;
+
+procedure TTestSpecificTDBF.TestLargeFloat;
+var
+  ds : TDBF;
+
+  procedure CheckWrite(const aValue: Double; const aName: string);
+  begin
+    DS.Edit;
+    DS.FieldByName('VAL').AsFloat := aValue;
+    DS.Post;
+    CheckEquals(aValue,DS.FieldByName('VAL').AsFloat,0,aName+' read back after Post');
+    DS.Close;
+    DS.Open;
+    CheckEquals(aValue,DS.FieldByName('VAL').AsFloat,0,aName+' read back after reopen');
+  end;
+
+  procedure CheckTooLarge(const aValue: Double; const aPrevious: Double; const aName: string);
+  var
+    lRaised: Boolean;
+  begin
+    DS.Edit;
+    lRaised := False;
+    try
+      DS.FieldByName('VAL').AsFloat := aValue;
+    except
+      on E: EDbfError do
+        lRaised := True;
+    end;
+    CheckTrue(lRaised,aName+' raises EDbfError');
+    CheckEquals(aPrevious,DS.FieldByName('VAL').AsFloat,0,aName+' leaves the field value unchanged');
+    DS.Cancel;
+    CheckEquals(aPrevious,DS.FieldByName('VAL').AsFloat,0,aName+' leaves the record unchanged after Cancel');
+  end;
+
+begin
+  ds := TDBFAutoClean.Create(nil);
+  try
+    DS.FieldDefs.Add('ID',ftInteger);
+    DS.FieldDefs.Add('VAL',ftFloat);
+    DS.FieldDefs[1].Size := 20;
+    DS.FieldDefs[1].Precision := 5;
+    DS.CreateTable;
+    DS.Open;
+    if DS.DbfFieldDefs.Items[1].NativeFieldType<>'N' then
+      Ignore('VAL is not a numeric (N) field in this tablelevel.');
+    CheckEquals(20,DS.DbfFieldDefs.Items[1].Size,'VAL field size');
+    CheckEquals(5,DS.DbfFieldDefs.Items[1].Precision,'VAL field precision');
+    DS.Append;
+    DS.FieldByName('ID').AsInteger := 1;
+    DS.FieldByName('VAL').AsFloat := 0;
+    DS.Post;
+    CheckWrite(1E13,'1E13');
+    CheckWrite(99999999999999.5,'99999999999999.5');
+    CheckWrite(-1234567890123.25,'-1234567890123.25');
+    CheckWrite(1E15,'1E15 with decimals dropped');
+    CheckWrite(-1E18,'-1E18 with decimals dropped');
+    CheckWrite(1E19,'1E19 without decimals');
+    CheckTooLarge(1E20,1E19,'1E20');
+    CheckTooLarge(1E23,1E19,'1E23');
+    CheckTooLarge(1E30,1E19,'1E30');
+    CheckTooLarge(-1E19,1E19,'-1E19');
+    DS.Close;
+  finally
+    ds.free;
+  end;
 end;
 
 

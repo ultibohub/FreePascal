@@ -43,6 +43,9 @@ type
     procedure IntTestAutoIncFieldStreaming(XML: boolean);
     // Returns a dataset with FieldDefs and persistent fields for ID and NAME, not yet linked to each other.
     function GetDefsAndFieldsDataset: TBufDataset;
+    // Returns an open dataset with a UTF-8 ftString(5) field NAME holding one Cyrillic word.
+    function GetCodePageDataset: TBufDataset;
+    procedure IntTestCodePageStreaming(aFormat: TDataPacketFormat);
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -66,6 +69,21 @@ type
     procedure TestNoRefreshForInMemory; // Test that refresh with in-memory data raises an error.
     procedure TestRefreshWithIndexOK; // Test that refresh works when indexes are defined
     procedure TestCancelUpdatesOnRefresh; // Test that refresh works when changes are present and cancelupdatesonrefresh is true.
+    procedure TestCodePageFieldDefClass;
+    procedure TestCodePageValue;
+    procedure TestCodePageTruncate;
+    procedure TestCodePageStreamingBIN;
+    procedure TestCodePageStreamingXML;
+    procedure TestCodePageStreamVersion;
+    procedure TestCodePageComponentStreaming;
+    // IndexDefs.Add on an open dataset, then select the index, append and close (bug 37915)
+    procedure TestIndexDefsAddWhileOpen;
+    // IndexDefs.Add on an open dataset beyond MaxIndexesCount
+    procedure TestIndexDefsAddWhileOpenMaxIndexes;
+    // Case-insensitive filters on non-ASCII strings, also with DefaultSystemCodePage CP_UTF8 (bug 36512)
+    procedure TestFilterCaseInsensitiveNonASCII;
+    // IndexFieldNames with DESC fields, assigned repeatedly and alternated (bug 38884)
+    procedure TestIndexFieldNamesDescRepeated;
   end;
 
 implementation
@@ -576,6 +594,455 @@ begin
     Dataset.Free;
   end;
 end;
+
+const
+  SCyrillicWord : UnicodeString = #$0421#$043B#$043E#$0432#$043E;
+
+function TTestSpecificTBufDataset.GetCodePageDataset: TBufDataset;
+
+begin
+  Result := TBufDataset.Create(nil);
+  try
+    Result.FieldDefs.Add('NAME', ftString, 5);
+    TBufFieldDef(Result.FieldDefs[0]).Codepage := CP_UTF8;
+    Result.CreateDataset;
+    Result.Append;
+    Result.FieldByName('NAME').AsUTF8String := UTF8Encode(SCyrillicWord);
+    Result.Post;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+
+procedure TTestSpecificTBufDataset.IntTestCodePageStreaming(aFormat: TDataPacketFormat);
+
+var
+  lDS: TBufDataset;
+  lStream: TMemoryStream;
+
+begin
+  lStream := TMemoryStream.Create;
+  try
+    lDS := GetCodePageDataset;
+    try
+      lDS.SaveToStream(lStream, aFormat);
+    finally
+      lDS.Free;
+    end;
+    lStream.Position := 0;
+    lDS := TBufDataset.Create(nil);
+    try
+      lDS.LoadFromStream(lStream, aFormat);
+      AssertEquals('Code page of the loaded field def', Integer(CP_UTF8), Integer(lDS.FieldDefs[0].Codepage));
+      AssertEquals('Size of the loaded field def', 5, lDS.FieldDefs[0].Size);
+      AssertEquals('Loaded value', SCyrillicWord, UTF8Decode(lDS.FieldByName('NAME').AsUTF8String));
+    finally
+      lDS.Free;
+    end;
+  finally
+    lStream.Free;
+  end;
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageFieldDefClass;
+
+var
+  lDS: TBufDataset;
+
+begin
+  lDS := TBufDataset.Create(nil);
+  try
+    lDS.FieldDefs.Add('NAME', ftString, 5);
+    AssertTrue('FieldDefs is a TBufFieldDefs', lDS.FieldDefs is TBufFieldDefs);
+    AssertTrue('Added field def is a TBufFieldDef', lDS.FieldDefs[0] is TBufFieldDef);
+    AssertTrue('AddFieldDef returns a TBufFieldDef', lDS.FieldDefs.AddFieldDef is TBufFieldDef);
+    AssertEquals('Default code page', Integer(CP_ACP), Integer(lDS.FieldDefs[0].Codepage));
+    TBufFieldDef(lDS.FieldDefs[0]).Codepage := CP_UTF8;
+    AssertEquals('Code page after setting it', Integer(CP_UTF8), Integer(lDS.FieldDefs[0].Codepage));
+    AssertEquals('Bytes per character of a UTF-8 def', 4, lDS.FieldDefs[0].CharSize);
+  finally
+    lDS.Free;
+  end;
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageValue;
+
+var
+  lDS: TBufDataset;
+
+begin
+  lDS := GetCodePageDataset;
+  try
+    AssertEquals('Code page of the field', Integer(CP_UTF8), Integer(TStringField(lDS.FieldByName('NAME')).CodePage));
+    AssertEquals('Data size of a UTF-8 ftString(5) field', 21, lDS.FieldByName('NAME').DataSize);
+    AssertEquals('Value after posting', SCyrillicWord, UTF8Decode(lDS.FieldByName('NAME').AsUTF8String));
+    lDS.First;
+    AssertEquals('Value read from the record buffer', SCyrillicWord, UTF8Decode(lDS.FieldByName('NAME').AsUTF8String));
+  finally
+    lDS.Free;
+  end;
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageTruncate;
+
+const
+  cSmiley : UnicodeString = #$D83D#$DE00;
+
+var
+  lDS: TBufDataset;
+
+begin
+  lDS := GetCodePageDataset;
+  try
+    lDS.Edit;
+    lDS.FieldByName('NAME').AsUTF8String := UTF8Encode(SCyrillicWord + 'ab');
+    lDS.Post;
+    AssertEquals('Two-byte characters cut after Size characters', SCyrillicWord, UTF8Decode(lDS.FieldByName('NAME').AsUTF8String));
+    lDS.Edit;
+    lDS.FieldByName('NAME').AsUTF8String := UTF8Encode('a' + cSmiley + cSmiley + cSmiley + cSmiley + cSmiley);
+    lDS.Post;
+    AssertEquals('Four-byte characters cut after Size characters', UTF8Encode('a' + cSmiley + cSmiley + cSmiley + cSmiley),
+      lDS.FieldByName('NAME').AsUTF8String);
+    lDS.Edit;
+    lDS.FieldByName('NAME').AsUTF8String := 'abcdefgh';
+    lDS.Post;
+    AssertEquals('ASCII characters cut after Size characters', 'abcde', lDS.FieldByName('NAME').AsUTF8String);
+  finally
+    lDS.Free;
+  end;
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageStreamingBIN;
+
+begin
+  IntTestCodePageStreaming(dfBinary);
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageStreamingXML;
+
+begin
+  IntTestCodePageStreaming(dfXML);
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageStreamVersion;
+
+var
+  lDS: TBufDataset;
+  lStream: TMemoryStream;
+
+begin
+  lStream := TMemoryStream.Create;
+  try
+    lDS := TBufDataset.Create(nil);
+    try
+      lDS.FieldDefs.Add('NAME', ftString, 5);
+      lDS.CreateDataset;
+      lDS.SaveToStream(lStream, dfBinary);
+    finally
+      lDS.Free;
+    end;
+    AssertEquals('Format version without code pages', 30, PByte(lStream.Memory)[13]);
+    lStream.Clear;
+    lDS := GetCodePageDataset;
+    try
+      lDS.SaveToStream(lStream, dfBinary);
+    finally
+      lDS.Free;
+    end;
+    AssertEquals('Format version with code pages', 31, PByte(lStream.Memory)[13]);
+  finally
+    lStream.Free;
+  end;
+end;
+
+
+procedure TTestSpecificTBufDataset.TestCodePageComponentStreaming;
+
+var
+  lDS, lCopy: TBufDataset;
+  lStream: TMemoryStream;
+  lBytes: AnsiString;
+
+begin
+  lCopy := nil;
+  lStream := TMemoryStream.Create;
+  lDS := TBufDataset.Create(nil);
+  try
+    lDS.FieldDefs.Add('PLAIN', ftString, 5);
+    lStream.WriteComponent(lDS);
+    SetString(lBytes, PAnsiChar(lStream.Memory), lStream.Size);
+    AssertEquals('Default code page is not written', 0, Pos('Codepage', lBytes));
+    lStream.Clear;
+    lDS.FieldDefs.Add('NAME', ftString, 5);
+    TBufFieldDef(lDS.FieldDefs[1]).Codepage := CP_UTF8;
+    lStream.WriteComponent(lDS);
+    lStream.Position := 0;
+    lCopy := TBufDataset.Create(nil);
+    lStream.ReadComponent(lCopy);
+    AssertEquals('Number of streamed field defs', 2, lCopy.FieldDefs.Count);
+    AssertEquals('Code page of a default def', Integer(CP_ACP), Integer(lCopy.FieldDefs[0].Codepage));
+    AssertEquals('Code page of a UTF-8 def', Integer(CP_UTF8), Integer(lCopy.FieldDefs[1].Codepage));
+    lCopy.CreateDataset;
+    lCopy.Append;
+    lCopy.FieldByName('NAME').AsUTF8String := UTF8Encode(SCyrillicWord);
+    lCopy.Post;
+    AssertEquals('Value in the streamed dataset', SCyrillicWord, UTF8Decode(lCopy.FieldByName('NAME').AsUTF8String));
+  finally
+    lCopy.Free;
+    lDS.Free;
+    lStream.Free;
+  end;
+end;
+
+procedure TTestSpecificTBufDataset.TestIndexDefsAddWhileOpen;
+
+var
+  lDS: TBufDataset;
+
+  procedure CheckOrder(const aMsg: string; const aIDs: array of Integer);
+
+  var
+    i: Integer;
+
+  begin
+    lDS.First;
+    for i:=0 to High(aIDs) do
+      begin
+      AssertFalse(aMsg+': Eof before record '+IntToStr(i), lDS.Eof);
+      AssertEquals(aMsg+': ID of record '+IntToStr(i), aIDs[i], lDS.FieldByName('ID').AsInteger);
+      lDS.Next;
+      end;
+    AssertTrue(aMsg+': Eof after the last record', lDS.Eof);
+  end;
+
+begin
+  lDS:=TBufDataset.Create(nil);
+  try
+    lDS.FieldDefs.Add('ID', ftInteger);
+    lDS.FieldDefs.Add('NAME', ftString, 20);
+    lDS.CreateDataset;
+    lDS.AppendRecord([3, 'c']);
+    lDS.AppendRecord([1, 'a']);
+    lDS.IndexDefs.Add('BYID', 'ID', []);
+    lDS.AppendRecord([2, 'b']);
+    CheckOrder('Default order before selecting the index', [3, 1, 2]);
+    lDS.IndexName:='BYID';
+    AssertEquals('IndexName', 'BYID', lDS.IndexName);
+    CheckOrder('Order of the index added while open', [1, 2, 3]);
+    lDS.AppendRecord([0, 'z']);
+    CheckOrder('Order after appending to the index', [0, 1, 2, 3]);
+    lDS.IndexName:='';
+    CheckOrder('Default order after deselecting the index', [3, 1, 2, 0]);
+    lDS.Close;
+    AssertEquals('Index definitions after Close', 1, lDS.IndexDefs.Count);
+    lDS.CreateDataset;
+    lDS.AppendRecord([5, 'e']);
+    lDS.AppendRecord([4, 'd']);
+    lDS.IndexName:='BYID';
+    CheckOrder('Order of the index after reopening', [4, 5]);
+    lDS.IndexDefs.Add('BYNAME', 'NAME', []);
+    lDS.Close;
+    AssertEquals('Index definitions after closing with an unused index', 2, lDS.IndexDefs.Count);
+  finally
+    lDS.Free;
+  end;
+end;
+
+procedure TTestSpecificTBufDataset.TestIndexDefsAddWhileOpenMaxIndexes;
+
+var
+  lDS: TBufDataset;
+  lRaised: Boolean;
+  i, lLast: Integer;
+
+begin
+  lDS:=TBufDataset.Create(nil);
+  try
+    lDS.FieldDefs.Add('ID', ftInteger);
+    lDS.CreateDataset;
+    lDS.AppendRecord([2]);
+    lDS.AppendRecord([1]);
+    lLast:=lDS.MaxIndexesCount;
+    for i:=lDS.IndexDefs.Count to lLast do
+      lDS.IndexDefs.Add('IDX'+IntToStr(i), 'ID', []);
+    lDS.IndexName:='IDX'+IntToStr(lLast-1);
+    AssertEquals('Index within MaxIndexesCount selected', 'IDX'+IntToStr(lLast-1), lDS.IndexName);
+    lRaised:=False;
+    try
+      lDS.IndexName:='IDX'+IntToStr(lLast);
+    except
+      on EDatabaseError do
+        lRaised:=True;
+    end;
+    AssertTrue('Selecting an index beyond MaxIndexesCount raises EDatabaseError', lRaised);
+    AssertEquals('IndexName after the failed selection', 'IDX'+IntToStr(lLast-1), lDS.IndexName);
+    lDS.AppendRecord([3]);
+    AssertEquals('Record count', 3, lDS.RecordCount);
+    lDS.First;
+    AssertEquals('First ID in the selected index', 1, lDS.FieldByName('ID').AsInteger);
+    lDS.Close;
+  finally
+    lDS.Free;
+  end;
+end;
+
+procedure TTestSpecificTBufDataset.TestFilterCaseInsensitiveNonASCII;
+
+var
+  lSavedCodePage: TSystemCodePage;
+
+  // Converts UTF-16 text to a string in the default system code page
+  function Native(const aText: UnicodeString): string;
+
+  begin
+    Result:=string(aText);
+  end;
+
+  procedure CheckFilters(const aCodePageName: string);
+
+  const
+    cLowerN = UnicodeString(#$00F1);
+    cUpperN = UnicodeString(#$00D1);
+
+  var
+    lDS: TBufDataset;
+
+    procedure CheckCount(const aFilter: UnicodeString; aExpected: Integer);
+
+    var
+      lCount: Integer;
+
+    begin
+      lDS.Filtered:=False;
+      lDS.Filter:=Native(aFilter);
+      lDS.Filtered:=True;
+      lCount:=0;
+      lDS.First;
+      while not lDS.Eof do
+        begin
+        Inc(lCount);
+        lDS.Next;
+        end;
+      AssertEquals(aCodePageName+': records for filter '+UTF8Encode(aFilter), aExpected, lCount);
+    end;
+
+  begin
+    lDS:=TBufDataset.Create(nil);
+    try
+      lDS.FieldDefs.Add('N', ftString, 20);
+      lDS.CreateDataset;
+      lDS.AppendRecord([Native(cLowerN)]);
+      lDS.AppendRecord([Native(cUpperN)]);
+      lDS.AppendRecord([Native('a')]);
+      lDS.AppendRecord([Native('a'+cLowerN+'b')]);
+      lDS.AppendRecord([Native('A'+cUpperN+'B')]);
+      lDS.First;
+      AssertEquals(aCodePageName+': stored value', UTF8Encode(cLowerN), UTF8Encode(UnicodeString(lDS.FieldByName('N').AsString)));
+      lDS.FilterOptions:=[foCaseInsensitive];
+      CheckCount('N='''+cLowerN+'''', 2);
+      CheckCount('N='''+cUpperN+'''', 2);
+      CheckCount('N<>'''+cLowerN+'''', 3);
+      CheckCount('N='''+cLowerN+'*''', 2);
+      CheckCount('N=''*'+cUpperN+'''', 2);
+      CheckCount('N=''*'+cLowerN+'*''', 4);
+      CheckCount('N=''*'+cUpperN+'b''', 2);
+      CheckCount('N=''a'+cUpperN+'*''', 2);
+      lDS.FilterOptions:=[];
+      CheckCount('N='''+cLowerN+'''', 1);
+      lDS.Close;
+    finally
+      lDS.Free;
+    end;
+  end;
+
+begin
+  lSavedCodePage:=DefaultSystemCodePage;
+  try
+    CheckFilters('System code page '+IntToStr(lSavedCodePage));
+    DefaultSystemCodePage:=CP_UTF8;
+    CheckFilters('CP_UTF8');
+  finally
+    DefaultSystemCodePage:=lSavedCodePage;
+  end;
+end;
+
+procedure TTestSpecificTBufDataset.TestIndexFieldNamesDescRepeated;
+
+const
+  cTitleLastNameDesc = 'Mr Zed,Mr Smith,Mr Brown,Ms Young,Ms Adams';
+  cTitleLastName = 'Mr Brown,Mr Smith,Mr Zed,Ms Adams,Ms Young';
+
+var
+  lDS: TBufDataset;
+
+  // Returns the records as a comma-separated list of 'Title LastName'
+  function Order: string;
+
+  begin
+    Result:='';
+    lDS.First;
+    while not lDS.Eof do
+      begin
+      if Result<>'' then
+        Result:=Result+',';
+      Result:=Result+lDS.FieldByName('TITLE').AsString+' '+lDS.FieldByName('LASTNAME').AsString;
+      lDS.Next;
+      end;
+  end;
+
+  // Returns the titles as a comma-separated list
+  function TitleOrder: string;
+
+  begin
+    Result:='';
+    lDS.First;
+    while not lDS.Eof do
+      begin
+      if Result<>'' then
+        Result:=Result+',';
+      Result:=Result+lDS.FieldByName('TITLE').AsString;
+      lDS.Next;
+      end;
+  end;
+
+begin
+  lDS:=TBufDataset.Create(nil);
+  try
+    lDS.FieldDefs.Add('TITLE', ftString, 10);
+    lDS.FieldDefs.Add('LASTNAME', ftString, 20);
+    lDS.CreateDataset;
+    lDS.AppendRecord(['Mr', 'Smith']);
+    lDS.AppendRecord(['Ms', 'Adams']);
+    lDS.AppendRecord(['Mr', 'Brown']);
+    lDS.AppendRecord(['Ms', 'Young']);
+    lDS.AppendRecord(['Mr', 'Zed']);
+    lDS.IndexFieldNames:='TITLE; LASTNAME DESC';
+    AssertEquals('First assignment of TITLE; LASTNAME DESC', cTitleLastNameDesc, Order);
+    lDS.IndexFieldNames:='TITLE; LASTNAME DESC';
+    AssertEquals('Second assignment of TITLE; LASTNAME DESC', cTitleLastNameDesc, Order);
+    lDS.IndexFieldNames:='TITLE DESC';
+    AssertEquals('TITLE DESC', 'Ms,Ms,Mr,Mr,Mr', TitleOrder);
+    lDS.IndexFieldNames:='TITLE; LASTNAME';
+    AssertEquals('TITLE; LASTNAME after TITLE DESC', cTitleLastName, Order);
+    lDS.IndexFieldNames:='TITLE; LASTNAME DESC';
+    AssertEquals('TITLE; LASTNAME DESC after TITLE; LASTNAME', cTitleLastNameDesc, Order);
+    lDS.IndexFieldNames:='TITLE;LASTNAME DESC';
+    AssertEquals('TITLE;LASTNAME DESC without space', cTitleLastNameDesc, Order);
+    lDS.IndexFieldNames:='TITLE; LASTNAME';
+    AssertEquals('TITLE; LASTNAME after TITLE;LASTNAME DESC', cTitleLastName, Order);
+  finally
+    lDS.Free;
+  end;
+end;
+
 
 initialization
 {$ifdef fpc}

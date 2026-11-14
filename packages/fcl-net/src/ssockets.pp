@@ -150,6 +150,8 @@ type
     destructor Destroy; override;
     Class Function Select(Var aRead,aWrite,aExceptions : TSocketStreamArray; aTimeOut: Integer): Boolean; virtual;
     Procedure Close;
+    // Releases a read blocked on another thread: shuts the socket down and, on Windows, cancels the pending receive. Nothing is closed or freed.
+    Procedure WakeBlockedRead;
     function Seek(Offset: Longint; Origin: Word): Longint; override;
     function Select(aCheck : TSocketStates; TimeOut : Integer): TSocketStates;
     Function CanRead(TimeOut : Integer): Boolean; virtual;
@@ -224,6 +226,8 @@ type
     Procedure DoDisconnect(aSocket : TSocketStream); virtual;
     Procedure DoConnect(ASocket : TSocketStream); Virtual;
     function DoConnectQuery(const ASocket:TFPSocket):Boolean;Virtual;
+    // True if aSocket is to be served: accepting and DoConnectQuery agrees; closes aSocket when DoConnectQuery raises
+    function AcceptQuery(const aSocket: TFPSocket): Boolean;
     Procedure Bind; Virtual; Abstract;
     // For backwards compatibility, these call accept and socktostream in case
     // they were overridden and the new calls are not overridden.
@@ -238,7 +242,10 @@ type
 
     Function RunIdleLoop : Boolean;
     function GetConnection: TSocketStream; virtual; abstract;
-    Function HandleAcceptError(E : ESocketError) : TAcceptErrorAction;
+    // Asks OnAcceptSocketError/OnAcceptError what to do with E; aeaRaise while accepting, aeaStop otherwise
+    Function HandleAcceptError(E : ESocketError) : TAcceptErrorAction; overload;
+    // Asks OnAcceptSocketError/OnAcceptError what to do with E; aDefault while accepting, aeaStop otherwise
+    Function HandleAcceptError(E : Exception; aDefault : TAcceptErrorAction) : TAcceptErrorAction; overload;
     Function GetClientSocketHandler(aSocket : TFPSocket) : TSocketHandler; virtual;
     Property Handler : TSocketHandler Read FHandler;
   Public
@@ -819,13 +826,43 @@ end;
 
 procedure TSocketStream.Close;
 begin
+  if FClosed then
+    Exit;
   DoOnClose;
   if FSocketInitialized then
     FHandler.Close; // Ignore the result
   FSocketInitialized:=False;
   FreeAndNil(FHandler);
-  CloseSocket(FSocket);
+  if not SocketInvalid(FSocket.FD) then
+    CloseSocket(FSocket);
+  FSocket.FD:=-1;
   FClosed:=True;
+end;
+
+{$IFDEF Windows}
+type
+  TCancelIoExFunc = function(aHandle: THandle; aOverlapped: Pointer): BOOL; stdcall;
+{$ENDIF}
+
+procedure TSocketStream.WakeBlockedRead;
+
+var
+  lFD: TSocket;
+{$IFDEF Windows}
+  lCancelIoEx: TCancelIoExFunc;
+{$ENDIF}
+
+begin
+  lFD:=FSocket.FD;
+  if SocketInvalid(lFD) then
+    Exit;
+  {$IFDEF FPC_DOTTEDUNITS}System.Net.{$ENDIF}sockets.fpShutdown(lFD,{$IFDEF FPC_DOTTEDUNITS}System.Net.{$ENDIF}sockets.SHUT_RDWR);
+{$IFDEF Windows}
+  // Releases a receive already blocked on another thread
+  lCancelIoEx:=TCancelIoExFunc(GetProcAddress(GetModuleHandle('kernel32.dll'),'CancelIoEx'));
+  if Assigned(lCancelIoEx) then
+    lCancelIoEx(THandle(lFD),Nil);
+{$ENDIF}
 end;
 
 procedure TSocketStream.GetSockOptions;
@@ -1018,28 +1055,35 @@ end;
 
 procedure TSocketServer.Close;
 
+var
+  lSocket: TFPSocket;
+
 begin
-  If not SocketInvalid(FSocket.FD) Then
-    CloseSocket(FSocket);
+  // Self can be freed by the accepting thread as soon as the socket is closed
+  lSocket:=FSocket;
   FSocket.FD:=-1;
+  If not SocketInvalid(lSocket.FD) Then
+    CloseSocket(lSocket);
 end;
 
 procedure TSocketServer.Abort;
-{$if defined(unix) or defined(windows) or defined(hasamiga)}
-{$else}
+{$if not (defined(unix) and not defined(BSD))}
 var
-  ASocket: longint;
+  lSocket: TFPSocket;
 {$endif}
 begin
-{$if defined(unix)}
+{$if defined(unix) and not defined(BSD)}
   fpShutdown(FSocket.FD,SHUT_RDWR);
-  {$ifdef BSD}
-  Close;
-  {$endif}
-{$elseif defined(windows) or defined(hasamiga)}
-  Close;
 {$else}
-  CloseSocket(FSocket);
+  // Self can be freed by the accepting thread as soon as the socket is shut down or closed
+  lSocket:=FSocket;
+  FSocket.FD:=-1;
+  if SocketInvalid(lSocket.FD) then
+    Exit;
+  {$ifdef BSD}
+  fpShutdown(lSocket.FD,SHUT_RDWR);
+  {$endif}
+  CloseSocket(lSocket);
 {$endif}
 end;
 
@@ -1143,16 +1187,32 @@ begin
       exit
     else
       Raise ESocketError.Create(seAcceptFailed,[FSocket.FD,SocketError]);
-  If FAccepting and DoConnectQuery(NewSocket) Then
+  if AcceptQuery(NewSocket) then
     Result:=SocketToStream(NewSocket)
   else
     CloseSocket(NewSocket);
 end;
 
+function TSocketServer.AcceptQuery(const aSocket: TFPSocket): Boolean;
+
+begin
+  try
+    Result:=FAccepting and DoConnectQuery(aSocket);
+  except
+    CloseSocket(aSocket);
+    raise;
+  end;
+end;
+
 function TSocketServer.HandleAcceptError(E: ESocketError): TAcceptErrorAction;
 begin
+  Result:=HandleAcceptError(E,aeaRaise);
+end;
+
+function TSocketServer.HandleAcceptError(E: Exception; aDefault: TAcceptErrorAction): TAcceptErrorAction;
+begin
   if FAccepting then
-    Result:=aeaRaise
+    Result:=aDefault
   else
     Result:=aeaStop;
   if Assigned(FOnAcceptSocketError) then
@@ -1214,6 +1274,13 @@ begin
               aeaStop : FAccepting:=False;
               aeaRaise : Raise;
             end;
+          end;
+        // Raised while serving one client: its socket is already closed, or the stream was handed to OnConnect
+        On E : Exception do
+          Case HandleAcceptError(E,aeaIgnore) of
+            aeaIgnore : ;
+            aeaStop : FAccepting:=False;
+            aeaRaise : Raise;
           end;
        end;
     Until (Stream<>Nil) or (Not NonBlocking);
@@ -1503,7 +1570,12 @@ Var
   end;
 
 begin
-  H:=GetClientSocketHandler(aSocket);
+  try
+    H:=GetClientSocketHandler(aSocket);
+  except
+    CloseSocket(aSocket);
+    raise;
+  end;
   aClass:=DefaultServerSocketClass;
 
   if aClass=Nil then
@@ -1636,7 +1708,7 @@ begin
   NewSocket:=AcceptSocket;
   if SocketInvalid(NewSocket.FD) then
     Raise ESocketError.Create(seAcceptFailed,[FSocket.FD,SocketError]);
-  If FAccepting and DoConnectQuery(NewSocket) Then
+  if AcceptQuery(NewSocket) then
     Result:=SocketToStream(NewSocket)
   else
     CloseSocket(NewSocket);
@@ -1848,7 +1920,10 @@ begin
     begin
     IsError:=Not FHandler.Connect;
     if IsError then
+      begin
       CloseSocket(FSocket);
+      FSocket.FD:=-1;
+      end;
     end;
   If IsError then
     if TimeoutResult=ctrTimeout then

@@ -39,7 +39,12 @@ uses
   utcSynchroObject,
   utcConditionVariable,
   utcLightweight,
-  utcDirwatch
+  utcDirwatch,
+  utcThreadPool,
+  utcEventLog,
+  utcCustApp,
+  utcFPTimer,
+  utcGetText
   ;
 
 var
@@ -79,6 +84,11 @@ begin
   utcConditionVariable.RegisterTests;
   utcLightweight.RegisterTests;
   utcDirwatch.RegisterTests;
+  utcThreadPool.RegisterTests;
+  utcEventLog.RegisterTests;
+  utcCustApp.RegisterTests;
+  utcFPTimer.RegisterTests;
+  utcGetText.RegisterTests;
   RunAllSysTests;
 end.
 

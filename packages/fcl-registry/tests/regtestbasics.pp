@@ -24,12 +24,103 @@ type
     procedure TestStringList;
     Procedure TestInt64;
     Procedure TestDeleteSubkey;
+    procedure TestInvalidRegType;
+{$ifndef windows}
+    procedure TestCreateDirFailed;
+{$endif}
   end;
 
 implementation
 
 uses
   registry;
+
+type
+  TReadProc = procedure(aReg: TRegistry; const aName: UnicodeString);
+
+var
+  InvalidTypeMessage: String;
+
+
+// ReadInteger aName, discarding the value
+procedure ReadAsInteger(aReg: TRegistry; const aName: UnicodeString);
+
+begin
+  aReg.ReadInteger(aName);
+end;
+
+
+// ReadInt64 aName, discarding the value
+procedure ReadAsInt64(aReg: TRegistry; const aName: UnicodeString);
+
+begin
+  aReg.ReadInt64(aName);
+end;
+
+
+// ReadString aName, discarding the value
+procedure ReadAsString(aReg: TRegistry; const aName: UnicodeString);
+
+begin
+  aReg.ReadString(aName);
+end;
+
+
+// ReadStringArray aName, discarding the value
+procedure ReadAsStringArray(aReg: TRegistry; const aName: UnicodeString);
+
+begin
+  aReg.ReadStringArray(aName);
+end;
+
+
+// Call aRead and return the message of the ERegistryException it raises, '' if it raises none
+function InvalidTypeError(aRead: TReadProc; aReg: TRegistry; const aName: UnicodeString): String;
+
+begin
+  Result:='';
+  try
+    aRead(aReg,aName);
+  except
+    on E: ERegistryException do
+      Result:=E.Message;
+  end;
+end;
+
+{$ifndef windows}
+const
+  BlockedAppName = 'fpc-regtest-blocked';
+
+var
+  CreateDirFailedRaised: Boolean;
+  CreateDirFailedMessage: String;
+
+
+// Application name whose config directory is blocked by a regular file
+function GetBlockedAppName: String;
+
+begin
+  Result:=BlockedAppName;
+end;
+
+
+// Create a TRegistry and record whether it raised ERegistryException
+procedure TryCreateRegistry;
+
+begin
+  CreateDirFailedRaised:=False;
+  CreateDirFailedMessage:='';
+  try
+    TRegistry.Create.Free;
+  except
+    on E: ERegistryException do
+      begin
+      CreateDirFailedRaised:=True;
+      CreateDirFailedMessage:=E.Message;
+      end;
+  end;
+end;
+{$endif}
 
 { TTestBasics }
 
@@ -169,21 +260,25 @@ Var
   I : Integer;
 
 begin
-  With TRegistry.Create do
-    try
-      RootKey:=HKEY_CURRENT_USER;
-      OpenKey('Software/Test',True);
-      SL:=TstringList.Create;
-      For I:=0 to 10 do
-        SL.Add(IntToStr(I));
-      WriteStringList('me',SL);
-      SL.Clear;
-      ReadStringList('me',SL);
-      For I:=0 to 10 do
-        AssertEquals('String '+IntToStr(i),IntToStr(I),SL[I]);
-    finally
-      Free;
-    end;
+  SL:=TStringList.Create;
+  try
+    With TRegistry.Create do
+      try
+        RootKey:=HKEY_CURRENT_USER;
+        OpenKey('Software/Test',True);
+        For I:=0 to 10 do
+          SL.Add(IntToStr(I));
+        WriteStringList('me',SL);
+        SL.Clear;
+        ReadStringList('me',SL);
+        For I:=0 to 10 do
+          AssertEquals('String '+IntToStr(i),IntToStr(I),SL[I]);
+      finally
+        Free;
+      end;
+  finally
+    SL.Free;
+  end;
 end;
 
 
@@ -272,6 +367,63 @@ begin
     CleanUp(ExceptObject <> nil);
   end;
 end;
+
+procedure TTestBasics.TestInvalidRegType;
+
+var
+  lReg: TRegistry;
+  lBin: LongWord;
+
+begin
+  lReg:=TRegistry.Create;
+  try
+    lReg.RootKey:=HKEY_CURRENT_USER;
+    AssertTrue('Open test key',lReg.OpenKey('Software/TestInvalidType',True));
+    lBin:=$01020304;
+    lReg.WriteBinaryData('Bin',lBin,SizeOf(lBin));
+    lReg.WriteInteger('Int',42);
+    AssertEquals('ReadInteger of a 4-byte binary value',Format(SInvalidRegType,['Bin']),InvalidTypeError(@ReadAsInteger,lReg,'Bin'));
+    AssertEquals('ReadInt64 of an integer value',Format(SInvalidRegType,['Int']),InvalidTypeError(@ReadAsInt64,lReg,'Int'));
+    AssertEquals('ReadString of an integer value',Format(SInvalidRegType,['Int']),InvalidTypeError(@ReadAsString,lReg,'Int'));
+    AssertEquals('ReadStringArray of an integer value',Format(SInvalidRegType,['Int']),InvalidTypeError(@ReadAsStringArray,lReg,'Int'));
+    AssertEquals('ReadInteger of an integer value raises nothing','',InvalidTypeError(@ReadAsInteger,lReg,'Int'));
+    lReg.CloseKey;
+    lReg.DeleteKey('Software/TestInvalidType');
+  finally
+    lReg.Free;
+  end;
+end;
+
+{$ifndef windows}
+procedure TTestBasics.TestCreateDirFailed;
+
+var
+  lOldAppName: TGetAppNameEvent;
+  lDir, lBlocker: String;
+  lHandle: THandle;
+
+begin
+  lOldAppName:=OnGetApplicationName;
+  OnGetApplicationName:=@GetBlockedAppName;
+  try
+    lDir:=IncludeTrailingPathDelimiter(GetAppConfigDir(False));
+    lBlocker:=ExcludeTrailingPathDelimiter(lDir);
+    AssertTrue('Config base directory exists',ForceDirectories(ExtractFilePath(lBlocker)));
+    lHandle:=FileCreate(lBlocker);
+    AssertTrue('Blocking file '+lBlocker+' created',lHandle<>THandle(-1));
+    FileClose(lHandle);
+    try
+      TryCreateRegistry;
+      AssertTrue('TRegistry.Create raises ERegistryException when its directory cannot be created',CreateDirFailedRaised);
+      AssertEquals('Exception message names the directory',Format(SRegCreateDirFailed,[lDir]),CreateDirFailedMessage);
+    finally
+      DeleteFile(lBlocker);
+    end;
+  finally
+    OnGetApplicationName:=lOldAppName;
+  end;
+end;
+{$endif}
 
 
 initialization

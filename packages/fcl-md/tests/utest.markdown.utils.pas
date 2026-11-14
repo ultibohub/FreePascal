@@ -72,6 +72,7 @@ type
     procedure TestParseMarker;
     procedure TestNormalizeLinkLabel;
     procedure TestHeadingTextToID;
+    procedure TestHashTableSmall;
   end;
 
 implementation
@@ -172,6 +173,12 @@ begin
 
   AssertTrue('String: three spaces', StartsWithWhitespace('   item', 'item', Len));
   AssertEquals('String: Length for three spaces', 3, Len);
+
+  AssertFalse('Char: only spaces, shorter than the indent', StartsWithWhitespace('  ', '>', Len));
+  AssertFalse('Char: only spaces, indent 6', StartsWithWhitespace('   ', '-', Len, 6));
+  AssertFalse('Set: only spaces, shorter than the indent', StartsWithWhitespace('  ', ['0'..'9'], Len));
+  AssertFalse('Set: only spaces, indent 6', StartsWithWhitespace('   ', ['0'..'9'], Len, 6));
+  AssertFalse('String: only spaces, shorter than the indent', StartsWithWhitespace('  ', 'item', Len));
   // Todo: take into account tabs
   // AssertTrue('String: one tab', StartsWithWhitespace(#9'item', 'item', Len));
   // AssertEquals('String: Length for one tab', 1, Len);
@@ -481,6 +488,26 @@ begin
   AssertFalse('Empty string is no number',TryMarkdownToInt('',lValue));
   AssertFalse('Trailing text is no number',TryMarkdownToInt('12a',lValue));
   AssertEquals('Default for invalid number',7,MarkdownToIntDef('x',7));
+end;
+
+
+procedure TTestMarkdownUtils.TestHashTableSmall;
+
+var
+  lTable : THashTable;
+  I : Integer;
+
+begin
+  lTable:=THashTable.Create;
+  try
+    AssertTrue('New table is small',lTable.HashTableSize<=64);
+    for I:=1 to 200 do
+      lTable.Add('key'+IntToStr(I),IntToStr(I));
+    AssertEquals('All keys found after growing','150',lTable['key150']);
+    AssertTrue('Contains a key',lTable.Contains('key1'));
+  finally
+    lTable.Free;
+  end;
 end;
 
 

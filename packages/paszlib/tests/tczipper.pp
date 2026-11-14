@@ -345,6 +345,7 @@ var
   CallBackHandler: TCallBackHandler;
   DestFile: ansistring;
   i: qword;
+  j: integer;
   OriginalContent: ansistring = 'A'; //Uncompressed content for zip file entry
   ContentStreams: TFPList;
   ContentStream: TStringStream;
@@ -368,14 +369,9 @@ begin
       inc(i);
     end;
     Zipper.ZipAllFiles;
-    {
-    i:=0;
-    while i<Entries do
-    begin
-      ContentStreams.Delete(i);
-    end;
-    }
   finally
+    for j:=0 to ContentStreams.Count-1 do
+      TObject(ContentStreams[j]).Free;
     ContentStreams.Free;
     Zipper.Free;
   end;
@@ -434,6 +430,7 @@ var
   CallBackHandler: TCallBackHandler;
   DestFile: ansistring;
   i: qword;
+  j: integer;
   ContentStreams: TFPList;
   ContentStream: TNullStream;
   UnZipper: TUnZipper;
@@ -459,14 +456,9 @@ begin
     end;
     Writeln;
     Zipper.ZipAllFiles;
-    {
-    i:=0;
-    while i<Entries do
-    begin
-      ContentStreams.Delete(i);
-    end;
-    }
   finally
+    for j:=0 to ContentStreams.Count-1 do
+      TObject(ContentStreams[j]).Free;
     ContentStreams.Free;
     Zipper.Free;
   end;
@@ -673,6 +665,293 @@ begin
 end;
 
 
+function TestDiskFileSeparator: boolean;
+// Zips a file in a subdirectory added by disk file name only; the archive name must use /
+var
+  lTempDir, lOldDir, lDiskName, lZipFile: ansistring;
+  lFile: TStringList;
+  lEntry: TZipFileEntry;
+  lZipper: TZipper;
+  lUnZipper: TUnZipper;
+begin
+  result:=true;
+  lDiskName:='subdir'+DirectorySeparator+'a.txt';
+  lZipper:=TZipper.Create;
+  try
+    lEntry:=lZipper.Entries.Add as TZipFileEntry;
+    lEntry.DiskFileName:=lDiskName;
+    if lEntry.ArchiveFileName<>'subdir/a.txt' then
+    begin
+      result:=false;
+      writeln('Failed: archive name of an entry with only a disk name is *'+lEntry.ArchiveFileName+
+        '*, expected *subdir/a.txt*');
+      exit;
+    end;
+  finally
+    lZipper.Free;
+  end;
+
+  lTempDir:=IncludeTrailingPathDelimiter(GetTempDir(false))+'tczipper'+IntToStr(GetProcessID);
+  ForceDirectories(lTempDir+DirectorySeparator+'subdir');
+  lZipFile:=lTempDir+DirectorySeparator+'test.zip';
+  lOldDir:=GetCurrentDir;
+  lFile:=TStringList.Create;
+  try
+    lFile.Add('a');
+    lFile.SaveToFile(lTempDir+DirectorySeparator+lDiskName);
+    SetCurrentDir(lTempDir);
+    lZipper:=TZipper.Create;
+    try
+      lZipper.FileName:=lZipFile;
+      lZipper.Entries.AddFileEntry(lDiskName);
+      lZipper.ZipAllFiles;
+    finally
+      lZipper.Free;
+    end;
+    SetCurrentDir(lOldDir);
+    lUnZipper:=TUnZipper.Create;
+    try
+      lUnZipper.FileName:=lZipFile;
+      lUnZipper.Examine;
+      if (lUnZipper.Entries.Count<>1) or (lUnZipper.Entries[0].ArchiveFileName<>'subdir/a.txt') then
+      begin
+        result:=false;
+        if lUnZipper.Entries.Count>0 then
+          writeln('Failed: archive name in zip is *'+lUnZipper.Entries[0].ArchiveFileName+'*, expected *subdir/a.txt*')
+        else
+          writeln('Failed: zip has no entries');
+      end;
+    finally
+      lUnZipper.Free;
+    end;
+  finally
+    SetCurrentDir(lOldDir);
+    lFile.Free;
+    DeleteFile(lZipFile);
+    DeleteFile(lTempDir+DirectorySeparator+lDiskName);
+    RemoveDir(lTempDir+DirectorySeparator+'subdir');
+    RemoveDir(lTempDir);
+  end;
+end;
+
+
+// Write a zip aZipFile with entry 'dir\b.txt', made on host aOS
+procedure WriteBackslashZip(const aZipFile: ansistring; aOS: byte);
+var
+  lZipper: TZipper;
+  lContent: TStringStream;
+  lData: TBytes;
+  lFile: TFileStream;
+  i: integer;
+begin
+  lContent:=TStringStream.Create('b');
+  lZipper:=TZipper.Create;
+  try
+    lZipper.FileName:=aZipFile;
+    lZipper.Entries.AddFileEntry(lContent,'dirXb.txt');
+    lZipper.ZipAllFiles;
+  finally
+    lZipper.Free;
+    lContent.Free;
+  end;
+  lFile:=TFileStream.Create(aZipFile,fmOpenRead);
+  try
+    SetLength(lData,lFile.Size);
+    lFile.ReadBuffer(lData[0],Length(lData));
+  finally
+    lFile.Free;
+  end;
+  for i:=0 to Length(lData)-9 do
+    if (lData[i]=Ord('d')) and (lData[i+1]=Ord('i')) and (lData[i+2]=Ord('r')) and (lData[i+3]=Ord('X'))
+      and (lData[i+4]=Ord('b')) then
+      lData[i+3]:=Ord('\');
+  for i:=0 to Length(lData)-6 do
+    if (lData[i]=$50) and (lData[i+1]=$4B) and (lData[i+2]=1) and (lData[i+3]=2) then
+      lData[i+5]:=aOS;
+  lFile:=TFileStream.Create(aZipFile,fmCreate);
+  try
+    lFile.WriteBuffer(lData[0],Length(lData));
+  finally
+    lFile.Free;
+  end;
+end;
+
+
+// Archive name of the single entry in aZipFile, examined with ConvertBackslashes set to aConvert
+function ExaminedName(const aZipFile: ansistring; aConvert: boolean): ansistring;
+var
+  lUnZipper: TUnZipper;
+begin
+  lUnZipper:=TUnZipper.Create;
+  try
+    lUnZipper.FileName:=aZipFile;
+    lUnZipper.ConvertBackslashes:=aConvert;
+    lUnZipper.Examine;
+    Result:=lUnZipper.Entries[0].ArchiveFileName;
+  finally
+    lUnZipper.Free;
+  end;
+end;
+
+
+function TestConvertBackslashes: boolean;
+// Reads entries with \ in their name, created on a FAT and on a Unix host
+var
+  lTempDir, lZipFile, lName, lDefault: ansistring;
+  lUnZipper: TUnZipper;
+
+  procedure Check(const aWhat, aActual, aExpected: ansistring);
+  begin
+    if aActual<>aExpected then
+    begin
+      result:=false;
+      writeln('Failed: '+aWhat+': *'+aActual+'*, expected *'+aExpected+'*');
+    end;
+  end;
+
+begin
+  result:=true;
+  if DirectorySeparator='/' then
+    lDefault:='dir\b.txt'
+  else
+    lDefault:='dir/b.txt';
+  lTempDir:=IncludeTrailingPathDelimiter(GetTempDir(false))+'tcbackslash'+IntToStr(GetProcessID);
+  ForceDirectories(lTempDir);
+  lZipFile:=lTempDir+DirectorySeparator+'backslash.zip';
+  try
+    WriteBackslashZip(lZipFile,OS_FAT);
+    Check('FAT entry without ConvertBackslashes',ExaminedName(lZipFile,false),lDefault);
+    Check('FAT entry with ConvertBackslashes',ExaminedName(lZipFile,true),'dir/b.txt');
+    lUnZipper:=TUnZipper.Create;
+    try
+      lUnZipper.FileName:=lZipFile;
+      lUnZipper.OutputPath:=lTempDir;
+      lUnZipper.ConvertBackslashes:=true;
+      lUnZipper.UnZipAllFiles;
+    finally
+      lUnZipper.Free;
+    end;
+    lName:=lTempDir+DirectorySeparator+'dir'+DirectorySeparator+'b.txt';
+    if not FileExists(lName) then
+    begin
+      result:=false;
+      writeln('Failed: FAT entry with ConvertBackslashes not extracted to '+lName);
+    end;
+    DeleteFile(lName);
+    RemoveDir(lTempDir+DirectorySeparator+'dir');
+    WriteBackslashZip(lZipFile,OS_UNIX);
+    Check('Unix entry with ConvertBackslashes',ExaminedName(lZipFile,true),lDefault);
+  finally
+    DeleteFile(lZipFile);
+    RemoveDir(lTempDir);
+  end;
+end;
+
+
+type
+  { TTerminateHandler }
+
+  TTerminateHandler = class(TObject)
+  public
+    UnZipper: TUnZipper;
+    CurrentFile: ansistring;
+    // Record the name of the entry being extracted
+    procedure DoStartFile(Sender: TObject; const AFileName: ansistring);
+    // Terminate the unzipper while big.bin is extracted
+    procedure DoProgress(Sender: TObject; const Pct: double);
+  end;
+
+procedure TTerminateHandler.DoStartFile(Sender: TObject; const AFileName: ansistring);
+begin
+  CurrentFile:=ExtractFileName(AFileName);
+end;
+
+procedure TTerminateHandler.DoProgress(Sender: TObject; const Pct: double);
+begin
+  if CurrentFile='big.bin' then
+    UnZipper.Terminate;
+end;
+
+
+function TestTerminate: boolean;
+// Terminates extraction in the middle of a large entry
+var
+  lTempDir, lZipFile: ansistring;
+  lZipper: TZipper;
+  lUnZipper: TUnZipper;
+  lSmall, lLast, lBig: TStringStream;
+  lData: ansistring;
+  lHandler: TTerminateHandler;
+  i: integer;
+  lSeed: cardinal;
+
+  procedure Check(aCondition: boolean; const aMessage: ansistring);
+  begin
+    if not aCondition then
+    begin
+      result:=false;
+      writeln('Failed: '+aMessage);
+    end;
+  end;
+
+begin
+  result:=true;
+  lTempDir:=IncludeTrailingPathDelimiter(GetTempDir(false))+'tcterminate'+IntToStr(GetProcessID);
+  ForceDirectories(lTempDir);
+  lZipFile:=lTempDir+DirectorySeparator+'terminate.zip';
+  SetLength(lData,2*1024*1024);
+  lSeed:=12345;
+  for i:=1 to Length(lData) do
+  begin
+    lSeed:=lSeed*1103515245+12345;
+    lData[i]:=AnsiChar(lSeed shr 24);
+  end;
+  lSmall:=TStringStream.Create('first');
+  lBig:=TStringStream.Create(lData);
+  lLast:=TStringStream.Create('last');
+  lZipper:=TZipper.Create;
+  try
+    lZipper.FileName:=lZipFile;
+    lZipper.Entries.AddFileEntry(lSmall,'a.txt');
+    lZipper.Entries.AddFileEntry(lBig,'big.bin');
+    lZipper.Entries.AddFileEntry(lLast,'c.txt');
+    lZipper.ZipAllFiles;
+  finally
+    lZipper.Free;
+    lSmall.Free;
+    lBig.Free;
+    lLast.Free;
+  end;
+  lHandler:=TTerminateHandler.Create;
+  lUnZipper:=TUnZipper.Create;
+  try
+    lHandler.UnZipper:=lUnZipper;
+    lUnZipper.FileName:=lZipFile;
+    lUnZipper.OutputPath:=lTempDir;
+    lUnZipper.OnStartFile:=@lHandler.DoStartFile;
+    lUnZipper.OnProgress:=@lHandler.DoProgress;
+    try
+      lUnZipper.UnZipAllFiles;
+    except
+      on E: Exception do
+        Check(false,'UnZipAllFiles raised '+E.ClassName+': '+E.Message);
+    end;
+    Check(lUnZipper.Terminated,'Terminated is True after Terminate');
+    Check(FileExists(lTempDir+DirectorySeparator+'a.txt'),'entry before the terminated one is extracted');
+    Check(not FileExists(lTempDir+DirectorySeparator+'big.bin'),'partially extracted big.bin is removed');
+    Check(not FileExists(lTempDir+DirectorySeparator+'c.txt'),'entry after the terminated one is not extracted');
+  finally
+    lUnZipper.Free;
+    lHandler.Free;
+    DeleteFile(lTempDir+DirectorySeparator+'a.txt');
+    DeleteFile(lTempDir+DirectorySeparator+'big.bin');
+    DeleteFile(lTempDir+DirectorySeparator+'c.txt');
+    DeleteFile(lZipFile);
+    RemoveDir(lTempDir);
+  end;
+end;
+
+
 function TestLargeZip64: boolean;
 // Tests single zip file with large uncompressed content
 // which forces it to zip64 format
@@ -816,6 +1095,45 @@ begin
     writeln('TestWindowsPath finished');
     writeln('');
 
+    writeln('TestDiskFileSeparator started');
+    try
+      if not(TestDiskFileSeparator) then code:=code+512;
+    except
+      On E: Exception do
+      begin
+        writeln('Exception: '+E.Message);
+        code:=code+512;
+      end;
+    end;
+    writeln('TestDiskFileSeparator finished');
+    writeln('');
+
+    writeln('TestConvertBackslashes started');
+    try
+      if not(TestConvertBackslashes) then code:=code+1024;
+    except
+      On E: Exception do
+      begin
+        writeln('Exception: '+E.Message);
+        code:=code+1024;
+      end;
+    end;
+    writeln('TestConvertBackslashes finished');
+    writeln('');
+
+    writeln('TestTerminate started');
+    try
+      if not(TestTerminate) then code:=code+2048;
+    except
+      On E: Exception do
+      begin
+        writeln('Exception: '+E.Message);
+        code:=code+2048;
+      end;
+    end;
+    writeln('TestTerminate finished');
+    writeln('');
+
     writeln('TestEmptyZipEntries(10) started');
     // Run testemptyzipentries with a small number to test the test itself... as
     // well as zip structure generated with empty files.
@@ -886,5 +1204,5 @@ begin
     writeln('Basic zip/unzip tests passed: code '+inttostr(code))
   else
     writeln('Basic zip/unzip tests failed: code '+inttostr(code));
-  Halt(code);
+  ExitCode:=code;
 end.

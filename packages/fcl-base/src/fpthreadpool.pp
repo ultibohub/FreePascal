@@ -33,6 +33,7 @@ Const
   DefaultAddTimeOut      = 0;
   DefaultQueueTasks      = True;
   DefaultTerminateWait   = 50;
+  DefaultThreadTaskWaitInterval = 1000;
 
 Type
   EThreadPool = Class(Exception);
@@ -160,6 +161,8 @@ Type
          procedure Terminate;
          {$ENDIF}
          Procedure FreeTask;
+         // True once Terminate was called
+         Function IsTerminated : Boolean;
          Property Task : TThreadPoolTask Read FTask Write SetTask;
        end;
 
@@ -210,7 +213,7 @@ Type
          FThreadTaskWaitInterval: Integer;
          FList : TThreadList;
          procedure TaskDone(Sender: TObject);
-         Procedure ThreadTerminated(Sender : TObject);
+         Procedure ReapFinishedThreads;
        public
          Constructor CreateList(aPool : TFPCustomSimpleThreadPool); override;
          Destructor Destroy; override;
@@ -238,7 +241,10 @@ Type
     FWaitQueue : TThreadList;
     FAutoCheckQueueThread : TAutoCheckQueueThread;
     FThreadDoneEvent : TEventObject;
+    FThreadTaskWaitInterval : Integer;
     class function GetInstance: TFPCustomSimpleThreadPool; static;
+    procedure ApplyThreadTaskWaitInterval;
+    procedure SetThreadTaskWaitInterval(AValue: Integer);
     procedure SetAutoCheckQueuedInterval(AValue: Integer);
     class procedure SetDefaultInstanceClass(AValue: TFPCustomSimpleThreadPoolClass); static;
     procedure SetMaxThreads(AValue: Word);
@@ -280,6 +286,8 @@ Type
     Property ThreadCount : Word Read GetThreadCount;
     // Set to a value>0  to start a thread that runs the CheckQueuedTasks every AutoCheckQueuedInterval ms.
     Property AutoCheckQueuedInterval : Integer Read FAutoCheckQueuedInterval Write SetAutoCheckQueuedInterval;
+    // Maximum time in ms an idle thread waits before checking for work again; at least 1. Applies to threads created afterwards.
+    Property ThreadTaskWaitInterval : Integer Read FThreadTaskWaitInterval Write SetThreadTaskWaitInterval;
   Public
     constructor Create; virtual;
     destructor destroy; override;
@@ -310,6 +318,7 @@ Type
     Property IdleThreadCount;
     Property ThreadCount;
     Property AutoCheckQueuedInterval;
+    Property ThreadTaskWaitInterval;
   end;
 
 Implementation
@@ -317,6 +326,7 @@ Implementation
 Resourcestring
   SErrMinLargerThanMax = 'MinThreads (%d) must be less than MaxThreads (%d)';
   SErrMaxLessThanMin = 'MaxThreads (%d) must be greater than MinThreads (%d)';
+  SErrInvalidWaitInterval = 'ThreadTaskWaitInterval (%d) must be at least 1';
   SErrInstanceAlreadyCreated = 'Thread pool instance already created';
   SErrTaskAlreadySet = 'Cannot set task: task already set';
 
@@ -421,6 +431,13 @@ end;
 
 destructor TFPCustomSimpleThreadPool.TTaskThread.Destroy;
 begin
+  if not Finished then
+    begin
+    Terminate;
+    WaitFor;
+    end;
+  // A task assigned after the thread stopped was never run
+  FreeTask;
   FreeAndNil(FTaskEvent);
   inherited Destroy;
 end;
@@ -453,9 +470,32 @@ end;
 
 { TFPCustomSimpleThreadPool.TThreadPoolList }
 
-procedure TFPCustomSimpleThreadPool.TThreadPoolList.ThreadTerminated(Sender: TObject);
+// Remove finished threads from the list and free them
+procedure TFPCustomSimpleThreadPool.TThreadPoolList.ReapFinishedThreads;
+
+var
+  lFinished: array of TThread = ();
+  lList: TList;
+  lThread: TThread;
+  I: Integer;
+
 begin
-  FList.Remove(Sender);
+  lList:=FList.LockList;
+  try
+    for I:=lList.Count-1 downto 0 do
+      if TThread(lList[I]).Finished then
+        begin
+        Insert(TThread(lList[I]),lFinished,Length(lFinished));
+        lList.Delete(I);
+        end;
+  finally
+    FList.UnlockList;
+  end;
+  for lThread in lFinished do
+    begin
+    lThread.WaitFor;
+    lThread.Free;
+    end;
 end;
 
 procedure TFPCustomSimpleThreadPool.TThreadPoolList.TaskDone(Sender: TObject);
@@ -469,6 +509,7 @@ constructor TFPCustomSimpleThreadPool.TThreadPoolList.CreateList(aPool : TFPCust
 begin
   Inherited;
   FList:=TThreadList.Create;
+  FThreadTaskWaitInterval:=DefaultThreadTaskWaitInterval;
 end;
 
 destructor TFPCustomSimpleThreadPool.TThreadPoolList.Destroy;
@@ -507,10 +548,11 @@ Var
 
 begin
   Result:=Nil;
+  ReapFinishedThreads;
   L:=FList.LockList;
   try
     For I:=0 to L.Count-1 do
-      If TAbstractTaskThread(L[i]).Task=Nil then
+      If (TAbstractTaskThread(L[i]).Task=Nil) and not TAbstractTaskThread(L[i]).IsTerminated then
         Result:=TAbstractTaskThread(L[i]);
   finally
     FList.UnlockList;
@@ -519,7 +561,7 @@ end;
 
 function TFPCustomSimpleThreadPool.TThreadPoolList.AddThread: TAbstractTaskThread;
 begin
-  Result:=TTaskThread.Create(FThreadTaskWaitInterval,@TaskDone,@ThreadTerminated);
+  Result:=TTaskThread.Create(FThreadTaskWaitInterval,@TaskDone,Nil);
   FList.Add(Result);
 end;
 
@@ -542,11 +584,16 @@ function TFPCustomSimpleThreadPool.TThreadPoolList.GetThreadCount: Word;
 
 Var
   L : TList;
+  I : Integer;
 
 begin
+  Result:=0;
+  ReapFinishedThreads;
   L:=FList.LockList;
   try
-    Result:=L.Count;
+    For I:=0 to L.Count-1 do
+      if not TAbstractTaskThread(L[i]).IsTerminated then
+        Inc(Result);
   finally
     FList.UnlockList;
   end;
@@ -563,7 +610,7 @@ begin
   L:=FList.LockList;
   try
     For I:=0 to L.Count-1 do
-      if Assigned(TAbstractTaskThread(L[i]).Task) then
+      if Assigned(TAbstractTaskThread(L[i]).Task) and not TAbstractTaskThread(L[i]).Finished then
         Inc(Result);
   finally
     FList.UnlockList;
@@ -581,7 +628,7 @@ begin
   L:=FList.LockList;
   try
     For I:=0 to L.Count-1 do
-      if Not Assigned(TAbstractTaskThread(L[i]).Task) then
+      if Not Assigned(TAbstractTaskThread(L[i]).Task) and not TAbstractTaskThread(L[i]).IsTerminated then
         Inc(Result);
   finally
     FList.UnlockList;
@@ -614,6 +661,13 @@ end;
 procedure TFPCustomSimpleThreadPool.TAbstractTaskThread.FreeTask;
 begin
   FreeAndNil(FTask);
+end;
+
+
+function TFPCustomSimpleThreadPool.TAbstractTaskThread.IsTerminated: Boolean;
+
+begin
+  Result:=Terminated;
 end;
 
 procedure TFPCustomSimpleThreadPool.TAbstractTaskThread.TerminatedSet;
@@ -743,6 +797,25 @@ begin
       Raise EThreadPool.CreateFmt(SErrMaxLessThanMin,[aValue,MinThreads]);
     FMaxThreads:=AValue;
 end;
+
+// Pass ThreadTaskWaitInterval to the thread list when it is a TThreadPoolList
+procedure TFPCustomSimpleThreadPool.ApplyThreadTaskWaitInterval;
+
+begin
+  if FTaskList is TThreadPoolList then
+    TThreadPoolList(FTaskList).ThreadTaskWaitInterval:=FThreadTaskWaitInterval;
+end;
+
+
+procedure TFPCustomSimpleThreadPool.SetThreadTaskWaitInterval(AValue: Integer);
+
+begin
+  if AValue<1 then
+    Raise EThreadPool.CreateFmt(SErrInvalidWaitInterval,[AValue]);
+  FThreadTaskWaitInterval:=AValue;
+  ApplyThreadTaskWaitInterval;
+end;
+
 
 procedure TFPCustomSimpleThreadPool.SetMinThreads(AValue: Word);
 begin
@@ -883,7 +956,9 @@ begin
   FWaitQueueLock:=TCriticalSection.Create;
   FTaskQueueLock:=TCriticalSection.Create;
   FWaitQueue:=TThreadList.Create;
+  FThreadTaskWaitInterval:=DefaultThreadTaskWaitInterval;
   FTaskList:=CreateThreadList;
+  ApplyThreadTaskWaitInterval;
   MaxThreads:=TThread.ProcessorCount;
   MinThreads:=TThread.ProcessorCount-1;
   FQueueTasks:=DefaultQueueTasks;

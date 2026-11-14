@@ -40,6 +40,7 @@ type
     FQuery         : TSQLQuery;
     FUniDirectional: boolean;
     procedure CreateFConnection;
+    procedure CheckFirebirdCharSet;
     Function CreateQuery : TSQLQuery;
   protected
     procedure ClearDatasets; override;
@@ -85,6 +86,10 @@ type
     s: string;
     t: TSQLServerType;
   end;
+
+var
+  // Set when the Firebird character set check has run.
+  FirebirdCharSetChecked: Boolean = False;
 
 const
   FieldtypeDefinitionsConst : Array [TFieldType] of String[20] =
@@ -347,7 +352,6 @@ begin
     ssSQLite:
       begin
       // SQLite stores all values with decimal point as 8 byte (double) IEEE floating point numbers
-      // (it causes that some tests (for BCD, FmtBCD fields) fails for exact numeric values, which can't be lossless expressed as 8 byte floating point values)
       FieldtypeDefinitions[ftWord] := 'WORD';
       FieldtypeDefinitions[ftCurrency] := 'CURRENCY';
       FieldtypeDefinitions[ftBytes] := 'BINARY(5)';
@@ -356,8 +360,14 @@ begin
       FieldtypeDefinitions[ftWideString] := 'NVARCHAR(10)';
       FieldtypeDefinitions[ftFixedWideChar] := 'NCHAR(10)';
       FieldtypeDefinitions[ftWideMemo] := 'NCLOB';
+      // SQLite strings are always UTF-8
+      if Trim(dbcharset) = '' then
+        dbcharset := 'utf-8';
       end;
   end;
+
+  if SQLServerType in [ssFirebird, ssInterbase] then
+    CheckFirebirdCharSet;
 
   if SQLConnType in [mysql40,mysql41] then
     begin
@@ -403,17 +413,39 @@ begin
     for i := 18 to testValuesCount-1 do
       testValues[ftDateTime,i] := testValues[ftDateTime,0];
 
-  // DecimalSeparator must correspond to monetary locale (lc_monetary) set on PostgreSQL server
-  // Here we assume, that locale on client side is same as locale on server
-  if SQLServerType in [ssPostgreSQL] then
-    for i := 0 to testValuesCount-1 do
-      testValues[ftCurrency,i] := QuotedStr(CurrToStr(testCurrencyValues[i]));
-
   // SQLite does not support fixed length Char datatype
   if SQLServerType in [ssSQLite] then
     for i := 0 to testValuesCount-1 do
       testValues[ftFixedChar,i] := PadRight(testValues[ftFixedChar,i], 10);
 end;
+
+// Writes a warning to StdErr, once per run, if no connection character set is used for a database with a default character set.
+procedure TSQLDBConnector.CheckFirebirdCharSet;
+
+var
+  lQuery: TSQLQuery;
+  lDBCharSet: string;
+
+begin
+  if FirebirdCharSetChecked then
+    exit;
+  FirebirdCharSetChecked := True;
+  lQuery := CreateQuery;
+  try
+    lQuery.SQL.Text := 'select rdb$character_set_name from rdb$database';
+    lQuery.Open;
+    lDBCharSet := UpperCase(Trim(lQuery.Fields[0].AsString));
+    lQuery.Close;
+  finally
+    lQuery.Free;
+  end;
+  FTransaction.Commit;
+  if ((Trim(dbcharset) = '') or SameText(Trim(dbcharset), 'NONE'))
+     and (lDBCharSet <> '') and (lDBCharSet <> 'NONE') then
+    Writeln(StdErr, Format('Warning: no connection character set for database %s with default character set %s. Set charset=%s in database.ini.',
+                           [dbname, lDBCharSet, lDBCharSet]));
+end;
+
 
 Function TSQLDBConnector.CreateQuery: TSQLQuery;
 

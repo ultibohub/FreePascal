@@ -462,7 +462,7 @@ Const
    (n:'CURRENCY'; t: ftCurrency),
    (n:'MONEY'; t: ftCurrency),
    (n:'VARCHAR'; t: ftString),
-   (n:'AnsiChar'; t: ftFixedChar),
+   (n:'CHAR'; t: ftFixedChar),
    (n:'NUMERIC'; t: ftBCD),
    (n:'DECIMAL'; t: ftBCD),
    (n:'TEXT'; t: ftMemo),
@@ -735,7 +735,12 @@ begin
     ftWord     : pword(buffer)^     := sqlite3_column_int(st,fnum);
     ftBoolean  : pwordbool(buffer)^ := sqlite3_column_int(st,fnum)<>0;
     ftLargeInt : PInt64(buffer)^:= sqlite3_column_int64(st,fnum);
-    ftBCD      : PCurrency(buffer)^:= FloattoCurr(sqlite3_column_double(st,fnum));
+    ftBCD      : begin
+                 // the text of a REAL is the shortest decimal form of the double
+                 str1:=sqlite3_column_text(st,fnum);
+                 if not TryStrToCurr(str1,PCurrency(buffer)^,FSQLFormatSettings) then
+                   PCurrency(buffer)^:=FloattoCurr(sqlite3_column_double(st,fnum));
+                 end;
     ftFloat,
     ftCurrency : pdouble(buffer)^:= sqlite3_column_double(st,fnum);
     ftDateTime,
@@ -759,8 +764,8 @@ begin
     ftFixedChar,
     ftString: begin
               int1:= sqlite3_column_bytes(st,fnum);
-              if int1>FieldDef.Size*FieldDef.CharSize then
-                int1:=FieldDef.Size*FieldDef.CharSize;
+              if int1>FieldDef.Size then
+                int1:=UTF8CodePointsByteLength(PAnsiChar(sqlite3_column_text(st,fnum)),int1,FieldDef.Size);
               if int1 > 0 then
                  move(sqlite3_column_text(st,fnum)^,buffer^,int1);
               PAnsiChar(buffer + int1)^ := #0;
