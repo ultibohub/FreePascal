@@ -1499,12 +1499,6 @@ unit scandir;
                 result:=prtti_visibilities(@value[0])^
               else
                 result:=[];
-              // if the set was empty we need to read the next id
-              if result=[] then
-                begin
-                  current_scanner.skipspace;
-                  current_scanner.readid
-                end;
             end;
         end;
 
@@ -1568,6 +1562,10 @@ unit scandir;
               end;
             dir.options[option]:=read_rtti_options;
             options[option]:=true;
+            { reading the visibilities has read the token after them: another
+              option's name, or the end of the directive }
+            if current_scanner.preproc_token<>_ID then
+              break;
           end;
 
         { set the directive in the module }
@@ -2160,6 +2158,9 @@ unit scandir;
             exclude(current_settings.modeswitches,m_systemcodepage);
             exclude(current_settings.moduleswitches,cs_system_codepage);
             include(current_settings.moduleswitches,cs_explicit_codepage);
+            { the source code page is now this directive's, not that of a
+              UTF-8 signature, so a later m_systemcodepage replaces it }
+            current_scanner.mainfileutf8bom:=false;
           end;
       end;
 

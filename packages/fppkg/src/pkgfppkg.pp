@@ -70,6 +70,7 @@ type
 
     procedure ClearRepositories(ARepositoryList: TComponentList);
     function GetConfigurationFilename: string;
+    procedure AddGeneratedRepositories;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -191,6 +192,39 @@ begin
   Result.InitializeWithOptions(ARepoOptionSection, AnOptions, ACompilerOptions);
 end;
 
+procedure TpkgFPpkg.AddGeneratedRepositories;
+
+var
+  lCompilerOptions: TCompilerOptions;
+  lFileName: string;
+
+begin
+  lCompilerOptions:=TCompilerOptions.Create;
+  try
+    try
+      lCompilerOptions.UpdateLocalRepositoryOption(FOptions);
+      lFileName:=FOptions.GlobalSection.CompilerConfigDir+FOptions.GlobalSection.CompilerConfig;
+      if FileExists(lFileName) then
+        lCompilerOptions.LoadCompilerFromFile(lFileName);
+      // a missing or incomplete compiler configuration: detect the installation of its compiler
+      if lCompilerOptions.GlobalPrefix='' then
+        lCompilerOptions.InitCompilerDefaults;
+      FOptions.AddDefaultRepositories(lCompilerOptions);
+    except
+      on E: Exception do
+        begin
+        {$IFDEF FPC_DOTTEDUNITS}FpPkg.Globals{$ELSE}pkgglobals{$ENDIF}.Log(llWarning,SWarnNoFPCRepository,[E.Message]);
+        FOptions.AddDefaultRepositories(nil);
+        end;
+    end;
+  finally
+    lCompilerOptions.Free;
+  end;
+  // the directory of the IncludeFiles mask; a missing directory gives a warning on each run
+  ForceDirectories(FOptions.GlobalSection.CompilerConfigDir+'conf.d');
+end;
+
+
 procedure TpkgFPpkg.InitializeGlobalOptions(CfgFile: string);
 var
   GeneratedConfig: boolean;
@@ -217,6 +251,7 @@ begin
               if not IsSuperUser then // Make a local, not global, configuration file
                 cfgfile:=GetFppkgConfigFile(False,False);
               ForceDirectories(ExtractFilePath(cfgfile));
+              AddGeneratedRepositories;
               FOptions.SaveToFile(cfgfile);
               GeneratedConfig:=true;
             end;

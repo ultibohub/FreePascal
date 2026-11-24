@@ -353,6 +353,16 @@ begin
     stTLSv1: C := SslCtxNew(SslMethodTLSV1);
     stTLSv1_1: C := SslCtxNew(SslMethodTLSV1_1);
     stTLSv1_2: C := SslCtxNew(SslMethodTLSV1_2);
+    stTLSv1_3:
+      begin
+        // there is no TLSv1_3_method, use TLS_method with minimum TLS 1.3
+        if Assigned(SslTLSMethod) then
+          C := SslCtxNew(SslTLSMethod)
+        else
+          C := SslCtxNew(SslMethodV23);
+        if C<>nil then
+          SslCtxSetMinProtoVersion(C,TLS1_3_VERSION);
+      end;
   end;
   if (C=Nil) then
      Raise ESSL.Create(SErrCountNotGetContext);
@@ -480,18 +490,34 @@ Function TSSLContext.UsePrivateKey(Data: TSSLData): cint;
 Var
   FN : String;
   l : integer;
+  lKey : PEVP_PKEY;
+  lData : PByte;
 
 begin
   Result:=-1;
   L:=Length(Data.Value);
   If (l<>0) then
-    Result:=UsePrivateKeyASN1(EVP_PKEY_RSA,Data.Value,L)
+    begin
+    lData:=PByte(Data.Value);
+    lKey:=d2i_AutoPrivateKey(Nil,@lData,L);
+    if lKey=Nil then
+      Exit(0);
+    try
+      Result:=UsePrivateKey(lKey);
+    finally
+      EvpPkeyFree(lKey);
+    end;
+    end
   else if (Data.FileName<>'') then
     begin
     FN:=Data.FileName;
     Result:=UsePrivateKeyFile(FN,SSL_FILETYPE_PEM);
     if (Result<>1) then
+      begin
       Result:=UsePrivateKeyFile(FN,SSL_FILETYPE_ASN1);
+      if Result=1 then
+        ErrClearError;
+      end;
     end;
 end;
 

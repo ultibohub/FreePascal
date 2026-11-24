@@ -38,6 +38,8 @@ Const
   DefaultMaxLiveConnectionCount = 128;
   DefaultKeepConnectionIdleTimeout = 50; // Ms
   DefaultRequestReadTimeout = 30000; // Ms. Per-read timeout while reading a request. 0 disables.
+  DefaultRequestHeaderTimeout = 30000; // Ms. Time from the first byte of a request to the end of its headers. 0 disables.
+  DefaultRequestBodyMinRate = 0; // Bytes per second a request body must arrive at. 0 disables.
   DefaultPolledAcceptIdleTimeout = 100; // Ms. Poll interval used for tmPolled when no AcceptIdleTimeout is set.
 
 Type
@@ -96,6 +98,12 @@ Type
     FBuffer : Ansistring;
     FKeepAlive : Boolean;
     FRequestDataReceived : Boolean; // True once a byte of the current request has been read.
+    FResponseStarted : Boolean; // True once response headers of the current request were written.
+    FRequestDeadline : QWord; // Tick count by which the current part of the request must be read; 0: none.
+    // The time a single read may wait: RequestReadTimeout, at most the time left until FRequestDeadline; 0: no limit
+    function ReadWaitTime: Integer;
+    // Raises the time-out for a read that got no data within ReadWaitTime
+    procedure RaiseReadTimeout;
     function GetKeepConnections: Boolean;
     function GetKeepConnectionTimeout: Integer;
     function GetKeepConnectionIdleTimeout: Integer;
@@ -107,10 +115,21 @@ Type
     Procedure AllocateConnectionID;
     // Read the request content
     procedure ReadRequestContent(ARequest: TFPHTTPConnectionRequest); virtual;
+    // Read exactly aCount body bytes into aBytes at aOffset; aStart is the tick count the body started at
+    procedure ReadBodyBytes(var aBytes: TBytes; aOffset, aCount: SizeInt; aStart: QWord);
+    // Decode a chunked request body, discard trailer fields, and set Content-Length to the decoded size
+    procedure ReadChunkedContent(ARequest: TFPHTTPConnectionRequest); virtual;
+    // Check that the request body length is unambiguous.
+    //   Transfer-Encoding: only "chunked" on HTTP/1.1 without Content-Length is accepted;
+    //   other codings before chunked raise 501, any other combination raises 400.
+    procedure CheckRequestFraming(ARequest: TFPHTTPConnectionRequest); virtual;
     // Allow descendents to handle unknown headers
     procedure UnknownHeader({%H-}ARequest: TFPHTTPConnectionRequest; const {%H-}AHeader: String); virtual;
     // Handle request error, calls OnRequestError
     procedure HandleRequestError(E : Exception); virtual;
+    // Send a minimal response with the status of an EHTTP request error (4xx/5xx), then close the write side.
+    //   Nothing is sent when response headers were already written or the connection was upgraded.
+    procedure SendErrorResponse(E : Exception); virtual;
     // Handle unexpected error, calls OnUnexpectedError
     procedure HandleUnexpectedError(E : Exception); virtual;
     // Setup socket
@@ -385,7 +404,10 @@ Type
     FPort: Word;
     FQueueSize: Word;
     FRequestReadTimeout: Integer;
+    FRequestHeaderTimeout: Integer;
+    FRequestBodyMinRate: Integer;
     FSend503OnMaxConnections: Boolean;
+    FSendErrorResponses: Boolean;
     FStrictASCIIURL: Boolean;
     FServer : TInetServer;
     FLoadActivate : Boolean;
@@ -469,9 +491,6 @@ Type
     procedure StopServerSocket; virtual;
     // free server socket instance
     Procedure FreeServerSocket; virtual;
-    // Handle request. This calls OnRequest. It can be overridden by descendants to provide standard handling.
-    procedure HandleRequest(Var ARequest: TFPHTTPConnectionRequest;
-                            Var AResponse : TFPHTTPConnectionResponse); virtual;
     // Called when a connection encounters an unexpected error. Will call OnRequestError when set.
     procedure HandleRequestError(Sender: TObject; E: Exception); virtual;
     // Called when a connection encounters an error outside the request. Will call OnUnexpectedError when set.
@@ -497,6 +516,9 @@ Type
     class constructor init;
     Constructor Create(AOwner : TComponent); override;
     Destructor Destroy; override;
+    // Handle request. This calls OnRequest. It can be overridden by descendants to provide standard handling.
+    procedure HandleRequest(Var ARequest: TFPHTTPConnectionRequest;
+                            Var AResponse : TFPHTTPConnectionResponse); virtual;
     Function RegisterUpdateHandler(Const aName : string; const OnCheck : THandlesUpgradeEvent; const OnUpgrade : TUpgradeConnectionEvent) : TUpgradeHandlerItem;
     Procedure UnRegisterUpdateHandler(Const aName : string);
     // Register the HTTP/2 prior-knowledge adopt callback. Additive, callback-based
@@ -548,11 +570,17 @@ Type
     Property MaxLiveConnectionCount : Integer Read FMaxLiveConnectionCount Write FMaxLiveConnectionCount Default DefaultMaxLiveConnectionCount;
     // If true, when max connections is reached, send a 503. If false, connection is simply closed.
     property Send503OnMaxConnections : Boolean Read FSend503OnMaxConnections Write FSend503OnMaxConnections Default True;
+    // If true, a malformed or refused request gets a response with its error status before the connection is closed.
+    property SendErrorResponses : Boolean Read FSendErrorResponses Write FSendErrorResponses Default True;
     // Per-read socket time-out (ms) used while reading a request (headers and content).
     //   Set as SO_RCVTIMEO/SO_SNDTIMEO on the connection socket, so it limits a single recv/send call,
     //   not the total request time. Protects against clients that connect and then stall mid-request
     //   (e.g. slowloris, or non-HTTP clients sending a TLS handshake to a plaintext port). 0 disables.
     Property RequestReadTimeout : Integer Read FRequestReadTimeout Write FRequestReadTimeout Default DefaultRequestReadTimeout;
+    // Time (ms) from the first byte of a request to the end of its headers; 408 when exceeded. 0 disables.
+    Property RequestHeaderTimeout : Integer Read FRequestHeaderTimeout Write FRequestHeaderTimeout Default DefaultRequestHeaderTimeout;
+    // Average rate (bytes/s) a request body must arrive at after a first RequestReadTimeout; 408 when slower. 0 disables.
+    Property RequestBodyMinRate : Integer Read FRequestBodyMinRate Write FRequestBodyMinRate Default DefaultRequestBodyMinRate;
     // If True (the default), the complete request line - including the URL - must be printable US-ASCII.
     //   If False, only the method and HTTP-version tokens are validated, so a URL may contain raw
     //   (non percent-encoded) high bytes. Switch off only if you must accept such non-conforming clients.
@@ -602,7 +630,10 @@ Type
     Property MaxLineLength;
     Property MaxHeaderCount;
     Property RequestReadTimeout;
+    Property RequestHeaderTimeout;
+    Property RequestBodyMinRate;
     Property StrictASCIIURL;
+    Property SendErrorResponses;
   end;
 
   EHTTPServer = Class(EHTTP);
@@ -620,7 +651,10 @@ implementation
 resourcestring
   SErrSocketActive    =  'Operation not allowed while server is active';
   SErrReadingSocket   = 'Error reading data from the socket';
+  SErrIncompleteBody  = 'Request body incomplete: %d of %d bytes received';
+  SErrAcceptFailed    = 'Error accepting a connection: %s: %s';
   SErrRequestReadTimeout = 'Time-out after %d ms reading request from %s (connection %s), closing connection';
+  SErrRequestDeadline = 'Request from %s (connection %s) not received in time, closing connection';
   SErrMissingProtocol = 'Missing HTTP protocol version in request "%s"';
   SErrInvalidRequestLine = 'Invalid characters in request line "%s"';
   SErrInvalidMethod = 'Invalid HTTP method in request line "%s"';
@@ -637,6 +671,18 @@ resourcestring
   SErrLogMissingProtocol = 'Missing HTTP protocol version in first line "%s" for request';
   SWarnEmptyRequest = 'Empty request detected.';
   SerrRequestHeaderTooLong = 'Request Header exceeds maximum size (%d)';
+  SErrInvalidHeaderName = 'Invalid header field name in "%s"';
+  SErrInvalidContentLength = 'Invalid Content-Length "%s"';
+  SErrConflictingContentLength = 'Conflicting Content-Length headers: "%s" and "%s"';
+  SErrTransferEncodingNotSupported = 'Transfer-Encoding "%s" in a request is not supported';
+  SErrInvalidTransferEncoding = 'Invalid Transfer-Encoding "%s"';
+  SErrTransferEncodingWithLength = 'Request has both Transfer-Encoding and Content-Length';
+  SErrTransferEncodingVersion = 'Transfer-Encoding in a HTTP/%s request';
+  SErrInvalidChunkSize = 'Invalid chunk size line "%s"';
+  SErrInvalidChunkEnd = 'Chunk data not followed by CRLF';
+  SErrTooManyTrailers = 'Too many trailer fields';
+  SErrPayloadTooLarge = 'Payload size exceeds maximum size';
+  SErrSendingErrorResponse = 'Exception sending %d error response: %s: %s';
 
 { TFPHTTPConnectionRequest }
 
@@ -1118,6 +1164,7 @@ Var
 begin
   if Connection.IsUpgraded then
     exit;
+  Connection.FResponseStarted:=True;
   S:=Format('HTTP/1.1 %3d %s'#13#10,[Code,GetHTTPStatusText(Code)]);
   For I:=0 to Headers.Count-1 do
     S:=S+UTF8Encode(Headers[i]+#13#10);
@@ -1244,11 +1291,22 @@ end;
 
 procedure TFPCustomHttpServer.DoAcceptError(Sender: TObject; ASocket: TFPSocket;
   E: Exception; var ErrorAction: TAcceptErrorAction);
+
+const
+  AcceptErrorDelay = 50; // ms
+
 begin
   If Not Active then
-    ErrorAction:=AEAStop
-  else
-    ErrorAction:=AEARaise
+    begin
+    ErrorAction:=AEAStop;
+    Exit;
+    end;
+  ErrorAction:=AEAIgnore;
+  if CanLog(hlmError) then
+    DoLog(hlmError,SErrAcceptFailed,[E.ClassName,E.Message]);
+  // Back off after a failed accept
+  if (E is ESocketError) and (ESocketError(E).Code=seAcceptFailed) then
+    Sleep(AcceptErrorDelay);
 end;
 
 function TFPCustomHttpServer.GetActive: Boolean;
@@ -1655,7 +1713,10 @@ begin
   FMaxBodySize:=DefaultMaxBodySize;
   FMaxLiveConnectionCount:=DefaultMaxLiveConnectionCount;
   FSend503OnMaxConnections:=True;
+  FSendErrorResponses:=True;
   FRequestReadTimeout:=DefaultRequestReadTimeout;
+  FRequestHeaderTimeout:=DefaultRequestHeaderTimeout;
+  FRequestBodyMinRate:=DefaultRequestBodyMinRate;
   FStrictASCIIURL:=True;
 end;
 
@@ -1781,7 +1842,7 @@ function TFPHTTPConnection.ReadString : String;
   Procedure FillBuffer;
 
   Var
-    R : Integer;
+    R, lWait : Integer;
 
   begin
     // Do not block indefinitely while reading a request. If a read time-out is
@@ -1789,8 +1850,8 @@ function TFPHTTPConnection.ReadString : String;
     // request (an idle/preconnect socket) or it stalled mid-request (slowloris).
     // CanRead uses select(), so it is portable and tells us "no data within timeout"
     // without depending on platform errno values. The two cases are handled below.
-    if Assigned(Server) and (Server.RequestReadTimeout>0)
-       and not FSocket.CanRead(Server.RequestReadTimeout) then
+    lWait:=ReadWaitTime;
+    if (lWait>0) and not FSocket.CanRead(lWait) then
       begin
       // Distinguish an idle connection from a stalled request. If not a single byte
       // of the current request has arrived, the peer opened the connection but sent
@@ -1803,8 +1864,7 @@ function TFPHTTPConnection.ReadString : String;
         FBuffer:='';
         Exit;
         end;
-      Raise EHTTPServerTimeout.CreateFmtHelp(SErrRequestReadTimeout,
-              [Server.RequestReadTimeout,NetAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
+      RaiseReadTimeout;
       end;
     SetLength(FBuffer,ReadBufLen);
     r:=FSocket.Read(FBuffer[1],ReadBufLen);
@@ -1812,8 +1872,12 @@ function TFPHTTPConnection.ReadString : String;
       Raise EHTTPServer.Create(SErrReadingSocket);
     if (r<ReadBuflen) then
       SetLength(FBuffer,r);
-    if (r>0) then
+    if (r>0) and not FRequestDataReceived then
+      begin
       FRequestDataReceived:=True;
+      if Assigned(Server) and (Server.RequestHeaderTimeout>0) then
+        FRequestDeadline:=GetTickCount64+QWord(Server.RequestHeaderTimeout);
+      end;
   end;
 
 Var
@@ -1895,6 +1959,52 @@ begin
     Server.DoLog(hlmError,SErrorDuringRequest,[E.ClassName,E.Message]);
 end;
 
+procedure TFPHTTPConnection.SendErrorResponse(E: Exception);
+
+Var
+  lCode,lRead,lTotal : Integer;
+  lText,lBody,lResponse : String;
+  lEnd : QWord;
+  lBuf : Array[0..ReadBufLen-1] of Byte;
+
+begin
+  if not (E is EHTTP) or FResponseStarted or IsUpgraded or not Assigned(FSocket) then
+    Exit;
+  if Assigned(Server) and not Server.SendErrorResponses then
+    Exit;
+  lCode:=EHTTP(E).StatusCode;
+  if (lCode<400) or (lCode>599) then
+    Exit;
+  FResponseStarted:=True;
+  lText:=GetHTTPStatusText(lCode);
+  lBody:=IntToStr(lCode)+' '+lText;
+  lResponse:='HTTP/1.1 '+lBody+#13#10
+            +'Content-Type: text/plain'#13#10
+            +'Content-Length: '+IntToStr(Length(lBody))+#13#10
+            +'Connection: close'#13#10
+            +#13#10
+            +lBody;
+  try
+    FSocket.WriteBuffer(lResponse[1],Length(lResponse));
+    fpShutdown(FSocket.Handle,SHUT_WR);
+    // Discard remaining request data, at most 64 KB or 1 second, until the client closes
+    lTotal:=0;
+    lEnd:=GetTickCount64+1000;
+    While (lTotal<65536) and (GetTickCount64<lEnd) and FSocket.CanRead(100) do
+      begin
+      lRead:=FSocket.Read(lBuf,SizeOf(lBuf));
+      if lRead<=0 then
+        Break;
+      Inc(lTotal,lRead);
+      end;
+  except
+    On E2 : Exception do
+      if Assigned(Server) and Server.CanLog(hlmError) then
+        Server.DoLog(hlmError,SErrSendingErrorResponse,[lCode,E2.ClassName,E2.Message]);
+  end;
+end;
+
+
 procedure TFPHTTPConnection.HandleUnexpectedError(E: Exception);
 begin
   If Assigned(FOnUnexpectedError) then
@@ -1903,9 +2013,39 @@ begin
      Server.DoLog(hlmError,SErrorDuringRequest,[E.ClassName,E.Message]);
 end;
 
+function TFPHTTPConnection.ReadWaitTime: Integer;
+
+var
+  lNow : QWord;
+
+begin
+  Result:=0;
+  if Assigned(Server) then
+    Result:=Server.RequestReadTimeout;
+  if FRequestDeadline=0 then
+    Exit;
+  lNow:=GetTickCount64;
+  if lNow>=FRequestDeadline then
+    RaiseReadTimeout;
+  if (Result=0) or (FRequestDeadline-lNow<QWord(Result)) then
+    Result:=FRequestDeadline-lNow;
+end;
+
+
+procedure TFPHTTPConnection.RaiseReadTimeout;
+
+begin
+  if (FRequestDeadline<>0) and (GetTickCount64>=FRequestDeadline) then
+    Raise EHTTPServerTimeout.CreateFmtHelp(SErrRequestDeadline,
+            [NetAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
+  Raise EHTTPServerTimeout.CreateFmtHelp(SErrRequestReadTimeout,
+          [Server.RequestReadTimeout,NetAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
+end;
+
+
 procedure TFPHTTPConnection.SetupSocket;
 begin
-{$if defined(FreeBSD) or defined(Linux)}
+{$if defined(FreeBSD) or defined(Linux) or defined(Haiku)}
   FSocket.ReadFlags:=MSG_NOSIGNAL;
   FSocket.WriteFlags:=MSG_NOSIGNAL;
 {$endif}
@@ -1923,6 +2063,20 @@ end;
 procedure TFPHTTPConnection.InterPretHeader(ARequest: TFPHTTPConnectionRequest;
   const AHeader: String);
 
+  // Content-Length is 1 to 18 decimal digits: no sign, no hex prefix, no Int64 overflow
+  Function IsValidLength(const aValue : String) : Boolean;
+
+  Var
+    J : Integer;
+
+  begin
+    Result:=(aValue<>'') and (Length(aValue)<=18);
+    if Result then
+      For J:=1 to Length(aValue) do
+        if not (aValue[J] in ['0'..'9']) then
+          Exit(False);
+  end;
+
 Var
   P : Integer;
   N,V : String;
@@ -1936,12 +2090,56 @@ begin
     Exit;
     end;
   N:=Copy(V,1,P-1);
-  if SameText(N,'Upgrade') then
-    V:=V;
+  // RFC 9112 5.1: whitespace between field name and colon (or obs-fold) is a 400
+  if (N='') or (N[1] in [' ',#9]) or (N[Length(N)] in [' ',#9]) then
+    Raise EHTTPServer.CreateFmtHelp(SErrInvalidHeaderName,[EscapeLogText(AHeader)],400);
   Delete(V,1,P);
   V:=Trim(V);
+  if SameText(N,HTTPHeaderNames[hhContentLength]) then
+    begin
+    if not IsValidLength(V) then
+      Raise EHTTPServer.CreateFmtHelp(SErrInvalidContentLength,[EscapeLogText(V)],400);
+    if ARequest.HeaderIsSet(hhContentLength) and (ARequest.GetHeader(hhContentLength)<>V) then
+      Raise EHTTPServer.CreateFmtHelp(SErrConflictingContentLength,
+              [EscapeLogText(ARequest.GetHeader(hhContentLength)),EscapeLogText(V)],400);
+    end
+  else if SameText(N,HTTPHeaderNames[hhTransferEncoding]) then
+    begin
+    if V='' then
+      Raise EHTTPServer.CreateFmtHelp(SErrInvalidTransferEncoding,[''],400);
+    // Repeated Transfer-Encoding fields form one comma-separated list
+    if ARequest.HeaderIsSet(hhTransferEncoding) then
+      V:=ARequest.GetHeader(hhTransferEncoding)+', '+V;
+    end;
   ARequest.SetFieldByName(N,V);
 end;
+
+
+procedure TFPHTTPConnection.CheckRequestFraming(ARequest: TFPHTTPConnectionRequest);
+
+Var
+  lValue,lLast,lFirst : String;
+  P : Integer;
+
+begin
+  if not ARequest.HeaderIsSet(hhTransferEncoding) then
+    Exit;
+  lValue:=ARequest.GetHeader(hhTransferEncoding);
+  if ARequest.HttpVersion<>'1.1' then
+    Raise EHTTPServer.CreateFmtHelp(SErrTransferEncodingVersion,[EscapeLogText(ARequest.HttpVersion)],400);
+  if ARequest.HeaderIsSet(hhContentLength) then
+    Raise EHTTPServer.CreateHelp(SErrTransferEncodingWithLength,400);
+  P:=Length(lValue);
+  While (P>0) and (lValue[P]<>',') do
+    Dec(P);
+  lLast:=Trim(Copy(lValue,P+1,Length(lValue)-P));
+  lFirst:=Trim(Copy(lValue,1,P-1));
+  if not SameText(lLast,'chunked') then
+    Raise EHTTPServer.CreateFmtHelp(SErrInvalidTransferEncoding,[EscapeLogText(lValue)],400);
+  if lFirst<>'' then
+    Raise EHTTPServer.CreateFmtHelp(SErrTransferEncodingNotSupported,[EscapeLogText(lValue)],501);
+end;
+
 
 procedure TFPHTTPConnection.ParseStartLine(Request : TFPHTTPConnectionRequest;
   AStartLine : String);
@@ -2034,47 +2232,146 @@ procedure TFPHTTPConnection.ReadRequestContent(
   ARequest: TFPHTTPConnectionRequest);
 
 Var
-  P,R : integer;
   L : SizeInt;
   S : TBytes;
 
 begin
+  if ARequest.HeaderIsSet(hhTransferEncoding) then
+    begin
+    ReadChunkedContent(ARequest);
+    Exit;
+    end;
   S:=[];
   L:=ARequest.ContentLength;
   if (Server.MaxBodySize>0) and (L>Server.MaxBodySize) then
-    PayloadTooLarge('Payload size exceeds maximum size');
+    PayloadTooLarge(SErrPayloadTooLarge);
   If (L>0) then
     begin
     SetLength(S,L);
-    P:=Length(FBuffer);
-    if (P>0) then
-      begin
-      if P>L then
-        P:=L;
-      Move(FBuffer[1],S[0],P);
-      FBuffer:='';
-      L:=L-P;
-      end;
-    R:=1;
-    While (L>0) and (R>0) do
-      begin
-      // Same stall protection as the header reader: a client that announced a
-      // body but stops sending must not block the connection indefinitely.
-      if Assigned(Server) and (Server.RequestReadTimeout>0)
-         and not FSocket.CanRead(Server.RequestReadTimeout) then
-        Raise EHTTPServerTimeout.CreateFmtHelp(SErrRequestReadTimeout,
-                [Server.RequestReadTimeout,NetAddrToStr(FSocket.RemoteAddress.sin_addr),ConnectionID],408);
-      R:=FSocket.Read(S[p],L);
-      If R<0 then
-        Raise EHTTPServer.Create(SErrReadingSocket);
-      if (R>0) then
-        begin
-        P:=P+R;
-        L:=L-R;
-        end;
-      end;
+    ReadBodyBytes(S,0,L,GetTickCount64);
+    FRequestDeadline:=0;
     end;
   ARequest.ContentBytes:=S;
+end;
+
+
+procedure TFPHTTPConnection.ReadBodyBytes(var aBytes: TBytes; aOffset, aCount: SizeInt; aStart: QWord);
+
+Var
+  lDone,lRead : SizeInt;
+  lWait,lGrace,lRate : Integer;
+  Err : EHTTPServer;
+
+begin
+  lDone:=Length(FBuffer);
+  if lDone>aCount then
+    lDone:=aCount;
+  if lDone>0 then
+    begin
+    Move(FBuffer[1],aBytes[aOffset],lDone);
+    Delete(FBuffer,1,lDone);
+    end;
+  lGrace:=0;
+  lRate:=0;
+  if Assigned(Server) then
+    begin
+    lRate:=Server.RequestBodyMinRate;
+    lGrace:=Server.RequestReadTimeout;
+    end;
+  if lGrace<=0 then
+    lGrace:=DefaultRequestReadTimeout;
+  lRead:=1;
+  While (lDone<aCount) and (lRead>0) do
+    begin
+    // Deadline for the minimum body rate, counted over the whole body
+    if lRate>0 then
+      FRequestDeadline:=aStart+QWord(lGrace)+QWord(Int64(aOffset+lDone)*1000 div lRate);
+    lWait:=ReadWaitTime;
+    if (lWait>0) and not FSocket.CanRead(lWait) then
+      RaiseReadTimeout;
+    lRead:=FSocket.Read(aBytes[aOffset+lDone],aCount-lDone);
+    If lRead<0 then
+      Raise EHTTPServer.Create(SErrReadingSocket);
+    Inc(lDone,lRead);
+    end;
+  if lDone<aCount then
+    begin
+    Err:=EHTTPServer.CreateFmt(SErrIncompleteBody,[aOffset+lDone,aOffset+aCount]);
+    Err.StatusCode:=400;
+    Err.StatusText:='BAD REQUEST';
+    Raise Err;
+    end;
+end;
+
+
+procedure TFPHTTPConnection.ReadChunkedContent(ARequest: TFPHTTPConnectionRequest);
+
+  // chunk-size [ BWS ";" chunk-ext ]: 1 or more hex digits, at most 15 significant ones
+  Function ParseChunkSize(const aLine : String) : Int64;
+
+  Var
+    S : String;
+    P,J : Integer;
+
+  begin
+    S:=aLine;
+    P:=Pos(';',S);
+    if P>0 then
+      SetLength(S,P-1);
+    While (S<>'') and (S[Length(S)] in [' ',#9]) do
+      SetLength(S,Length(S)-1);
+    P:=1;
+    While (P<Length(S)) and (S[P]='0') do
+      Inc(P);
+    if (S='') or (Length(S)-P+1>15) then
+      Raise EHTTPServer.CreateFmtHelp(SErrInvalidChunkSize,[EscapeLogText(aLine)],400);
+    Result:=0;
+    For J:=P to Length(S) do
+      case S[J] of
+        '0'..'9' : Result:=Result*16+Ord(S[J])-Ord('0');
+        'A'..'F' : Result:=Result*16+Ord(S[J])-Ord('A')+10;
+        'a'..'f' : Result:=Result*16+Ord(S[J])-Ord('a')+10;
+      else
+        Raise EHTTPServer.CreateFmtHelp(SErrInvalidChunkSize,[EscapeLogText(aLine)],400);
+      end;
+  end;
+
+Var
+  lBody : TBytes;
+  lSize : Int64;
+  lTotal : SizeInt;
+  lStart : QWord;
+  lCount : Integer;
+
+begin
+  lBody:=[];
+  lTotal:=0;
+  lStart:=GetTickCount64;
+  Repeat
+    lSize:=ParseChunkSize(ReadString);
+    if lSize>0 then
+      begin
+      if (lSize>High(SizeInt)-lTotal)
+         or ((Server.MaxBodySize>0) and (lTotal+lSize>Server.MaxBodySize)) then
+        PayloadTooLarge(SErrPayloadTooLarge);
+      SetLength(lBody,lTotal+lSize);
+      ReadBodyBytes(lBody,lTotal,lSize,lStart);
+      Inc(lTotal,lSize);
+      if ReadString<>'' then
+        Raise EHTTPServer.CreateHelp(SErrInvalidChunkEnd,400);
+      end;
+  Until lSize=0;
+  lCount:=0;
+  While ReadString<>'' do
+    begin
+    Inc(lCount);
+    if (Server.MaxHeaderCount>0) and (lCount>Server.MaxHeaderCount) then
+      Raise EHTTPServer.CreateHelp(SErrTooManyTrailers,400);
+    end;
+  FRequestDeadline:=0;
+  ARequest.SetHeader(hhTransferEncoding,'');
+  ARequest.ContentLength:=lTotal;
+  ARequest.ContentBytes:=lBody;
 end;
 
 function TFPHTTPConnection.ReadRequestHeaders: TFPHTTPConnectionRequest;
@@ -2089,6 +2386,7 @@ begin
   // A fresh request starts here: no byte received yet. This lets FillBuffer treat a
   // first-byte read time-out as an idle connection rather than a slowloris stall.
   FRequestDataReceived:=False;
+  FRequestDeadline:=0;
   StartLine:=ReadString;
   if StartLine='' then
     exit;
@@ -2111,6 +2409,8 @@ begin
         Raise Err;
         end;
     Until (S='');
+    CheckRequestFraming(Result);
+    FRequestDeadline:=0;
     Result.RemoteAddress :=  NetAddrToStr(FSocket.RemoteAddress.sin_addr);
     Result.ServerPort := FServer.Port;
   except
@@ -2189,6 +2489,7 @@ begin
     FIsUpgraded:=True;
     Exit;
     end;
+  FResponseStarted:=False;
   // Read headers.
   Resp:=Nil;
   Req:=ReadRequestHeaders;
@@ -2206,7 +2507,7 @@ begin
     //set port
     Req.ServerPort := Server.Port;
     // Read content, if any
-    If Req.ContentLength>0 then
+    If (Req.ContentLength>0) or Req.HeaderIsSet(hhTransferEncoding) then
       ReadRequestContent(Req);
     Req.InitRequestVars;
     If Server.CheckHTTP2PriorKnowledge(Self,Req) then
@@ -2301,6 +2602,7 @@ begin
       begin
       FKeepAlive:=False; // don't keep alive connections that failed
       HandleRequestError(E);
+      SendErrorResponse(E);
       end;
   end;
   FBusy:=False;

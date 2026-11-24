@@ -251,7 +251,9 @@ interface
          { if applicable, the compiler generates an executable in uf2 format }
          cs_generate_uf2,
 	 { Use ld.lld linker }
-         cs_link_lld
+         cs_link_lld,
+         { skip a "#!" first line in the main source file }
+         cs_skip_shebang
        );
        tglobalswitches = set of tglobalswitch;
 
@@ -261,6 +263,9 @@ interface
           { without support for that tag (they refuse to parse the rest }
           { of the debug information)                                   }
           ds_dwarf_sets,
+          { enable DW_TAG_property to encode properties with getter     }
+          { and setter. This is borrowed from DWARF-6                   }
+          ds_dwarf_properties,
           { use absolute paths for include files in stabs. Pro: gdb     }
           { always knows full path to file. Con: doesn't work anymore   }
           { if the include file is moved (otherwise, things still work  }
@@ -464,7 +469,8 @@ interface
        );
 
        DebugSwitchStr : array[tdebugswitch] of string[22] = ('',
-         'DWARFSETS','STABSABSINCLUDES','DWARFMETHODCLASSPREFIX','DWARFCPP','DWARFOMFLINNUM');
+         'DWARFSETS', 'DWARFPROPERTY','STABSABSINCLUDES','DWARFMETHODCLASSPREFIX',
+         'DWARFCPP','DWARFOMFLINNUM');
 
        TargetSwitchStr : array[ttargetswitch] of ttargetswitchinfo = (
          (name: '';                    hasvalue: false; isglobal: true ; define: ''),

@@ -56,7 +56,8 @@ type
     class var
       CategoryCSS : Integer;
       CategoryEmbeddedCSS : Integer;
-    function Execute(const Source: string): TSyntaxTokenArray; override;
+  protected
+    procedure DoExecute(const Source: string); override;
   end;
 
 const
@@ -100,7 +101,7 @@ begin
     Inc(FPos);
   end;
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shStrings);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shStrings);
 end;
 
 procedure TCssSyntaxHighlighter.ProcessDoubleQuoteString(var endPos: integer);
@@ -124,7 +125,7 @@ begin
     Inc(FPos);
     end;
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shStrings);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shStrings);
 end;
 
 procedure TCssSyntaxHighlighter.ProcessMultiLineComment(var endPos: integer);
@@ -143,7 +144,7 @@ begin
     Inc(FPos);
     end;
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shComment);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shComment);
 end;
 
 procedure TCssSyntaxHighlighter.ProcessSelector(var endPos: integer);
@@ -191,8 +192,11 @@ begin
       Inc(FPos);
     end;
 
+  // A character that starts no selector, such as a stray ], is a token of its own
+  if FPos = startPos then
+    Inc(FPos);
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
 end;
 
 procedure TCssSyntaxHighlighter.ProcessProperty(var endPos: integer);
@@ -203,7 +207,7 @@ begin
   while (FPos <= Length(FSource)) and (FSource[FPos] in ['a'..'z', 'A'..'Z', '0'..'9', '-', '_']) do
     Inc(FPos);
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shKeyword);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shKeyword);
 end;
 
 procedure TCssSyntaxHighlighter.ProcessColor(var endPos: integer);
@@ -225,7 +229,7 @@ begin
   if digitCount in [3, 4, 6, 8] then
     begin
     endPos := FPos - 1;
-    AddToken(Copy(FSource, startPos, endPos - startPos + 1), shNumbers);
+    AddSourceToken(FSource, startPos, endPos - startPos + 1, shNumbers);
     end
   else
     begin
@@ -250,7 +254,7 @@ begin
     Inc(i);
   end;
 
-  atRule := Copy(FSource, FPos, i);
+  atRule := SourceText(FSource, FPos, i);
 
   for j := 0 to 21 do // Only check @-rules (first 22 entries)
     if CssAtRuleTable[j] = atRule then
@@ -281,7 +285,7 @@ begin
     Inc(i);
   end;
 
-  prop := Copy(FSource, FPos, i);
+  prop := SourceText(FSource, FPos, i);
 
   for j := 22 to MaxKeyword do // Check properties (from index 22 onwards)
     if CssAtRuleTable[j] = prop then
@@ -324,7 +328,7 @@ begin
   end;
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shNumbers);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shNumbers);
 end;
 
 procedure TCssSyntaxHighlighter.ProcessUrl(var endPos: integer);
@@ -346,7 +350,7 @@ begin
   end;
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shStrings);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shStrings);
 end;
 
 function TCssSyntaxHighlighter.IsWordChar(ch: char): boolean;
@@ -383,18 +387,16 @@ begin
   DefaultCategory:=CategoryCSS;
 end;
 
-function TCssSyntaxHighlighter.Execute(const Source: string): TSyntaxTokenArray;
+procedure TCssSyntaxHighlighter.DoExecute(const Source: string);
 var
   lLen, endPos, startPos: integer;
   ch: char;
 begin
-  Result:=Nil;
   CheckCategories;
   lLen:=Length(Source);
   if lLen = 0 then
     Exit;
   FSource := Source;
-  FTokens.Reset;
   FPos := 1;
   EndPos:=0;
 
@@ -443,7 +445,7 @@ begin
         while (FPos <= Length(FSource)) and IsWordChar(FSource[FPos]) do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
         end;
       end;
     'u':
@@ -457,19 +459,19 @@ begin
         while (FPos <= Length(FSource)) and IsWordChar(FSource[FPos]) do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
         end;
       end;
     '.', ':', '[', ']': ProcessSelector(endPos);
     '{', '}', ';', '(', ')', ',':
       begin
-      AddToken(ch, shSymbol);
+      AddSourceToken(FSource, FPos, 1, shSymbol);
       endPos := FPos;
       Inc(FPos);
       end;
     '>', '+', '~', '*', '=', '!':
       begin
-      AddToken(ch, shOperator);
+      AddSourceToken(FSource, FPos, 1, shOperator);
       endPos := FPos;
       Inc(FPos);
       end;
@@ -479,16 +481,15 @@ begin
       while (FPos <= Length(FSource)) and (FSource[FPos] in [' ', #9, #10, #13]) do
         Inc(FPos);
       endPos := FPos - 1;
-      AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+      AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
       end;
     else
-      AddToken(ch, shInvalid);
+      AddSourceToken(FSource, FPos, 1, shInvalid);
       endPos := FPos;
       Inc(FPos);
     end;
     if FPos = endPos then Inc(FPos);
   end;
-  Result := FTokens.GetTokens;
 end;
 
 function DoCssHighlighting(const Source: string): TSyntaxTokenArray;

@@ -85,6 +85,7 @@ type
   TDataLink = Class;
   TDBTransaction = Class;
   TObjectField = class;
+  TDataSetField = class;
 
 { Exception classes }
 
@@ -235,6 +236,8 @@ type
     procedure SetItem(Index: Longint; const AValue: TFieldDef);
   Protected
     Class Function FieldDefClass : TFieldDefClass; virtual;
+    procedure Update(aItem: TCollectionItem); overload; override;
+    procedure Notify(aItem: TCollectionItem; aAction: TCollectionNotification); override;
   public
     constructor Create(AOwner: TPersistent);
 //    destructor Destroy; override;
@@ -327,6 +330,7 @@ type
     FOnValidate: TFieldNotifyEvent;
     FOrigin : String;
     FParentField: TObjectField;
+    FFieldDefListIndex : Longint;
     FProviderFlags : TProviderFlags;
     FReadOnly : Boolean;
     FRequired : Boolean;
@@ -386,6 +390,7 @@ type
     function GetDefaultWidth: Longint; virtual;
     function GetDisplayName : String;
     function GetFullName: string;
+    procedure SetFieldName(const aValue: string);
     function GetCurValue: Variant; virtual;
     function GetNewValue: Variant; virtual;
     function GetIsNull: Boolean; virtual;
@@ -473,6 +478,8 @@ type
     property IsNull: Boolean read GetIsNull;
     property NewValue: Variant read GetNewValue write SetNewValue;
     property Offset: word read FOffset;
+    // Position of the array element or object member definition in DataSet.FieldDefList the field is bound to, -1 for other fields
+    property FieldDefListIndex: Longint read FFieldDefListIndex;
     property Size: Integer read FSize write SetSize;
     property Text: string read GetEditText write SetEditText;
     property ValidChars : TFieldChars read FValidChars write FValidChars;
@@ -490,7 +497,7 @@ type
     property DisplayLabel : string read GetDisplayName write SetDisplayLabel stored IsDisplayLabelStored;
     property DisplayWidth: Longint read GetDisplayWidth write SetDisplayWidth stored IsDisplayWidthStored;
     property FieldKind: TFieldKind read FFieldKind write FFieldKind;
-    property FieldName: string read FFieldName write FFieldName;
+    property FieldName: string read FFieldName write SetFieldName;
     property HasConstraints: Boolean read FHasConstraints;
     property Index: Longint read GetIndex write SetIndex;
     property ImportedConstraint: string read FImportedConstraint write FImportedConstraint;
@@ -1228,13 +1235,19 @@ type
   protected
     class procedure CheckTypeSize(AValue: Longint); override;
     function GetAsVariant: Variant; override;
+    function GetIsNull: Boolean; override;
     function GetFieldCount: Integer;
     function GetFields: TFields; virtual;
     function GetFieldValue(AIndex: Integer): Variant; virtual;
     procedure SetFieldValue(AIndex: Integer; const AValue: Variant); virtual;
+    procedure SetDataset(AValue : TDataset); override;
     procedure SetParentField(AField: TObjectField); override;
     procedure SetVarValue(const AValue: Variant); override;
   public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    // Clears the values of all child fields
+    procedure Clear; override;
     property FieldCount: Integer read GetFieldCount;
     property Fields: TFields read GetFields;
     property FieldValues[AIndex: Integer]: Variant read GetFieldValue  write SetFieldValue; default;
@@ -1249,6 +1262,41 @@ type
   private
   public
     constructor Create(AOwner: TComponent); override;
+  end;
+
+{ TADTField }
+
+  TADTField = class(TObjectField)
+  public
+    constructor Create(AOwner: TComponent); override;
+  end;
+
+{ TDataSetField }
+
+  TDataSetField = class(TObjectField)
+  private
+    FNestedDataSet: TDataSet;
+    FIncludeObjectField: Boolean;
+    function GetNestedDataSet: TDataSet;
+    procedure SetIncludeObjectField(AValue: Boolean);
+  protected
+    procedure AssignNestedDataSet(AValue: TDataSet);
+    function GetAsString: string; override;
+    function GetAsVariant: Variant; override;
+    function GetCanModify: Boolean; override;
+    function GetFields: TFields; override;
+    function GetIsNull: Boolean; override;
+    procedure SetVarValue(const AValue: Variant); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    // Deletes all records of the nested dataset
+    procedure Clear; override;
+    // The dataset with the records stored in this field; created when first used
+    property NestedDataSet: TDataSet read GetNestedDataSet;
+  published
+    // Whether the nested dataset includes the object field itself
+    property IncludeObjectField: Boolean read FIncludeObjectField write SetIncludeObjectField default False;
   end;
 
 { TIndexDef }
@@ -1385,6 +1433,72 @@ type
       Property Fields [Index : Integer] : TField Read GetField Write SetField; default;
     end;
   TFieldsClass = Class of TFields;
+
+{ TFlatList }
+
+  TFlatList = class(TStringList)
+  private
+    FDataSet: TDataSet;
+    FLocked: Boolean;
+    FUpdated: Boolean;
+  protected
+    // Marks the list as out of date.
+    procedure ListChanging(aSender: TObject);
+    // Rebuilds the list when it is out of date.
+    procedure CheckUpdated;
+    // Object stored under aName; nil or an EDatabaseError when it is not found.
+    function FindItem(const aName: string; aMustExist: Boolean): TObject;
+    function Get(Index: Integer): string; override;
+    function GetCount: Integer; override;
+    function GetObject(Index: Integer): TObject; override;
+    function GetUpdated: Boolean; virtual;
+    procedure UpdateList; virtual; abstract;
+    // True when the list matches the dataset
+    property Updated: Boolean read GetUpdated write FUpdated;
+    // True while the list is being rebuilt
+    property Locked: Boolean read FLocked write FLocked;
+  public
+    // Creates an empty list for aDataSet, rebuilt on first use.
+    constructor Create(aDataSet: TDataSet); reintroduce;
+    // Rebuilds the list.
+    procedure Update;
+    // Dataset whose fields or field definitions are listed
+    property DataSet: TDataSet read FDataSet;
+  end;
+
+{ TFieldDefList }
+
+  TFieldDefList = class(TFlatList)
+  private
+    function GetFieldDef(aIndex: Integer): TFieldDef;
+    procedure AddFieldDefs(const aParentName: string; aFieldDefs: TFieldDefs);
+  protected
+    procedure UpdateList; override;
+  public
+    // Field definition with full name aName; raises EDatabaseError when it is not found.
+    function FieldByName(const aName: string): TFieldDef;
+    // Field definition with full name aName, or nil.
+    function Find(const aName: string): TFieldDef; reintroduce;
+    // Field definitions of the dataset and their child definitions, in order
+    property FieldDefs[aIndex: Integer]: TFieldDef read GetFieldDef; default;
+  end;
+
+{ TFieldList }
+
+  TFieldList = class(TFlatList)
+  private
+    function GetField(aIndex: Integer): TField;
+    procedure AddFields(aFields: TFields);
+  protected
+    procedure UpdateList; override;
+  public
+    // Field with full name aName; raises EDatabaseError when it is not found.
+    function FieldByName(const aName: string): TField;
+    // Field with full name aName, or nil.
+    function Find(const aName: string): TField; reintroduce;
+    // Fields of the dataset and the fields of their object fields, in order
+    property Fields[aIndex: Integer]: TField read GetField; default;
+  end;
 
 { TParam }
 
@@ -1712,6 +1826,8 @@ type
     FEnableControlsEvent : TDataEvent;
     FFieldList : TFields;
     FFieldDefs: TFieldDefs;
+    FFlatFieldList : TFieldList;
+    FFlatFieldDefList : TFieldDefList;
     FFilterOptions: TFilterOptions;
     FFilterText: string;
     FFiltered: Boolean;
@@ -1727,9 +1843,17 @@ type
     FRecordCount: Longint;
     FIsUniDirectional: Boolean;
     FSparseArrays: Boolean;
+    FObjectView: Boolean;
     FState : TDataSetState;
     FInternalOpenComplete: Boolean;
+    FDataSetField: TDataSetField;
+    FNestedDataSets: TFPList;
+    FNestedDataSetClass: TDataSetClass;
+    FParentUpdateCount: Integer;
     Procedure DoInsertAppend(DoAppend : Boolean);
+    function GetNestedDataSets: TFPList;
+    procedure OpenNestedDataSets;
+    procedure CloseNestedDataSets;
     Procedure DoInternalOpen;
     Function  GetBuffer (Index : longint) : TRecordBuffer;
     function GetDatasourceCount: Integer;
@@ -1747,6 +1871,8 @@ type
     Procedure UpdateFieldDefs;
     Procedure SetFieldDefs(AFieldDefs: TFieldDefs);
     procedure SetSparseArrays(AValue: Boolean);
+    procedure SetObjectView(AValue: Boolean);
+    procedure BindFieldList(aFields: TFields; aBinding: Boolean);
     procedure DoInsertAppendRecord(const Values: array of const; DoAppend : boolean);
   protected
     function GetDefaultBufferCount: Cardinal; virtual;
@@ -1760,6 +1886,15 @@ type
     procedure CheckActive; virtual;
     procedure CheckInactive; virtual;
     procedure CheckBiDirectional;
+    // Puts the dataset that owns DataSetField in edit mode
+    procedure CheckParentState; virtual;
+    // Creates the dataset for the records of a dataset field of this dataset
+    function CreateNestedDataSet(aDataSetField: TDataSetField): TDataSet; virtual;
+    procedure SetDataSetField(const AValue: TDataSetField); virtual;
+    // Starts a change of the parent record; the parent does not notify this dataset until EndParentUpdate
+    procedure BeginParentUpdate;
+    // Ends a change started with BeginParentUpdate
+    procedure EndParentUpdate;
     procedure Loaded; override;
     procedure ClearBuffers; virtual;
     procedure ClearCalcFields(Buffer: TRecordBuffer); virtual;
@@ -1795,7 +1930,8 @@ type
     procedure GetCalcFields(Buffer: TRecordBuffer); virtual;
     function  GetCanModify: Boolean; virtual;
     procedure GetChildren(Proc: TGetChildProc; Root: TComponent); override;
-    function  GetFieldClass(FieldType: TFieldType): TFieldClass; virtual;
+    function  GetFieldClass(FieldType: TFieldType): TFieldClass; overload; virtual;
+    function  GetFieldClass(FieldDef: TFieldDef): TFieldClass; overload; virtual;
     Function  GetfieldCount : Integer;
     function  GetFieldValues(const FieldName : string) : Variant; virtual;
     function  GetIsIndexField(Field: TField): Boolean; virtual;
@@ -1966,6 +2102,16 @@ type
     property EOF: Boolean read FEOF;
     property FieldCount: Longint read GetFieldCount;
     property FieldDefs: TFieldDefs read FFieldDefs write SetFieldDefs;
+    // Field definitions and their child definitions, addressed by full name
+    property FieldDefList: TFieldDefList read FFlatFieldDefList;
+    // Fields and the fields of object fields, addressed by full name
+    property FieldList: TFieldList read FFlatFieldList;
+    // The field of the parent dataset whose records this dataset shows
+    property DataSetField: TDataSetField read FDataSetField write SetDataSetField;
+    // The datasets that show the records of a dataset field of this dataset
+    property NestedDataSets: TFPList read GetNestedDataSets;
+    // The class of the datasets created for the dataset fields of this dataset
+    property NestedDataSetClass: TDataSetClass read FNestedDataSetClass write FNestedDataSetClass;
 //    property Fields[Index: Longint]: TField read GetField write SetField;
     property Found: Boolean read FFound;
     property Modified: Boolean read FModified;
@@ -1974,6 +2120,8 @@ type
     property RecNo: Longint read GetRecNo write SetRecNo;
     property RecordSize: Word read GetRecordSize;
     property SparseArrays: Boolean read FSparseArrays write SetSparseArrays;
+    // True: object fields have child fields; False: array elements and object members are top-level fields
+    property ObjectView: Boolean read FObjectView write SetObjectView;
     property State: TDataSetState read FState;
     property Fields : TFields read FFieldList;
     property FieldValues[FieldName : string] : Variant read GetFieldValues write SetFieldValues; default;
@@ -2483,10 +2631,10 @@ const
       { ftFixedChar} TStringField,
       { ftWideString} TWideStringField,
       { ftLargeint} TLargeIntField,
-      { ftADT} Nil,
+      { ftADT} TADTField,
       { ftArray} TArrayField,
       { ftReference} Nil,
-      { ftDataSet} Nil,
+      { ftDataSet} TDataSetField,
       { ftOraBlob} TBlobField,
       { ftOraClob} TMemoField,
       { ftVariant} TVariantField,

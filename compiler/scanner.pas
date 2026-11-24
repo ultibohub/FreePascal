@@ -128,6 +128,8 @@ interface
        public
           inputfile    : tinputfile;  { current inputfile list }
           inputfilecount : longint;
+          { the module's main source file starts with a UTF-8 signature }
+          mainfileutf8bom : boolean;
 {$ifdef CHECK_INPUTPOINTER_LIMITS}
        private
           hidden_inputbuffer,                { input buffer }
@@ -406,7 +408,61 @@ implementation
       end;
 
 
+    { defines a macro that follows a mode switch, and remembers that the
+      mode switch did: one the user has defined already stays the user's }
+    procedure def_modeswitch_macro(const name: string);
+      var
+        mac: tmacro;
+      begin
+        mac:=tmacro(search_macro(upper(name)));
+        if assigned(mac) and mac.defined then
+          exit;
+        def_system_macro(name);
+        mac:=tmacro(search_macro(upper(name)));
+        if assigned(mac) then
+          mac.defined_by_modeswitch:=true;
+      end;
+
+
+    { undefines a macro that a mode switch defined, and only such a one: a
+      macro the user defined (-dUNICODE, $define UNICODE) is not the mode's
+      to take away. For a directive, in the current module only, as $undef
+      does, so that a macro defined on the command line stays defined for
+      the modules compiled after this one }
+    procedure undef_modeswitch_macro(const name: string; changeinit: boolean);
+      var
+        mac: tmacro;
+      begin
+        mac:=tmacro(search_macro(upper(name)));
+        if not assigned(mac) or
+           not mac.defined or
+           not mac.defined_by_modeswitch then
+          exit;
+        if changeinit or not assigned(current_module) then
+          begin
+            undef_system_macro(name);
+            mac.defined_by_modeswitch:=false;
+            exit;
+          end;
+        if mac.owner<>current_module.localmacrosymtable then
+          begin
+            mac:=tmacro.create(upper(name));
+            current_module.localmacrosymtable.insertsym(mac);
+          end
+        else
+          begin
+            mac.is_compiler_var:=false;
+            mac.free_buftext;
+            mac.defined_by_modeswitch:=false;
+          end;
+        mac.defined:=false;
+        Message1(parser_c_macro_undefined,mac.name);
+      end;
+
+
     Procedure HandleModeSwitches(switch: tmodeswitch; changeInit: boolean);
+      var
+        syscodepage: tstringencoding;
       begin
         { turn ansi/unicodestrings on by default ? (only change when this
           particular setting is changed, so that a random modeswitch won't
@@ -434,8 +490,13 @@ implementation
                   include(init_settings.localswitches,cs_refcountedstrings);
                 if m_default_unicodestring in current_settings.modeswitches then
                   begin
-                    def_system_macro('FPC_UNICODESTRINGS');
-                    def_system_macro('UNICODE');
+                    def_modeswitch_macro('FPC_UNICODESTRINGS');
+                    def_modeswitch_macro('UNICODE');
+                  end
+                else
+                  begin
+                    undef_modeswitch_macro('FPC_UNICODESTRINGS',changeinit);
+                    undef_modeswitch_macro('UNICODE',changeinit);
                   end;
               end
             else
@@ -443,8 +504,8 @@ implementation
                 exclude(current_settings.localswitches,cs_refcountedstrings);
                 if changeinit then
                   exclude(init_settings.localswitches,cs_refcountedstrings);
-                undef_system_macro('FPC_UNICODESTRINGS');
-                undef_system_macro('UNICODE');
+                undef_modeswitch_macro('FPC_UNICODESTRINGS',changeinit);
+                undef_modeswitch_macro('UNICODE',changeinit);
               end;
           end;
 
@@ -485,18 +546,26 @@ implementation
               begin
                 { m_systemcodepage gets enabled -> disable any -FcXXX and
                   "codepage XXX" settings (exclude cs_explicit_codepage), and
-                  overwrite the source codepage }
-                current_settings.sourcecodepage:=DefaultSystemCodePage;
-                if (current_settings.sourcecodepage<>CP_UTF8) and not cpavailable(current_settings.sourcecodepage) then
+                  overwrite the source codepage; except that the source of a
+                  module whose main source file starts with a UTF-8 signature
+                  stays UTF-8, as the signature says what its bytes are. Its
+                  ansistrings have the system code page all the same
+                  (systemcodepage_ansistring): the signature is about the
+                  file, not about the strings of the program }
+                syscodepage:=DefaultSystemCodePage;
+                if (syscodepage<>CP_UTF8) and not cpavailable(syscodepage) then
                   begin
-                    Message2(scan_w_unavailable_system_codepage,IntToStr(current_settings.sourcecodepage),IntToStr(default_settings.sourcecodepage));
-                    current_settings.sourcecodepage:=default_settings.sourcecodepage;
+                    Message2(scan_w_unavailable_system_codepage,IntToStr(syscodepage),IntToStr(default_settings.sourcecodepage));
+                    syscodepage:=default_settings.sourcecodepage;
                   end;
+                systemcodepage_ansistring:=syscodepage;
+                if not (assigned(current_scanner) and current_scanner.mainfileutf8bom) then
+                  current_settings.sourcecodepage:=syscodepage;
                 exclude(current_settings.moduleswitches,cs_explicit_codepage);
                 include(current_settings.moduleswitches,cs_system_codepage);
                 if changeinit then
                   begin
-                    init_settings.sourcecodepage:=current_settings.sourcecodepage;
+                    init_settings.sourcecodepage:=syscodepage;
                     exclude(init_settings.moduleswitches,cs_explicit_codepage);
                     include(init_settings.moduleswitches,cs_system_codepage);
                   end;
@@ -521,6 +590,9 @@ implementation
                   disabling m_systemcodepage if it wasn't on in the first place
                   doesn't overwrite the sourcecodepage }
                 exclude(current_settings.moduleswitches,cs_system_codepage);
+                { a UTF-8 signature's code page is the module's again }
+                if assigned(current_scanner) and current_scanner.mainfileutf8bom then
+                  include(current_settings.moduleswitches,cs_explicit_codepage);
                 if not(cs_explicit_codepage in current_settings.moduleswitches) then
                   current_settings.sourcecodepage:=default_settings.sourcecodepage;
                 if changeinit then
@@ -2595,6 +2667,7 @@ type
         else
           begin
             mac.defined:=true;
+            mac.defined_by_modeswitch:=false;
             mac.is_compiler_var:=false;
           { delete old definition }
             mac.free_buftext;
@@ -4085,8 +4158,15 @@ type
 {$endif CHECK_INPUTPOINTER_LIMITS}
                        message(scan_c_switching_to_utf8);
                        current_settings.sourcecodepage:=CP_UTF8;
-                       exclude(current_settings.moduleswitches,cs_system_codepage);
-                       include(current_settings.moduleswitches,cs_explicit_codepage);
+                       { an included file with a signature, in a module that has one itself and
+                         uses the system code page for its ansistrings, changes neither }
+                       if not (mainfileutf8bom and (cs_system_codepage in current_settings.moduleswitches)) then
+                         begin
+                           exclude(current_settings.moduleswitches,cs_system_codepage);
+                           include(current_settings.moduleswitches,cs_explicit_codepage);
+                         end;
+                       if not assigned(inputfile.next) then
+                         mainfileutf8bom:=true;
                      end;
 
                    line_no:=1;
@@ -4096,6 +4176,21 @@ type
 {$else not CHECK_INPUTPOINTER_LIMITS}
                      inputfile.setline(line_no,inputstart+inputpointer-inputbuffer);
 {$endif CHECK_INPUTPOINTER_LIMITS}
+                   { skip a "#!" first line of the main source file, up to its line break }
+                   if (cs_skip_shebang in current_settings.globalswitches) and
+                      current_module.is_initial and
+                      not assigned(inputfile.next) then
+                     begin
+{$ifdef CHECK_INPUTPOINTER_LIMITS}
+                       if (get_inputpointer_char='#') and (get_inputpointer_char(1)='!') then
+                         while not (get_inputpointer_char in [#0,#10,#13]) do
+                           inc_inputpointer;
+{$else not CHECK_INPUTPOINTER_LIMITS}
+                       if (inputpointer^='#') and ((inputpointer+1)^='!') then
+                         while not (inputpointer^ in [#0,#10,#13]) do
+                           inc(inputpointer);
+{$endif CHECK_INPUTPOINTER_LIMITS}
+                     end;
                  end;
               end
              else

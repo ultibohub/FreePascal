@@ -389,6 +389,9 @@ unit TypInfo;
         Flags: TParamFlags;
         NamePtr: PShortString;
         ParaLocs: PParameterLocations;
+        {$ifndef VER3_2}
+        AttributeTable: PAttributeTable;
+        {$endif}
         property Name: ShortString read GetName;
         property Tail: Pointer read GetTail;
         property Next: PVmtMethodParam read GetNext;
@@ -403,6 +406,7 @@ unit TypInfo;
       {$endif FPC_REQUIRES_PROPER_ALIGNMENT}
       record
       private
+        function GetParamsStart: PByte; inline;
         function GetParam(Index: Word): PVmtMethodParam;
         function GetResultLocs: PPParameterLocations; inline;
         function GetTail: Pointer; inline;
@@ -418,6 +422,9 @@ unit TypInfo;
         InvokeHelper : TInvokeHelper;
         {$ENDIF}
         NamePtr: PShortString;
+        {$ifndef VER3_2}
+        AttributeTable: PAttributeTable;
+        {$endif}
         { Params: array[0..ParamCount - 1] of TVmtMethodParam }
         { ResultLocs: PParameterLocations (if ResultType != Nil) }
         property Name: ShortString read GetName;
@@ -4533,7 +4540,11 @@ end;
 
 function TVmtMethodParam.GetTail: Pointer;
 begin
+  {$ifdef VER3_2}
   Result := PByte(@ParaLocs) + SizeOf(ParaLocs);
+  {$else}
+  Result := PByte(@AttributeTable) + SizeOf(AttributeTable);
+  {$endif}
 end;
 
 function TVmtMethodParam.GetNext: PVmtMethodParam;
@@ -4548,12 +4559,21 @@ end;
 
 { TIntfMethodEntry }
 
+function TIntfMethodEntry.GetParamsStart: PByte;
+begin
+{$ifdef VER3_2}
+  Result := PByte(@NamePtr) + SizeOf(NamePtr);
+{$else}
+  Result := PByte(@AttributeTable) + SizeOf(AttributeTable);
+{$endif}
+end;
+
 function TIntfMethodEntry.GetParam(Index: Word): PVmtMethodParam;
 begin
   if Index >= ParamCount then
     Result := Nil
   else
-    Result := PVmtMethodParam(PByte(aligntoptr(PByte(@NamePtr) + SizeOf(NamePtr))) + Index * PtrUInt(aligntoptr(Pointer(SizeOf(TVmtMethodParam)))));
+    Result := PVmtMethodParam(PByte(aligntoptr(GetParamsStart)) + Index * PtrUInt(aligntoptr(Pointer(SizeOf(TVmtMethodParam)))));
 end;
 
 function TIntfMethodEntry.GetResultLocs: PPParameterLocations;
@@ -4561,12 +4581,12 @@ begin
   if not Assigned(ResultType) then
     Result := Nil
   else
-    Result := PPParameterLocations(PByte(aligntoptr(PByte(@NamePtr) + SizeOf(NamePtr))) + ParamCount * PtrUInt(aligntoptr(Pointer(SizeOf(TVmtMethodParam)))));
+    Result := PPParameterLocations(PByte(aligntoptr(GetParamsStart)) + ParamCount * PtrUInt(aligntoptr(Pointer(SizeOf(TVmtMethodParam)))));
 end;
 
 function TIntfMethodEntry.GetTail: Pointer;
 begin
-  Result := PByte(@NamePtr) + SizeOf(NamePtr);
+  Result := GetParamsStart;
   if ParamCount > 0 then
     Result := PByte(aligntoptr(Result)) + ParamCount * PtrUInt(aligntoptr(Pointer(SizeOf(TVmtMethodParam))));
   if Assigned(ResultType) then

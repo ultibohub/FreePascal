@@ -78,6 +78,8 @@ Type
     function Send(Const Buffer; Count: Integer): Integer; override;
     function Recv(Const Buffer; Count: Integer): Integer; override;
     function BytesAvailable: Integer; override;
+    // True when the peer certificate of the established connection is valid for host or IP address aHost
+    function VerifyPeerHost(const aHost: AnsiString): Boolean; virtual;
     // Result of last CheckSSL call.
     Function SSLLastError: integer;
     // Negotiated ALPN protocol after a completed handshake; '' when nothing negotiated
@@ -129,12 +131,7 @@ Resourcestring
   SErrCouldNotCreateSelfSignedCertificate = 'Failed to create self-signed certificate';
   SErrCouldNotInitSSLKeys = 'Failed to initialize SSL keys';
   SErrH2InadequateSecurity = 'h2 refused: TLS parameters below RFC 9113 §9.2 floor (version=%s cipher=%s)';
-
-Const
-  // openssl/tls1.h. Passed to TSSLContext.SetMinProtoVersion to enforce the
-  // RFC 9113 §9.2 floor (TLS >= 1.2) when h2 is offered (Story 4.5). Lives here,
-  // at the call site, rather than in fpopenssl/openssl.pas (see story Task 1).
-  TLS1_2_VERSION = $0303;
+  SErrHostMismatch = 'Server certificate is not valid for host %s';
 
 { --- RFC 9113 §9.2 TLS floor predicates (Story 4.5): pure, socket-free --- }
 
@@ -262,8 +259,13 @@ function TOpenSSLSocketHandler.Connect: Boolean;
 
 var
   SNIHostName: AnsiString;
+  lHost: AnsiString;
+  lSet1Host: Integer;
+  lCheckAfter: Boolean;
 
 begin
+  lCheckAfter:=False;
+  lHost:='';
   Result:=Inherited Connect;
   Result := Result and InitContext(False);
   if Result then
@@ -277,8 +279,19 @@ begin
        FSSL.SetTlsextHostName(SNIHostName);
        end;
      if VerifyPeerCert and (Socket is TInetSocket) then
-       FSSL.Set1Host(NormalizeHostNameForSNI(AnsiString((Socket as TInetSocket).Host)));
-     Result:=CheckSSL(FSSL.Connect);
+       begin
+       lHost:=NormalizeHostNameForSNI(AnsiString((Socket as TInetSocket).Host));
+       lSet1Host:=FSSL.Set1Host(lHost);
+       // -1: the library has no SSL_set1_host, the name is checked after the handshake
+       if lSet1Host=-1 then
+         lCheckAfter:=lHost<>''
+       else
+         Result:=CheckSSL(lSet1Host);
+       end;
+     if Result then
+       Result:=CheckSSL(FSSL.Connect);
+     if Result and lCheckAfter then
+       Result:=VerifyPeerHost(lHost);
      //if Result and VerifyPeerCert then
      //  Result:=(FSSL.VerifyResult<>0) or (not DoVerifyCert);
      if Result then
@@ -299,20 +312,30 @@ end;
 
 Function TOpenSSLSocketHandler.FetchErrorInfo : Boolean;
 
+const
+  MaxQueuedErrors = 16;
+
 var
   S : AnsiString;
+  lError, lCount : Integer;
 
 begin
   FSSLLastErrorString:='';
   FSSLLastError:=ErrGetError;
-  ErrClearError;
   Result:=(FSSLLastError<>0);
-  if Result then
+  lError:=FSSLLastError;
+  lCount:=0;
+  while (lError<>0) and (lCount<MaxQueuedErrors) do
     begin
     S:=StringOfChar(#0,256);
-    ErrErrorString(FSSLLastError,S,256);
-    FSSLLastErrorString:=s;
+    ErrErrorString(lError,S,256);
+    if FSSLLastErrorString<>'' then
+      FSSLLastErrorString:=FSSLLastErrorString+'; ';
+    FSSLLastErrorString:=FSSLLastErrorString+S;
+    Inc(lCount);
+    lError:=ErrGetError;
     end;
+  ErrClearError;
 end;
 
 function TOpenSSLSocketHandler.CheckSSL(SSLResult : Integer) : Boolean;
@@ -697,6 +720,38 @@ begin
     LeaveCriticalSection(FLock);
   end;
 end;
+
+function TOpenSSLSocketHandler.VerifyPeerHost(const aHost: AnsiString): Boolean;
+
+var
+  lCert: PX509;
+  lHost: AnsiString;
+  lRes: Integer;
+
+begin
+  Result:=False;
+  lHost:=NormalizeHostNameForSNI(aHost);
+  if Assigned(FSSL) and (lHost<>'') then
+    begin
+    lCert:=FSSL.PeerCertificate;
+    if Assigned(lCert) then
+      try
+        lRes:=X509CheckIpAsc(lCert,lHost,0);
+        // -2: lHost is not an IP address
+        if lRes=-2 then
+          lRes:=X509CheckHost(lCert,lHost,0);
+        Result:=(lRes=1);
+      finally
+        X509Free(lCert);
+      end;
+    end;
+  if not Result then
+    begin
+    FSSLLastError:=0;
+    FSSLLastErrorString:=Format(SErrHostMismatch,[aHost]);
+    end;
+end;
+
 
 Function TOpenSSLSocketHandler.SSLLastError: integer;
 begin

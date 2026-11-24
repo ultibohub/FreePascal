@@ -919,6 +919,12 @@ type
     function GetDeclaredMethods: TRttiMethodArray; override;
     function GetDeclaredProperties: TRttiPropertyArray; override;
     function GetDeclaredIndexedProperties: TRttiIndexedPropertyArray; override;
+{$ifndef VER3_2}
+    { the interfaces the class lists itself, in the order of its interface
+      table; and those with the ones of its ancestors, its own first }
+    function GetDeclaredImplementedInterfaces: specialize TArray<TRttiInterfaceType>;
+    function GetImplementedInterfaces: specialize TArray<TRttiInterfaceType>;
+{$endif VER3_2}
     property MetaClassType: TClass read GetMetaClassType;
     property DeclaringUnitName: string read GetDeclaringUnitName;
   end;
@@ -1386,6 +1392,8 @@ type
   TRttiVmtMethodParameter = class(TRttiParameter)
   private
     FVmtMethodParam: PVmtMethodParam;
+    FAttributesResolved: Boolean;
+    FAttributes: TCustomAttributeArray;
   protected
     function GetHandle: Pointer; override;
     function GetName: String; override;
@@ -1393,6 +1401,7 @@ type
     function GetParamType: TRttiType; override;
   public
     constructor Create(AVmtMethodParam: PVmtMethodParam);
+    destructor Destroy; override;
     function GetAttributes: TCustomAttributeArray; override;
   end;
 
@@ -1440,6 +1449,7 @@ type
     function GetParameters(aWithHidden: Boolean): TRttiParameterArray; override;
   public
     constructor Create(AParent: TRttiType; AIntfMethodEntry: PIntfMethodEntry; AIndex: SmallInt);
+    destructor Destroy; override;
     function GetAttributes: TCustomAttributeArray; override;
     function Invoke(aInstance: TValue; const aArgs: array of TValue): TValue; override;
   end;
@@ -5673,8 +5683,56 @@ begin
 end;
 
 function TRttiVmtMethodParameter.GetAttributes: TCustomAttributeArray;
+var
+  lTable: PAttributeTable;
+  lList: TCustomAttributeArray;
+  lIdx, lBuilt: Integer;
 begin
-  Result:=Nil;
+  if not FAttributesResolved then
+    begin
+{$ifdef FPC_HAS_FEATURE_THREADING}
+      EnterCriticalsection(PoolOf(Self).FLock);
+      try
+{$endif}
+        if not FAttributesResolved then
+          begin
+            lList := nil;
+            lTable := FVmtMethodParam^.AttributeTable;
+            if Assigned(lTable) and (lTable^.AttributeCount > 0) then
+              begin
+                SetLength(lList, lTable^.AttributeCount);
+                lBuilt := 0;
+                try
+                  for lIdx := 0 to High(lList) do
+                    begin
+                      lList[lIdx] := {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}TypInfo.GetAttribute(lTable, lIdx);
+                      Inc(lBuilt);
+                    end;
+                except
+                  for lIdx := 0 to lBuilt - 1 do
+                    lList[lIdx].Free;
+                  raise;
+                end;
+              end;
+            FAttributes := lList;
+            FAttributesResolved := True;
+          end;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+      finally
+        LeaveCriticalsection(PoolOf(Self).FLock);
+      end;
+{$endif}
+    end;
+  Result := FAttributes;
+end;
+
+destructor TRttiVmtMethodParameter.Destroy;
+var
+  lIdx: Integer;
+begin
+  for lIdx := 0 to High(FAttributes) do
+    FAttributes[lIdx].Free;
+  inherited Destroy;
 end;
 
 { TRttiMethodTypeParameter }
@@ -5788,28 +5846,61 @@ begin
   FIndex := AIndex;
 end;
 
-function TRttiIntfMethod.GetAttributes: TCustomAttributeArray;
-{var
-  i: SizeInt;
-  at: PAttributeTable;}
+destructor TRttiIntfMethod.Destroy;
+var
+  lIdx: Integer;
 begin
-  FAttributes:=Nil;
-  FAttributesResolved:=True;
-{ // needs extended RTTI branch
+  for lIdx := 0 to High(FAttributes) do
+    FAttributes[lIdx].Free;
+  inherited Destroy;
+end;
+
+function TRttiIntfMethod.GetAttributes: TCustomAttributeArray;
+{$ifndef VER3_2}
+var
+  lTable: PAttributeTable;
+  lList: TCustomAttributeArray;
+  lIdx, lBuilt: Integer;
+{$endif}
+begin
   if not FAttributesResolved then
     begin
-      at := FIntfMethodEntry^.Attributes
-      if Assigned(at) then
-        begin
-          SetLength(FAttributes, at^.AttributeCount);
-          for i := 0 to High(FAttributes) do
-            FAttributes[i] := TCustomAttribute({$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}TypInfo.GetAttribute(at, i));
-        end;
-      FAttributesResolved:=true;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+      EnterCriticalsection(PoolOf(Self).FLock);
+      try
+{$endif}
+        if not FAttributesResolved then
+          begin
+{$ifndef VER3_2}
+            lList := nil;
+            lTable := FIntfMethodEntry^.AttributeTable;
+            if Assigned(lTable) and (lTable^.AttributeCount > 0) then
+              begin
+                SetLength(lList, lTable^.AttributeCount);
+                lBuilt := 0;
+                try
+                  for lIdx := 0 to High(lList) do
+                    begin
+                      lList[lIdx] := {$IFDEF FPC_DOTTEDUNITS}System.{$ENDIF}TypInfo.GetAttribute(lTable, lIdx);
+                      Inc(lBuilt);
+                    end;
+                except
+                  for lIdx := 0 to lBuilt - 1 do
+                    lList[lIdx].Free;
+                  raise;
+                end;
+              end;
+            FAttributes := lList;
+{$endif}
+            FAttributesResolved := True;
+          end;
+{$ifdef FPC_HAS_FEATURE_THREADING}
+      finally
+        LeaveCriticalsection(PoolOf(Self).FLock);
+      end;
+{$endif}
     end;
-}
-  result := FAttributes;
-
+  Result := FAttributes;
 end;
 
 function TRttiIntfMethod.GetParameters(aWithHidden: Boolean): TRttiParameterArray;
@@ -7369,6 +7460,60 @@ begin
   end;
   Result:=FDeclaredMethods;
 end;
+
+{$ifndef VER3_2}
+function TRttiInstanceType.GetDeclaredImplementedInterfaces: specialize TArray<TRttiInterfaceType>;
+var
+  lTable: PInterfaceTable;
+  lEntry: PInterfaceEntry;
+  lInfo: PTypeInfo;
+  lType: TRttiType;
+  lIdx, lCount: SizeInt;
+begin
+  Result := nil;
+  lTable := MetaClassType.GetInterfaceTable;
+  if not Assigned(lTable) then
+    Exit;
+  SetLength(Result, lTable^.EntryCount);
+  lCount := 0;
+  lEntry := @lTable^.Entries[0];
+  for lIdx := 1 to SizeInt(lTable^.EntryCount) do
+    begin
+      lInfo := lEntry^.ITypeInfo;
+      if Assigned(lInfo) then
+        begin
+          lType := PoolOf(Self).GetType(lInfo);
+          if lType is TRttiInterfaceType then
+            begin
+              Result[lCount] := TRttiInterfaceType(lType);
+              Inc(lCount);
+            end;
+        end;
+      Inc(lEntry);
+    end;
+  SetLength(Result, lCount);
+end;
+
+function TRttiInstanceType.GetImplementedInterfaces: specialize TArray<TRttiInterfaceType>;
+var
+  lType: TRttiType;
+  lOwn: specialize TArray<TRttiInterfaceType>;
+  lIdx, lCount: SizeInt;
+begin
+  Result := nil;
+  lCount := 0;
+  lType := Self;
+  while lType is TRttiInstanceType do
+    begin
+      lOwn := TRttiInstanceType(lType).GetDeclaredImplementedInterfaces;
+      SetLength(Result, lCount + Length(lOwn));
+      for lIdx := 0 to High(lOwn) do
+        Result[lCount + lIdx] := lOwn[lIdx];
+      Inc(lCount, Length(lOwn));
+      lType := lType.BaseType;
+    end;
+end;
+{$endif VER3_2}
 
 { TRttiRecordType }
 

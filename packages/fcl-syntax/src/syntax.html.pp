@@ -50,8 +50,12 @@ type
     FCurrentTag: string;
     FCssHighlighter: TCssSyntaxHighlighter;
     FJsHighlighter: TJavaScriptSyntaxHighlighter;
-
+    procedure EmbeddedToken(Sender: TObject; const aToken: TSyntaxToken);
+    function MatchAt(aPos: Integer; const aValue: string): Boolean;
+    function FindEndTag(const aTag: string): Integer;
   protected
+    // Emit the whitespace at the cursor as one token
+    procedure ProcessWhiteSpace;
     procedure ProcessText(var endPos: Integer);
     procedure ProcessTagOpen(var endPos: Integer);
     procedure ProcessTagClose(var endPos: Integer);
@@ -68,6 +72,7 @@ type
     class function GetLanguages: TStringDynArray; override;
     class procedure RegisterDefaultCategories; override;
     procedure CheckCategories;
+    procedure DoExecute(const source: string); override;
     property CssHighlighter: TCssSyntaxHighlighter read FCssHighlighter;
     property JsHighlighter: TJavaScriptSyntaxHighlighter read FJsHighlighter;
   public
@@ -79,7 +84,6 @@ type
     constructor Create; override;
     destructor Destroy; override;
     procedure reset; override;
-    function Execute(const source: string): TSyntaxTokenArray; override;
   end;
 
 const
@@ -148,7 +152,7 @@ begin
       if FPos > startPos then
         begin
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
         FPos := endPos + 1;
         end;
       ProcessEntity(endPos);
@@ -158,14 +162,27 @@ begin
     end;
   endPos := FPos - 1;
   if endPos >= startPos then
-    AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+    AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
+end;
+
+
+procedure THtmlSyntaxHighlighter.ProcessWhiteSpace;
+
+var
+  lStart: Integer;
+begin
+  lStart := FPos;
+  while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9, #10, #13]) do
+    Inc(FPos);
+  if FPos > lStart then
+    AddSourceToken(FSource, lStart, FPos - lStart, shDefault);
 end;
 
 
 procedure THtmlSyntaxHighlighter.ProcessTagOpen(var endPos: Integer);
 
 var
-  startPos, nameStart, nameEnd: Integer;
+  startPos, nameStart, nameEnd, attrStart: Integer;
   tagName, attrName: string;
   quoteChar: Char;
 
@@ -175,10 +192,7 @@ begin
   // Process opening <
   AddToken('<', shSymbol);
   Inc(FPos);
-
-  // Skip whitespace
-  while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9, #10, #13]) do
-    Inc(FPos);
+  ProcessWhiteSpace;
 
   // Process tag name
   nameStart := FPos;
@@ -190,19 +204,20 @@ begin
     nameEnd := FPos - 1;
     tagName := LowerCase(Copy(FSource, nameStart, nameEnd - nameStart + 1));
     FCurrentTag := tagName;
-    AddToken(Copy(FSource, nameStart, nameEnd - nameStart + 1), shKeyword);
+    AddSourceToken(FSource, nameStart, nameEnd - nameStart + 1, shKeyword);
     end;
 
   // Process attributes
   while (FPos <= FSourceLen) and (FSource[FPos] <> '>') do
     begin
+    attrStart := FPos;
     // Skip whitespace
     while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9, #10, #13]) do
       begin
       startPos := FPos;
       while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9, #10, #13]) do
         Inc(FPos);
-      AddToken(Copy(FSource, startPos, FPos - startPos), shDefault);
+      AddSourceToken(FSource, startPos, FPos - startPos, shDefault);
       end;
     if (FPos <= FSourceLen) and (FSource[FPos] = '>') then
       break;
@@ -220,7 +235,7 @@ begin
 
     if FPos > startPos then
       begin
-      attrName := Copy(FSource, startPos, FPos - startPos);
+      attrName := SourceText(FSource, startPos, FPos - startPos);
       if attrName = 'style' then
         AddToken(attrName, shDefault, CategoryHTMLStyleAttr)
       else
@@ -230,7 +245,7 @@ begin
     // Skip whitespace around =
     while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9]) do
       begin
-      AddToken(FSource[FPos], shDefault);
+      AddSourceToken(FSource, FPos, 1, shDefault);
       Inc(FPos);
       end;
 
@@ -243,7 +258,7 @@ begin
       // Skip whitespace after =
       while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9]) do
         begin
-        AddToken(FSource[FPos], shDefault);
+        AddSourceToken(FSource, FPos, 1, shDefault);
         Inc(FPos);
         end;
 
@@ -263,14 +278,20 @@ begin
         if (attrName = 'style') and (FPos > startPos + 2) then
           begin
           // Delegate CSS content to CSS highlighter (excluding quotes)
-          AddToken(FSource[startPos], shSymbol); // Opening quote
+          AddSourceToken(FSource, startPos, 1, shSymbol); // Opening quote
           if FPos > startPos + 2 then
-            AddToken(Copy(FSource, startPos + 1, FPos - startPos - 2), shDefault, TCssSyntaxHighlighter.CategoryEmbeddedCSS);
-          AddToken(FSource[FPos - 1], shSymbol); // Closing quote
+            AddSourceToken(FSource, startPos + 1, FPos - startPos - 2, shDefault, TCssSyntaxHighlighter.CategoryEmbeddedCSS);
+          AddSourceToken(FSource, FPos - 1, 1, shSymbol); // Closing quote
           end
         else
-          AddToken(Copy(FSource, startPos, FPos - startPos), shStrings);
+          AddSourceToken(FSource, startPos, FPos - startPos, shStrings);
       end;
+      end;
+    // A character that starts no attribute, such as < or ", is a token of its own
+    if FPos = attrStart then
+      begin
+      AddSourceToken(FSource, FPos, 1, shDefault);
+      Inc(FPos);
       end;
     end;
 
@@ -304,10 +325,7 @@ begin
   // Process </
   AddToken('</', shSymbol);
   Inc(FPos, 2);
-
-  // Skip whitespace
-  while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9, #10, #13]) do
-    Inc(FPos);
+  ProcessWhiteSpace;
 
   // Process tag name
   nameStart := FPos;
@@ -317,12 +335,9 @@ begin
   if FPos > nameStart then
     begin
     nameEnd := FPos - 1;
-    AddToken(Copy(FSource, nameStart, nameEnd - nameStart + 1), shKeyword);
+    AddSourceToken(FSource, nameStart, nameEnd - nameStart + 1, shKeyword);
     end;
-
-  // Skip whitespace
-  while (FPos <= FSourceLen) and (FSource[FPos] in [' ', #9, #10, #13]) do
-    Inc(FPos);
+  ProcessWhiteSpace;
 
   // Process closing >
   if (FPos <= FSourceLen) and (FSource[FPos] = '>') then
@@ -344,9 +359,9 @@ var
 begin
   startPos := FPos;
 
-  while (FPos + 2 <= FSourceLen) do
+  while (FPos <= FSourceLen) do
     begin
-    if (FSource[FPos] = '-') and (FSource[FPos + 1] = '-') and (FSource[FPos + 2] = '>') then
+    if (FPos + 2 <= FSourceLen) and (FSource[FPos] = '-') and (FSource[FPos + 1] = '-') and (FSource[FPos + 2] = '>') then
       begin
       Inc(FPos, 3);
       FState := hsText;
@@ -356,7 +371,7 @@ begin
     end;
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shComment, CategoryHTMLComment);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shComment, CategoryHTMLComment);
 end;
 
 
@@ -372,7 +387,7 @@ begin
   if (FPos <= FSourceLen) and (FSource[FPos] = '>') then
     Inc(FPos);
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDirective);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shDirective);
   FState := hsText;
 end;
 
@@ -385,9 +400,9 @@ var
 begin
   startPos := FPos;
 
-  while (FPos + 2 <= FSourceLen) do
+  while (FPos <= FSourceLen) do
     begin
-    if (FSource[FPos] = ']') and (FSource[FPos + 1] = ']') and (FSource[FPos + 2] = '>') then
+    if (FPos + 2 <= FSourceLen) and (FSource[FPos] = ']') and (FSource[FPos + 1] = ']') and (FSource[FPos + 2] = '>') then
       begin
       Inc(FPos, 3);
       FState := hsText;
@@ -397,7 +412,18 @@ begin
     end;
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shRawString);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shRawString);
+end;
+
+
+// Emit a token of an embedded JavaScript or CSS highlighter
+procedure THtmlSyntaxHighlighter.EmbeddedToken(Sender: TObject; const aToken: TSyntaxToken);
+
+var
+  lToken: TSyntaxToken;
+begin
+  lToken := aToken;
+  EmitToken(lToken);
 end;
 
 
@@ -406,34 +432,15 @@ procedure THtmlSyntaxHighlighter.ProcessScript(var endPos: Integer);
 var
   startPos: Integer;
   scriptContent: string;
-  jsTokens: TSyntaxTokenArray;
-  i: Integer;
 
 begin
   startPos := FPos;
-
-  // Find </script>
-  while (FPos + 8 <= FSourceLen) do
-    begin
-    if (LowerCase(Copy(FSource, FPos, 9)) = '</script>') then
-      break;
-    Inc(FPos);
-    end;
-
+  FPos := FindEndTag('</script>');
   endPos := FPos - 1;
   if endPos >= startPos then
     begin
     scriptContent := Copy(FSource, startPos, endPos - startPos + 1);
-
-    if Trim(scriptContent) <> '' then
-      begin
-      // Delegate to JavaScript highlighter
-      jsTokens := FJsHighlighter.Execute(scriptContent);
-
-      // Add JavaScript tokens with EmbeddedJS category
-      for i := 0 to High(jsTokens) do
-        FTokens.AddToken(jsTokens[i]);
-      end;
+    FJsHighlighter.Execute(scriptContent, @EmbeddedToken);
     end;
 
   FState := hsText;
@@ -444,33 +451,15 @@ procedure THtmlSyntaxHighlighter.ProcessStyle(var endPos: Integer);
 var
   startPos: Integer;
   styleContent: string;
-  cssTokens: TSyntaxTokenArray;
-  i: Integer;
 
 begin
   startPos := FPos;
-
-  // Find </style>
-  while (FPos + 7 <= FSourceLen) do
-    begin
-    if (LowerCase(Copy(FSource, FPos, 8)) = '</style>') then
-      break;
-    Inc(FPos);
-    end;
-
+  FPos := FindEndTag('</style>');
   endPos := FPos - 1;
   if endPos >= startPos then
     begin
     styleContent := Copy(FSource, startPos, endPos - startPos + 1);
-
-    if Trim(styleContent) <> '' then
-      begin
-      // Delegate to CSS highlighter
-      cssTokens := FCssHighlighter.Execute(styleContent);
-      // Add CSS tokens with EmbeddedCSS category
-      for i := 0 to High(cssTokens) do
-        FTokens.AddToken(cssTokens[i]);
-      end;
+    FCssHighlighter.Execute(styleContent, @EmbeddedToken);
     end;
   FState := hsText;
 end;
@@ -506,7 +495,7 @@ begin
     Inc(FPos);
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shEscape);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shEscape);
 end;
 
 
@@ -525,8 +514,55 @@ end;
 function THtmlSyntaxHighlighter.PeekString(const s: string): Boolean;
 
 begin
-  Result := (FPos + Length(s) - 1 <= FSourceLen) and
-            (LowerCase(Copy(FSource, FPos, Length(s))) = LowerCase(s));
+  Result := MatchAt(FPos, s);
+end;
+
+
+// Compare the source at aPos with aValue, ASCII case-insensitive
+function THtmlSyntaxHighlighter.MatchAt(aPos: Integer; const aValue: string): Boolean;
+
+var
+  I: Integer;
+  lSource, lValue: Char;
+begin
+  if aPos + Length(aValue) - 1 > FSourceLen then
+    Exit(False);
+  for I := 1 to Length(aValue) do
+    begin
+    lSource := FSource[aPos + I - 1];
+    lValue := aValue[I];
+    if lSource <> lValue then
+      begin
+      if lSource in ['A'..'Z'] then
+        lSource := Chr(Ord(lSource) + 32);
+      if lValue in ['A'..'Z'] then
+        lValue := Chr(Ord(lValue) + 32);
+      if lSource <> lValue then
+        Exit(False);
+      end;
+    end;
+  Result := True;
+end;
+
+
+// Position of aTag, which starts with '<', at or after FPos; FSourceLen + 1 if not found
+function THtmlSyntaxHighlighter.FindEndTag(const aTag: string): Integer;
+
+var
+  lOffset: SizeInt;
+begin
+  Result := FPos;
+  while Result + Length(aTag) - 1 <= FSourceLen do
+    begin
+    lOffset := IndexByte(FSource[Result], FSourceLen - Result + 1, Ord('<'));
+    if lOffset < 0 then
+      Break;
+    Inc(Result, lOffset);
+    if MatchAt(Result, aTag) then
+      Exit;
+    Inc(Result);
+    end;
+  Result := FSourceLen + 1;
 end;
 
 
@@ -573,15 +609,13 @@ begin
 end;
 
 
-function THtmlSyntaxHighlighter.Execute(const source: string): TSyntaxTokenArray;
+procedure THtmlSyntaxHighlighter.DoExecute(const source: string);
 var
   endPos: Integer;
 begin
-  Result:=[];
   FSourceLen:=Length(source);
   if FSourceLen=0 then
     Exit;
-  FTokens.Reset;
   FSource := source;
   FPos := 1;
   endpos:=0;
@@ -637,7 +671,6 @@ begin
     if FPos = endPos then
       Inc(FPos);
     end;
-  Result := FTokens.GetTokens;
 end;
 
 

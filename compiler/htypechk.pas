@@ -174,6 +174,11 @@ interface
 
     function isbinaryoperatoroverloadable(treetyp:tnodetype;ld:tdef;lt:tnodetype;rd:tdef;rt:tnodetype) : boolean;
     function isoperatoracceptable(pf : tprocdef; optoken : ttoken) : boolean;
+    { marks the Boolean parameters named RangeCheck and OverflowCheck that end
+      the parameter list of the operator pf as hidden: a call passes the range
+      and overflow checking state in effect where it is made. Returns the
+      number of parameters before them }
+    function markoperatorcheckparas(pf : tprocdef) : longint;
     function isunaryoverloaded(var t : tnode;ocf:toverload_check_flags) : boolean;
     function isbinaryoverloaded(var t : tnode;ocf:toverload_check_flags) : boolean;
 
@@ -620,20 +625,13 @@ implementation
       end;
 
 
-    function isoperatoracceptable(pf : tprocdef; optoken : ttoken) : boolean;
+    function markoperatorcheckparas(pf : tprocdef) : longint;
       var
-        ld,rd : tdef;
-        i : longint;
-        eq : tequaltype;
-        conv : tconverttype;
-        cdo : tcompare_defs_options;
-        pd : tprocdef;
         oldcount,
         count: longint;
         sym : tsym;
         parasym : tparavarsym absolute sym;
       begin
-        result:=false;
         count := pf.parast.SymList.count;
 
         oldcount:=count;
@@ -666,6 +664,22 @@ implementation
           end;
         if count<>oldcount then
           pf.calcparas;
+        result:=count;
+      end;
+
+
+    function isoperatoracceptable(pf : tprocdef; optoken : ttoken) : boolean;
+      var
+        ld,rd : tdef;
+        i : longint;
+        eq : tequaltype;
+        conv : tconverttype;
+        cdo : tcompare_defs_options;
+        pd : tprocdef;
+        count: longint;
+      begin
+        result:=false;
+        count:=markoperatorcheckparas(pf);
 
         case count of
           1 : begin
@@ -2225,9 +2239,6 @@ implementation
       begin
         FIgnoredCandidateProcs.free;
         FIgnoredCandidateProcs := nil;
-        { free any symbols for anonymous parameter types that we're used for
-          specialization when no specialization was picked }
-        TFPList.FreeAndNilObjects(FParaAnonSyms);
         hp:=FCandidateProcs;
         while assigned(hp) do
          begin
@@ -2250,6 +2261,10 @@ implementation
            dispose(hp);
            hp:=hpnext;
          end;
+        { free any symbols for anonymous parameter types that were used for
+          specialization when no specialization was picked; the discarded
+          specializations above still name them as their generic parameters }
+        free_unnamed_symbols(FParaAnonSyms);
       end;
 
 

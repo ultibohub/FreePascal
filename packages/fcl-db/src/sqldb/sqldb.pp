@@ -698,6 +698,8 @@ type
     property MaxIndexesCount;
    // TDataset stuff
     property FieldDefs;
+    // True: object fields have child fields; False: array elements and object members are top-level fields
+    property ObjectView default True;
     Property Active;
     Property AutoCalcFields;
     Property Filter;
@@ -1858,11 +1860,11 @@ function TSQLConnection.GetStatementInfo(const ASQL: string): TSQLStatementInfo;
 type
   TParsePart = (ppStart,ppWith,ppSelect,ppTableName,ppFrom,ppWhere,ppGroup,ppOrder,ppDDLObject,ppDDLName,ppBogus);
   TPhraseSeparator = (sepNone, sepWhiteSpace, sepComma, sepComment, sepParentheses, sepDoubleQuote, sepEnd);
-  TKeyword = (kwWITH, kwSELECT, kwINSERT, kwUPDATE, kwDELETE, kwFROM, kwJOIN, kwWHERE, kwGROUP, kwORDER, kwUNION, kwROWS, kwLIMIT, kwUnknown);
+  TKeyword = (kwWITH, kwSELECT, kwINSERT, kwUPDATE, kwDELETE, kwFROM, kwJOIN, kwWHERE, kwGROUP, kwORDER, kwUNION, kwROWS, kwLIMIT, kwFETCH, kwUnknown);
 
 const
   KeywordNames: array[TKeyword] of string =
-    ('WITH', 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'JOIN', 'WHERE', 'GROUP', 'ORDER', 'UNION', 'ROWS', 'LIMIT', '');
+    ('WITH', 'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'FROM', 'JOIN', 'WHERE', 'GROUP', 'ORDER', 'UNION', 'ROWS', 'LIMIT', 'FETCH', '');
 
 var
   PSQL, CurrentP, SavedP,
@@ -2023,7 +2025,7 @@ begin
                        ParsePart := ppFrom;
                      end;
           ppFrom   : begin
-                     if (Keyword in [kwWHERE, kwGROUP, kwORDER, kwLIMIT, kwROWS]) or
+                     if (Keyword in [kwWHERE, kwGROUP, kwORDER, kwLIMIT, kwROWS, kwFETCH]) or
                         (Separator = sepEnd) then
                        begin
                        case Keyword of
@@ -2045,7 +2047,7 @@ begin
                        end;
                      end;
           ppWhere  : begin
-                     if (Keyword in [kwGROUP, kwORDER, kwLIMIT, kwROWS]) or
+                     if (Keyword in [kwGROUP, kwORDER, kwLIMIT, kwROWS, kwFETCH]) or
                         (Separator = sepEnd) then
                        begin
                        ParsePart := ppBogus;
@@ -2246,6 +2248,8 @@ end;
 procedure TSQLConnection.AddFieldToUpdateWherePart(var sql_where : string;UpdateMode : TUpdateMode; F : TField);
 
 begin
+  if (F.FieldKind = fkInternalCalc) or (F.FieldDefListIndex >= 0) then
+    Exit;
   if (pfInKey in F.ProviderFlags)
      or ((UpdateMode = upWhereAll) and (pfInWhere in F.ProviderFlags))
      or ((UpdateMode = UpWhereChanged) and (pfInWhere in F.ProviderFlags) and (F.Value <> F.OldValue)) then
@@ -2280,7 +2284,8 @@ begin
   for x := 0 to Query.Fields.Count -1 do
     begin
     F:=Query.Fields[x];
-    if (not F.IsNull) and (pfInUpdate in F.ProviderFlags) and (not F.ReadOnly) then
+    if (not F.IsNull) and (pfInUpdate in F.ProviderFlags) and (not F.ReadOnly) and (F.FieldKind <> fkInternalCalc)
+       and (F.FieldDefListIndex < 0) then
       begin
       sql_fields := sql_fields + FieldNameQuoteChars[0] + F.FieldName + FieldNameQuoteChars[1] + ',';
       sql_values := sql_values + ':"' + F.FieldName + '",';
@@ -2322,7 +2327,8 @@ begin
     begin
     F:=Query.Fields[x];
     AddFieldToUpdateWherePart(sql_where,Query.UpdateMode,F);
-    if (pfInUpdate in F.ProviderFlags) and (not F.ReadOnly) then
+    if (pfInUpdate in F.ProviderFlags) and (not F.ReadOnly) and (F.FieldKind <> fkInternalCalc)
+       and (F.FieldDefListIndex < 0) then
       sql_set := sql_set +FieldNameQuoteChars[0] + F.FieldName + FieldNameQuoteChars[1] +'=:"' + F.FieldName + '",';
     if ReturningClause and NeedFieldRefresh(F,ukModify) then
       returning_fields := returning_fields + FieldNameQuoteChars[0] + F.FieldName + FieldNameQuoteChars[1] + ',';
@@ -3427,6 +3433,7 @@ begin
             end;
       end;
     end;
+  AddInternalCalcFieldDefs;
   BindFields(True);
 
   if not ReadOnly and not FUpdateable and (FSchemaType=stNoSchema) then

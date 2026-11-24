@@ -1319,7 +1319,13 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
 
                     dynarrdef:=datatcb.end_dynarray_const(def,dyncount,dyncountloc,llofs);
 
-                    ftcb.finish_internal_data_builder(datatcb,ll,dynarrdef,sizeof(pint));
+                    { aligned as the elements are, not only to a pointer -- up
+                      to the size of the header (reference count and high
+                      bound) they follow in the same block, which is as far as
+                      aligning the block start can take them, and as far as an
+                      array allocated at run time takes them too }
+                    ftcb.finish_internal_data_builder(datatcb,ll,dynarrdef,
+                      const_align(max(sizeof(pint),min(def.elementdef.alignment,ptrsinttype.size+sizesinttype.size))));
 
                     ftcb.emit_dynarray_offset(llofs,dyncount,def,trecorddef(dynarrdef));
                   end;
@@ -1340,7 +1346,6 @@ function get_next_varsym(def: tabstractrecorddef; const SymList:TFPHashObjectLis
           begin
             ftcb.maybe_begin_aggregate(def);
             oldoffset:=curoffset;
-            curoffset:=0;
             { in case of a generic subroutine, it might be we cannot
               determine the size yet }
             if assigned(current_procinfo) and (df_generic in current_procinfo.procdef.defoptions) then

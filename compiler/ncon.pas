@@ -1119,12 +1119,33 @@ implementation
       begin
         if def.typ<>stringdef then
           internalerror(200510011);
+        { a literal assigned to a shortstring in a module whose strings do not use the source code page
+          (a UTF-8 signature and the system code page): convert it through unicode }
+        if (tstringdef(def).stringtype in [st_shortstring,st_longstring]) and
+           (cst_type=cst_conststring) and
+           (ansiconversioncodepage<>current_settings.sourcecodepage) then
+          begin
+            changestringtype(cunicodestringtype);
+            changestringtype(def);
+            exit;
+          end;
         { convert ascii 2 unicode }
         if (tstringdef(def).stringtype in [st_widestring,st_unicodestring]) and
            not(cst_type in [cst_widestring,cst_unicodestring]) then
           begin
+            if cst_type in [cst_shortstring,cst_longstring] then
+              cp1:=ansiconversioncodepage
+            else
+              cp1:=current_settings.sourcecodepage;
+            { an ansistring constant is in its own code page }
+            if cst_type=cst_ansistring then
+              begin
+                cp2:=tstringdef(resultdef).encoding;
+                if (cp2<>0) and (cp2<>globals.CP_NONE) then
+                  cp1:=cp2;
+              end;
             initwidestring(valuews);
-            ascii2unicode(asconstpchar,len,current_settings.sourcecodepage,valuews);
+            ascii2unicode(asconstpchar,len,cp1,valuews);
           end
         else
           { convert unicode 2 ascii }
@@ -1133,7 +1154,7 @@ implementation
             begin
               cp1:=tstringdef(def).encoding;
               if (cp1=globals.CP_NONE) or (cp1=0) then
-                cp1:=current_settings.sourcecodepage;
+                cp1:=ansiconversioncodepage;
               if (cp1=CP_UTF8) then
                 begin
                   l2:=len;
@@ -1166,7 +1187,9 @@ implementation
                   if cp2=0 then
                     cp2:=current_settings.sourcecodepage;
                 end
-              else if (cst_type in [cst_shortstring,cst_conststring,cst_longstring]) then
+              else if (cst_type in [cst_shortstring,cst_longstring]) then
+                cp2:=ansiconversioncodepage
+              else if (cst_type=cst_conststring) then
                 cp2:=current_settings.sourcecodepage
               else
                 internalerror(2013112916);

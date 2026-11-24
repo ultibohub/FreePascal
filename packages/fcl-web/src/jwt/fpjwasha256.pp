@@ -21,6 +21,7 @@ Type
   TJWTSignerHS256 = Class(TJWTSigner)
   Public
     Class function AlgorithmName : String; override;
+    Class function KeyType : TJWTKeyType; override;
     Function CreateSignature(aJWT : TJWT; aKey : TJWTKey) : String; override;
     Function Verify(const aJWT : String; aKey : TJWTKey) : Boolean; override;
   end;
@@ -28,9 +29,9 @@ Type
 implementation
 
 {$IFDEF FPC_DOTTEDUNITS}
-uses System.Hash.Sha256, Fcl.BaseNEnc;
+uses System.Hash.Sha256, Fcl.BaseNEnc, System.StrUtils;
 {$ELSE FPC_DOTTEDUNITS}
-uses fpsha256, basenenc;
+uses fpsha256, basenenc, strutils;
 {$ENDIF FPC_DOTTEDUNITS}
 
 Const
@@ -43,6 +44,11 @@ Const
 class function TJWTSignerHS256.AlgorithmName: String;
 begin
   Result:='HS256';
+end;
+
+class function TJWTSignerHS256.KeyType: TJWTKeyType;
+begin
+  Result:=jktSecret;
 end;
 
 function TJWTSignerHS256.CreateSignature(aJWT: TJWT; aKey: TJWTKey): String;
@@ -75,7 +81,7 @@ begin
   if Not TSHA256.HMAC(aKey.AsPointer,aKey.Length,PByte(B),Length(B),aDigest) then
     exit;
   S2:=Base64URL.Encode(@aDigest[0],Length(aDigest),False);
-  Result:=(S2=S);
+  Result:=SecureCompare(S2,S);
 end;
 
 initialization

@@ -338,6 +338,12 @@ implementation
                         tcb.emit_procdef_const(def);
                         maybe_add_comment(tcb,#9'Attribute table');
                         write_attribute_data(tcb,def.rtti_attribute_list);
+                      end
+                    else
+                      begin
+                        { an interface's method }
+                        maybe_add_comment(tcb,#9'Attribute table');
+                        write_attribute_data(tcb,def.rtti_attribute_list);
                       end;
 
                     for k:=0 to def.paras.count-1 do
@@ -568,6 +574,9 @@ implementation
 
         maybe_add_comment(tcb,#9'locs');
         write_paralocs(tcb,@para.paraloc[callerside]);
+
+        maybe_add_comment(tcb,#9'attribute table');
+        write_attribute_data(tcb,para.rtti_attribute_list);
 
         tcb.end_anonymous_record;
         maybe_add_comment(tcb,'RTTI: end param '+para.prettyname);

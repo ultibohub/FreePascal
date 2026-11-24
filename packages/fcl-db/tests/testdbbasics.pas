@@ -59,6 +59,10 @@ type
     procedure TestCanModifySpecialFields;
     // FullName of plain fields and of fields with parent fields (bug 8200)
     procedure TestFieldFullName;
+    // FieldDefList and FieldList of an open dataset (bug 8208)
+    procedure TestFlatLists;
+    // FieldList follows added fields, renamed fields and parent fields (bug 8208)
+    procedure TestFieldListChanges;
     // Tests TField.AutoGenerateValue default, setter and streaming
     procedure TestFieldAutoGenerateValue;
 
@@ -85,9 +89,16 @@ type
 {$ifdef fpc}
   TTestBufDatasetDBBasics = class(TDBBasicsTestCase)
   private
+    FInternalCalcCount : Integer;
     procedure FTestXMLDatasetDefinition(ADataset : TDataset);
     procedure TestAddIndexFieldType(AFieldType : TFieldType; ActiveDS : boolean);
+    procedure DoInternalCalcFields(DataSet: TDataSet);
+    procedure DoOddIDFilter(DataSet: TDataSet; var Accept: Boolean);
   published
+    // RecNo and setting RecNo on a filtered query while records are still being fetched
+    procedure TestRecNoFilteredPartialFetch;
+    // Persistent fkInternalCalc field on a server query: computed on fetch, stored, not sent to the server.
+    procedure TestInternalCalcField;
     procedure TestFileNameProperty;
     procedure TestClientDatasetAsMemDataset;
     procedure TestSaveAsXML;
@@ -161,6 +172,10 @@ type
     procedure TestLookup;
 
     procedure TestOnFilter;
+    // RecordCount with Filter, OnFilterRecord, after append, delete and filter changes (bug 12238)
+    procedure TestRecordCountFiltered;
+    // RecNo and setting RecNo on a filtered dataset, after append, delete and index changes
+    procedure TestRecNoFiltered;
     procedure TestIntFilter; //Integer range filter
     procedure TestNegativeIntFilter; //Negative integer filter; bug 25168
 {$ifdef fpc}
@@ -1458,6 +1473,142 @@ begin
     end;
 end;
 
+procedure TTestCursorDBBasics.TestRecordCountFiltered;
+
+var
+  lDS : TDataSet;
+  lCount : Integer;
+
+begin
+  lDS := DBConnector.GetNDataset(True,10);
+  if not (lDS is TCustomBufDataset) then
+    Ignore('This test only applies to TCustomBufDataset and descendents.');
+  with lDS do
+    begin
+    Open;
+    CheckEquals(10, RecordCount, 'RecordCount without filter');
+    Filter := 'ID>5';
+    Filtered := True;
+    CheckEquals(5, RecordCount, 'RecordCount with Filter ID>5');
+    lCount := 0;
+    First;
+    while not EOF do
+      begin
+      Inc(lCount);
+      Next;
+      end;
+    CheckEquals(5, lCount, 'Records visited with Filter ID>5');
+    Filter := '';
+    OnFilterRecord := TestOnFilterProc;
+    CheckEquals(5, RecordCount, 'RecordCount with OnFilterRecord accepting odd IDs');
+    Append;
+    FieldByName('ID').AsInteger := 11;
+    FieldByName('NAME').AsString := 'TestName11';
+    Post;
+    CheckEquals(6, RecordCount, 'RecordCount after appending an accepted record');
+    Append;
+    FieldByName('ID').AsInteger := 12;
+    FieldByName('NAME').AsString := 'TestName12';
+    Post;
+    CheckEquals(6, RecordCount, 'RecordCount after appending a rejected record');
+    First;
+    CheckEquals(1, FieldByName('ID').AsInteger, 'First accepted record');
+    Delete;
+    CheckEquals(5, RecordCount, 'RecordCount after deleting an accepted record');
+    Filter := 'ID>5';
+    CheckEquals(3, RecordCount, 'RecordCount with Filter ID>5 and OnFilterRecord');
+    Filtered := False;
+    CheckEquals(11, RecordCount, 'RecordCount after Filtered:=False');
+    Filtered := True;
+    OnFilterRecord := nil;
+    CheckEquals(7, RecordCount, 'RecordCount with Filter ID>5 after removing OnFilterRecord');
+    Close;
+    end;
+end;
+
+procedure TTestCursorDBBasics.TestRecNoFiltered;
+
+var
+  lDS : TDataSet;
+  i : Integer;
+
+  // True when setting RecNo to aRecNo raises EDatabaseError
+  function SetRecNoRaises(aRecNo: Integer): Boolean;
+  begin
+    Result := False;
+    try
+      lDS.RecNo := aRecNo;
+    except
+      on EDatabaseError do
+        Result := True;
+    end;
+  end;
+
+begin
+  lDS := DBConnector.GetNDataset(True,10);
+  if not (lDS is TCustomBufDataset) then
+    Ignore('This test only applies to TCustomBufDataset and descendents.');
+  with lDS do
+    begin
+    OnFilterRecord := TestOnFilterProc;
+    Filtered := True;
+    Open;
+    for i := 1 to 5 do
+      begin
+      CheckEquals(i, RecNo, 'RecNo scrolling forward');
+      CheckEquals(2*i-1, FieldByName('ID').AsInteger, 'ID scrolling forward');
+      Next;
+      end;
+    CheckTrue(EOF, 'EOF after 5 accepted records');
+    Last;
+    for i := 5 downto 1 do
+      begin
+      CheckEquals(i, RecNo, 'RecNo scrolling backward');
+      Prior;
+      end;
+    RecNo := 3;
+    CheckEquals(5, FieldByName('ID').AsInteger, 'ID after RecNo:=3');
+    CheckEquals(3, RecNo, 'RecNo after RecNo:=3');
+    CheckTrue(SetRecNoRaises(0), 'RecNo:=0 raises');
+    CheckTrue(SetRecNoRaises(RecordCount+1), 'RecNo:=RecordCount+1 raises');
+    Append;
+    FieldByName('ID').AsInteger := 11;
+    FieldByName('NAME').AsString := 'TestName11';
+    Post;
+    CheckEquals(6, RecNo, 'RecNo of an appended accepted record');
+    Append;
+    FieldByName('ID').AsInteger := 12;
+    FieldByName('NAME').AsString := 'TestName12';
+    Post;
+    CheckEquals(6, RecordCount, 'RecordCount after appending a rejected record');
+    Last;
+    CheckEquals(6, RecNo, 'RecNo of the last accepted record');
+    First;
+    Delete;
+    CheckEquals(3, FieldByName('ID').AsInteger, 'ID after deleting the first record');
+    CheckEquals(1, RecNo, 'RecNo after deleting the first record');
+    CheckEquals(5, RecordCount, 'RecordCount after deleting the first record');
+    TCustomBufDataset(lDS).IndexFieldNames := 'ID DESC';
+    First;
+    CheckEquals(11, FieldByName('ID').AsInteger, 'First ID with descending index');
+    CheckEquals(1, RecNo, 'RecNo of the first record with descending index');
+    RecNo := 2;
+    CheckEquals(9, FieldByName('ID').AsInteger, 'ID after RecNo:=2 with descending index');
+    Last;
+    CheckEquals(5, RecNo, 'RecNo of the last record with descending index');
+    TCustomBufDataset(lDS).IndexFieldNames := '';
+    First;
+    CheckEquals(3, FieldByName('ID').AsInteger, 'First ID with the default index');
+    Filtered := False;
+    First;
+    CheckEquals(2, FieldByName('ID').AsInteger, 'First ID without filter');
+    RecNo := 3;
+    CheckEquals(4, FieldByName('ID').AsInteger, 'ID after RecNo:=3 without filter');
+    CheckEquals(3, RecNo, 'RecNo without filter');
+    Close;
+    end;
+end;
+
 procedure TTestCursorDBBasics.TestIntFilter;
 // Tests an integer range filter expression
 var
@@ -1909,6 +2060,118 @@ begin
     ReadOnly:=true;
     CheckFalse(CanModify);
     end;
+end;
+
+procedure TTestBufDatasetDBBasics.DoInternalCalcFields(DataSet: TDataSet);
+
+begin
+  if DataSet.State = dsInternalCalc then
+    begin
+    Inc(FInternalCalcCount);
+    DataSet.FieldByName('DOUBLEID').AsInteger := DataSet.FieldByName('ID').AsInteger * 2;
+    end;
+end;
+
+
+procedure TTestBufDatasetDBBasics.DoOddIDFilter(DataSet: TDataSet; var Accept: Boolean);
+
+begin
+  Accept := Odd(DataSet.FieldByName('ID').AsInteger);
+end;
+
+
+procedure TTestBufDatasetDBBasics.TestRecNoFilteredPartialFetch;
+
+var
+  lDS : TCustomBufDataset;
+  i : Integer;
+
+begin
+  lDS := DBConnector.GetNDataset(35) as TCustomBufDataset;
+  lDS.PacketRecords := 2;
+  lDS.OnFilterRecord := DoOddIDFilter;
+  lDS.Filtered := True;
+  lDS.Open;
+  for i := 1 to 18 do
+    begin
+    CheckEquals(i, lDS.RecNo, 'RecNo while fetching');
+    CheckEquals(2*i-1, lDS.FieldByName('ID').AsInteger, 'ID while fetching');
+    lDS.Next;
+    end;
+  CheckTrue(lDS.EOF, 'EOF after 18 accepted records');
+  lDS.Close;
+  lDS.Open;
+  lDS.Next;
+  lDS.Next;
+  CheckEquals(3, lDS.RecNo, 'RecNo after two Next calls');
+  lDS.RecNo := 15;
+  CheckEquals(29, lDS.FieldByName('ID').AsInteger, 'ID after RecNo:=15 beyond the fetched records');
+  CheckEquals(15, lDS.RecNo, 'RecNo after RecNo:=15');
+  lDS.Prior;
+  CheckEquals(14, lDS.RecNo, 'RecNo after Prior');
+  lDS.Next;
+  lDS.Next;
+  lDS.Next;
+  lDS.Next;
+  CheckEquals(18, lDS.RecNo, 'RecNo of the last accepted record');
+  CheckEquals(18, lDS.RecordCount, 'RecordCount after fetching');
+  lDS.Close;
+  lDS.Open;
+  CheckEquals(1, lDS.RecNo, 'RecNo after reopening');
+  CheckEquals(18, lDS.RecordCount, 'RecordCount after reopening');
+  lDS.Last;
+  CheckEquals(18, lDS.RecNo, 'RecNo of the last record after RecordCount');
+  lDS.Close;
+end;
+
+
+procedure TTestBufDatasetDBBasics.TestInternalCalcField;
+
+var
+  lDS : TCustomBufDataset;
+  lFld : TField;
+  i, lCount : Integer;
+
+begin
+  lDS := DBConnector.GetNDataset(True,5) as TCustomBufDataset;
+  lDS.FieldDefs.Update;
+  lFld := TIntegerField.Create(lDS);
+  lFld.FieldName := lDS.FieldDefs.Find('ID').Name;
+  lFld.DataSet := lDS;
+  lFld := TStringField.Create(lDS);
+  lFld.FieldName := lDS.FieldDefs.Find('NAME').Name;
+  lFld.DataSet := lDS;
+  lFld := TIntegerField.Create(lDS);
+  lFld.FieldName := 'DOUBLEID';
+  lFld.FieldKind := fkInternalCalc;
+  lFld.DataSet := lDS;
+  if lDS is TSQLQuery then
+    TSQLQuery(lDS).UpdateMode := upWhereAll;
+  FInternalCalcCount := 0;
+  lDS.OnCalcFields := DoInternalCalcFields;
+  lDS.Open;
+  CheckTrue(lDS.FieldDefs.Find('DOUBLEID').InternalCalcField, 'Field definition DOUBLEID is an internal calc field');
+  for i := 1 to 5 do
+    begin
+    CheckEquals(i*2, lDS.FieldByName('DOUBLEID').AsInteger, 'Internal calc value of fetched record '+IntToStr(i));
+    lDS.Next;
+    end;
+  CheckTrue(lDS.EOF, 'EOF after 5 records');
+  lCount := FInternalCalcCount;
+  lDS.First;
+  lDS.Last;
+  lDS.First;
+  CheckEquals(lCount, FInternalCalcCount, 'Scrolling does not recalculate internal calc fields');
+  lDS.Edit;
+  lDS.FieldByName('NAME').AsString := 'Changed';
+  lDS.Post;
+  CheckEquals(2, lDS.FieldByName('DOUBLEID').AsInteger, 'Internal calc value after post');
+  lDS.ApplyUpdates;
+  lDS.Close;
+  lDS.Open;
+  CheckEquals('Changed', lDS.FieldByName('NAME').AsString, 'Applied update of NAME');
+  CheckEquals(2, lDS.FieldByName('DOUBLEID').AsInteger, 'Internal calc value after reopen');
+  lDS.Close;
 end;
 
 procedure TTestBufDatasetDBBasics.TestMergeChangeLog;
@@ -3185,6 +3448,8 @@ var ds    : TDataset;
     lds   : TDataset;
     fld   : TField;
 begin
+  if DBConnector.TestUniDirectional and not DBConnector.SupportsConcurrentResultSets then
+    Ignore('The unidirectional lookup dataset keeps unread rows, and this connection cannot run another query meanwhile');
   lds := DBConnector.GetNDataset(10);
   ds := DBConnector.GetNDataset(5);
   with ds do
@@ -3250,8 +3515,10 @@ procedure TTestDBBasics.TestFieldFullName;
 
 var
   lParent, lChild: TObjectField;
+  lArray: TArrayField;
   lLeaf: TIntegerField;
   lRaised: Boolean;
+  lOwner: TComponent;
 
 begin
   with DBConnector.GetNDataset(1) do
@@ -3271,6 +3538,8 @@ begin
     lChild.ParentField:=lParent;
     lLeaf.ParentField:=lChild;
     CheckSame(lChild, lLeaf.ParentField, 'ParentField after assignment');
+    CheckEquals(1, lParent.FieldCount, 'Child fields of the parent field');
+    CheckSame(lChild, lParent.Fields[0], 'Child field in the Fields of the parent field');
     CheckEquals('ADDRESS.STREET.NUMBER', lLeaf.FullName, 'FullName with two parent fields');
     lRaised:=False;
     try
@@ -3281,14 +3550,116 @@ begin
     end;
     CheckTrue(lRaised, 'Circular parent field raises EDatabaseError');
     CheckNull(lParent.ParentField, 'ParentField after circular assignment');
+    lChild.ParentField:=nil;
+    CheckEquals(0, lParent.FieldCount, 'Child fields of the parent field after clearing ParentField');
+    CheckEquals('STREET.NUMBER', lLeaf.FullName, 'FullName after removing the top parent field');
     FreeAndNil(lParent);
-    CheckNull(lChild.ParentField, 'ParentField after freeing the parent field');
-    CheckEquals('STREET.NUMBER', lLeaf.FullName, 'FullName after freeing the top parent field');
     lLeaf.ParentField:=nil;
     CheckEquals('NUMBER', lLeaf.FullName, 'FullName after clearing ParentField');
   finally
     lLeaf.Free;
     lChild.Free;
+    lParent.Free;
+  end;
+  lOwner:=TComponent.Create(nil);
+  try
+    lParent:=TADTField.Create(nil);
+    lParent.FieldName:='REC';
+    lArray:=TArrayField.Create(lOwner);
+    lArray.FieldName:='ARR';
+    lArray.ParentField:=lParent;
+    lLeaf:=TIntegerField.Create(lOwner);
+    lLeaf.FieldName:='ARR[0]';
+    lLeaf.ParentField:=lArray;
+    CheckEquals('REC.ARR[0]', lLeaf.FullName, 'FullName of an array element in an object field');
+    lArray.ParentField:=nil;
+    CheckEquals('ARR[0]', lLeaf.FullName, 'FullName of an array element');
+    lArray.ParentField:=lParent;
+    CheckEquals(2, lOwner.ComponentCount, 'Components before freeing the parent field');
+    lParent.Free;
+    CheckEquals(0, lOwner.ComponentCount, 'Freeing a parent field frees its child fields');
+  finally
+    lOwner.Free;
+  end;
+end;
+
+procedure TTestDBBasics.TestFlatLists;
+
+var
+  i: Integer;
+  lRaised: Boolean;
+
+begin
+  with DBConnector.GetNDataset(1) do
+    begin
+    Open;
+    CheckEquals(FieldDefs.Count, FieldDefList.Count, 'FieldDefList.Count');
+    for i:=0 to FieldDefs.Count-1 do
+      begin
+      CheckSame(FieldDefs[i], FieldDefList[i], 'FieldDefList entry '+IntToStr(i));
+      CheckEquals(FieldDefs[i].Name, FieldDefList.Strings[i], 'FieldDefList name '+IntToStr(i));
+      end;
+    CheckSame(FieldDefs.Find('ID'), FieldDefList.FieldByName('id'), 'FieldDefList.FieldByName ignores case');
+    CheckNull(FieldDefList.Find('NOSUCHFIELD'), 'FieldDefList.Find of a missing name');
+    CheckEquals(Fields.Count, FieldList.Count, 'FieldList.Count');
+    for i:=0 to Fields.Count-1 do
+      CheckSame(Fields[i], FieldList[i], 'FieldList entry '+IntToStr(i));
+    CheckSame(FieldByName('ID'), FieldList.FieldByName('ID'), 'FieldList.FieldByName');
+    CheckNull(FieldList.Find('NOSUCHFIELD'), 'FieldList.Find of a missing name');
+    lRaised:=False;
+    try
+      FieldList.FieldByName('NOSUCHFIELD');
+    except
+      on EDatabaseError do
+        lRaised:=True;
+    end;
+    CheckTrue(lRaised, 'FieldList.FieldByName of a missing name raises EDatabaseError');
+    Close;
+    i:=FieldDefList.Count;
+    FieldDefs.Add('EXTRA', ftInteger);
+    CheckEquals(i+1, FieldDefList.Count, 'FieldDefList.Count after adding a field definition');
+    CheckSame(FieldDefs.Find('EXTRA'), FieldDefList.Find('EXTRA'), 'Added field definition');
+    FieldDefs.Find('EXTRA').Name:='EXTRA2';
+    CheckSame(FieldDefs.Find('EXTRA2'), FieldDefList.Find('EXTRA2'), 'Renamed field definition');
+    FieldDefs.Find('EXTRA2').Free;
+    CheckEquals(i, FieldDefList.Count, 'FieldDefList.Count after freeing a field definition');
+    CheckNull(FieldDefList.Find('EXTRA2'), 'Freed field definition');
+    end;
+end;
+
+procedure TTestDBBasics.TestFieldListChanges;
+
+var
+  lDS: TDataSet;
+  lParent: TObjectField;
+  lLeaf: TIntegerField;
+  lCount: Integer;
+
+begin
+  lDS:=DBConnector.GetNDataset(1);
+  lParent:=nil;
+  lLeaf:=nil;
+  try
+    lCount:=lDS.FieldList.Count;
+    lParent:=TObjectField.Create(nil);
+    lParent.FieldName:='ADDRESS';
+    lParent.DataSet:=lDS;
+    lLeaf:=TIntegerField.Create(nil);
+    lLeaf.FieldName:='NUMBER';
+    lLeaf.DataSet:=lDS;
+    CheckEquals(lCount+2, lDS.FieldList.Count, 'FieldList.Count after adding two fields');
+    CheckSame(lLeaf, lDS.FieldList.FieldByName('NUMBER'), 'Added field');
+    lLeaf.FieldName:='HOUSENUMBER';
+    CheckNull(lDS.FieldList.Find('NUMBER'), 'Old name after renaming');
+    CheckSame(lLeaf, lDS.FieldList.Find('HOUSENUMBER'), 'New name after renaming');
+    lLeaf.ParentField:=lParent;
+    CheckSame(lLeaf, lDS.FieldList.Find('ADDRESS.HOUSENUMBER'), 'Full name after setting ParentField');
+    CheckNull(lDS.FieldList.Find('HOUSENUMBER'), 'Name without parent after setting ParentField');
+    FreeAndNil(lLeaf);
+    CheckEquals(lCount+1, lDS.FieldList.Count, 'FieldList.Count after freeing a field');
+    CheckNull(lDS.FieldList.Find('ADDRESS.HOUSENUMBER'), 'Freed field');
+  finally
+    lLeaf.Free;
     lParent.Free;
   end;
 end;

@@ -21,9 +21,9 @@ interface
 
 uses
   {$IFDEF FPC_DOTTEDUNITS}
-  System.Types, System.SysUtils, syntax.highlighter;
+  System.Types, System.SysUtils, syntax.highlighter, syntax.table;
   {$ELSE}
-  types, sysutils, syntax.highlighter;
+  types, sysutils, syntax.highlighter, syntax.table;
   {$ENDIF}
 
 type
@@ -34,6 +34,10 @@ type
   private
     FSource: string;
     FPos: integer;
+    // True if a comment starts at FPos
+    function IsCommentStart: boolean;
+    // True if the word END, in any case, starts at FPos
+    function IsAsmEnd: boolean;
   protected
     procedure CheckCategories;
     procedure ProcessComment1(var endPos: integer; akind : TSyntaxHighlightKind);
@@ -48,7 +52,8 @@ type
     class var
        CategoryPascal,
        CategoryIdentifier : Integer;
-    function Execute(const Source: string): TSyntaxTokenArray; override;
+  protected
+    procedure DoExecute(const Source: string); override;
   end;
 
 function DoPascalHighlighting(const Source: string): TSyntaxTokenArray;
@@ -81,7 +86,8 @@ const
     'WHILE', 'WITH',
     'XOR');
 
-  KeywordAsmIndex = 2;
+var
+  PascalKeywords: TSyntaxWordTable;
 
 
   { TPascalSyntaxHighlighter }
@@ -107,7 +113,7 @@ begin
   if (FPos <= Length(FSource)) and (FSource[FPos] = '}') then
     Inc(FPos);
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), aKind);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, aKind);
 end;
 
 procedure TPascalSyntaxHighlighter.ProcessComment2(var endPos: integer);
@@ -125,7 +131,7 @@ begin
   else
     FPos := Length(FSource) + 1;
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shComment);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shComment);
 end;
 
 function TPascalSyntaxHighlighter.CheckForComment(var endPos: integer): boolean;
@@ -153,11 +159,31 @@ begin
     while (FPos <= Length(FSource)) and (FSource[FPos] <> #10) and (FSource[FPos] <> #13) do
       Inc(FPos);
     endPos := FPos - 1;
-    AddToken(Copy(FSource, startPos, endPos - startPos + 1), shComment);
+    AddSourceToken(FSource, startPos, endPos - startPos + 1, shComment);
     end
   else
     Result := False;
 end;
+
+function TPascalSyntaxHighlighter.IsCommentStart: boolean;
+
+begin
+  Result := (FPos <= Length(FSource))
+            and ((FSource[FPos] = '{')
+                 or ((FPos < Length(FSource)) and (FSource[FPos] = '(') and (FSource[FPos + 1] = '*'))
+                 or ((FPos < Length(FSource)) and (FSource[FPos] = '/') and (FSource[FPos + 1] = '/')));
+end;
+
+
+function TPascalSyntaxHighlighter.IsAsmEnd: boolean;
+
+begin
+  Result := (FPos + 2 <= Length(FSource))
+            and (UpCase(FSource[FPos]) = 'E') and (UpCase(FSource[FPos + 1]) = 'N')
+            and (UpCase(FSource[FPos + 2]) = 'D')
+            and ((FPos + 3 > Length(FSource)) or not (FSource[FPos + 3] in ['0'..'9', 'A'..'Z', 'a'..'z', '_']));
+end;
+
 
 procedure TPascalSyntaxHighlighter.ProcessAsm(var endPos: integer);
 var
@@ -168,32 +194,32 @@ begin
   lastChar := ' ';
   while FPos <= Length(FSource) do
     begin
-    if (lastChar in [' ', #9, #10, #13]) and
-      (FPos + 2 <= Length(FSource)) and
-      (UpCase(FSource[FPos]) = 'E') and (UpCase(FSource[FPos + 1]) = 'N') and
-      (UpCase(FSource[FPos + 2]) = 'D') then
+    if (lastChar in [' ', #9, #10, #13]) and IsAsmEnd then
       begin
-      endPos := FPos - 1;
-      if endPos >= startPos then
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shAssembler);
-      AddToken('END', shKeyword);
+      if FPos > startPos then
+        AddSourceToken(FSource, startPos, FPos - startPos, shAssembler);
+      AddSourceToken(FSource, FPos, 3, shKeyword);
       Inc(FPos, 3);
+      endPos := FPos - 1;
       Exit;
+      end;
+    if IsCommentStart then
+      begin
+      if FPos > startPos then
+        AddSourceToken(FSource, startPos, FPos - startPos, shAssembler);
+      CheckForComment(endPos);
+      startPos := FPos;
+      lastChar := ' ';
       end
     else
       begin
-      if CheckForComment(endPos) then
-        lastChar := ' '
-      else
-        begin
-        lastChar := FSource[FPos];
-        Inc(FPos);
-        end;
+      lastChar := FSource[FPos];
+      Inc(FPos);
       end;
     end;
   endPos := FPos - 1;
-  if endPos >= startPos then
-    AddToken(Copy(FSource, startPos, endPos - startPos + 1), shAssembler);
+  if FPos > startPos then
+    AddSourceToken(FSource, startPos, FPos - startPos, shAssembler);
 end;
 
 function TPascalSyntaxHighlighter.CheckForKeyword(var endPos: integer): boolean;
@@ -202,8 +228,8 @@ const
   IdentifierChars = ['0'..'9', 'A'..'Z', 'a'..'z', '_'];
 
 var
-  i, lIdx: integer;
-  keyword, ukeyword: string;
+  i: integer;
+  lIsAsm: boolean;
 
 begin
   i := 0;
@@ -211,25 +237,15 @@ begin
         and (i < MaxKeywordLength)
         and (FSource[FPos + i] in IdentifierChars) do
     Inc(i);
-  keyword := Copy(FSource, FPos, i);
-  ukeyword := UpperCase(keyword);
-
-  Result := False;
-  lIdx:=MaxKeyWord;
-  While (Not Result) and (lIdx>=0) do
-    begin
-    Result:=KeywordTable[lIdx] = ukeyword;
-    Dec(lIdx);
-    end;
-
+  Result := PascalKeywords.Lookup(PChar(Pointer(FSource)) + FPos - 1, i) = shKeyword;
   if not Result then
     Exit;
-
-  Inc(lIdx); // Index of actual keyword
+  lIsAsm := (i = 3) and (UpCase(FSource[FPos]) = 'A') and (UpCase(FSource[FPos + 1]) = 'S')
+            and (UpCase(FSource[FPos + 2]) = 'M');
+  AddSourceToken(FSource, FPos, i, shKeyword);
   Inc(FPos,i);
   endPos:=FPos - 1;
-  AddToken(keyword,shKeyword);
-  if lIdx=KeywordAsmIndex then
+  if lIsAsm then
     ProcessAsm(endPos);
 end;
 
@@ -243,7 +259,7 @@ begin
   else
     Inc(FPos);
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shSymbol);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shSymbol);
 end;
 
 class function TPascalSyntaxHighlighter.GetLanguages: TStringDynArray;
@@ -258,20 +274,18 @@ begin
   DefaultCategory:=CategoryPascal;
 end;
 
-function TPascalSyntaxHighlighter.Execute(const Source: string): TSyntaxTokenArray;
+procedure TPascalSyntaxHighlighter.DoExecute(const Source: string);
 var
   endPos: integer;
   StringLength: integer;
   lLen,startPos: integer;
   ch: char;
 begin
-  Result:=Nil;
   CheckCategories;
   if Length(Source) = 0 then
     Exit;
   FSource:=Source;
   lLen:=Length(FSource);
-  FTokens.Reset;
   FPos := 1;
   EndPos:=0;
   while FPos <= llen do
@@ -296,7 +310,7 @@ begin
         while (FPos <= Length(FSource)) and (FSource[FPos] >= '0') and (FSource[FPos] <= '9') do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shCharacters);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shCharacters);
         end;
       '$':
         begin
@@ -305,7 +319,7 @@ begin
         while (FPos <= Length(FSource)) and (FSource[FPos] in ['0'..'9', 'A'..'F', 'a'..'f']) do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shNumbers);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shNumbers);
         end;
       '0'..'9':
         begin
@@ -314,7 +328,7 @@ begin
         while (FPos <= Length(FSource)) and (FSource[FPos] >= '0') and (FSource[FPos] <= '9') do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shNumbers);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shNumbers);
         end;
       '''':
         begin
@@ -342,11 +356,11 @@ begin
           end;
         endPos := FPos - 1;
         if StringLength = 1 then
-          AddToken(Copy(FSource, startPos, endPos - startPos + 1), shCharacters)
+          AddSourceToken(FSource, startPos, endPos - startPos + 1, shCharacters)
         else if (FPos > Length(FSource)) and (FSource[endPos] <> '''') then
-          AddToken(Copy(FSource, startPos, endPos - startPos + 1), shInvalid)
+          AddSourceToken(FSource, startPos, endPos - startPos + 1, shInvalid)
         else
-          AddToken(Copy(FSource, startPos, endPos - startPos + 1), shStrings);
+          AddSourceToken(FSource, startPos, endPos - startPos + 1, shStrings);
         end;
       '_', 'A'..'Z', 'a'..'z':
         begin
@@ -356,7 +370,7 @@ begin
           while (FPos <= Length(FSource)) and (FSource[FPos] in ['0'..'9', '_', 'A'..'Z', 'a'..'z']) do
             Inc(FPos);
           endPos := FPos - 1;
-          AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+          AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
           end;
         end;
       ' ', #9, #10, #13:
@@ -365,16 +379,15 @@ begin
         while (FPos <= Length(FSource)) and (FSource[FPos] in [' ', #9, #10, #13]) do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
         end;
       else
-        AddToken(ch, shInvalid);
+        AddSourceToken(FSource, FPos, 1, shInvalid);
         Inc(FPos);
       end;
     if FPos = endPos then
       Inc(FPos);
   end;
-  Result := FTokens.GetTokens;
 end;
 
 function DoPascalHighlighting(const Source: string): TSyntaxTokenArray;
@@ -392,6 +405,21 @@ begin
 end;
 
 
+// Fill PascalKeywords from KeywordTable
+procedure CreatePascalKeywords;
+
+var
+  I: Integer;
+begin
+  PascalKeywords := TSyntaxWordTable.Create(False);
+  for I := 0 to MaxKeyword do
+    PascalKeywords.AddWords(KeywordTable[I], shKeyword);
+end;
+
+
 initialization
+  CreatePascalKeywords;
   TPascalSyntaxHighlighter.Register;
+finalization
+  FreeAndNil(PascalKeywords);
 end.

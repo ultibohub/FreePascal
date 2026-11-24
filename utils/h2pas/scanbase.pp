@@ -40,6 +40,8 @@ var
    commentstr: string;
    // The number of conditional directives written: the text between two of them is one conditional section.
    CondSection : longint = 0;
+   // Calling convention of a -M macro read in the current declaration: cdecl, stdcall or empty.
+   PendingCallConv : AnsiString = '';
 
 const
    in_define : boolean = false;
@@ -80,8 +82,11 @@ Procedure HandleDeref;
 Procedure HandleCallingConvention(aCC : Integer);
 Procedure HandlePalmPilotCallingConvention;
 Procedure HandleIllegalCharacter;
-// Skips the parenthesized argument of __attribute__, __declspec or __asm__.
+// Skips __attribute__, __declspec or __asm__ with its parenthesized argument, writing it as comment;
+// returns _PACKED for a packed attribute after a struct or union body.
 Procedure HandleSkipParenthesized;
+// Skips a C23 attribute [[...]] like HandleSkipParenthesized.
+Procedure HandleC23Attribute;
 // Counts the brace nesting: aOpen for {, otherwise for }.
 Procedure HandleBrace(aOpen : Boolean);
 // Returns the defines met inside braces to the input, after a semicolon outside braces.
@@ -104,6 +109,12 @@ Procedure HandlePreProcStripConditional(isEnd : Boolean);
 Procedure EnterCplusPlus;
 // Returns the C preprocessor condition aText as FPC $if expression, or aText without comments when it cannot be translated.
 function TranslateCondition(const aText : string) : string;
+// Returns the record alignment set by #pragma pack: C or a number.
+function CurrentPackRecords : string;
+// Registers aName as a define without value.
+procedure AddEmptyDefine(const aName : AnsiString);
+// Returns true when aName is a define without value.
+function IsEmptyDefine(const aName : AnsiString) : boolean;
 
 procedure openInputfile;
 
@@ -117,8 +128,13 @@ uses
 
 const
   MaxPackDepth = 32;
+  MaxBraceDepth = 64;
+
+function ReadDefineName(const aText : AnsiString; out aPos : integer) : AnsiString; forward;
 
 var
+  // Names of the defines without value, such as calling convention macros.
+  EmptyDefines : TStringList = nil;
   CondText : string;
   CondPos : integer;
   CondToken : string;
@@ -130,6 +146,12 @@ var
   // Brace nesting outside defines, and the text of the defines met inside braces.
   BraceDepth : integer = 0;
   PendingDefines : AnsiString = '';
+  // STRUCT or UNION when the identifier just returned follows that keyword, 0 otherwise.
+  PendingAggregate : integer = 0;
+  // Per brace level: the brace opened a struct or union body.
+  BraceAggregate : array[1..MaxBraceDepth] of boolean;
+  // The last closing brace ended a struct or union body.
+  ClosedAggregate : boolean = false;
 
 procedure openInputfile;
 
@@ -761,7 +783,18 @@ end;
 
 Procedure HandlePreProcUndef;
 
+var
+  lName : AnsiString;
+  lPos, lIndex : integer;
+
 begin
+  lName:=ReadDefineName(PeekLine,lPos);
+  if assigned(EmptyDefines) then
+    begin
+    lIndex:=EmptyDefines.IndexOf(lName);
+    if lIndex>=0 then
+      EmptyDefines.Delete(lIndex);
+    end;
   write(outfile,'{$undef');
   copy_until_eol;
   writeln(outfile,'}');
@@ -1071,24 +1104,27 @@ begin
 end;
 
 
-// Returns true when the body of the define aText (the text after #define) consists of declaration keywords only:
-// storage classes, qualifiers, calling conventions and attributes; aName is the name of the macro.
-function IsKeywordDefine(const aText : AnsiString; out aName : AnsiString) : boolean;
+// Returns true when the body of the define aText (the text after #define) consists of declaration keywords
+// (storage classes, qualifiers, calling conventions and attributes) and defines without value only;
+// aName is the name of the macro, aEmptyDefines the number of defines without value, aWords the number of words.
+function IsKeywordDefine(const aText : AnsiString; out aName : AnsiString; out aEmptyDefines, aWords : integer) : boolean;
 
 const
-  MaxKeywords = 17;
+  MaxKeywords = 19;
   Keywords : array[1..MaxKeywords] of string = (
     'extern','static','inline','__inline','__inline__','const','volatile','register','__extension__',
-    '__cdecl','__stdcall','__fastcall','__declspec','__attribute__','__attribute','__asm__','__asm');
+    '__cdecl','_cdecl','__stdcall','_stdcall','__fastcall','__declspec','__attribute__','__attribute','__asm__','__asm');
 
 var
   i, j, lDepth : integer;
   lWord : AnsiString;
-  lFound, lKnown : boolean;
+  lFound, lKnown, lAfterKeyword : boolean;
 
 begin
   Result:=false;
-  aName:='';
+  lAfterKeyword:=false;
+  aEmptyDefines:=0;
+  aWords:=0;
   aName:=ReadDefineName(aText,i);
   if (i<=length(aText)) and (aText[i]='(') then
     exit;
@@ -1103,8 +1139,9 @@ begin
       '(' :
         begin
         (* the argument of __declspec or __attribute__ *)
-        if not lFound then
+        if not lAfterKeyword then
           exit;
+        lAfterKeyword:=false;
         lDepth:=0;
         repeat
           if aText[i]='(' then
@@ -1127,8 +1164,15 @@ begin
       for j:=1 to MaxKeywords do
         if lWord=Keywords[j] then
           lKnown:=true;
+      lAfterKeyword:=lKnown;
+      if not lKnown and IsEmptyDefine(lWord) then
+        begin
+        lKnown:=true;
+        inc(aEmptyDefines);
+        end;
       if not lKnown then
         exit;
+      inc(aWords);
       lFound:=true;
     end;
     end;
@@ -1185,10 +1229,10 @@ end;
 function IsKeywordNameDefine(const aText : AnsiString; out aName : AnsiString) : boolean;
 
 const
-  MaxNames = 22;
+  MaxNames = 24;
   Names : array[1..MaxNames] of string = (
     'STDCALL','CDECL','PASCAL','PACKED','WINAPI','SYS_TRAP','WINGDIAPI','CALLBACK','EXPENTRY','VOID','CONST',
-    'FAR','far','NEAR','near','HUGE','huge','int8','int16','int32','int64','__stdcall');
+    'FAR','far','NEAR','near','HUGE','huge','int8','int16','int32','int64','__stdcall','_stdcall','_cdecl');
 
 var
   lParams, lBody : AnsiString;
@@ -1200,6 +1244,21 @@ begin
   for i:=1 to MaxNames do
     if aName=Names[i] then
       exit(true);
+end;
+
+
+// Returns true when the define aText has neither parameters nor body, as #define API; aName is the name of the macro.
+function IsValuelessDefine(const aText : AnsiString; out aName : AnsiString) : boolean;
+
+var
+  lText, lParams, lBody : AnsiString;
+  i : integer;
+
+begin
+  lText:=JoinContinuations(aText);
+  ReadDefineName(lText,i);
+  SplitDefine(aText,aName,lParams,lBody);
+  Result:=(aName<>'') and (lBody='') and not ((i<=length(lText)) and (lText[i]='('));
 end;
 
 
@@ -1261,9 +1320,16 @@ begin
   if in_define then
     exit;
   if aOpen then
-    inc(BraceDepth)
+    begin
+    inc(BraceDepth);
+    if BraceDepth<=MaxBraceDepth then
+      BraceAggregate[BraceDepth]:=(yyretval=STRUCT) or (yyretval=UNION) or ((yyretval=ID) and (PendingAggregate<>0));
+    end
   else if BraceDepth>0 then
+    begin
+    ClosedAggregate:=(BraceDepth<=MaxBraceDepth) and BraceAggregate[BraceDepth];
     dec(BraceDepth);
+    end;
 end;
 
 
@@ -1287,6 +1353,7 @@ Procedure HandlePreProcDefine;
 
 var
   lText, lName, lReason : AnsiString;
+  lEmptyDefines, lWords : integer;
 
 begin
   if SkipInCPlusBlock then
@@ -1307,10 +1374,25 @@ begin
     lReason:='define of the keyword '+lName
   else if IsEmptyBodyDefine(lText,lName) then
     lReason:='macro '+lName+' with an empty body'
-  else if IsKeywordDefine(lText,lName) then
-    lReason:='macro '+lName+' with declaration keywords'
+  else if IsKeywordDefine(lText,lName,lEmptyDefines,lWords) and not ((lEmptyDefines=1) and (lWords=1)) then
+    begin
+    AddEmptyDefine(lName);
+    if lEmptyDefines=0 then
+      lReason:='macro '+lName+' with declaration keywords'
+    else
+      begin
+      (* only defines without value and keywords, as #define EXPORT_CALL EXPORT CALL *)
+      writeln(outfile,'{$define ',lName,'}');
+      SkipDefine;
+      exit;
+      end;
+    end
   else
+    begin
     lReason:='';
+    if IsValuelessDefine(lText,lName) then
+      AddEmptyDefine(lName);
+    end;
   if lReason<>'' then
     begin
     if not stripinfo then
@@ -1352,9 +1434,32 @@ end;
 
 Procedure HandleIdentifier;
 
+var
+  lIndex : integer;
+
 begin
   if SkipInCPlusBlock then
     exit;
+  if not in_define then
+    begin
+    (* a calling convention macro of -M is no token *)
+    lIndex:=-1;
+    if assigned(CallConvMacros) then
+      lIndex:=CallConvMacros.IndexOfName(yytext);
+    if lIndex>=0 then
+      begin
+      if CallConvMacros.ValueFromIndex[lIndex]<>'' then
+        PendingCallConv:=CallConvMacros.ValueFromIndex[lIndex];
+      exit;
+      end;
+    (* a define without value expands to nothing *)
+    if IsEmptyDefine(yytext) then
+      exit;
+    end;
+  if (yyretval=STRUCT) or (yyretval=UNION) then
+    PendingAggregate:=yyretval
+  else
+    PendingAggregate:=0;
   if in_space_define=1 then
     in_space_define:=2;
   return(ID);
@@ -1394,14 +1499,93 @@ begin
     return(SYS_TRAP);
 end;
 
+// Returns true when the attribute text aText contains packed or __packed__;
+// aOthers is true when it also names other attributes.
+function IsPackedAttribute(const aText : AnsiString; out aOthers : boolean) : boolean;
+
+var
+  i : integer;
+  lWord : AnsiString;
+
+begin
+  Result:=false;
+  aOthers:=false;
+  i:=1;
+  while i<=length(aText) do
+    if aText[i] in IdentChars then
+      begin
+      lWord:='';
+      while (i<=length(aText)) and (aText[i] in IdentChars) do
+        begin
+        lWord:=lWord+aText[i];
+        inc(i);
+        end;
+      if (lWord='packed') or (lWord='__packed__') then
+        Result:=true
+      else if (lWord<>'gnu') and (lWord<>'__attribute__') and (lWord<>'__attribute') then
+        aOthers:=true;
+      end
+    else
+      inc(i);
+end;
+
+
+// Writes the attribute text aText as comment, unless info is stripped or a define is read.
+procedure WriteIgnoredAttribute(const aText : AnsiString);
+
+var
+  lText : AnsiString;
+
+begin
+  if stripinfo or in_define then
+    exit;
+  lText:=StringReplace(StringReplace(aText,'(*','( *',[rfReplaceAll]),'*)','* )',[rfReplaceAll]);
+  writeln(outfile,aktspace,'(* ',lText,' ignored *)');
+end;
+
+
+// Returns _PACKED for the packed attribute aText after a struct or union body, writes aText as comment otherwise.
+procedure HandleAttributeText(const aText : AnsiString);
+
+var
+  lOthers : boolean;
+
+begin
+  if (yyretval=RGKLAMMER) and ClosedAggregate and IsPackedAttribute(aText,lOthers) then
+    begin
+    if lOthers then
+      WriteIgnoredAttribute(aText);
+    return(_PACKED);
+    end
+  else
+    WriteIgnoredAttribute(aText);
+end;
+
+
+// Appends the character aChar to aText, with one space for a run of white space.
+procedure AddAttributeChar(var aText : AnsiString; aChar : char);
+
+begin
+  if aChar in [' ',#9,#13,newline,'\'] then
+    begin
+    if (aText<>'') and (aText[length(aText)]<>' ') then
+      aText:=aText+' ';
+    end
+  else
+    aText:=aText+aChar;
+end;
+
+
 Procedure HandleSkipParenthesized;
 
 var
   lDepth : integer;
+  lText : AnsiString;
 
 begin
   if SkipInCPlusBlock then
     exit;
+  lText:=yytext;
   repeat
     c:=get_char;
   until not ((c in [' ',#9]) or ((c=newline) and not in_define));
@@ -1410,6 +1594,7 @@ begin
     unget_char(c);
     exit;
     end;
+  lText:=lText+'(';
   lDepth:=1;
   repeat
     c:=get_char;
@@ -1418,7 +1603,35 @@ begin
       ')' : Dec(lDepth);
       #0 : lDepth:=0;
     end;
+    if c<>#0 then
+      AddAttributeChar(lText,c);
   until lDepth=0;
+  HandleAttributeText(lText);
+end;
+
+
+Procedure HandleC23Attribute;
+
+var
+  lDepth : integer;
+  lText : AnsiString;
+
+begin
+  if SkipInCPlusBlock then
+    exit;
+  lText:='[[';
+  lDepth:=2;
+  repeat
+    c:=get_char;
+    case c of
+      '[' : Inc(lDepth);
+      ']' : Dec(lDepth);
+      #0 : lDepth:=0;
+    end;
+    if c<>#0 then
+      AddAttributeChar(lText,c);
+  until lDepth=0;
+  HandleAttributeText(lText);
 end;
 
 
@@ -1429,4 +1642,35 @@ begin
    return(256);
 end;
 
+
+function CurrentPackRecords : string;
+
+begin
+  Result:=PackCurrent;
+end;
+
+
+procedure AddEmptyDefine(const aName : AnsiString);
+
+begin
+  if not assigned(EmptyDefines) then
+    begin
+    EmptyDefines:=TStringList.Create;
+    EmptyDefines.CaseSensitive:=true;
+    EmptyDefines.Sorted:=true;
+    EmptyDefines.Duplicates:=dupIgnore;
+    end;
+  EmptyDefines.Add(aName);
+end;
+
+
+function IsEmptyDefine(const aName : AnsiString) : boolean;
+
+begin
+  Result:=assigned(EmptyDefines) and (EmptyDefines.IndexOf(aName)>=0);
+end;
+
+
+finalization
+  EmptyDefines.Free;
 end.

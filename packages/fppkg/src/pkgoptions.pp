@@ -159,6 +159,8 @@ Type
     FOptions: TFppkgOptions;
     // Only used for logging
     FOptionCache: TStringList;
+    // The File and FileMask entries as Key=Value lines, written by SaveToStrings
+    FEntries: TStringList;
     FCurrentDir: String;
 
     procedure IncludeFile(AFileName: string);
@@ -170,6 +172,8 @@ Type
     destructor Destroy; override;
     procedure SaveToStrings(AStrings: TStrings); override;
     procedure AddKeyValue(const AKey, AValue: string); override;
+    // Add a FileMask entry that is saved, without including the matching files.
+    procedure AddFileMask(const AFileMask: string);
     procedure LogValues(ALogLevel: TLogLevel); override;
     function AllowDuplicate: Boolean; override;
   end;
@@ -218,6 +222,9 @@ Type
 
     procedure BindToCompilerOptions(ACompilerOptions: TCompilerOptions);
     procedure AddRepositoriesForCompilerSettings(ACompilerOptions: TCompilerOptions);
+    // Add the "fpc" and "user" repositories and the IncludeFiles section of a newly generated configuration,
+    // as fpcmkcfg does. Without ACompilerOptions the "fpc" repository is left out.
+    procedure AddDefaultRepositories(ACompilerOptions: TCompilerOptions);
     function AddRepositoryOptionSection(ASectionClass: TFppkgRepositoryOptionSectionClass): TFppkgRepositoryOptionSection;
     function AddIncludeFilesOptionSection(AFileMask: string): TFppkgIncludeFilesOptionSection;
     property PreferGlobal : Boolean Read FPreferGlobal Write FPreferGLobal;
@@ -248,6 +255,7 @@ Type
     procedure SetOptString(Index: integer; const AValue: String);
     procedure SetCompilerCPU(const AValue: TCPU);
     procedure SetCompilerOS(const AValue: TOS);
+    procedure DetectGlobalInstallation;
   Public
     Constructor Create;
     Destructor Destroy; override;
@@ -388,7 +396,15 @@ end;
 procedure TFppkgIncludeFilesOptionSection.SaveToStrings(AStrings: TStrings);
 begin
   AStrings.Add('['+KeyIncludeFilesSection+']');
-  AddKeyValueToStrings(AStrings, KeyIncludeFileMask, FCurrentDir);
+  AStrings.AddStrings(FEntries);
+end;
+
+
+procedure TFppkgIncludeFilesOptionSection.AddFileMask(const AFileMask: string);
+
+begin
+  FEntries.Add(KeyIncludeFileMask+'='+AFileMask);
+  FOptionCache.Append(SLogIncludeFileMask + '=' + AFileMask);
 end;
 
 constructor TFppkgIncludeFilesOptionSection.Create(AnOptionParser: TTemplateParser;
@@ -398,10 +414,12 @@ begin
   FOptions := AnOptions;
   FCurrentDir := ACurrentDir;
   FOptionCache := TStringList.Create;
+  FEntries := TStringList.Create;
 end;
 
 destructor TFppkgIncludeFilesOptionSection.Destroy;
 begin
+  FEntries.Free;
   FOptionCache.Free;
   inherited Destroy;
 end;
@@ -410,11 +428,13 @@ procedure TFppkgIncludeFilesOptionSection.AddKeyValue(const AKey, AValue: string
 begin
   if SameText(AKey,KeyIncludeFile) then
     begin
+      FEntries.Add(KeyIncludeFile+'='+AValue);
       FOptionCache.Append(SLogIncludeFile + '=' + AValue);
       IncludeFile(AValue);
     end
   else if SameText(AKey,KeyIncludeFileMask) then
     begin
+      FEntries.Add(KeyIncludeFileMask+'='+AValue);
       FOptionCache.Append(SLogIncludeFileMask + '=' + AValue);
       IncludeFileMask(AValue);
     end;
@@ -758,6 +778,7 @@ begin
   AddKeyValueToStrings(AStrings, KeyRemoteRepository, RemoteRepository);
   AddKeyValueToStrings(AStrings, KeyLocalRepository, LocalRepository);
   AddKeyValueToStrings(AStrings, KeyArchivesDir, ArchivesDir);
+  AddKeyValueToStrings(AStrings, KeyInstallRepository, InstallRepository);
   AddKeyValueToStrings(AStrings, KeyCustomFPMakeOptions, CustomFPMakeOptions);
 end;
 
@@ -978,6 +999,36 @@ begin
     end;
 end;
 
+procedure TFppkgOptions.AddDefaultRepositories(ACompilerOptions: TCompilerOptions);
+
+var
+  lSection: TFppkgRepositoryOptionSection;
+
+begin
+  if Assigned(ACompilerOptions) then
+    begin
+    lSection := AddRepositoryOptionSection(TFppkgRepositoryOptionSection);
+    lSection.RepositoryName:='fpc';
+    lSection.Description:='Packages which are installed along with the Free Pascal Compiler';
+    // {GlobalPrefix} is a compiler-configuration value, unknown in fppkg.cfg; {CompilerVersion} is kept
+    lSection.Path:=StringReplace(ACompilerOptions.FGlobalInstallDir,'{GlobalPrefix}',ACompilerOptions.GlobalPrefix,[rfReplaceAll,rfIgnoreCase]);
+    lSection.Prefix:=ACompilerOptions.GlobalPrefix;
+    end;
+  // same mask as the fpcmkcfg template, with the unparsed CompilerConfigDir
+  AddIncludeFilesOptionSection(GlobalSection.FCompilerConfigDir+'conf.d'+PathDelim+'*.conf');
+  lSection := AddRepositoryOptionSection(TFppkgRepositoryOptionSection);
+  lSection.RepositoryName:='user';
+  lSection.Description:='User-installed packages';
+{$ifdef windows}
+  lSection.Path:='{LocalRepository}';
+{$else}
+  lSection.Path:='{LocalRepository}lib'+PathDelim+'fpc'+PathDelim+'{CompilerVersion}'+PathDelim;
+{$endif}
+  lSection.Prefix:='{LocalRepository}';
+  GlobalSection.InstallRepository:='user';
+end;
+
+
 function TFppkgOptions.AddRepositoryOptionSection(ASectionClass: TFppkgRepositoryOptionSectionClass): TFppkgRepositoryOptionSection;
 begin
   Result := ASectionClass.Create(FOptionParser);
@@ -986,7 +1037,8 @@ end;
 
 function TFppkgOptions.AddIncludeFilesOptionSection(AFileMask: string): TFppkgIncludeFilesOptionSection;
 begin
-  Result := TFppkgIncludeFilesOptionSection.Create(FOptionParser, Self, AFileMask);
+  Result := TFppkgIncludeFilesOptionSection.Create(FOptionParser, Self, GetCurrentDir);
+  Result.AddFileMask(AFileMask);
   FSectionList.Add(Result);
 end;
 
@@ -1124,6 +1176,89 @@ begin
 end;
 
 
+{$ifdef unix}
+// First directory with a units subdirectory: that of aFileName or of a target in its chain of symbolic links; '' if none.
+function FindCompilerInstallDir(const aFileName: string): string;
+
+var
+  lFile: string;
+  lTarget: RawByteString;
+  lCount: Integer;
+
+begin
+  Result:='';
+  lFile:=aFileName;
+  for lCount:=1 to 32 do
+    begin
+    if DirectoryExists(ExtractFilePath(lFile)+'units') then
+      Exit(ExtractFilePath(lFile));
+    if not FileGetSymLinkTarget(lFile,lTarget) then
+      Exit;
+    if Copy(lTarget,1,1)<>'/' then
+      lFile:=ExpandFileName(ExtractFilePath(lFile)+lTarget)
+    else
+      lFile:=lTarget;
+    end;
+end;
+{$endif unix}
+
+
+procedure TCompilerOptions.DetectGlobalInstallation;
+
+var
+  lPrefix: string;
+{$ifdef unix}
+  lBinary, lDir: string;
+  lPos: Integer;
+{$endif unix}
+
+begin
+{$ifdef Unix}
+  // The directory of the real compiler binary holds the units, also for layouts
+  // like Debian's /usr/lib/<triplet>/fpc/<version>/
+  lBinary:=Trim(GetCompilerInfo(FCompiler,'-PB'));
+  if (lBinary='') or not FileExists(lBinary) then
+    lBinary:=FCompiler;
+  if ExtractFilePath(lBinary)='' then
+    lBinary:=ExeSearch(lBinary,GetEnvironmentVariable('PATH'));
+  lDir:='';
+  if lBinary<>'' then
+    lDir:=FindCompilerInstallDir(ExpandFileName(lBinary));
+  if lDir<>'' then
+    begin
+    lPos:=RPos('/lib/',lDir);
+    if lPos>0 then
+      lPrefix:=Copy(lDir,1,lPos)
+    else
+      lPrefix:=lDir;
+    if lDir<>lPrefix+'lib/fpc/'+FCompilerVersion+'/' then
+      begin
+      if (FCompilerVersion<>'') and EndsStr('/'+FCompilerVersion+'/',lDir) then
+        FGlobalInstallDir:=Copy(lDir,1,Length(lDir)-Length(FCompilerVersion)-1)+'{CompilerVersion}/'
+      else
+        FGlobalInstallDir:=lDir;
+      end;
+    end
+  else
+    begin
+    // Fall back to the same algorithm as the compiler, see options.pas
+    lPrefix:='/usr/local/';
+    if not DirectoryExists(lPrefix+'lib/fpc/'+FCompilerVersion+'/') and
+       DirectoryExists('/usr/lib/fpc/'+FCompilerVersion+'/') then
+      lPrefix:='/usr/';
+    end;
+{$else unix}
+  lPrefix:=ExtractFilePath(FCompiler)+'..'+PathDelim;
+  if not(DirectoryExists(lPrefix+PathDelim+'units')) and
+     not(DirectoryExists(lPrefix+PathDelim+'rtl')) then
+    lPrefix:=lPrefix+'..'+PathDelim;
+  lPrefix:=ExpandFileName(lPrefix);
+{$endif unix}
+  // the setter also passes the prefix to the template parser
+  GlobalPrefix:=lPrefix;
+end;
+
+
 procedure TCompilerOptions.InitCompilerDefaults;
 var
   ACompilerVersion: string;
@@ -1143,23 +1278,10 @@ begin
     FCompiler:=GetCompilerInfo(FCompiler,'-PB');
   log(llDebug,SLogDetectedCompiler,[FCompiler,FCompilerVersion,MakeTargetString(FCompilerCPU,FCompilerOS)]);
 
-  // Use the same algorithm as the compiler, see options.pas
-  // Except that the prefix is extracted and GlobalInstallDir is set using
-  // that prefix
-{$ifdef Unix}
-  FGlobalPrefix:='/usr/local/';
-  if not DirectoryExists(FGlobalPrefix+'lib/fpc/'+FCompilerVersion+'/') and
-     DirectoryExists('/usr/lib/fpc/'+FCompilerVersion+'/') then
-    FGlobalPrefix:='/usr/';
-{$else unix}
-  FGlobalPrefix:=ExtractFilePath(FCompiler)+'..'+PathDelim;
-  if not(DirectoryExists(FGlobalPrefix+PathDelim+'units')) and
-     not(DirectoryExists(FGlobalPrefix+PathDelim+'rtl')) then
-    FGlobalPrefix:=FGlobalPrefix+'..'+PathDelim;
-  FGlobalPrefix:=ExpandFileName(FGlobalPrefix);
-{$endif unix}
+  DetectGlobalInstallation;
 
   log(llDebug,SLogDetectedPrefix,['global',FGlobalPrefix]);
+  log(llDebug,SLogDetectedInstallDir,['global',FGlobalInstallDir]);
   // User writable install directory
   if not IsSuperUser then
     begin

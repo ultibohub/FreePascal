@@ -43,6 +43,7 @@ const
   DefaultMaxBodySize = MaxInt;
   DefaultMaxUploadFiles = 256;
   DefaultMaxUploadFileSize = MaxInt;
+  DefaultMaxMimeParts = 10000;
   SFPWebSession  = 'FPWebSession'; // Cookie name for session.
 
 
@@ -277,6 +278,7 @@ type
 
   TMimeItem = Class(TCollectionItem)
   private
+    FUploadAdded : Boolean;
     function GetData: String;
     procedure SetData(AValue: String);
   protected
@@ -287,12 +289,16 @@ type
     function CreateFile(Files: TUploadedFiles): TUploadedFile; virtual;
     Function ProcessHeader(Const AHeader,AValue : String) : Boolean; virtual;
     procedure SaveToFile(const AFileName: String); virtual;
+    // Write the data of the item to aStream
+    procedure SaveToStream(aStream: TStream); virtual;
     function GetIsFile: Boolean; virtual;
     // These must be implemented in descendents;
     function GetDataSize: Int64; virtual; abstract;
     function GetHeader(AIndex: Integer): String; virtual; abstract;
     Procedure SetHeader(AIndex: Integer; Const AValue: String); virtual; abstract;
   Public
+    // Deletes the local file of the item when it was not added to the uploaded files
+    Destructor Destroy; override;
     Procedure ProcessStreaming(const State: TContentStreamingState; const Buf; const Size: Integer); virtual; abstract;
     Procedure Process(Stream : TStream); virtual; abstract;
     Property RawData : TBytes Read FRawData Write FRawData;
@@ -314,6 +320,8 @@ type
     FFiles: TUploadedFiles;
     FPreamble: string;
     function GetP(AIndex : Integer): TMimeItem;
+    // Adds a part; raises a 413 EHTTP when MaxParts is reached
+    Function AddPart : TMimeItem;
   Protected
     Procedure CreateUploadFiles(Files : TUploadedFiles; Vars : TStrings); virtual;
     procedure FormSplit(var Cnt: RawByteString; const boundary: RawByteString); virtual;
@@ -323,6 +331,9 @@ type
     // ProcessStreamingMultiPart
     class function SupportsStreamingProcessing: Boolean; virtual;
     procedure SetBoundary(const AValue: string); virtual;
+  Public
+    // Maximum number of parts in a multipart body, 0 for no limit
+    class var MaxParts : Integer;
   Public
     Function First : TMimeItem;
     Function Last : TMimeItem;
@@ -342,6 +353,8 @@ type
     FCurrentItem: TMimeItem;
     FMimeEndFound: Boolean;
     FAtStart: Boolean;
+    FPreambleData: RawByteString;
+    FPreambleCount: SizeInt;
   protected
     procedure SetBoundary(const AValue: String); override;
     procedure ProcessStreamingMultiPart(const State: TContentStreamingState; const Buf; const Size: Integer); override;
@@ -501,6 +514,8 @@ type
     FStreamingContent: TBytes;
     FStreamingContentRead: Integer;
     FOnStreamEncodingEvent: TOnStreamEncodingEvent;
+    FKeepUploadedFiles: Boolean;
+    FIsEarlyData: Boolean;
     function GetLocalPathPrefix: string;
     function GetFirstHeaderLine: String;
     function GetRP(const AParam : String): String;
@@ -546,6 +561,8 @@ type
     class var MaxBodySize : SizeInt;
   public
     Class Var DefaultRequestUploadDir : String;
+    // Initial value of KeepUploadedFiles
+    Class Var DefaultKeepUploadedFiles : Boolean;
     constructor Create; override;
     destructor destroy; override;
     Function GetNextPathInfo : String;
@@ -560,6 +577,10 @@ type
     Property QueryString : String Index Ord(hvQuery) read GetHTTPVariable Write SetHTTPVariable;
     Property HeaderLine : String read GetFirstHeaderLine;
     Property Files : TUploadedFiles Read FFiles;
+    // When False, the destructor deletes the local files of the uploaded files
+    Property KeepUploadedFiles : Boolean Read FKeepUploadedFiles Write FKeepUploadedFiles;
+    // True when the request arrived as TLS early data (0-RTT)
+    Property IsEarlyData : Boolean Read FIsEarlyData Write FIsEarlyData;
     Property HandleGetOnPost : Boolean Read FHandleGetOnPost Write FHandleGetOnPost;
     Property OnUnknownEncoding : TOnUnknownEncodingEvent Read FOnUnknownEncoding Write FOnUnknownEncoding;
     Property OnStreamEncodingEvent: TOnStreamEncodingEvent read FOnStreamEncodingEvent write FOnStreamEncodingEvent;
@@ -757,6 +778,7 @@ type
     procedure SetAllowedMethods(const AValue: String);
   Public
     Constructor Create; virtual;
+    // Value for Access-Control-Allow-Origin: *, the request origin when AllowedOrigins lists it, or '' when it does not.
     function ResolvedCORSAllowedOrigins(aRequest: TRequest): String; virtual;
     // Handle CORS headers. Returns TRUE if the full headers were added and response was sent.
     Function HandleRequest(aRequest: TRequest; aResponse: TResponse; aOptions : THandleCORSOptions = [hcDetect]) : Boolean; virtual;
@@ -768,9 +790,9 @@ type
     Property Options : TCORSOptions Read FOptions Write FOptions;
     // Allowed methods
     Property AllowedMethods : String Read FAllowedMethods Write SetAllowedMethods;
-    // Domains that are allowed to use this RPC service
+    // Comma- or space-separated origins (scheme://host[:port]) or host names allowed to use this service; * allows any origin
     Property AllowedOrigins: String Read FAllowedOrigins  Write FAllowedOrigins;
-    // Domains that are allowed to use this RPC service
+    // Value of the Access-Control-Allow-Headers header
     Property AllowedHeaders: String Read FAllowedHeaders Write FAllowedHeaders;
     // Access-Control-Max-Age header value. Set to zero not to send the header
     Property MaxAge : Integer Read FMaxAge Write FMaxAge;
@@ -782,6 +804,12 @@ Function HTTPEncode(const AStr: String): String;
 Function IncludeHTTPPathDelimiter(const AStr: String): String;
 // Raise an exception with HTTP code 413
 Procedure PayloadTooLarge(const aMessage : string);
+{ Match origin aOrigin against aAllowed, a comma- or space-separated list.
+  Returns * when an entry is *, aOrigin when an entry equals it (case-insensitive)
+  or when an entry without a scheme equals its host or host:port, and '' otherwise. }
+Function MatchCORSOrigin(const aAllowed, aOrigin: String): String;
+// Add aName to the Vary header of aResponse unless it is listed there already.
+Procedure AddVaryHeader(aResponse: TResponse; const aName: String);
 
 Var
   // Default classes used when instantiating the collections.
@@ -817,6 +845,7 @@ Resourcestring
   SErrContentAlreadySent        = 'HTTP Response content was already sent';
   SErrHeadersAlreadySent        = 'HTTP headers were already sent';
   SErrInternalUploadedFileError = 'Internal uploaded file configuration error';
+  SErrTooManyMimeParts          = 'Too many parts in multipart content';
   SErrNoSuchUploadedFile        = 'No such uploaded file : "%s"';
   SErrUnknownCookie             = 'Unknown cookie: "%s"';
   SErrNoRequestMethod           = 'No REQUEST_METHOD passed from server.';
@@ -880,6 +909,88 @@ begin
   Raise Err;
 end;
 
+// A file name in aDir: aPrefix, 32 random hexadecimal digits and '.tmp'
+Function RandomTempFileName(const aDir, aPrefix: String): String;
+
+var
+  lGUID : TGUID;
+  lHex : String;
+
+begin
+  CreateGUID(lGUID);
+  lHex:=GUIDToString(lGUID);
+  lHex:=StringReplace(Copy(lHex,2,Length(lHex)-2),'-','',[rfReplaceAll]);
+  Result:=IncludeTrailingPathDelimiter(aDir)+aPrefix+lHex+'.tmp';
+end;
+
+
+// Creates a new file for an upload, named by aFiles (in GetTempDir if aFiles is Nil); tries another name when it exists
+Function CreateTempUploadFile(aFiles: TUploadedFiles; const aName, aFileName: String; aSize: Int64;
+  out aLocalFileName: String): TFileStream;
+
+const
+  MaxAttempts = 10;
+
+var
+  lAttempt : Integer;
+
+begin
+  Result:=Nil;
+  lAttempt:=0;
+  repeat
+    Inc(lAttempt);
+    if Assigned(aFiles) then
+      aLocalFileName:=aFiles.GetTempUploadFileName(aName,aFileName,aSize)
+    else
+      aLocalFileName:=RandomTempFileName(GetTempDir,'CGI');
+    try
+      Result:=TFileStream.Create(aLocalFileName,fmCreate or fmExclusive,&600);
+    except
+      on EFCreateError do
+        if lAttempt>=MaxAttempts then
+          Raise;
+    end;
+  until Assigned(Result);
+end;
+
+
+// The next word of a MIME header line S, starting at aPos; aPos is moved past the word
+Function GetMimeHeaderWord(const S: RawByteString; var aPos: SizeInt): RawByteString;
+
+var
+  lLen, lCount : SizeInt;
+  lQuoted : Boolean;
+  C : AnsiChar;
+
+begin
+  Result:='';
+  lLen:=Length(S);
+  if aPos>lLen then
+    Exit;
+  SetLength(Result,lLen-aPos+1);
+  lCount:=0;
+  lQuoted:=False;
+  while aPos<=lLen do
+    begin
+    C:=S[aPos];
+    Inc(aPos);
+    if (C='"') then
+      lQuoted:=Not lQuoted
+    else
+      begin
+      if not (C in [' ','=',';',':']) or lQuoted then
+        begin
+        Inc(lCount);
+        Result[lCount]:=C;
+        end;
+      if (C in [';',':','=']) and (not lQuoted) then
+        Break;
+      end;
+    end;
+  SetLength(Result,lCount);
+end;
+
+
 { -------------------------------------------------------------------
   THTTPMimeItem, default used by TRequest to process Multipart-encoded data.
   -------------------------------------------------------------------}
@@ -894,6 +1005,7 @@ Type
     FBuffer: string;
     FStream: TStream;
     FDataSize: Int64;
+    FRawCount: SizeInt;
   protected
     Procedure SetHeader(AIndex: Integer; Const AValue: String); override;
     function GetDataSize: Int64; override;
@@ -925,114 +1037,124 @@ end;
 procedure TStreamingMimeItems.ProcessStreamingMultiPart(const State: TContentStreamingState; const Buf; const Size: Integer);
 
 Const
-   DashDash : AnsiString = '--';
-   CRLFDashDash : AnsiString = #13#10'--';
+  DashDash : RawByteString = '--';
+  CRLF : RawByteString = #13#10;
 
 var
-  bl: SizeInt;
-  p: SizeInt;
-  BufEnd: SizeInt;
-  LeadingLineEndMissing: Boolean;
-  Bound,EndBound : RawByteString;
-  Sep : AnsiString;
+  lDelim : RawByteString;
+  lDelimLen, lLen, lAvail, P : SizeInt;
+
+  // Address of the byte at FBufferCount
+  function Current : PAnsiChar;
+  begin
+    Result:=PAnsiChar(FBuffer)+FBufferCount-1;
+  end;
+
+  // Passes aCount bytes from FBufferCount on to the current part, or to the preamble before the first part
+  procedure Flush(aCount : SizeInt; aState : TContentStreamingState);
+  begin
+    if Assigned(FCurrentItem) then
+      FCurrentItem.ProcessStreaming(aState,Current^,aCount)
+    else if FAtStart and (aCount>0) then
+      begin
+      if FPreambleCount+aCount>Length(FPreambleData) then
+        SetLength(FPreambleData,2*(FPreambleCount+aCount));
+      System.Move(Current^,FPreambleData[FPreambleCount+1],aCount);
+      Inc(FPreambleCount,aCount);
+      end;
+    Inc(FBufferCount,aCount);
+  end;
 
 begin
-  // The length of the boundary, including the leading CR/LF, '--' and trailing '--' or
-  // CR/LF.
   {$IF SIZEOF(CHAR)=2}
-    Bound:=UTF8Encode(Boundary);
-    EndBound:=UTF8Encode('--'+Boundary);
+  lDelim:=CRLF+DashDash+UTF8Encode(Boundary);
   {$ELSE}
-    Bound:=Boundary;
-    EndBound:='--'+Boundary;
+  lDelim:=CRLF+DashDash+Boundary;
   {$ENDIF}
-  bl := Length(Bound)+6;
-  LeadingLineEndMissing:=False;
+  lDelimLen:=Length(lDelim);
   if State=cssStart then
     begin
-    FMimeEndFound := False;
-    FAtStart := True;
+    FMimeEndFound:=False;
+    FAtStart:=True;
+    FCurrentItem:=Nil;
+    FPreambleData:='';
+    FPreambleCount:=0;
+    // The first delimiter may be at the very start of the content, without CR/LF
+    FBuffer:=CRLF;
+    FBufferCount:=1;
     end;
-
-  // Allocate enough memory to hold the buffer-size, and the lenght of the
-  // boundary (bl). To be able to find a boundary-string at which is divided between
-  // two calls to this function, the last bl-amount of characters at the end of
-  // the buffer, are stored to be handled in the next call to this function.
-  SetLength(FBuffer, Size+bl);
-  if Size > 0 then
-    System.Move(Buf, FBuffer[FBufferCount+1], Size);
-
-  BufEnd := FBufferCount+1+Size;
-
-  FBufferCount := 1;
-  repeat
-  if FAtStart and CompareMem(@FBuffer[1], PAnsiChar(EndBound), Length(Bound)+2) then
+  if FMimeEndFound then
+    Exit;
+  if Size>0 then
     begin
-    // Sometimes a mime-message (mistakenly) does not start with CR/LF.
-    p := 1;
-    LeadingLineEndMissing := True;
-    end
-  else
-    p := Pos(CRLFDashDash+Bound, FBuffer, FBufferCount);
-  if (P > 0) and (P < Size) then
+    lLen:=Length(FBuffer);
+    SetLength(FBuffer,lLen+Size);
+    System.Move(Buf,FBuffer[lLen+1],Size);
+    end;
+  while not FMimeEndFound do
     begin
+    P:=Pos(lDelim,FBuffer,FBufferCount);
+    if P=0 then
+      begin
+      // Keep what may be the start of a delimiter
+      lAvail:=Length(FBuffer)-FBufferCount+1;
+      if State<>cssEnd then
+        Dec(lAvail,lDelimLen-1);
+      if lAvail>0 then
+        Flush(lAvail,cssData);
+      Break;
+      end;
+    if (P+lDelimLen+1>Length(FBuffer)) and (State<>cssEnd) then
+      begin
+      // The two bytes after the delimiter are not there yet
+      Flush(P-FBufferCount,cssData);
+      Break;
+      end;
     if Assigned(FCurrentItem) then
       begin
-      FCurrentItem.ProcessStreaming(cssEnd, FBuffer[FBufferCount], P-FBufferCount);
-      FCurrentItem := Nil;
+      Flush(P-FBufferCount,cssEnd);
+      FCurrentItem:=Nil;
       end
     else
       begin
-      if FAtStart and (P > 1) then
+      Flush(P-FBufferCount,cssData);
+      if FAtStart then
         begin
-        // Add the preamble to the content
+        // Without the CR/LF added at the start
         {$IF SIZEOF(CHAR)=2}
-        FPreamble := UTF8Decode(Copy(FBuffer, FBufferCount, P-1));
+        FPreamble:=UTF8Decode(Copy(FPreambleData,3,FPreambleCount-2));
         {$ELSE}
-        FPreamble := Copy(FBuffer, FBufferCount, P-1);
+        FPreamble:=Copy(FPreambleData,3,FPreambleCount-2);
         {$ENDIF}
+        FPreambleData:='';
+        FAtStart:=False;
         end;
       end;
-    FAtStart := False;
-    Inc(P, bl);
-    if LeadingLineEndMissing then
-      begin
-      Dec(P, 2);
-      LeadingLineEndMissing := False;
-      end;
-    FBufferCount := P;
-    Sep:=Copy(FBuffer,p-2,2);
-    if (Sep=DashDash) then
-      FMimeEndFound := True;
-    end;
-  if not Assigned(FCurrentItem) and not FMimeEndFound then
-    begin
-    FCurrentItem := Add as TMimeItem;
-    FCurrentItem.ProcessStreaming(cssStart, FBuffer[p], 0)
-    end
-  until (P < 1) or FMimeEndFound;
-
-  if Assigned(FCurrentItem) then
-    begin
-    if state<>cssEnd then
-      begin
-      // Call FCurrentItem.ProcessStreaming with the current buffer, excluding
-      // the last bl bytes. Keep those at the start of FBuffer, to be handled
-      // in the next call to this function.
-      FCurrentItem.ProcessStreaming(cssData, FBuffer[FBufferCount], BufEnd-FBufferCount-bl);
-      System.Move(FBuffer[BufEnd-bl], FBuffer[1], bl);
-      FBufferCount := bl;
-      end
+    FBufferCount:=P+lDelimLen;
+    if Copy(FBuffer,FBufferCount,2)=DashDash then
+      FMimeEndFound:=True
     else
       begin
-      // This function won't be called again. Call FCurrentItem.ProcessStreaming
-      // with the complete remaining buffer.
-      FCurrentItem.ProcessStreaming(cssEnd, FBuffer[FBufferCount], BufEnd-FBufferCount+bl);
-      FBufferCount := 0;
+      Inc(FBufferCount,2);
+      FCurrentItem:=AddPart;
+      FCurrentItem.ProcessStreaming(cssStart,Current^,0);
       end;
+    end;
+  if (State=cssEnd) and Assigned(FCurrentItem) then
+    begin
+    FCurrentItem.ProcessStreaming(cssEnd,Current^,0);
+    FCurrentItem:=Nil;
+    end;
+  if FMimeEndFound or (State=cssEnd) then
+    begin
+    FBuffer:='';
+    FBufferCount:=1;
     end
-  else
-    FBufferCount := 0;
+  else if FBufferCount>1 then
+    begin
+    System.Delete(FBuffer,1,FBufferCount-1);
+    FBufferCount:=1;
+    end;
 end;
 
 class function TStreamingMimeItems.SupportsStreamingProcessing: Boolean;
@@ -1046,6 +1168,90 @@ begin
     Raise Exception.Create('It is not possible to adapt the binary when the evaluation of streaming data has already been started.');
   inherited SetBoundary(AValue);
 end;
+
+function MatchCORSOrigin(const aAllowed, aOrigin: String): String;
+
+const
+  cSeparators = [',',' ',#9];
+
+var
+  lOrigin, lHostPort, lHost, lEntry: String;
+  lStart, lPos, lLen: Integer;
+
+begin
+  Result:='';
+  lOrigin:=Trim(aOrigin);
+  lHostPort:='';
+  lHost:='';
+  lPos:=Pos('://',lOrigin);
+  if lPos>0 then
+    begin
+    lHostPort:=Copy(lOrigin,lPos+3,MaxInt);
+    lPos:=Pos('/',lHostPort);
+    if lPos>0 then
+      SetLength(lHostPort,lPos-1);
+    if (lHostPort<>'') and (lHostPort[1]='[') then
+      lHost:=Copy(lHostPort,1,Pos(']',lHostPort))
+    else
+      begin
+      lPos:=Pos(':',lHostPort);
+      if lPos>0 then
+        lHost:=Copy(lHostPort,1,lPos-1)
+      else
+        lHost:=lHostPort;
+      end;
+    end;
+  lLen:=Length(aAllowed);
+  lPos:=1;
+  while lPos<=lLen do
+    begin
+    while (lPos<=lLen) and (aAllowed[lPos] in cSeparators) do
+      Inc(lPos);
+    lStart:=lPos;
+    while (lPos<=lLen) and not (aAllowed[lPos] in cSeparators) do
+      Inc(lPos);
+    lEntry:=Copy(aAllowed,lStart,lPos-lStart);
+    if (Length(lEntry)>1) and (lEntry[Length(lEntry)]='/') then
+      SetLength(lEntry,Length(lEntry)-1);
+    if lEntry='*' then
+      Exit('*');
+    if (lEntry='') or (lOrigin='') then
+      Continue;
+    if SameText(lEntry,lOrigin) then
+      Result:=lOrigin
+    else if (Pos('://',lEntry)=0) and (lHost<>'')
+            and (SameText(lEntry,lHost) or SameText(lEntry,lHostPort)) then
+      Result:=lOrigin;
+    end;
+end;
+
+
+procedure AddVaryHeader(aResponse: TResponse; const aName: String);
+
+var
+  lVary, lItem: String;
+  lStart, lPos, lLen: Integer;
+
+begin
+  lVary:=aResponse.GetHeader(hhVary);
+  lLen:=Length(lVary);
+  lPos:=1;
+  while lPos<=lLen do
+    begin
+    lStart:=lPos;
+    while (lPos<=lLen) and (lVary[lPos]<>',') do
+      Inc(lPos);
+    lItem:=Trim(Copy(lVary,lStart,lPos-lStart));
+    if (lItem='*') or SameText(lItem,aName) then
+      Exit;
+    Inc(lPos);
+    end;
+  if Trim(lVary)='' then
+    aResponse.SetHeader(hhVary,aName)
+  else
+    aResponse.SetHeader(hhVary,lVary+', '+aName);
+end;
+
 
 { TCORSSupport }
 
@@ -1090,42 +1296,46 @@ end;
 
 function TCORSSupport.ResolvedCORSAllowedOrigins(aRequest : TRequest): String;
 
-Var
-  URl : String;
-  uri : TURI;
-
 begin
-  Result:=FAllowedOrigins;
-  if Result='' then
-    Result:='*';
+  if Trim(FAllowedOrigins)='' then
+    Exit('*');
+  Result:=MatchCORSOrigin(FAllowedOrigins,Trim(aRequest.GetCustomHeader('Origin')));
 end;
+
 
 function TCORSSupport.HandleRequest(aRequest: TRequest; aResponse: TResponse; aOptions: THandleCORSOptions): Boolean;
 
 Var
   Full : Boolean;
+  lOrigin : String;
 
 begin
   Result:=False;
   if Not Enabled then
     exit;
   Full:=(hcFull in aOptions) or ((hcDetect in aOptions) and SameText(aRequest.Method,'OPTIONS'));
+  lOrigin:=ResolvedCORSAllowedOrigins(aRequest);
   With aResponse do
     begin
-    SetCustomHeader('Access-Control-Allow-Origin',ResolvedCORSAllowedOrigins(aRequest));
-    if (coAllowCredentials in Options) then
-      SetCustomHeader('Access-Control-Allow-Credentials','true');
-    if Full then
+    if lOrigin<>'*' then
+      AddVaryHeader(aResponse,'Origin');
+    if lOrigin<>'' then
       begin
-      SetCustomHeader('Access-Control-Allow-Methods',AllowedMethods);
-      SetCustomHeader('Access-Control-Allow-Headers',AllowedHeaders);
-      if MaxAge>0 then
-        SetCustomHeader('Access-Control-Max-Age',IntToStr(MaxAge));
-      if (hcSend in aOptions) then
+      SetCustomHeader('Access-Control-Allow-Origin',lOrigin);
+      if (coAllowCredentials in Options) then
+        SetCustomHeader('Access-Control-Allow-Credentials','true');
+      if Full then
         begin
-        SetStatus(200,True);
-        Result:=True;
+        SetCustomHeader('Access-Control-Allow-Methods',AllowedMethods);
+        SetCustomHeader('Access-Control-Allow-Headers',AllowedHeaders);
+        if MaxAge>0 then
+          SetCustomHeader('Access-Control-Max-Age',IntToStr(MaxAge));
         end;
+      end;
+    if Full and (hcSend in aOptions) then
+      begin
+      SetStatus(200,True);
+      Result:=True;
       end;
     end;
 end;
@@ -1165,81 +1375,45 @@ procedure THTTPMimeItem.Process(Stream: TStream);
 const
   CRLF : RawByteString = #13#10;
 
-  Function GetLine(Var S : RawByteString) : RawByteString;
-
-  Var
-    P : Integer;
-
-  begin
-    P:=Pos(CRLF,S);
-    If (P<>0) then
-      begin
-      Result:=Copy(S,1,P-1);
-      Delete(S,1,P+1);
-      end;
-  end;
-
-  Function GetWord(Var S : RawByteString) : RawByteString;
-
-  Var
-    I,len : Integer;
-    Quoted : Boolean;
-    C : Char;
-
-  begin
-    len:=length(S);
-    quoted:=false;
-    Result:='';
-    for i:=1 to len do
-      Begin
-      c:=S[i];
-      if (c='"') then
-        Quoted:=Not Quoted
-      else
-        begin
-        if not (c in [' ','=',';',':']) or Quoted then
-          Result:=Result+C;
-        if (c in [';',':','=']) and (not quoted) then
-          begin
-          Delete(S,1,I);
-          Exit;
-          end;
-        end;
-      end;
-     S:='';
-  end;
-
 Var
   Line : RawByteString;
-  len : integer;
+  len : SizeInt;
   D,S : RawBytestring;
   B : TBytes;
+  lPos, lEnd, lWordPos : SizeInt;
 
 begin
   D:='';
   B:=[];
   {$ifdef CGIDEBUG}SendMethodEnter('THTTPMimeItem.Process');{$ENDIF}
   SetLength(D,Stream.Size);
-  Stream.ReadBuffer(D[1],Stream.Size);
-  Line:=GetLine(D);
-  While (Line<>'') do
-    begin
+  if Length(D)>0 then
+    Stream.ReadBuffer(D[1],Length(D));
+  lPos:=1;
+  Repeat
+    lEnd:=Pos(CRLF,D,lPos);
+    if lEnd=0 then
+      Break;
+    Line:=Copy(D,lPos,lEnd-lPos);
+    lPos:=lEnd+2;
+    if Line='' then
+      Break;
     {$ifdef CGIDEBUG}SendDebug('Process data line: '+line);{$ENDIF}
-    S:=GetWord(Line);
+    lWordPos:=1;
+    S:=GetMimeHeaderWord(Line,lWordPos);
     While (S<>'') do
       begin
-      ProcessHeader(lowercase(S),GetWord(Line));
-      S:=GetWord(Line);
+      ProcessHeader(lowercase(S),GetMimeHeaderWord(Line,lWordPos));
+      S:=GetMimeHeaderWord(Line,lWordPos);
       end;
-    Line:=GetLine(D);
-    end;
-  // Now D contains the rest of the data, plus a CR/LF. Strip the CR/LF
-  Len:=Length(D);
+  until False;
+  // The data from lPos on ends with a CR/LF. Strip the CR/LF
+  Len:=Length(D)-lPos+1;
   If (len>2) then
     begin
     FDataSize := Len-2;
     SetLength(B,FDataSize);
-    Move(D[1],B[0],FDataSize);
+    Move(D[lPos],B[0],FDataSize);
     RawData:=B;
     end
   else
@@ -1249,55 +1423,9 @@ end;
 
 procedure THTTPMimeItem.ProcessStreaming(const State: TContentStreamingState; const Buf; const Size: Integer);
 
-  Function GetLine(Var S : String) : String;
-
-  Var
-    P : Integer;
-
-  begin
-    P:=Pos(#13#10,S);
-    If (P<>0) then
-      begin
-      Result:=Copy(S,1,P-1);
-      Delete(S,1,P+1);
-      end;
-  end;
-
-  Function GetWord(Var S : String) : String;
-
-  Var
-    I,len : Integer;
-    Quoted : Boolean;
-    C : Char;
-
-  begin
-    len:=length(S);
-    quoted:=false;
-    Result:='';
-    for i:=1 to len do
-      Begin
-      c:=S[i];
-      if (c='"') then
-        Quoted:=Not Quoted
-      else
-        begin
-        if not (c in [' ','=',';',':']) or Quoted then
-          Result:=Result+C;
-        if (c in [';',':','=']) and (not quoted) then
-          begin
-          Delete(S,1,I);
-          Exit;
-          end;
-        end;
-      end;
-     S:='';
-  end;
-
   procedure AddData(const Buf; Size: SizeInt);
   var
-    S: string;
     i: SizeInt;
-    Files: TUploadedFiles;
   begin
     if Size > 0 then
       begin
@@ -1306,12 +1434,7 @@ procedure THTTPMimeItem.ProcessStreaming(const State: TContentStreamingState; co
         // Stream directly to file
         if not Assigned(FStream) then
           begin
-          Files := (Collection as TMimeItems).Files;
-          if Assigned(Files) then
-            FLocalFilename := Files.GetTempUploadFileName(Name, FileName, -1)
-          else
-            FLocalFilename := GetTempFileName('', '');
-          FStream := TFileStream.Create(FLocalFilename, fmCreate);
+          FStream := CreateTempUploadFile((Collection as TMimeItems).Files, Name, FileName, -1, FLocalFilename);
           FDataSize := 0;
           end;
 
@@ -1320,17 +1443,17 @@ procedure THTTPMimeItem.ProcessStreaming(const State: TContentStreamingState; co
         end
       else
         begin
-        S := Data;
-        i := Length(S);
-        SetLength(S, i+Size);
-        Move(Buf, S[i+1], Size);
-        Data := S;
+        i := FRawCount+Size;
+        if i>Length(FRawData) then
+          SetLength(FRawData, 2*i);
+        Move(Buf, FRawData[FRawCount], Size);
+        FRawCount := i;
         end;
       end;
   end;
 
 var
-  i: SizeInt;
+  i, lPos, lEnd, lWordPos: SizeInt;
   Line, S: string;
 begin
   if not FHeadersProcessed then
@@ -1342,26 +1465,36 @@ begin
       Move(Buf, FBuffer[i+1], Size);
       if Copy(FBuffer, 1, 2) = #13#10 then
         i := 3
+      else if i>3 then
+        i := Pos(#13#10#13#10, FBuffer, i-2)+4
       else
         i := Pos(#13#10#13#10, FBuffer)+4;
       if i <> 4 then
         begin
         // The full headers are in the buffer now.
-        Line:=GetLine(FBuffer);
-        While (Line<>'') do
-          begin
+        lPos:=1;
+        Repeat
+          lEnd:=Pos(#13#10,FBuffer,lPos);
+          if lEnd=0 then
+            Break;
+          Line:=Copy(FBuffer,lPos,lEnd-lPos);
+          lPos:=lEnd+2;
+          if Line='' then
+            Break;
           {$ifdef CGIDEBUG}SendDebug('Process data line: '+line);{$ENDIF}
-          S:=GetWord(Line);
+          lWordPos:=1;
+          S:=GetMimeHeaderWord(Line,lWordPos);
           While (S<>'') do
             begin
-            ProcessHeader(lowercase(S),GetWord(Line));
-            S:=GetWord(Line);
+            ProcessHeader(lowercase(S),GetMimeHeaderWord(Line,lWordPos));
+            S:=GetMimeHeaderWord(Line,lWordPos);
             end;
-          Line:=GetLine(FBuffer);
-          end;
+        until False;
         FHeadersProcessed := True;
 
-        AddData(FBuffer[1], Length(FBuffer));
+        if lPos<=Length(FBuffer) then
+          AddData(FBuffer[lPos], Length(FBuffer)-lPos+1);
+        FBuffer:='';
         end;
       end;
     end
@@ -1371,7 +1504,9 @@ begin
   if State=cssEnd then
     begin
     if GetIsFile then
-      FreeAndNil(FStream);
+      FreeAndNil(FStream)
+    else
+      SetLength(FRawData, FRawCount);
     end;
 end;
 
@@ -1879,6 +2014,7 @@ var
   I : Integer;
 begin
   Result:=aValue;
+  UniqueString(Result);
   P:=PChar(Result);
   For I:=1 to Length(Result) do
     begin
@@ -2110,14 +2246,28 @@ Var
 begin
   F:=TFileStream.Create(AFileName,fmCreate);
   Try
-{$IFDEF VER3_2}
-    F.WriteBuffer(FRawData[0],DataSize);
-{$ELSE}
-    F.WriteBuffer(FRawData,0,DataSize);
-{$ENDIF}
+    SaveToStream(F);
   finally
     F.Free;
   end;
+end;
+
+procedure TMimeItem.SaveToStream(aStream: TStream);
+
+begin
+{$IFDEF VER3_2}
+  aStream.WriteBuffer(FRawData[0],DataSize);
+{$ELSE}
+  aStream.WriteBuffer(FRawData,0,DataSize);
+{$ENDIF}
+end;
+
+destructor TMimeItem.Destroy;
+
+begin
+  if (FLocalFilename<>'') and not FUploadAdded then
+    DeleteFile(FLocalFilename);
+  inherited Destroy;
 end;
 
 function TMimeItem.CreateUploadedFile(Files: TUploadedFiles): TUploadedFile;
@@ -2125,6 +2275,7 @@ function TMimeItem.CreateUploadedFile(Files: TUploadedFiles): TUploadedFile;
 Var
   J : Int64;
   LFN : String;
+  F : TFileStream;
 
 begin
   J:=DataSize;
@@ -2133,9 +2284,13 @@ begin
     LFN:='' //No tmp file will be created for empty files
   else
     begin
-    LFN:=Files.GetTempUploadFileName(Name,FileName,J);
-    SaveToFile(LFN);
+    F:=CreateTempUploadFile(Files,Name,FileName,J,LFN);
     FLocalFilename := LFN;
+    try
+      SaveToStream(F);
+    finally
+      F.Free;
+    end;
     end;
   Result := CreateFile(Files);
 end;
@@ -2146,6 +2301,7 @@ begin
   if (FLocalFileName<>'') then
    begin
    Result:=Files.Add as TUploadedFile;
+   FUploadAdded:=True;
    with Result do
      begin
      FieldName:=Self.Name;
@@ -2206,7 +2362,7 @@ Const
 // Splits the form into items
 var
   Sep : rawbytestring;
-  Clen,slen, p:longint;
+  SLen, lStart, lLast, lNext, lPartLen : SizeInt;
   FI : TMimeItem;
   S : TBytesStream;
   B : TBytes;
@@ -2218,31 +2374,38 @@ begin
   FBoundary := boundary;
   Sep:=DashDash+boundary+CRLF;
   Slen:=length(Sep);
-  P := Pos(Sep, Cnt);// start of the first marker
-  CLen:=Pos(DashDash+Boundary+DashDash,Cnt);
-  // Cut last marker
-  Cnt:=Copy(Cnt,1,Clen-1);
-  // Cut first marker and everything before that
-  system.Delete(Cnt,1,Slen+P-1);
-  Clen:=Length(Cnt);
-  While Clen>0 do
+  // The parts are between the first marker and the last marker
+  lStart:=Pos(Sep,Cnt)+SLen;
+  lLast:=Pos(DashDash+Boundary+DashDash,Cnt)-1;
+  While lStart<=lLast do
     begin
-    P:=pos(Sep,Cnt)-1;
-    If (P=-1) then
-      P:=CLen;
-    SetLength(B,P);
-    System.Move(Cnt[1],B[0],P);
+    lNext:=Pos(Sep,Cnt,lStart);
+    if (lNext=0) or (lNext+SLen-1>lLast) then
+      lPartLen:=lLast-lStart+1
+    else
+      lPartLen:=lNext-lStart;
+    SetLength(B,lPartLen);
+    if lPartLen>0 then
+      System.Move(Cnt[lStart],B[0],lPartLen);
     S:=TBytesStream.Create(B);
     try
-      FI:=Add as TMimeItem;
+      FI:=AddPart;
       FI.Process(S)
     finally
       S.Free;
     end;
-    system.delete(Cnt,1,P+SLen);
-    CLen:=Length(Cnt);
+    lStart:=lStart+lPartLen+SLen;
     end;
+  Cnt:='';
   {$ifdef CGIDEBUG}SendMethodExit('TMimeItems.FormSplit');{$ENDIF}
+end;
+
+function TMimeItems.AddPart: TMimeItem;
+
+begin
+  if (MaxParts>0) and (Count>=MaxParts) then
+    PayloadTooLarge(SErrTooManyMimeParts);
+  Result:=Add as TMimeItem;
 end;
 
 Function TMimeItems.First: TMimeItem;
@@ -2286,6 +2449,7 @@ begin
   FHandleGetOnPost:=True;
   FFiles:=CreateUploadedFiles;
   FFiles.FRequest:=Self;
+  FKeepUploadedFiles:=DefaultKeepUploadedFiles;
   FLocalPathPrefix:='-';
   AllocateRequestID;
 end;
@@ -2326,6 +2490,8 @@ end;
 destructor TRequest.destroy;
 begin
   FreeAndNil(FRouteParams);
+  if Assigned(FFiles) and not FKeepUploadedFiles then
+    DeleteTempUploadedFiles;
   FreeAndNil(FFiles);
   FreeAndNil(FMimeItems);
   inherited destroy;
@@ -2570,12 +2736,13 @@ begin
   D:=RequestUploadDir;
   if (D='') then
     D:=GetTempDir; // Note that this may require a TEMP environment variable to be set by the webserver.
-  Result:=GetTempFileName(D, 'CGI');
+  Result:=RandomTempFileName(D, 'CGI');
 end;
 
 procedure TRequest.DeleteTempUploadedFiles;
 begin
-  FFiles.DeleteTempUploadedFiles;
+  if Assigned(FFiles) then
+    FFiles.DeleteTempUploadedFiles;
 end;
 
 procedure TRequest.InitHeaderRequestVars;
@@ -2917,7 +3084,7 @@ begin
   If Assigned(FRequest) then
     Result:=FRequest.GetTempUploadFileName(AName,AFileName,ASize)
   else
-    Result:=GetTempFileName;
+    Result:=RandomTempFileName(GetTempDir,'CGI');
 end;
 
 function TUploadedFiles.IndexOfFile(const AName: String): Integer;
@@ -3201,6 +3368,20 @@ begin
   ContentLength:=L;
 end;
 
+// Check that aName is a non-empty RFC 9110 token.
+function IsValidHeaderName(const aName: String): Boolean;
+
+var
+  C : Char;
+
+begin
+  Result:=aName<>'';
+  for C in aName do
+    if not (C in ['!','#','$','%','&','''','*','+','-','.','^','_','`','|','~','0'..'9','A'..'Z','a'..'z']) then
+      Exit(False);
+end;
+
+
 procedure TResponse.CollectHeaders(Headers: TStrings);
 
 Var
@@ -3209,7 +3390,7 @@ Var
   N,V : String;
 
 begin
-  Headers.add(Format('Status: %d %s',[Code,CodeText]));
+  Headers.add(Format('Status: %d %s',[Code,CleanHeader(CodeText)]));
 {$ifdef cgidebug}
   SendMethodEnter('Collectheaders');
   If Not Assigned(FCookies) then
@@ -3221,13 +3402,13 @@ begin
     Headers.Add(HeaderSetCookie+': '+FCookies[i].AsString);
   For H in THeader do
     if (hdResponse in HTTPHeaderDirections[H]) and HeaderIsSet(H) then
-      Headers.Add(HTTPHeaderNames[H]+': '+GetHeader(H));
+      Headers.Add(HTTPHeaderNames[H]+': '+CleanHeader(GetHeader(H)));
   if Assigned(FCustomHeaders) then
     For I:=0 to FCustomHeaders.Count - 1 do
       begin
       FCustomHeaders.GetNameValue(I,N,V);
-      if (V<>'') then
-        Headers.Add(N+': '+V);
+      if (V<>'') and IsValidHeaderName(N) then
+        Headers.Add(N+': '+CleanHeader(V));
       end;
   Headers.Add('');
 {$ifdef cgidebug} SendMethodExit('Collectheaders');{$endif}
@@ -3595,4 +3776,5 @@ initialization
   TRequest.MaxBodySize:=DefaultMaxBodySize;
   TUploadedFiles.MaxUploadFiles:=DefaultMaxUploadFiles;
   TUploadedFiles.MaxUploadFileSize:=DefaultMaxUploadFileSize;
+  TMimeItems.MaxParts:=DefaultMaxMimeParts;
 end.

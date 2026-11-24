@@ -54,12 +54,19 @@ uses
     procedure add_generic_dummysym(sym:tsym;const name:tidstring);
     function resolve_generic_dummysym(const name:tidstring):tsym;
     function could_be_generic(const name:tidstring):boolean;inline;
+    { whether the current token closes a list of type arguments: ">", or ">>"
+      read as one shift operator in code, whose first ">" closes it }
+    function is_type_args_close:boolean;
+    { consumes the ">" that closes a list of type arguments; of ">>", only the
+      first, leaving ">" as the current token for the enclosing list }
+    procedure consume_type_args_close;
     function try_implicit_specialization(sym:tsym;para:tnode;pdoverloadlist:tfpobjectlist;var unnamed_syms:tfplist;var first_procsym:tsym;var hasoverload:boolean):boolean;
     function finalize_specialization(var pd:tprocdef;spezcontext:tspecializationcontext):boolean;
 
     procedure generate_specialization_procs;
     procedure generate_specializations_for_forwarddef(def:tdef);
     procedure maybe_add_pending_specialization(def:tdef;unnamed_syms:tfplist);
+    procedure free_unnamed_symbols(var unnamed_syms:tfplist);
     function determine_generic_def(const name:tidstring):tstoreddef;
 
     function is_or_belongs_to_current_genericdef(def:tdef):boolean;
@@ -562,6 +569,7 @@ uses
         module : tmodule;
         constprettyname : string;
         validparam : boolean;
+        istypeinquiry : boolean;
       begin
         result:=true;
         prettyname:='';
@@ -594,13 +602,15 @@ uses
           end
         else
           specializename:='$';
-        while not (current_scanner.token in [_GT,_RSHARPBRACKET]) do
+        while not is_type_args_close do
           begin
             { "first" is set to false at the end of the loop! }
             if not first then
               consume(_COMMA);
             block_type:=bt_type;
             tmpparampos:=current_filepos;
+            { "type of <operand>" }
+            istypeinquiry:=current_scanner.token=_TYPE;
             typeparam:=factor(false,[ef_accept_equal]);
             { determine if the typeparam node is a valid type or const }
             validparam:=typeparam.nodetype in tgeneric_param_nodes;
@@ -622,7 +632,15 @@ uses
                 if typeparam.resultdef.typ<>errordef then
                   begin
                     if (typeparam.nodetype=typen) and not assigned(typeparam.resultdef.typesym) then
-                      message(type_e_generics_cannot_reference_itself)
+                      begin
+                        if istypeinquiry then
+                          begin
+                            MessagePos1(tmpparampos,type_e_type_inquiry_generic_param_needs_name,typeparam.resultdef.typename);
+                            result:=false;
+                          end
+                        else
+                          message(type_e_generics_cannot_reference_itself);
+                      end
                     else if (typeparam.resultdef.typ<>errordef) then
                       begin
                         { all non-type nodes are considered const }
@@ -718,6 +736,27 @@ uses
             sym.ChangeOwnerAndName(owner,sym.realname);
           end;
         unnamed_syms.clear;
+      end;
+
+
+    procedure free_unnamed_symbols(var unnamed_syms:tfplist);
+      var
+        i : integer;
+        sym : tsym;
+      begin
+        if not assigned(unnamed_syms) then
+          exit;
+        { creating such a symbol made it its definition's type symbol, which the
+          definition must not keep once the symbol is freed }
+        for i:=0 to unnamed_syms.count-1 do
+          begin
+            sym:=tsym(unnamed_syms[i]);
+            if (sym.typ=typesym) and
+               assigned(ttypesym(sym).typedef) and
+               (ttypesym(sym).typedef.typesym=sym) then
+              ttypesym(sym).typedef.typesym:=nil;
+          end;
+        TFPList.FreeAndNilObjects(unnamed_syms);
       end;
 
 
@@ -1361,7 +1400,7 @@ uses
                 else
                   begin
                     { the specialization was not chosen so clean up any unnamed syms }
-                    TFPList.FreeAndNilObjects(pd_unnamed_syms);
+                    free_unnamed_symbols(pd_unnamed_syms);
                   end;
               end;
           end;
@@ -1597,8 +1636,7 @@ uses
             result:=tstoreddef(tprocsym(context.sym).procdefList[0]);
           end;
 
-        if not try_to_consume(_GT) then
-          consume(_RSHARPBRACKET);
+        consume_type_args_close;
       end;
 
     function generate_specialization_phase2(context:tspecializationcontext;genericdef:tstoreddef;parse_class_parent:boolean;const _prettyname:ansistring):tdef;
@@ -2825,6 +2863,30 @@ uses
           result:=tgenericdummyentry(list.last).resolvedsym
         else
           result:=nil;
+      end;
+
+
+    function is_type_args_close:boolean;
+      begin
+        { the shift operator ">>" is scanned as one token, but the keyword
+          "shr" is an identifier as well }
+        result:=(current_scanner.token in [_GT,_RSHARPBRACKET]) or
+                ((current_scanner.token=_OP_SHR) and (current_scanner.idtoken=_NOID));
+      end;
+
+
+    procedure consume_type_args_close;
+      begin
+        if (current_scanner.token=_OP_SHR) and (current_scanner.idtoken=_NOID) then
+          begin
+            current_scanner.token:=_GT;
+            { a recording of the tokens, a generic's body, gets this first ">"
+              here, and the second when the parser moves past it }
+            if assigned(current_scanner.recordtokenbuf) then
+              current_scanner.recordtoken;
+          end
+        else if not try_to_consume(_GT) then
+          consume(_RSHARPBRACKET);
       end;
 
 

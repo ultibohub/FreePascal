@@ -49,7 +49,8 @@ type
     constructor Create; override;
     class var
       CategoryINI : Integer;
-    function Execute(const Source: string): TSyntaxTokenArray; override;
+  protected
+    procedure DoExecute(const Source: string); override;
   end;
 
 function DoIniHighlighting(const Source: string): TSyntaxTokenArray;
@@ -72,7 +73,7 @@ begin
     Inc(FPos); // Include closing ]
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shSection);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shSection);
 end;
 
 procedure TIniSyntaxHighlighter.ProcessKey(var endPos: integer);
@@ -85,7 +86,7 @@ begin
     Inc(FPos);
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shKey);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shKey);
 end;
 
 procedure TIniSyntaxHighlighter.ProcessComment(var endPos: integer);
@@ -99,7 +100,7 @@ begin
     Inc(FPos);
 
   endPos := FPos - 1;
-  AddToken(Copy(FSource, startPos, endPos - startPos + 1), shComment);
+  AddSourceToken(FSource, startPos, endPos - startPos + 1, shComment);
 end;
 
 procedure TIniSyntaxHighlighter.ProcessValue(var endPos: integer);
@@ -145,9 +146,9 @@ begin
 
   endPos := FPos - 1;
   if inQuotes then
-    AddToken(Copy(FSource, startPos, endPos - startPos + 1), shStrings)
+    AddSourceToken(FSource, startPos, endPos - startPos + 1, shStrings)
   else
-    AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+    AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
 end;
 
 function TIniSyntaxHighlighter.IsWordChar(ch: char): boolean;
@@ -183,19 +184,17 @@ begin
   DefaultCategory := CategoryINI;
 end;
 
-function TIniSyntaxHighlighter.Execute(const Source: string): TSyntaxTokenArray;
+procedure TIniSyntaxHighlighter.DoExecute(const Source: string);
 var
   lLen, endPos, startPos: integer;
   ch: char;
   atLineStart: boolean;
 begin
-  Result := Nil;
   CheckCategories;
   lLen := Length(Source);
   if lLen = 0 then
     Exit;
   FSource := Source;
-  FTokens.Reset;
   FPos := 1;
   EndPos := 0;
   atLineStart := True;
@@ -233,9 +232,7 @@ begin
       end;
     '"', '''':
       begin
-      FPos := FPos - 1; // Back up one to include quote in ProcessValue
       ProcessValue(endPos);
-      Inc(FPos); // Move past the value
       atLineStart := False;
       end;
     #10, #13:
@@ -246,7 +243,7 @@ begin
       else
         Inc(FPos); // LF or CR only
       endPos := FPos - 1;
-      AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+      AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
       atLineStart := True;
       end;
     ' ', #9:
@@ -255,7 +252,7 @@ begin
       while (FPos <= Length(FSource)) and (FSource[FPos] in [' ', #9]) do
         Inc(FPos);
       endPos := FPos - 1;
-      AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+      AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
       end;
     'a'..'z', 'A'..'Z', '0'..'9', '_', '-', '.':
       begin
@@ -271,19 +268,18 @@ begin
         while (FPos <= Length(FSource)) and IsWordChar(FSource[FPos]) do
           Inc(FPos);
         endPos := FPos - 1;
-        AddToken(Copy(FSource, startPos, endPos - startPos + 1), shDefault);
+        AddSourceToken(FSource, startPos, endPos - startPos + 1, shDefault);
       end;
       atLineStart := False;
       end;
     else
-      AddToken(ch, shDefault);
+      AddSourceToken(FSource, FPos, 1, shDefault);
       endPos := FPos;
       Inc(FPos);
       atLineStart := False;
     end;
     if FPos = endPos then Inc(FPos);
   end;
-  Result := FTokens.GetTokens;
 end;
 
 function DoIniHighlighting(const Source: string): TSyntaxTokenArray;

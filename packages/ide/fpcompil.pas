@@ -134,7 +134,7 @@ uses
   fpcatch,
 { $endif HasSignal}
   Dos,
-  Video,
+  Video,Keyboard,
   globals,
   StdDlg,App,tokens,
   FVConsts,
@@ -291,7 +291,7 @@ begin
           SetStatus('Parsing User Screen line '+IntToStr(y)+'/'+IntToStr(YMax));
           CompilerMessageWindow^.Lock;
         end;
-      GetKeyEvent(LEvent);
+      Drivers.GetKeyEvent(LEvent);
       if (LEvent.What=evKeyDown) and (LEvent.KeyCode=kbEsc) then
         break;
       SearchBackTrace;
@@ -709,54 +709,60 @@ function CompilerStatus: boolean;
      event : tevent;
 
 begin
-{$ifdef UNIX}
-  GetSystemEvent(Event);         { Load system event }
-  If (Event.What <> evNothing) Then
-  begin
-{$ifdef redircompiler}
-    RedirDisableAll;
-{$endif}
-    Application^.HandleEvent(Event); {Might be resize, handle it right away}
-{$ifdef redircompiler}
-    RedirEnableAll;
-{$endif}
-  end;
-{$endif}
-
-  GetKeyEvent(Event);
-  if (Event.What=evKeyDown) and (Event.KeyCode=kbEsc) then
-    begin
-       CompilationPhase:=cpAborted;
-       { update info messages }
-       if assigned(CompilerStatusDialog) then
-        begin
-{$ifdef redircompiler}
-          RedirDisableAll;
-{$endif}
-          CompilerStatusDialog^.Update;
-{$ifdef redircompiler}
-          RedirEnableAll;
-{$endif}
-        end;
-       CompilerStatus:=true;
-       exit;
-    end;
-{ only display line info every 100 lines, of course all other messages
+{ only display line info every 0.1 seconds, of course all other messages
   will be displayed directly }
   if (getrealtime-lasttime>=CompilerStatusUpdateDelay) or (status.compiledlines=1) then
    begin
      lasttime:=getrealtime;
-     { update info messages }
-{$ifdef redircompiler}
-          RedirDisableAll;
+
+     { abort compilation on Esc key press }
+{$if defined(UNIX) or defined(WINDOWS)}
+     while KeyPressed do
+     begin
+{$else}
+     repeat
 {$endif}
+       Drivers.GetKeyEvent(Event);
+       if (Event.What=evKeyDown) and (Event.KeyCode=kbEsc) then
+         begin
+            CompilationPhase:=cpAborted;
+            { update info messages }
+            if assigned(CompilerStatusDialog) then
+             begin
+{$ifdef redircompiler}
+               RedirDisableAll;
+{$endif}
+               CompilerStatusDialog^.Update;
+{$ifdef redircompiler}
+               RedirEnableAll;
+{$endif}
+             end;
+            CompilerStatus:=true;
+            exit;
+         end;
+{$if defined(UNIX) or defined(WINDOWS)}
+     end;
+{$else}
+     until Event.What=evNothing;
+{$endif}
+
+
+{$ifdef redircompiler}
+     RedirDisableAll;
+{$endif}
+{$if defined(UNIX)}
+     GetSystemEvent(Event);         { Load system event }
+     If (Event.What <> evNothing) Then
+       Application^.HandleEvent(Event); {Might be resize, handle it right away}
+{$endif}
+     { update info messages }
      if assigned(CompilerStatusDialog) then
       CompilerStatusDialog^.Update;
-{$ifdef redircompiler}
-          RedirEnableAll;
-{$endif}
      { update memory usage }
-     { HeapView^.Update; }
+     // HeapView^.Update;
+{$ifdef redircompiler}
+     RedirEnableAll;
+{$endif}
    end;
   CompilerStatus:=false;
 end;

@@ -297,6 +297,14 @@ Function SkipAnsQueries(Var Ans : TQueryDataLengthTCP; L : Integer) : integer;
 function stringfromlabel(pl: TPayLoad; var start: Integer): string;
 function stringfromlabel(pl: TPayLoadTCP; var start: Integer): string;
 Function CheckAnswer(Const Qry : TDNSHeader; Var Ans : TDNSHeader) : Boolean;
+// Return a query ID read from /dev/urandom, or from Random when that fails.
+function RandomQueryID: Word;
+{ Check that aAns, with aAnsLen payload bytes, is the response to aQry, with
+  aQryLen payload bytes: same ID, response flag set, and the same question
+  (name compared case-insensitively). A response without a question section
+  is accepted only when it has an error code. }
+function IsAnswerTo(const aQry: TQueryData; aQryLen: Integer;
+  const aAns: TQueryData; aAnsLen: Integer): Boolean;
 function IsValidAtype(atype: Word): Boolean;
 
 function IsTruncated(R: TDNSHeader): Boolean;
@@ -315,6 +323,20 @@ function GetRRrecords(const pl: TPayloadTCP; var Start: Word; Count: Word):
   TRRNameDataArray;
 function GetRRrecords(const pl: TPayload; var Start: Word; Count: Word):
   TRRNameDataArray;
+
+{ The ExtractAnswer* functions take a UDP answer as returned by Query (header
+  counts in host order) and its payload length. They return the number of
+  entries stored. aCName is the target of the first CNAME record, or empty;
+  extraction stops at that record. }
+// Collect the IPv4 addresses (network byte order) from the answer section.
+function ExtractAnswerAddresses(var aAns: TQueryData; aAnsLen: Integer;
+  var aAddresses: array of THostAddr; out aCName: String): Integer;
+// Collect the IPv6 addresses from the answer section.
+function ExtractAnswerAddresses6(var aAns: TQueryData; aAnsLen: Integer;
+  var aAddresses: array of THostAddr6; out aCName: String): Integer;
+// Collect the PTR names from the answer section.
+function ExtractAnswerNames(var aAns: TQueryData; aAnsLen: Integer;
+  var aNames: array of String; out aCName: String): Integer;
 
 function DnsLookup(const dn: String; qtype: Word; out Ans: TQueryData;
   out AnsLen: Longint): Boolean;
@@ -916,76 +938,6 @@ begin
   Result := l;
 end;
 
-Function NextRR(Const PayLoad : TPayLoad;Var Start : LongInt; AnsLen : LongInt; Var RR : TRRData) : Boolean;
-
-Var
-  I : Integer;
-  HaveName : Boolean;
-  PA : PRRData;
-
-begin
-  Result:=False;
-  I:=Start;
-  // Skip labels and pointers. At least 1 label or pointer is present.
-  Repeat
-    HaveName:=True;
-    If (Payload[i]>63) then // Pointer, skip
-      Inc(I,2)
-    else If Payload[i]=0 then // Null termination of label, skip.
-      Inc(i)
-    else
-      begin
-      Inc(I,Payload[i]+1); // Label, continue scan.
-      HaveName:=False;
-      end;
-  Until HaveName or (I>(AnsLen-SizeOf(TRRData)));
-  Result:=(I<=(AnsLen-SizeOf(TRRData)));
-  // Check RR record.
-  PA:=PRRData(@Payload[i]);
-  RR:=PA^;
-  Start:=I+SizeOf(TRRData);
-end;
-
-
-Function BuildName (Const PayLoad : TPayLoad; Start,len : Integer) : String;
-
-Const
-  FIREDNS_POINTER_VALUE = $C000;
-
-Var
-  I,O : Integer;
-  P : Word;
-  lName : AnsiString;
-
-begin
-  SetLength(lName,512);
-  I:=Start;
-  O:=1;
-  // Copy labels and pointers. At least 1 label or pointer is present.
-  Repeat
-    If (Payload[i]>63) then // Pointer, move.
-      begin
-      Move(Payload[i],P,2);
-      I:=ntohs(p)-FIREDNS_POINTER_VALUE-12;
-      end
-    else if Payload[i]<>0 then // Label, copy
-      begin
-      If O<>1 then
-        begin
-        lName[O]:='.';
-        Inc(O);
-        end;
-      P:=Payload[i];
-      Move(Payload[i+1],lName[o],P);
-      Inc(I,P+1);
-      Inc(O,P);
-      end;
-   Until (Payload[I]=0);
-   setlength(lName,o-1);
-   Result:=AnsiToString(lName);
-end;
-
-
 { ---------------------------------------------------------------------
     QueryData handling functions
   ---------------------------------------------------------------------}
@@ -1011,6 +963,57 @@ begin
       Exit;
     Result:=True;
     end;
+end;
+
+
+function RandomQueryID: Word;
+
+var
+  lFD: cint;
+
+begin
+  Result:=0;
+  lFD:=FpOpen('/dev/urandom',O_RDONLY);
+  if (lFD<0) or (FpRead(lFD,Result,SizeOf(Result))<>SizeOf(Result)) then
+    Result:=Random(65536);
+  if lFD>=0 then
+    FpClose(lFD);
+end;
+
+
+function IsAnswerTo(const aQry: TQueryData; aQryLen: Integer;
+  const aAns: TQueryData; aAnsLen: Integer): Boolean;
+
+var
+  lNameEnd, i: Integer;
+  lA, lQ: Byte;
+
+begin
+  Result:=False;
+  if (aAnsLen<0) or (aQryLen<5) or (aQryLen>Length(aQry.Payload)) then
+    Exit;
+  if (aAns.h.ID[0]<>aQry.h.ID[0]) or (aAns.h.ID[1]<>aQry.h.ID[1]) then
+    Exit;
+  if (aAns.h.Flags1 and QF_QR)=0 then
+    Exit;
+  if NToHs(aAns.h.qdcount)=0 then
+    Exit((aAns.h.Flags2 and QF_RCODE)<>0);
+  if (NToHs(aAns.h.qdcount)<>1) or (aAnsLen<aQryLen) then
+    Exit;
+  // Name bytes compared case-insensitively; length bytes are below 64 and never letters.
+  lNameEnd:=aQryLen-5;
+  for i:=0 to lNameEnd-1 do
+    begin
+    lA:=aAns.Payload[i];
+    lQ:=aQry.Payload[i];
+    if lA in [65..90] then
+      Inc(lA,32);
+    if lQ in [65..90] then
+      Inc(lQ,32);
+    if lA<>lQ then
+      Exit;
+    end;
+  Result:=CompareByte(aAns.Payload[lNameEnd],aQry.Payload[lNameEnd],5)=0;
 end;
 
 {
@@ -1670,15 +1673,17 @@ Function Query(Resolver : Integer; Var Qry,Ans : TQueryData; QryLen : Integer; V
 Var
   SA : TInetSockAddr;
   Sock,L : Longint;
-  Al,RTO : Longint;
+  RTO : Longint;
+  lID : Word;
+  lNow, lDeadline : QWord;
   ReadFDS : TFDSet;
 
 begin
   Result:=False;
+  lID:=RandomQueryID;
   With Qry.h do
     begin
-    ID[0]:=Random(256);
-    ID[1]:=Random(256);
+    Move(lID,ID,SizeOf(ID));
     Flags1:=QF_RD;
     Flags2:=0;
     qdcount:=htons(1); // was 1 shl 8;
@@ -1695,29 +1700,35 @@ begin
     sin_port:=htons(DNSServerPort);
     sin_addr.s_addr:=cardinal(DNSServers[Resolver]); // dnsservers already in net order
     end;
-  fpsendto(sock,@qry,qrylen+12,0,@SA,SizeOf(SA));
-  // Wait for answer.
-  RTO:=TimeOutS*1000+TimeOutMS;
-  fpFD_ZERO(ReadFDS);
-  fpFD_Set(sock,readfds);
-  if fpSelect(Sock+1,@readfds,Nil,Nil,RTO)<=0 then
+  // A connected UDP socket only receives datagrams from the resolver address and port.
+  if (fpconnect(Sock,@SA,SizeOf(SA))<>0) or (fpsend(Sock,@Qry,QryLen+12,0)<>QryLen+12) then
     begin
     fpclose(Sock);
     exit;
     end;
-  AL:=SizeOf(SA);
-  L:=fprecvfrom(Sock,@ans,SizeOf(Ans),0,@SA,@AL);
+  lDeadline:=GetTickCount64+QWord(TimeOutS*1000+TimeOutMS);
+  repeat
+    lNow:=GetTickCount64;
+    if lNow>=lDeadline then
+      break;
+    RTO:=lDeadline-lNow;
+    fpFD_ZERO(ReadFDS);
+    fpFD_Set(Sock,ReadFDS);
+    if fpSelect(Sock+1,@ReadFDS,Nil,Nil,RTO)<=0 then
+      break;
+    FillChar(Ans,SizeOf(Ans),0);
+    L:=fprecv(Sock,@Ans,SizeOf(Ans),0);
+    if L<0 then
+      break;
+    if (L>=12) and IsAnswerTo(Qry,QryLen,Ans,L-12) then
+      begin
+      // AnsLen >= 0 tells the caller that the server responded, even when Result is False.
+      AnsLen:=L-12;
+      Result:=CheckAnswer(Qry.h,Ans.h);
+      break;
+      end;
+  until False;
   fpclose(Sock);
-
-  if L < 12 then exit;
-  // Return Payload length.
-  Anslen:=L-12;
-  // even though we may still return false to indicate an error, if AnsLen
-  // is >= 0 then the caller knows the dns server responded.
-  If not CheckAnswer(Qry.h,Ans.h) Then
-    exit;
-  Result:=True;
-  //end;
 end;
 
 function FetchDNSResponse(sock: Cint; out len: ssize_t;
@@ -1764,14 +1775,15 @@ Var
   respsize: Word;
   resp: TTCPSocketResult;
   tstart: QWord;
+  lID: Word;
 
 begin
   tstart := GetTickCount64;
   Result:=False;
+  lID:=RandomQueryID;
   With Qry.hpl.h do
   begin
-    ID[0]:=Random(256);
-    ID[1]:=Random(256);
+    Move(lID,ID,SizeOf(ID));
     Flags1:=QF_RD;
     Flags2:=0;
     qdcount:=htons(1); // was 1 shl 8;
@@ -1791,7 +1803,10 @@ begin
 
   // connect to the resolver
   if (fpconnect(Sock, @SA, SizeOf(SA)) <> 0) then
+  begin
+    fpclose(Sock);
     exit;
+  end;
 
   // send the query to the resolver
   sendsize := QryLen + SizeOf(Qry.hpl.h) + SizeOf(Qry.length);
@@ -1964,50 +1979,163 @@ begin
   result := AnsiToString(lName);
 end;
 
+// Read the resource record at aStart within the first aAnsLen payload bytes; on success aStart points past its RDATA.
+function NextAnswerRR(const aPayload: TPayLoad; aAnsLen: Integer; var aStart: Integer;
+  out aRR: TRRData; out aRDataStart: Integer): Boolean;
+
+var
+  lPos : Integer;
+
+begin
+  Result:=False;
+  aRR:=Default(TRRData);
+  aRDataStart:=0;
+  if aAnsLen>Length(aPayload) then
+    aAnsLen:=Length(aPayload);
+  if (aStart<0) or (aStart>=aAnsLen) then
+    Exit;
+  lPos:=aStart;
+  stringfromlabel(aPayload,lPos);
+  if (lPos<=aStart) or (lPos+SizeOf(TRRData)>aAnsLen) then
+    Exit;
+  Move(aPayload[lPos],aRR,SizeOf(TRRData));
+  aRR.Atype:=NToHs(aRR.Atype);
+  aRR.AClass:=NToHs(aRR.AClass);
+  aRR.TTL:=NToHl(aRR.TTL);
+  aRR.RDLength:=NToHs(aRR.RDLength);
+  aRDataStart:=lPos+SizeOf(TRRData);
+  if aRDataStart+aRR.RDLength>aAnsLen then
+    Exit;
+  aStart:=aRDataStart+aRR.RDLength;
+  Result:=True;
+end;
+
+
+// Return the domain name at payload offset aStart.
+function NameAtOffset(const aPayload: TPayLoad; aStart: Integer): String;
+
+begin
+  Result:=stringfromlabel(aPayload,aStart);
+end;
+
+
+function ExtractAnswerAddresses(var aAns: TQueryData; aAnsLen: Integer;
+  var aAddresses: array of THostAddr; out aCName: String): Integer;
+
+var
+  lStart,lRData,lIdx : Integer;
+  lRR : TRRData;
+
+begin
+  Result:=0;
+  aCName:='';
+  lStart:=SkipAnsQueries(aAns,aAnsLen);
+  lIdx:=0;
+  while (lIdx<aAns.h.AnCount) and (Result<Length(aAddresses))
+        and NextAnswerRR(aAns.Payload,aAnsLen,lStart,lRR,lRData) do
+    begin
+    if lRR.AClass=1 then
+      case lRR.Atype of
+        DNSQRY_A:
+          if lRR.RDLength=SizeOf(THostAddr) then
+            begin
+            Move(aAns.Payload[lRData],aAddresses[Result],SizeOf(THostAddr));
+            Inc(Result);
+            end;
+        DNSQRY_CNAME:
+          begin
+          aCName:=NameAtOffset(aAns.Payload,lRData);
+          Exit;
+          end;
+      end;
+    Inc(lIdx);
+    end;
+end;
+
+
+function ExtractAnswerAddresses6(var aAns: TQueryData; aAnsLen: Integer;
+  var aAddresses: array of THostAddr6; out aCName: String): Integer;
+
+var
+  lStart,lRData,lIdx : Integer;
+  lRR : TRRData;
+
+begin
+  Result:=0;
+  aCName:='';
+  lStart:=SkipAnsQueries(aAns,aAnsLen);
+  lIdx:=0;
+  while (lIdx<aAns.h.AnCount) and (Result<Length(aAddresses))
+        and NextAnswerRR(aAns.Payload,aAnsLen,lStart,lRR,lRData) do
+    begin
+    if lRR.AClass=1 then
+      case lRR.Atype of
+        DNSQRY_AAAA:
+          if lRR.RDLength=SizeOf(THostAddr6) then
+            begin
+            Move(aAns.Payload[lRData],aAddresses[Result],SizeOf(THostAddr6));
+            Inc(Result);
+            end;
+        DNSQRY_CNAME:
+          begin
+          aCName:=NameAtOffset(aAns.Payload,lRData);
+          Exit;
+          end;
+      end;
+    Inc(lIdx);
+    end;
+end;
+
+
+function ExtractAnswerNames(var aAns: TQueryData; aAnsLen: Integer;
+  var aNames: array of String; out aCName: String): Integer;
+
+var
+  lStart,lRData,lIdx : Integer;
+  lRR : TRRData;
+
+begin
+  Result:=0;
+  aCName:='';
+  lStart:=SkipAnsQueries(aAns,aAnsLen);
+  lIdx:=0;
+  while (lIdx<aAns.h.AnCount) and (Result<Length(aNames))
+        and NextAnswerRR(aAns.Payload,aAnsLen,lStart,lRR,lRData) do
+    begin
+    if lRR.AClass=1 then
+      case lRR.Atype of
+        DNSQRY_PTR:
+          begin
+          aNames[Result]:=NameAtOffset(aAns.Payload,lRData);
+          Inc(Result);
+          end;
+        DNSQRY_CNAME:
+          begin
+          aCName:=NameAtOffset(aAns.Payload,lRData);
+          Exit;
+          end;
+      end;
+    Inc(lIdx);
+    end;
+end;
+
+
 Function ResolveNameAt(Resolver : Integer; const HostName : String; Var Addresses : Array of THostAddr; Recurse: Integer) : Integer;
 
 Var
   Qry, Ans            : TQueryData;
-  MaxAnswer,I,QryLen,
-  AnsLen,AnsStart     : Longint;
-  RR                  : TRRData;
+  QryLen,AnsLen       : Longint;
   cname               : string;
 begin
-  Result:=0;
   QryLen:=BuildPayLoad(Qry,HostName,DNSQRY_A,1);
   If Not Query(Resolver,Qry,Ans,QryLen,AnsLen) then
-    Result:=-1
-  else
-    begin
-    AnsStart:=SkipAnsQueries(Ans,AnsLen);
-    MaxAnswer:=Ans.h.AnCount-1;
-    If MaxAnswer>High(Addresses) then
-      MaxAnswer:=High(Addresses);
-    I:=0;
-    While (I<=MaxAnswer) and NextRR(Ans.Payload,AnsStart,AnsLen,RR) do
-      begin
-      if htons(rr.AClass) = 1 then
-        case ntohs(rr.AType) of
-          DNSQRY_A: begin
-            Move(Ans.PayLoad[AnsStart],Addresses[i],SizeOf(THostAddr));
-            inc(Result);
-            Inc(AnsStart,htons(RR.RDLength));
-          end;
-          DNSQRY_CNAME: begin
-            if Recurse >= MaxRecursion then begin
-              Result := -1;
-              exit;
-            end;
-            rr.rdlength := ntohs(rr.rdlength);
-            setlength(cname, rr.rdlength);
-            cname := stringfromlabel(ans.payload, ansstart);
-            Result := ResolveNameAt(Resolver, cname, Addresses, Recurse+1);
-            exit; // FIXME: what about other servers?!
-          end;
-        end;
-        Inc(I);
-      end;
-    end;
+    Exit(-1);
+  Result:=ExtractAnswerAddresses(Ans,AnsLen,Addresses,cname);
+  if cname<>'' then
+    if Recurse>=MaxRecursion then
+      Result:=-1
+    else
+      Result:=ResolveNameAt(Resolver,cname,Addresses,Recurse+1);
 end;
 
 Function ResolveName(const HostName : String; Var Addresses : Array of THostAddr) : Integer;
@@ -2032,9 +2160,7 @@ Function ResolveNameAt6(Resolver : Integer; const HostName : String; Var Address
 
 Var
   Qry, Ans            : TQueryData;
-  MaxAnswer,I,QryLen,
-  AnsLen,AnsStart     : Longint;
-  RR                  : TRRData;
+  I,QryLen,AnsLen     : Longint;
   cname               : string;
   LIP4mapped: array[0..MaxIP4Mapped-1] of THostAddr;
   LIP4count: Longint;
@@ -2046,10 +2172,8 @@ begin
     // no answer? try IPv4 mapped addresses, maybe that will generate one
     LIP4Count := ResolveName(HostName, LIP4Mapped);
     if LIP4Count > 0 then begin
-      inc(LIP4Count); // we loop to LIP4Count-1 later
-      if LIP4Count > MaxIP4Mapped then LIP4Count := MaxIP4Mapped;
       if LIP4Count > Length(Addresses) then LIP4Count := Length(Addresses);
-      for i := 0 to LIP4Count-2 do begin
+      for i := 0 to LIP4Count-1 do begin
         Addresses[i] := NoAddress6;
         Addresses[i].u6_addr16[5] := $FFFF;
         Move(LIP4Mapped[i], Addresses[i].u6_addr16[6], 4);
@@ -2060,35 +2184,12 @@ begin
     end;
   end else
     begin
-    AnsStart:=SkipAnsQueries(Ans,AnsLen);
-    MaxAnswer:=Ans.h.AnCount-1;
-    If MaxAnswer>High(Addresses) then
-      MaxAnswer:=High(Addresses);
-    I:=0;
-    While (I<=MaxAnswer) and NextRR(Ans.Payload,AnsStart,AnsLen,RR) do
-      begin
-      if (1=NtoHS(RR.AClass)) then
-      case ntohs(rr.atype) of
-        DNSQRY_AAAA: begin
-            Move(Ans.PayLoad[AnsStart],Addresses[i],SizeOf(THostAddr6));
-            inc(Result);
-            rr.rdlength := ntohs(rr.rdlength);
-            Inc(AnsStart,RR.RDLength);
-          end;
-        DNSQRY_CNAME: begin
-          if Recurse >= MaxRecursion then begin
-            Result := -1;
-            exit;
-          end;
-          rr.rdlength := ntohs(rr.rdlength);
-          setlength(cname, rr.rdlength);
-          cname := stringfromlabel(ans.payload, ansstart);
-          Result := ResolveNameAt6(Resolver, cname, Addresses, Recurse+1);
-          exit; // FIXME: what about other servers?!
-        end;
-      end;
-      Inc(I);
-      end;
+    Result:=ExtractAnswerAddresses6(Ans,AnsLen,Addresses,cname);
+    if cname<>'' then
+      if Recurse>=MaxRecursion then
+        Result:=-1
+      else
+        Result:=ResolveNameAt6(Resolver,cname,Addresses,Recurse+1);
     end;
 end;
 
@@ -2112,50 +2213,19 @@ Function ResolveAddressAt(Resolver : Integer; Address : String; Var Names : Arra
 
 Var
   Qry, Ans            : TQueryData;
-  MaxAnswer,I,QryLen,
-  AnsLen,AnsStart     : Longint;
-  RR                  : TRRData;
+  QryLen,AnsLen       : Longint;
+  cname               : string;
 
 begin
-  Result:=0;
   QryLen:=BuildPayLoad(Qry,Address,DNSQRY_PTR,1);
   If Not Query(Resolver,Qry,Ans,QryLen,AnsLen) then
-    Result:=-1
-  else
-    begin
-    AnsStart:=SkipAnsQueries(Ans,AnsLen);
-    MaxAnswer:=Ans.h.AnCount-1;
-    If MaxAnswer>High(Names) then
-      MaxAnswer:=High(Names);
-    I:=0;
-    While (I<=MaxAnswer) and NextRR(Ans.Payload,AnsStart,AnsLen,RR) do
-      begin
-      Case Ntohs(RR.AType) of
-        DNSQRY_PTR:
-          if (1=NtoHS(RR.AClass)) then
-            begin
-            Names[i]:=BuildName(Ans.Payload,AnsStart,AnsLen);
-            inc(Result);
-            RR.RDLength := ntohs(RR.RDLength);
-            Inc(AnsStart,RR.RDLength);
-            end;
-        DNSQRY_CNAME:
-          begin
-          if Recurse >= MaxRecursion then
-            begin
-            Result := -1;
-            exit;
-            end;
-          rr.rdlength := ntohs(rr.rdlength);
-          setlength(Address, rr.rdlength);
-          address := stringfromlabel(ans.payload, ansstart);
-          Result := ResolveAddressAt(Resolver, Address, Names, Recurse+1);
-          exit;
-          end;
-      end;
-      Inc(I);
-      end;
-    end;
+    Exit(-1);
+  Result:=ExtractAnswerNames(Ans,AnsLen,Names,cname);
+  if cname<>'' then
+    if Recurse>=MaxRecursion then
+      Result:=-1
+    else
+      Result:=ResolveAddressAt(Resolver,cname,Names,Recurse+1);
 end;
 
 

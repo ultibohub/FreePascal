@@ -1496,6 +1496,17 @@ implementation
               end
              else
               internalerror(200105131);
+             { the type converted to can be another type of that char type (a distinct type, a
+               subrange): what is left is a conversion within one char type, an ordinary
+               ordinal one. For an absolute conversion it is internal: the character is
+               converted already, nothing is left to reinterpret }
+             if resultdef<>hp.typedef then
+               begin
+                 result:=ctypeconvnode.create(hp,resultdef);
+                 result.flags:=result.flags+(flags*[nf_explicit,nf_internal]);
+                 if nf_absolute in flags then
+                   include(result.flags,nf_internal);
+               end;
              exit;
            end;
       end;
@@ -3974,7 +3985,27 @@ implementation
                       left:=nil;
                       exit;
                     end;
-                  if (convtype=tc_int_2_int) and (left.nodetype=typeconvn) and (ttypeconvnode(left).convtype=tc_bool_2_int) then
+                  { remove a conversion back to the original type after a
+                    conversion to an integer type at least as large, e.g.
+                    longint(int64(l)) which might be left over by the
+                    simplification of (l-1)+1 }
+                  if (convtype=tc_int_2_int) and (left.nodetype=typeconvn) and
+                    (ttypeconvnode(left).convtype=tc_int_2_int) and
+                    ([nf_absolute]*(flags+left.flags)=[]) and
+                    (ttypeconvnode(left).localswitches*[cs_check_range,cs_check_overflow]=[]) and
+                    is_integer(resultdef) and
+                    is_integer(left.resultdef) and
+                    (left.resultdef.size>=resultdef.size) and
+                    equal_defs(ttypeconvnode(left).left.resultdef,resultdef) then
+                    begin
+                      result:=ttypeconvnode(left).left;
+                      ttypeconvnode(left).left:=nil;
+                      exit;
+                    end;
+                  { a conversion to currency scales the value, so it cannot be
+                    folded into the boolean to integer conversion below it }
+                  if (convtype=tc_int_2_int) and (left.nodetype=typeconvn) and (ttypeconvnode(left).convtype=tc_bool_2_int) and
+                     not is_currency(resultdef) then
                     begin
                       ttypeconvnode(left).totypedef:=resultdef;
                       ttypeconvnode(left).resultdef:=resultdef;

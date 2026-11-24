@@ -23,12 +23,26 @@ begin
     P.License := 'LGPL with modification';
     P.HomepageURL := 'www.freepascal.org';
     P.OSes := [darwin,iphonesim,ios,linux,win32,win64,wince,android,ultibo];
+    if Defaults.CPU=jvm then
+      P.OSes := P.OSes - [java,android];
 
     P.Dependencies.Add('x11',AllUnixOSes-[darwin,iphonesim,ios,android]);
     P.SourcePath.Add('src');
+    P.IncludePath.Add('src');
 
     T:=P.Targets.AddUnit('gles11.pp',[darwin,iphonesim,ios,ultibo]);
+    T:=P.Targets.AddUnit('egl.pp',[linux,win32,win64,wince,android]);
+      with T.Dependencies do
+        begin
+        AddInclude('eglh.inc');
+        AddInclude('egl.inc');
+        end;
     T:=P.Targets.AddUnit('gles20.pas',[linux,win32,win64,wince,darwin,android,ultibo]);
+      with T.Dependencies do
+        begin
+        AddInclude('eglh.inc',[linux,win32,win64,wince,android]);
+        AddInclude('egl.inc',[linux,win32,win64,wince,android]);
+        end;
 
     P.Targets.AddExampleProgram('examples/es2example1.pas',P.OSes-[android]);
     P.Sources.AddExampleFiles('examples/glutdemoes.pp',P.Directory,false,'.');

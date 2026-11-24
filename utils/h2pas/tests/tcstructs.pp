@@ -76,6 +76,24 @@ type
     procedure TestDefinesInEnum;
     procedure TestDefinesInBracesCompile;
     procedure TestSelfContainedUnitCompiles;
+    procedure TestPackedAttribute;
+    procedure TestC23PackedAttribute;
+    procedure TestPackedTypedefAndUnion;
+    procedure TestPackedWithOtherAttributes;
+    procedure TestPackedAttributeRestoresPragmaPack;
+    procedure TestAlignedAttributeDropped;
+    procedure TestC23AttributeDropped;
+    procedure TestPackedEnumAttributeDropped;
+    procedure TestPackedAttributeBeforeBodyDropped;
+    procedure TestPackedAttributesCompile;
+    procedure TestAnonymousUnionLastMember;
+    procedure TestAnonymousUnionMiddleMember;
+    procedure TestAnonymousMembersInUnion;
+    procedure TestAnonymousStructInVariantPart;
+    procedure TestAnonymousMemberNamesAreUnique;
+    procedure TestAnonymousUnionFunctionPointer;
+    procedure TestTaggedStructWithoutDeclarator;
+    procedure TestAnonymousMembersCompile;
   end;
 
 implementation
@@ -731,6 +749,198 @@ procedure TTestStructs.TestFunctionPointerMemberArgumentsCompile;
 
 begin
   Convert(ModuleHeader,['-d']);
+  AssertConverted;
+  AssertCompiles;
+end;
+
+
+procedure TTestStructs.TestPackedAttribute;
+
+begin
+  Convert(['struct s { char a; int b; } __attribute__((packed));','struct t { int a; };']);
+  AssertConverted;
+  AssertInterface('packed attribute after the body',['{$PACKRECORDS 1}','type','s = record','a : ansichar;']);
+  AssertInterface('the alignment is restored after the packed record',['{$PACKRECORDS C}','t = record']);
+  AssertNotOutput('a converted attribute is no comment','ignored');
+end;
+
+
+procedure TTestStructs.TestC23PackedAttribute;
+
+begin
+  Convert(['struct s { char a; int b; } [[gnu::packed]];','struct p { int a; };','struct t { char a; } [[ __packed__ ]];']);
+  AssertConverted;
+  AssertInterface('C23 gnu::packed',['{$PACKRECORDS 1}','type','s = record']);
+  AssertInterface('C23 __packed__',['{$PACKRECORDS 1}','t = record']);
+end;
+
+
+procedure TTestStructs.TestPackedTypedefAndUnion;
+
+begin
+  Convert(['typedef struct { char a; int b; } __attribute__((__packed__)) ts;','struct p { int a; };',
+           'union u { char a; int b; } __attribute__ ((packed));']);
+  AssertConverted;
+  AssertInterface('packed typedef',['{$PACKRECORDS 1}','type','ts = record']);
+  AssertInterface('packed union',['{$PACKRECORDS 1}','u = record']);
+end;
+
+
+procedure TTestStructs.TestPackedWithOtherAttributes;
+
+begin
+  Convert(['struct s { char a; } __attribute__((packed, aligned(4)));']);
+  AssertConverted;
+  AssertInterface('packed with other attributes',['{$PACKRECORDS 1}','type','s = record']);
+  AssertOutput('the other attributes are kept as comment',['(* __attribute__((packed, aligned(4))) ignored *)']);
+end;
+
+
+procedure TTestStructs.TestPackedAttributeRestoresPragmaPack;
+
+begin
+  Convert(['#pragma pack(2)','struct s { char a; } __attribute__((packed));','struct t { int a; };']);
+  AssertConverted;
+  AssertInterface('the #pragma pack alignment is restored',['{$PACKRECORDS 2}','t = record']);
+end;
+
+
+procedure TTestStructs.TestAlignedAttributeDropped;
+
+begin
+  Convert(['struct s { int a; } __attribute__((aligned(8)));']);
+  AssertConverted;
+  AssertInterface('aligned attribute gives a plain record',['s = record','a : longint;','end;']);
+  AssertNotOutput('no packed record','PACKRECORDS 1');
+  AssertOutput('dropped attribute as comment',['(* __attribute__((aligned(8))) ignored *)']);
+end;
+
+
+procedure TTestStructs.TestC23AttributeDropped;
+
+begin
+  Convert(['[[deprecated]] int f(void);','[[nodiscard, gnu::nonnull(1)]] int g(int *p);'],['-d']);
+  AssertConverted;
+  AssertInterface('C23 attribute before a prototype',['function f:longint;cdecl;external;']);
+  AssertInterface('C23 attribute list',['function g(p:Plongint):longint;cdecl;external;']);
+  AssertOutput('dropped C23 attribute as comment',['(* [[deprecated]] ignored *)']);
+  AssertOutput('dropped C23 attribute list as comment',['(* [[nodiscard, gnu::nonnull(1)]] ignored *)']);
+end;
+
+
+procedure TTestStructs.TestPackedEnumAttributeDropped;
+
+begin
+  Convert(['enum e { ea, eb } __attribute__((packed));']);
+  AssertConverted;
+  AssertNotOutput('an enum is no packed record','PACKRECORDS 1');
+  AssertOutput('dropped enum attribute as comment',['(* __attribute__((packed)) ignored *)']);
+end;
+
+
+procedure TTestStructs.TestPackedAttributeBeforeBodyDropped;
+
+begin
+  Convert(['struct __attribute__((packed)) s { char a; };']);
+  AssertConverted;
+  AssertInterface('attribute before the tag gives a plain record',['s = record']);
+  AssertNotOutput('no packed record','PACKRECORDS 1');
+  AssertOutput('dropped attribute as comment',['(* __attribute__((packed)) ignored *)']);
+end;
+
+
+procedure TTestStructs.TestPackedAttributesCompile;
+
+begin
+  Convert(['struct s { char a; int b; } __attribute__((packed));','struct t { char a; int b; } [[gnu::packed]];',
+           'struct al { int a; } __attribute__((aligned(8)));','[[deprecated]] int f(void);'],['-d']);
+  AssertConverted;
+  AssertCompiles;
+end;
+
+
+procedure TTestStructs.TestAnonymousUnionLastMember;
+
+begin
+  Convert(['struct issue {','  union { int foo; void *bar; };','};']);
+  AssertConverted;
+  AssertInterface('an anonymous union at the end is the variant part',
+    ['issue = record','case longint of','0 : ( foo : longint );','1 : ( bar : pointer );','end;']);
+end;
+
+
+procedure TTestStructs.TestAnonymousUnionMiddleMember;
+
+begin
+  Convert(['struct middle { int a; union { int foo; void *bar; }; int b; };']);
+  AssertConverted;
+  AssertInterface('an anonymous union in the middle is a field with a generated name',
+    ['a : longint;','anon1 : record','case longint of','0 : ( foo : longint );','1 : ( bar : pointer );','end;',
+     'b : longint;']);
+end;
+
+
+procedure TTestStructs.TestAnonymousMembersInUnion;
+
+begin
+  Convert(['union outer { int i; struct { char c; int n; }; union { float f; double d; }; };']);
+  AssertConverted;
+  AssertInterface('an anonymous struct is one variant, the members of an anonymous union are variants',
+    ['case longint of','0 : ( i : longint );','1 : ( c : ansichar; n : longint );','2 : ( f : single );',
+     '3 : ( d : double );']);
+end;
+
+
+procedure TTestStructs.TestAnonymousStructInVariantPart;
+
+begin
+  Convert(['struct tail { char a; union { char b; struct { char x; int y; }; }; };']);
+  AssertConverted;
+  AssertInterface('an anonymous struct in the variant part is one variant',
+    ['a : ansichar;','case longint of','0 : ( b : ansichar );','1 : ( x : ansichar; y : longint );','end;']);
+end;
+
+
+procedure TTestStructs.TestAnonymousMemberNamesAreUnique;
+
+begin
+  Convert(['struct clash { int anon1; struct { int p; }; union { int r; long s; }; int last; };']);
+  AssertConverted;
+  AssertInterface('a generated name skips the field names',['anon1 : longint;','anon2 : record','p : longint;','end;']);
+  AssertInterface('the next anonymous member gets the next name',['anon3 : record','case longint of']);
+end;
+
+
+procedure TTestStructs.TestAnonymousUnionFunctionPointer;
+
+begin
+  Convert(['struct withcb { union { void (*cb)(int); int id; }; };']);
+  AssertConverted;
+  AssertInterface('a function pointer variant is cdecl',['0 : ( cb : procedure (_para1:longint);cdecl );']);
+end;
+
+
+procedure TTestStructs.TestTaggedStructWithoutDeclarator;
+
+begin
+  Convert(['struct hastag { struct inner { int x; }; int y; };']);
+  AssertConverted;
+  AssertInterface('a tagged struct without declarator declares its type',['inner = record','x : longint;','end;']);
+  AssertInterface('and is no field',['hastag = record','y : longint;','end;']);
+end;
+
+
+procedure TTestStructs.TestAnonymousMembersCompile;
+
+begin
+  Convert(['struct issue { union { int foo; void *bar; }; };',
+           'struct middle { int a; union { int foo; void *bar; }; int b; };',
+           'union outer { int i; struct { char c; int n; }; union { float f; double d; }; };',
+           'struct tail { char a; union { char b; struct { char x; int y; }; }; };',
+           'struct clash { int anon1; struct { int p; }; union { int r; long s; }; int last; };',
+           'struct withcb { union { void (*cb)(int); int id; }; };',
+           'struct hastag { struct inner { int x; }; int y; };',
+           'struct bits { int a : 3; union { int u; char c; }; };'],['-d']);
   AssertConverted;
   AssertCompiles;
 end;

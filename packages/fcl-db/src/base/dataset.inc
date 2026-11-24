@@ -24,6 +24,8 @@ constructor TDataSet.Create(AOwner: TComponent);
 
 begin
   Inherited Create(AOwner);
+  FFlatFieldDefList:=TFieldDefList.Create(Self);
+  FFlatFieldList:=TFieldList.Create(Self);
   FFieldDefs:=FieldDefsClass.Create(Self);
   FFieldList:=FieldsClass.Create(Self);
   FDataSources:=TFPList.Create;
@@ -39,6 +41,7 @@ begin
   FBOF := True;
   FIsUniDirectional := False;
   FAutoCalcFields := True;
+  FNestedDataSetClass := TDataSetClass(ClassType);
 end;
 
 
@@ -49,7 +52,13 @@ var
   i: Integer;
 
 begin
+  if Assigned(FDataSetField) then
+    DataSetField:=nil;
   Active:=False;
+  FFlatFieldDefList.Locked:=True;
+  FFlatFieldList.Locked:=True;
+  FreeAndNil(FFlatFieldDefList);
+  FreeAndNil(FFlatFieldList);
   FFieldDefs.Free;
   FFieldList.Free;
   While MyDatasourceCount>0 do
@@ -60,6 +69,104 @@ begin
   FConstraints.Free;
   FreeMem(FBuffers);
   Inherited Destroy;
+  FreeAndNil(FNestedDataSets);
+end;
+
+
+function TDataSet.GetNestedDataSets: TFPList;
+
+begin
+  if FNestedDataSets=nil then
+    FNestedDataSets:=TFPList.Create;
+  Result:=FNestedDataSets;
+end;
+
+
+procedure TDataSet.SetDataSetField(const AValue: TDataSetField);
+
+begin
+  if AValue=FDataSetField then
+    Exit;
+  if Assigned(AValue) and ((AValue.DataSet=Self) or
+     (Assigned(AValue.DataSet.GetDataSource) and (AValue.DataSet.GetDataSource.DataSet=Self))) then
+    DatabaseError(SCircularDataLink,Self);
+  if Assigned(AValue) and Assigned(AValue.DataSet) and not InheritsFrom(AValue.DataSet.FNestedDataSetClass) then
+    DatabaseErrorFmt(SNestedDataSetClass,[AValue.DataSet.FNestedDataSetClass.ClassName],Self);
+  if Active then
+    Close;
+  if Assigned(FDataSetField) then
+    FDataSetField.AssignNestedDataSet(nil);
+  FDataSetField:=AValue;
+  if Assigned(AValue) then
+    begin
+    AValue.AssignNestedDataSet(Self);
+    if Assigned(AValue.DataSet) and AValue.DataSet.Active then
+      Open;
+    end;
+end;
+
+
+function TDataSet.CreateNestedDataSet(aDataSetField: TDataSetField): TDataSet;
+
+begin
+  Result:=NestedDataSetClass.Create(aDataSetField);
+  try
+    Result.ObjectView:=True;
+    Result.DataSetField:=aDataSetField;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+
+procedure TDataSet.CheckParentState;
+
+begin
+  if Assigned(FDataSetField) and Assigned(FDataSetField.DataSet) then
+    FDataSetField.DataSet.Edit;
+end;
+
+
+procedure TDataSet.BeginParentUpdate;
+
+begin
+  Inc(FParentUpdateCount);
+end;
+
+
+procedure TDataSet.EndParentUpdate;
+
+begin
+  if FParentUpdateCount>0 then
+    Dec(FParentUpdateCount);
+end;
+
+
+// Opens the nested datasets that are not open yet
+procedure TDataSet.OpenNestedDataSets;
+
+var
+  i: Integer;
+
+begin
+  if Assigned(FNestedDataSets) then
+    for i:=0 to FNestedDataSets.Count-1 do
+      if not TDataSet(FNestedDataSets[i]).Active then
+        TDataSet(FNestedDataSets[i]).Open;
+end;
+
+
+// Closes the open nested datasets
+procedure TDataSet.CloseNestedDataSets;
+
+var
+  i: Integer;
+
+begin
+  if Assigned(FNestedDataSets) then
+    for i:=0 to FNestedDataSets.Count-1 do
+      TDataSet(FNestedDataSets[i]).Close;
 end;
 
 // This procedure must be called when the first record is made/read
@@ -79,20 +186,29 @@ end;
 
 procedure TDataSet.BindFields(Binding: Boolean);
 
-var i, FieldIndex: Integer;
-    FieldDef: TFieldDef;
+begin
+  { FieldNo is set to -1 for calculated/lookup fields, to 0 for unbound field
+    and for bound fields it is set to FieldDef.FieldNo of the top-level definition }
+  FCalcFieldsSize := 0;
+  FBlobFieldCount := 0;
+  FInternalCalcFields := False;
+  BindFieldList(Fields, Binding);
+end;
+
+
+procedure TDataSet.BindFieldList(aFields: TFields; aBinding: Boolean);
+
+var i, FieldIndex, lListIndex: Integer;
+    FieldDef, lRoot: TFieldDef;
     Field: TField;
 
 begin
-  { FieldNo is set to -1 for calculated/lookup fields, to 0 for unbound field
-    and for bound fields it is set to FieldDef.FieldNo }
-  FCalcFieldsSize := 0;
-  FBlobFieldCount := 0;
-  for i := 0 to Fields.Count - 1 do
+  for i := 0 to aFields.Count - 1 do
     begin
-    Field := Fields[i];
+    Field := aFields[i];
     Field.FFieldDef := Nil;
-    if not Binding then
+    Field.FFieldDefListIndex := -1;
+    if not aBinding then
       Field.FFieldNo := 0
     else if Field.FieldKind in [fkCalculated, fkLookup] then
       begin
@@ -102,31 +218,47 @@ begin
       end
     else
       begin
-      FieldIndex := FieldDefs.IndexOf(Field.FieldName);
-      if FieldIndex = -1 then
-        DatabaseErrorFmt(SFieldNotFound,[Field.FieldName],Self)
+      if Assigned(Field.ParentField) then
+        FieldIndex := -1
       else
+        FieldIndex := FieldDefs.IndexOf(Field.FieldName);
+      if FieldIndex >= 0 then
         begin
         FieldDef := FieldDefs[FieldIndex];
-        Field.FFieldDef := FieldDef;
         Field.FFieldNo := FieldDef.FieldNo;
-        if FieldDef.InternalCalcField then
-          FInternalCalcFields := True;
-        if Field.IsBlob then
-          begin
-          Field.FSize := FieldDef.Size;
-          Field.FOffset := FBlobFieldCount;
-          Inc(FBlobFieldCount);
-          end;
-        // synchronize CodePage between TFieldDef and TField
-        // character data in record buffer and field buffer should have same CodePage
-        if Field is TStringField then
-          TStringField(Field).FCodePage := FieldDef.FCodePage
-        else if Field is TMemoField then
-          TMemoField(Field).FCodePage := FieldDef.FCodePage;
+        end
+      else
+        begin
+        lListIndex := FieldDefList.IndexOf(Field.FullName);
+        if lListIndex = -1 then
+          DatabaseErrorFmt(SFieldNotFound,[Field.FullName],Self);
+        FieldDef := FieldDefList[lListIndex];
+        lRoot := FieldDef;
+        while Assigned(lRoot.ParentDef) do
+          lRoot := lRoot.ParentDef;
+        Field.FFieldNo := lRoot.FieldNo;
+        if lRoot <> FieldDef then
+          Field.FFieldDefListIndex := lListIndex;
         end;
+      Field.FFieldDef := FieldDef;
+      if FieldDef.InternalCalcField then
+        FInternalCalcFields := True;
+      if Field.IsBlob and (Field.FFieldDefListIndex < 0) then
+        begin
+        Field.FSize := FieldDef.Size;
+        Field.FOffset := FBlobFieldCount;
+        Inc(FBlobFieldCount);
+        end;
+      // synchronize CodePage between TFieldDef and TField
+      // character data in record buffer and field buffer should have same CodePage
+      if Field is TStringField then
+        TStringField(Field).FCodePage := FieldDef.FCodePage
+      else if Field is TMemoField then
+        TMemoField(Field).FCodePage := FieldDef.FCodePage;
       end;
-    Field.Bind(Binding);
+    Field.Bind(aBinding);
+    if (Field is TObjectField) and not (Field is TDataSetField) then
+      BindFieldList(TObjectField(Field).Fields, aBinding);
     end;
 end;
 
@@ -145,7 +277,9 @@ var
   OldState: TDatasetState;
 begin
   FCalcBuffer := Buffer;
-  if FState <> dsInternalCalc then
+  if FState = dsInternalCalc then
+    DoOnCalcFields
+  else
   begin
     OldState := FState;
     FState := dsCalcFields;
@@ -212,6 +346,7 @@ end;
 procedure TDataSet.CreateFields;
 
 Var I : longint;
+    lFlat : Boolean;
 
 begin
 {$ifdef DSDebug}
@@ -220,15 +355,27 @@ begin
   For I:=0 to FieldDefs.Count-1 do
     Writeln('Def ',I,' : ',Fielddefs.items[i].Name,'(',Fielddefs.items[i].FieldNo,')');
 {$endif}
-  For I:=0 to FieldDefs.Count-1 do
-    With FieldDefs.Items[I] do
-      If DataType<>ftUnknown then
-        begin
-        {$ifdef DSDebug}
-        Writeln('About to create field ',FieldDefs.Items[i].Name);
-        {$endif}
-        CreateField(self);
-        end;
+  lFlat:=False;
+  if not ObjectView then
+    For I:=0 to FieldDefs.Count-1 do
+      lFlat:=lFlat or (FieldDefs[I].HasChildDefs and (FieldDefs[I].DataType<>ftDataSet));
+  if lFlat then
+    begin
+    For I:=0 to FieldDefList.Count-1 do
+      With FieldDefList[I] do
+        If (DataType<>ftUnknown) and ((DataType=ftDataSet) or not (DataType in ObjectFieldTypes)) then
+          CreateField(self,nil,FieldDefList.Strings[I]);
+    end
+  else
+    For I:=0 to FieldDefs.Count-1 do
+      With FieldDefs.Items[I] do
+        If DataType<>ftUnknown then
+          begin
+          {$ifdef DSDebug}
+          Writeln('About to create field ',FieldDefs.Items[i].Name);
+          {$endif}
+          CreateField(self);
+          end;
 end;
 
 procedure TDataSet.DataEvent(Event: TDataEvent; Info: Ptrint);
@@ -241,8 +388,8 @@ procedure TDataSet.DataEvent(Event: TDataEvent; Info: Ptrint);
     if State <> dsSetKey then begin
       if aField.FieldKind = fkData then begin
         if FInternalCalcFields then
-          RefreshInternalCalcFields(ActiveBuffer)
-        else if FAutoCalcFields and (FCalcFieldsSize <> 0) then
+          RefreshInternalCalcFields(ActiveBuffer);
+        if FAutoCalcFields and (FCalcFieldsSize <> 0) then
           CalculateFields(ActiveBuffer);
       end;
 
@@ -251,9 +398,25 @@ procedure TDataSet.DataEvent(Event: TDataEvent; Info: Ptrint);
   end;
 
   procedure HandleScrollOrChange;
+  var
+    i: Integer;
   begin
     if State <> dsInsert then
       UpdateCursorPos;
+    if Assigned(FNestedDataSets) then
+      for i := 0 to FNestedDataSets.Count - 1 do
+        if TDataSet(FNestedDataSets[i]).Active and (TDataSet(FNestedDataSets[i]).FParentUpdateCount = 0) then
+          TDataSet(FNestedDataSets[i]).DataEvent(deParentScroll, 0);
+  end;
+
+  procedure CheckNestedBrowseMode;
+  var
+    i: Integer;
+  begin
+    if Assigned(FNestedDataSets) then
+      for i := 0 to FNestedDataSets.Count - 1 do
+        if TDataSet(FNestedDataSets[i]).Active and (TDataSet(FNestedDataSets[i]).FParentUpdateCount = 0) then
+          TDataSet(FNestedDataSets[i]).CheckBrowseMode;
   end;
 
 var
@@ -261,6 +424,7 @@ var
 begin
   case Event of
     deFieldChange   : HandleFieldChange(TField(Info));
+    deCheckBrowseMode : CheckNestedBrowseMode;
     deDataSetChange,
     deDataSetScroll : HandleScrollOrChange;
     deLayoutChange  : FEnableControlsEvent:=deLayoutChange;
@@ -701,6 +865,12 @@ begin
   Result := DefaultFieldClasses[FieldType];
 end;
 
+function TDataSet.GetFieldClass(FieldDef: TFieldDef): TFieldClass;
+
+begin
+  Result := GetFieldClass(FieldDef.DataType);
+end;
+
 function TDataSet.GetIsIndexField(Field: TField): Boolean;
 
 begin
@@ -887,6 +1057,14 @@ begin
   FSparseArrays := AValue;
 end;
 
+procedure TDataSet.SetObjectView(AValue: Boolean);
+
+begin
+  CheckInactive;
+  FObjectView := AValue;
+end;
+
+
 procedure TDataSet.DoInsertAppendRecord(const Values: array of const; DoAppend : boolean);
 var i : integer;
     ValuesSize : integer;
@@ -904,6 +1082,41 @@ begin
 
 end;
 
+// Adds to aDefs a field definition for aField named aName, with child definitions for its child fields.
+function AddFieldDefFromField(aDefs: TFieldDefs; aField: TField; const aName: string): TFieldDef;
+
+var
+  i, lSize: Integer;
+  lObject: TObjectField;
+
+begin
+  lSize:=aField.Size;
+  if aField is TArrayField then
+    lSize:=TArrayField(aField).FieldCount;
+  Result:=aDefs.FieldDefClass.Create(aDefs,aName,aField.DataType,lSize,aField.Required,aDefs.Count+1);
+  with Result do
+    begin
+    InternalCalcField := aField.FieldKind = fkInternalCalc;
+    if aField.Required then Attributes := Attributes + [faRequired];
+    if aField.ReadOnly then Attributes := Attributes + [faReadOnly];
+    if DataType = ftBCD then Precision := (aField as TBCDField).Precision
+    else if DataType = ftFMTBcd then Precision := (aField as TFMTBCDField).Precision;
+    end;
+  if aField is TObjectField then
+    begin
+    lObject:=TObjectField(aField);
+    if lObject.DataType=ftArray then
+      begin
+      if lObject.FieldCount>0 then
+        AddFieldDefFromField(Result.ChildDefs,lObject.Fields[0],'');
+      end
+    else
+      for i:=0 to lObject.FieldCount-1 do
+        AddFieldDefFromField(Result.ChildDefs,lObject.Fields[i],lObject.Fields[i].FieldName);
+    end;
+end;
+
+
 procedure TDataSet.InitFieldDefsFromFields;
 var i : integer;
 
@@ -914,16 +1127,7 @@ begin
     try
       for i := 0 to Fields.Count-1 do with Fields[i] do
         if not (FieldKind in [fkCalculated,fkLookup]) then // Do not add fielddefs for calculated/lookup fields.
-          begin
-          FFieldDef:=FieldDefs.FieldDefClass.Create(FieldDefs,FieldName,DataType,Size,Required,FieldDefs.Count+1);
-          with FFieldDef do
-            begin
-            if Required then Attributes := Attributes + [faRequired];
-            if ReadOnly then Attributes := Attributes + [faReadOnly];
-            if DataType = ftBCD then Precision := (Fields[i] as TBCDField).Precision
-            else if DataType = ftFMTBcd then Precision := (Fields[i] as TFMTBCDField).Precision;
-            end;
-          end;
+          FFieldDef:=AddFieldDefFromField(FieldDefs,Fields[i],FieldName);
     finally
       FieldDefs.EndUpdate;
       end;
@@ -986,8 +1190,16 @@ end;
 
 procedure TDataSet.RefreshInternalCalcFields(Buffer: TRecordBuffer);
 
+var
+  lOldState: TDataSetState;
+
 begin
-  //!! To be implemented
+  lOldState := SetTempState(dsInternalCalc);
+  try
+    CalculateFields(Buffer);
+  finally
+    RestoreState(lOldState);
+  end;
 end;
 
 function TDataSet.SetTempState(const Value: TDataSetState): TDataSetState;
@@ -1094,19 +1306,21 @@ begin
       begin
       DoBeforeOpen;
       FEnableControlsEvent:=deLayoutChange;
-      FInternalCalcFields:=False;
       try
         FDefaultFields:=FieldCount=0;
         OpenCursor(False);
       finally
         if FState <> dsOpening then OpenCursorComplete;
         end;
+      if FState <> dsInactive then
+        OpenNestedDataSets;
       end;
     FModified:=False;
     end
   else if not value and (Fstate <> dsinactive) then
     begin
     DoBeforeClose;
+    CloseNestedDataSets;
     SetState(dsInactive);
     CloseCursor;
     DoAfterClose;
@@ -1694,6 +1908,7 @@ begin
   If Not CanModify then
     DatabaseError(SDatasetReadOnly,Self);
   DoBeforeInsert;
+  CheckParentState;
   DoBeforeScroll;
   If Not DoAppend then
     begin
@@ -1749,6 +1964,7 @@ begin
     Exit;
     end;
   DoBeforeEdit;
+  CheckParentState;
   If Not TryDoing(@InternalEdit,OnEditError) then exit;
   GetCalcFields(ActiveBuffer);
   SetState(dsEdit);
@@ -1786,6 +2002,8 @@ function TDataSet.FindField(const FieldName: string): TField;
 
 begin
   Result:=FFieldList.FindField(FieldName);
+  if (Result=nil) and ObjectView then
+    Result:=FieldList.Find(FieldName);
 end;
 
 function TDataSet.FindFirst: Boolean;
@@ -1932,16 +2150,25 @@ end;
 
 function TDataSet.IsLinkedTo(ADataSource: TDataSource): Boolean;
 
+var
+  lDataSource: TDataSource;
+  lDataSet: TDataSet;
+
 begin
-//!! Not tested, I never used nested DS
-  if (ADataSource = nil) or (ADataSource.Dataset = nil) then begin
-    Result := False
-  end else if ADataSource.Dataset = Self then begin
-    Result := True;
-  end else begin
-    Result := ADataSource.Dataset.IsLinkedTo(ADataSource.Dataset.DataSource);
-  end;
-//!! DataSetField not implemented
+  Result := True;
+  lDataSource := ADataSource;
+  while Assigned(lDataSource) do
+    begin
+    lDataSet := lDataSource.DataSet;
+    if lDataSet = nil then
+      Break;
+    if lDataSet = Self then
+      Exit;
+    if Assigned(lDataSet.DataSetField) and (lDataSet.DataSetField.DataSet = Self) then
+      Exit;
+    lDataSource := lDataSet.DataSource;
+    end;
+  Result := False;
 end;
 
 function TDataSet.IsSequenced: Boolean;
@@ -2321,19 +2548,19 @@ end;
 function TDataSet.GetFieldValues(const FieldName: string): Variant;
 
 var i: Integer;
-    FieldList: TList;
+    lFields: TList;
 begin
-  FieldList := TList.Create;
+  lFields := TList.Create;
   try
-    GetFieldList(FieldList, FieldName);
-    if FieldList.Count>1 then begin
-      Result := VarArrayCreate([0, FieldList.Count - 1], varVariant);
-      for i := 0 to FieldList.Count - 1 do
-        Result[i] := TField(FieldList[i]).Value;
+    GetFieldList(lFields, FieldName);
+    if lFields.Count>1 then begin
+      Result := VarArrayCreate([0, lFields.Count - 1], varVariant);
+      for i := 0 to lFields.Count - 1 do
+        Result[i] := TField(lFields[i]).Value;
     end else
       Result := FieldByName(FieldName).Value;
   finally
-    FieldList.Free;
+    lFields.Free;
   end;
 end;
 
@@ -2341,22 +2568,22 @@ procedure TDataSet.SetFieldValues(const FieldName: string; Value: Variant);
 
 var
   i, l, h : Integer;
-  FieldList: TList;
+  lFields: TList;
 begin
   if VarIsArray(Value) then begin
-    FieldList := TList.Create;
+    lFields := TList.Create;
     try
-      GetFieldList(FieldList, FieldName);
+      GetFieldList(lFields, FieldName);
       l := VarArrayLowBound(Value, 1);
       h := VarArrayHighBound(Value, 1);
-      if (FieldList.Count = 1) and (l < h) then
+      if (lFields.Count = 1) and (l < h) then
         // Allow for a field type that can deal with an array
         FieldByName(FieldName).Value := Value
       else
-        for i := 0 to FieldList.Count - 1 do
-          TField(FieldList[i]).Value := Value[l+i];
+        for i := 0 to lFields.Count - 1 do
+          TField(lFields[i]).Value := Value[l+i];
     finally
-      FieldList.Free;
+      lFields.Free;
     end;
   end else
     FieldByName(FieldName).Value := Value;

@@ -515,6 +515,17 @@ end;
       end;
 
 
+{$ifndef VER3_2}
+    function tinterfaceentry.GetITypeInfo: Pointer;
+      begin
+        if Assigned(ITypeInfoRef) then
+          GetITypeInfo:=ITypeInfoRef^
+        else
+          GetITypeInfo:=Nil;
+      end;
+{$endif VER3_2}
+
+
 {****************************************************************************
                                TOBJECT
 ****************************************************************************}
@@ -1510,17 +1521,6 @@ end;
          Result:=-1;
       end;
 
-
-
-{****************************************************************************
-                               TCustomAttribute
-****************************************************************************}
-
-
-    constructor TCustomAttribute.Create;
-    begin
-      inherited;
-    end;
 
 
 {****************************************************************************

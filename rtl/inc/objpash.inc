@@ -202,9 +202,16 @@
        private
          function GetIID: pguid; inline;
          function GetIIDStr: pshortstring; inline;
+{$ifndef VER3_2}
+         function GetITypeInfo: Pointer; inline;
+{$endif VER3_2}
        public
          property IID: pguid read GetIID;
          property IIDStr: pshortstring read GetIIDStr;
+{$ifndef VER3_2}
+         { the type information of the interface: a PTypeInfo of unit TypInfo }
+         property ITypeInfo: Pointer read GetITypeInfo;
+{$endif VER3_2}
        public
          IIDRef      : ^pguid; { if assigned(IID) then Com else Corba}
          VTable      : Pointer;
@@ -216,6 +223,9 @@
                 IOffsetAsCodePtr: CodePointer;
                 IIDStrRef   : ^pshortstring; { never nil. Com: upper(GuidToString(IID^)) }
                 IType       : tinterfaceentrytype;
+{$ifndef VER3_2}
+                ITypeInfoRef: PPointer; { never nil }
+{$endif VER3_2}
                );
        end;
 
@@ -586,16 +596,8 @@
                                   Attribute support
      *****************************************************************************}
   Type
-  {$PUSH}
-  { disable the warning that the constructor should be public }
-  {$WARN 3018 OFF}
   TCustomAttribute = class(TObject)
-  private
-    { if the user wants to use a parameterless constructor they need to
-      explicitely declare it in their type }
-    constructor Create;
   end;
-  {$POP}
 
   TUnimplementedAttribute = class(TCustomAttribute)
   public

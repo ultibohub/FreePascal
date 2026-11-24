@@ -29,7 +29,7 @@ type
     procedure TestXXParamQuery(ADataType : TFieldType; ASQLTypeDecl : string;
       ParamValuesCount : integer; const ParamValues: array of string; Cross : boolean = False); overload;
     procedure TestSetBlobAsParam(asWhat : integer);
-    procedure IgnoreIfFirebirdStringLimit(aMaxChars, aRecordChars: integer);
+    procedure IgnoreIfStringLimit(aMaxChars, aRecordChars: integer);
   protected
     procedure SetUp; override;
     procedure TearDown; override;
@@ -45,6 +45,7 @@ type
     procedure TestString;
     procedure TestUnlVarChar;
     procedure TestFixedCharUTF8; // bug 39536
+    procedure TestNationalCharUTF8; // bug 16529
     procedure TestNumericScale8Param; // bug 39409
     procedure TestLargeBCDParam;
     procedure TestBlob;
@@ -153,6 +154,25 @@ uses sqldbtoolsunit,toolsunit, variants, sqldb, bufdataset, strutils, dbconst, F
 
 Type HackedDataset = class(TDataset);
 
+// SQL literal for a BLOB column: hexadecimal for Oracle, a quoted string otherwise
+function BlobLiteral(const aValue: string): string;
+
+var
+  i: integer;
+
+begin
+  if SQLServerType=ssOracle then
+    begin
+    Result := '';
+    for i := 1 to Length(aValue) do
+      Result := Result+IntToHex(Ord(aValue[i]),2);
+    Result := 'HEXTORAW('''+Result+''')';
+    end
+  else
+    Result := QuotedStr(aValue);
+end;
+
+
 const
   testFloatValuesCount = 21;
   testFloatValues : Array[0..testFloatValuesCount-1] of double = (-maxSmallint-1,-maxSmallint,-256,-255,-128,-127,-1,0,1,127,128,255,256,maxSmallint,maxSmallint+1,0.123456,-0.123456,4.35,12.434E7,9.876e-5,123.45678);
@@ -236,7 +256,7 @@ var
   i          : byte;
 
 begin
-  CreateTableWithFieldType(ftInteger,'INT');
+  CreateTableWithFieldType(ftInteger,IntColumnType);
   TestFieldDeclaration(ftInteger,4);
 
   for i := 0 to testIntValuesCount-1 do
@@ -340,6 +360,8 @@ begin
     end
     else
       s := ', N19_0 NUMERIC(19,0)';
+    if SQLServerType = ssOracle then
+      FieldTypes[7] := ftLargeInt; //TOracleConnection maps NUMBER(19,0) to ftLargeInt
     Connection.ExecuteDirect('create table FPDEV2 (FT NUMERIC(18,4), N4_2 NUMERIC(4,2), N9_3 NUMERIC(9,3), N9_5 NUMERIC(9,5), N18_0 NUMERIC(18,0), N18_3 NUMERIC(18,3), N18_5 NUMERIC(18,5)' + s + ')');
     CommitDDL;
 
@@ -461,7 +483,10 @@ begin
     for i := 0 to testValuesCount-1 do
       begin
       AssertEquals(testValues[i], Fields[0].AsString);
-      AssertEquals('IsNull', False, Fields[0].IsNull); // '' is not NULL
+      if (SQLServerType=ssOracle) and (testValues[i]='') then
+        AssertTrue('IsNull: Oracle stores '''' as NULL', Fields[0].IsNull)
+      else
+        AssertEquals('IsNull', False, Fields[0].IsNull); // '' is not NULL
       Next;
       end;
     Close;
@@ -576,6 +601,53 @@ begin
       CheckValue('CHAR(2) with two 2-byte UTF-8 characters',lBB,Fields[1]);
       CheckValue('VARCHAR(2) with two 2-byte UTF-8 characters',lBB,Fields[2]);
       Close;
+      end;
+  finally
+    DefaultSystemCodePage:=lSavedCodePage;
+  end;
+end;
+
+procedure TTestFieldTypes.TestNationalCharUTF8;
+
+var
+  lKanji, lCyr, lN10, lN5, lN4, lV10: UTF8String;
+  lSavedCodePage: TSystemCodePage;
+
+  procedure CheckField(const aMsg: String; aField: TField; aSize: Integer; const aExpected: UTF8String);
+  var
+    lValue: UTF8String;
+  begin
+    AssertEquals(aMsg+': field size in characters',aSize,aField.Size);
+    lValue:=aField.AsUTF8String;
+    AssertTrue(Format('%s: full value, got "%s"',[aMsg,lValue]),lValue=aExpected);
+  end;
+
+begin
+  if SQLServerType<>ssOracle then
+    Ignore(STestNotApplicable);
+  if not SameText(TSQLDBConnector(DBConnector).Connection.CharSet,'UTF8') then
+    Ignore('This test needs a connection with character set UTF8');
+  lKanji:=UTF8Encode(UnicodeString(WideChar($6F22))+UnicodeString(WideChar($5B57)));
+  lCyr:=UTF8Encode(UnicodeString(WideChar($0411))+UnicodeString(WideChar($0416)));
+  lN10:=lKanji+lKanji+lKanji+lKanji+lKanji;
+  lN4:=lKanji+lKanji;
+  lN5:=lN4+UTF8Encode(UnicodeString(WideChar($6F22)));
+  lV10:=lCyr+lCyr+lCyr+lCyr+lCyr;
+  lSavedCodePage:=DefaultSystemCodePage;
+  DefaultSystemCodePage:=CP_UTF8;
+  try
+    with TSQLDBConnector(DBConnector) do
+      begin
+      Connection.ExecuteDirect('create table FPDEV2 (ID INT NOT NULL, N1 NVARCHAR2(10), N2 NCHAR(5), V1 VARCHAR2(10 CHAR), primary key (ID))');
+      CommitDDL;
+      Connection.ExecuteDirect('insert into FPDEV2 values (1, N'''+lN10+''', N'''+lN5+''', '''+lV10+''')');
+      Query.SQL.Text:='select N1, N2, V1, N'''+lN4+''' L1 from FPDEV2';
+      Query.Open;
+      CheckField('NVARCHAR2(10) with 10 three-byte UTF-8 characters',Query.Fields[0],10,lN10);
+      CheckField('NCHAR(5) with 5 three-byte UTF-8 characters',Query.Fields[1],5,lN5);
+      CheckField('VARCHAR2(10 CHAR) with 10 two-byte UTF-8 characters',Query.Fields[2],10,lV10);
+      CheckField('National character literal with 4 three-byte UTF-8 characters',Query.Fields[3],4,lN4);
+      Query.Close;
       end;
   finally
     DefaultSystemCodePage:=lSavedCodePage;
@@ -833,7 +905,7 @@ begin
   CreateTableWithFieldType(ftBlob,FieldtypeDefinitions[ftBlob]);
   TestFieldDeclaration(ftBlob,0);
 
-  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values (''Test this blob'')');
+  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values ('+BlobLiteral('Test this blob')+')');
 
   with TSQLDBConnector(DBConnector).Query do
     begin
@@ -849,7 +921,7 @@ begin
   TSQLDBConnector(DBConnector).Connection.ExecuteDirect('create table FPDEV2 (ID int,FT '+FieldtypeDefinitions[ftblob]+')');
   TSQLDBConnector(DBConnector).CommitDDL;
 
-  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (ID,FT) values (1,''Test this blob'')');
+  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (ID,FT) values (1,'+BlobLiteral('Test this blob')+')');
 
   with TSQLDBConnector(DBConnector).Query do
     begin
@@ -899,7 +971,7 @@ begin
   CreateTableWithFieldType(ftBlob,FieldtypeDefinitions[ftBlob]);
   TestFieldDeclaration(ftBlob,0);
 
-  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values (''Test this blob'')');
+  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values ('+BlobLiteral('Test this blob')+')');
   TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values (Null)');
 
   with TSQLDBConnector(DBConnector).Query do
@@ -922,7 +994,7 @@ const
 begin
   CreateTableWithFieldType(ftBlob,FieldtypeDefinitions[ftBlob]);
 
-  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values ('''+TestValue+''')');
+  TSQLDBConnector(DBConnector).Connection.ExecuteDirect('insert into FPDEV2 (FT) values ('+BlobLiteral(TestValue)+')');
 
   with TSQLDBConnector(DBConnector).Query do
     begin
@@ -994,6 +1066,8 @@ var datatype: string;
 begin
   if SQLConnType=sqlite3 then
     datatype:='LARGEINT'
+  else if SQLServerType=ssOracle then
+    datatype:='NUMBER(19)'
   else
     datatype:='BIGINT';
   TestSQLFieldType(ftLargeint, datatype, 8, @TestSQLLargeint_GetSQLText, @CheckFieldValue);
@@ -1177,7 +1251,7 @@ end;
 
 // Ignores the test on Firebird/Interbase if a VARCHAR of aMaxChars or a record of aRecordChars characters
 // exceeds the server limits in the default character set of the database.
-procedure TTestFieldTypes.IgnoreIfFirebirdStringLimit(aMaxChars, aRecordChars: integer);
+procedure TTestFieldTypes.IgnoreIfStringLimit(aMaxChars, aRecordChars: integer);
 
 const
   cMaxVarCharBytes = 32765;
@@ -1187,6 +1261,10 @@ var
   lBytesPerChar: integer;
 
 begin
+  if (SQLServerType=ssOracle) and (aMaxChars>4000) then
+    Ignore('Oracle VARCHAR2 is limited to 4000 bytes unless MAX_STRING_SIZE=EXTENDED');
+  if (SQLServerType=ssMSSQL) and (aMaxChars>8000) then
+    Ignore('SQL Server VARCHAR(n) is limited to 8000 bytes');
   if not (SQLServerType in [ssFirebird, ssInterbase]) then
     exit;
   with TSQLDBConnector(DBConnector).Query do
@@ -1212,7 +1290,7 @@ var
   i             : integer;
 
 begin
-  IgnoreIfFirebirdStringLimit(9000,9000);
+  IgnoreIfStringLimit(9000,9000);
   CreateTableWithFieldType(ftString,'VARCHAR(9000)');
   TestFieldDeclaration(ftString,9000*DBConnector.CharSize+1);
 
@@ -1235,7 +1313,7 @@ var
   FieldValues: array [1..4] of string;
   i,l1,l2: integer;
 begin
-  IgnoreIfFirebirdStringLimit(16000,8192+16000);
+  IgnoreIfStringLimit(16000,8192+16000);
   FieldValues[1] := 'test1';                  // string length < 8192 (dsMaxStringSize)
   FieldValues[2] := StringOfChar('a', 8192);  // string length = 8192 (dsMaxStringSize)
   FieldValues[3] := StringOfChar('b', 16000); // string length > 8192 (dsMaxStringSize)
@@ -1278,7 +1356,7 @@ end;
 procedure TTestFieldTypes.TestLargeRecordSize;
 // probably tests situation, where total record size > 64K (TDataSet.RecordSize returns word value)
 begin
-  IgnoreIfFirebirdStringLimit(8192,6*8192);
+  IgnoreIfStringLimit(8192,6*8192);
   TSQLDBConnector(DBConnector).Connection.ExecuteDirect('create table FPDEV2 (plant varchar(8192),sampling_type varchar(8192),area varchar(8192), area_description varchar(8192), batch varchar(8192), sampling_datetime timestamp, status varchar(8192), batch_commentary varchar(8192))');
 
   // Firebird/Interbase need a commit after a DDL statement. Not necessary for the other connections
@@ -1613,7 +1691,8 @@ begin
       AssertFalse(ReadOnly);
       AssertTrue(CanModify);
       edit;
-      FieldByName('ID').AsInteger:=1; // field "ID" from UNION can be marked as ReadOnly
+      if not FieldByName('ID').ReadOnly then // field "ID" from UNION can be marked as ReadOnly
+        FieldByName('ID').AsInteger:=1;
       post;
       ApplyUpdates;
       close;
@@ -1767,7 +1846,7 @@ end;
 
 procedure TTestFieldTypes.TestIntParamQuery;
 begin
-  TestXXParamQuery(ftInteger,'INT',testIntValuesCount);
+  TestXXParamQuery(ftInteger,IntColumnType,testIntValuesCount);
 end;
 
 procedure TTestFieldTypes.TestLargeIntParamQuery;
@@ -1794,6 +1873,8 @@ end;
 
 procedure TTestFieldTypes.TestCrossStringDateParam;
 begin
+  if SQLServerType=ssOracle then
+    TSQLDBConnector(DBConnector).Connection.ExecuteDirect('alter session set nls_date_format=''YYYY-MM-DD''');
   TestXXParamQuery(ftDate,FieldtypeDefinitions[ftDate],testDateValuesCount,[],True);
 end;
 
@@ -1838,7 +1919,10 @@ end;
 
 procedure TTestFieldTypes.TestTimeParamQuery;
 begin
-  TestXXParamQuery(ftTime,FieldtypeDefinitions[ftTime],testValuesCount);
+  if SQLServerType=ssOracle then
+    TestXXParamQuery(ftTime,'TIMESTAMP',testValuesCount)
+  else
+    TestXXParamQuery(ftTime,FieldtypeDefinitions[ftTime],testValuesCount);
 end;
 
 procedure TTestFieldTypes.TestDateTimeParamQuery;
@@ -1907,6 +1991,12 @@ procedure TTestFieldTypes.TestXXParamQuery(ADataType : TFieldType; ASQLTypeDecl 
   ParamValuesCount : integer; const ParamValues: array of string; Cross : boolean = False);
 
 var i : integer;
+
+  // Value aIndex is an empty string, which Oracle stores as NULL
+  function OracleEmptyString(aIndex: integer): boolean;
+  begin
+    Result := (SQLServerType=ssOracle) and (ADataType in [ftString,ftFixedChar]) and (testStringValues[aIndex]='');
+  end;
 
 begin
   if ASQLTypeDecl = '' then
@@ -1984,7 +2074,10 @@ begin
         ftFloat    : AssertEquals(testFloatValues[i],FieldByName('FIELD1').AsFloat);
         ftCurrency : AssertEquals(testCurrencyValues[i],FieldByName('FIELD1').AsFloat,0); // TCurrencyField uses double data type (not currency) to store values!
         ftBCD      : AssertEquals(testBCDValues[i],FieldByName('FIELD1').AsCurrency);
-        ftFixedChar : AssertEquals(PadRight(testStringValues[i],10),FieldByName('FIELD1').AsString);
+        ftFixedChar : if OracleEmptyString(i) then
+                        AssertEquals('',FieldByName('FIELD1').AsString)
+                      else
+                        AssertEquals(PadRight(testStringValues[i],10),FieldByName('FIELD1').AsString);
         ftString   : AssertEquals(testStringValues[i],FieldByName('FIELD1').AsString);
         ftTime     : AssertEquals(testTimeValues[i],DateTimeToTimeString(FieldByName('FIELD1').AsDateTime));
         ftDate     : AssertEquals(testDateValues[i],DateTimeToStr(FieldByName('FIELD1').AsDateTime, DBConnector.FormatSettings));
@@ -1997,7 +2090,10 @@ begin
       else
         AssertTrue('no test for paramtype available',False);
       end;
-      AssertEquals(IntToStr(i)+' May not be Null', False, FieldByName('FIELD1').IsNull);
+      if OracleEmptyString(i) then
+        AssertTrue(IntToStr(i)+' Oracle stores an empty string as NULL', FieldByName('FIELD1').IsNull)
+      else
+        AssertEquals(IntToStr(i)+' May not be Null', False, FieldByName('FIELD1').IsNull);
       Next;
       end;
     AssertTrue('Expected IsNull', FieldByName('FIELD1').IsNull);
@@ -2010,6 +2106,10 @@ end;
 procedure TTestFieldTypes.TestSetBlobAsParam(asWhat: integer);
 var i: integer;
 begin
+  if (asWhat in [0,2]) and (SQLServerType=ssOracle) then
+    Ignore('Oracle reads a character parameter bound to a BLOB column as hexadecimal');
+  if (asWhat in [0,2]) and (SQLServerType=ssMSSQL) then
+    Ignore('SQL Server does not convert a character parameter to a BLOB column');
   CreateTableWithFieldType(ftBlob,FieldtypeDefinitions[ftBlob]);
   TestFieldDeclaration(ftBlob,0);
 
@@ -2140,7 +2240,10 @@ begin
   with TSQLDBConnector(DBConnector).Query do
     begin
     SQL.Clear;
-    sql.add('select now()::date as current_date where 1=1');
+    if SQLServerType=ssOracle then
+      sql.add('select trunc(sysdate) as current_date_ from dual where 1=1')
+    else
+      sql.add('select now()::date as current_date where 1=1');
     open;
     first;
     ADateStr:=fields[0].asstring; // return the correct date
@@ -2148,7 +2251,10 @@ begin
     close;
 
     sql.clear;
-    sql.add('select now()::date as current_date where cast(1 as integer) = :PARAM1');
+    if SQLServerType=ssOracle then
+      sql.add('select trunc(sysdate) as current_date_ from dual where cast(1 as integer) = :PARAM1')
+    else
+      sql.add('select now()::date as current_date where cast(1 as integer) = :PARAM1');
     params.parambyname('PARAM1').asinteger:= 1;
     open;
     first;
@@ -2161,11 +2267,12 @@ end;
 
 procedure TTestFieldTypes.TestInsertReturningQuery;
 begin
-  if not(SQLServerType in [ssFirebird, ssOracle, ssPostgreSQL]) then Ignore(STestNotApplicable);
+  // Oracle requires RETURNING ... INTO and returns no result set
+  if not(SQLServerType in [ssFirebird, ssPostgreSQL]) then Ignore(STestNotApplicable);
   with TSQLDBConnector(DBConnector) do
     begin
     // This only works with databases that supports 'insert into .. returning'
-    // for example: PostgreSQL, Oracle, Firebird version 2.0 and up
+    // for example: PostgreSQL, Firebird version 2.0 and up
     CreateTableWithFieldType(ftInteger,'int');
     Query.SQL.Text:='insert into FPDEV2 values(154) returning FT';
     Query.Open;
@@ -2337,14 +2444,14 @@ begin
     Close;
 
     // tests parsing SELECT with simple WHERE
-    SQL.Text:='select *'#9'from FPDEV'#9'where NAME<>''''';
+    SQL.Text:='select *'#9'from FPDEV'#9'where NAME<>''X''';
     Open;
     CheckTrue(CanModify, SQL.Text);
     CheckEquals(1, RecordCount);
     Close;
 
     // tests parsing SELECT with simple WHERE followed by ORDER BY
-    SQL.Text:='select *'#10'from FPDEV'#10'where NAME>'''' order by 1';
+    SQL.Text:='select *'#10'from FPDEV'#10'where NAME>''A'' order by 1';
     Open;
     CheckTrue(CanModify, SQL.Text);
     CheckEquals(1, RecordCount);
@@ -2356,6 +2463,8 @@ begin
         SQL.Text:='select first 1 NAME from FPDEV where NAME=''TestName21''';
       ssMSSQL, ssSybase:
         SQL.Text:='select top 1 NAME from FPDEV where NAME=''TestName21''';
+      ssOracle:
+        SQL.Text:='select NAME from FPDEV where NAME=''TestName21'' fetch first 1 rows only';
       else
         SQL.Text:='select NAME from FPDEV where NAME=''TestName21'' limit 1';
     end;
@@ -2364,7 +2473,11 @@ begin
     Close;
 
     // tests parsing SELECT with table alias and embedded comments (MySQL requires space after -- )
-    SQL.Text:='/**/select * from/**/FPDEV as fp-- comment'#13'where(NAME>''TestName20'')/**/order by 1';
+    // Oracle does not accept AS before a table alias
+    if SQLServerType=ssOracle then
+      SQL.Text:='/**/select * from/**/FPDEV fp-- comment'#13'where(NAME>''TestName20'')/**/order by 1'
+    else
+      SQL.Text:='/**/select * from/**/FPDEV as fp-- comment'#13'where(NAME>''TestName20'')/**/order by 1';
     Open;
     CheckTrue(CanModify, 'CanModify: '+SQL.Text);
     CheckTrue(ServerIndexDefs.Count >= 1, 'ServerIndexDefs: '+SQL.Text); // is TableName extracted correctly? (MS SQL Server can automatically creates index)
@@ -2765,7 +2878,7 @@ begin
     Ignore('Test only for SQLite');
   TSQLDBConnector(DBConnector).Connection.Params.Values['AlwaysUseBigint']:='1';
 
-  CreateTableWithFieldType(ftInteger,'INT');
+  CreateTableWithFieldType(ftInteger,IntColumnType);
   TestFieldDeclaration(ftLargeInt,8);
 
   for i := 0 to testIntValuesCount-1 do

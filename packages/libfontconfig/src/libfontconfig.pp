@@ -30,7 +30,7 @@ uses
 
 Const
   {$if defined(MSWINDOWS)}
-  DefaultLibName = 'fontconfig.dll');
+  DefaultLibName = 'fontconfig.dll';
   {$elseif defined(darwin)}
   DefaultLibName = 'libfontconfig.dylib';
   {$elseif defined(haiku) or defined(OpenBSD)}
@@ -554,10 +554,10 @@ implementation
 
 {$IFDEF FPC_DOTTEDUNITS}
 uses
-  System.SysUtils;
+  System.SysUtils, System.DynLibs;
 {$ELSE FPC_DOTTEDUNITS}
 uses
-  SysUtils;
+  SysUtils, DynLibs;
 {$ENDIF FPC_DOTTEDUNITS}
 
 Procedure FcMatrixInit(out m : TFCMatrix);

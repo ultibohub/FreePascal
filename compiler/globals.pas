@@ -446,6 +446,10 @@ Const
 
        init_settings,
        current_settings   : tsettings;
+       { the code page an ansistring has in a module that uses the system code
+         page (cs_system_codepage): set when m_systemcodepage is turned on. It is
+         the compiling system's, so the same for every module }
+       systemcodepage_ansistring : tstringencoding;
 
        pendingstate       : tpendingstate;
      { Memory sizes }
@@ -723,6 +727,9 @@ Const
       starttime  : real;
       startsystime : TSystemTime;
 
+    { the code page of a literal converted to a string type without a code page of its own
+      (shortstring, pchar): the system code page in a module that uses it, else the source code page }
+    function ansiconversioncodepage:tstringencoding;
     function getdatestr:string;
     function gettimestr:string;
     function filetimestring( t : longint) : string;
@@ -981,6 +988,15 @@ implementation
         GetLocalTime(st);
         gettimestr:=L0(st.Hour)+':'+L0(st.Minute)+':'+L0(st.Second);
       end;
+
+
+   function ansiconversioncodepage:tstringencoding;
+     begin
+       if cs_system_codepage in current_settings.moduleswitches then
+         result:=systemcodepage_ansistring
+       else
+         result:=current_settings.sourcecodepage;
+     end;
 
 
    function getdatestr:string;
@@ -1287,31 +1303,23 @@ implementation
         Result:=(QWord(TCompDoubleRec(value).bytes)=QWord(MathNegZero.bytes));
       end;
 {$else sizeof(bestreal)=sizeof(double)}
+    { MathPosZero and MathNegZero are doubles, so a zero is converted to a
+      double before its bytes are compared: that conversion is exact and keeps
+      the sign }
     function IsPosZero(value: bestreal): boolean;
       var
-        X, Count: Integer;
-        ByteArray: PByte;
+        d: double;
       begin
-        Result:=False;
-        ByteArray:=@value;
-        Count:=SizeOf(bestreal);
-
-        { Read raw bytes of floating-point value - must be all zeroes }
-        Result:=(CompareByte(ByteArray^,MathPosZero.bytes,Count)=0);
+        d:=value;
+        Result:=QWord(TCompDoubleRec(d).bytes)=0;
       end;
 
     function IsNegZero(value: bestreal): boolean;
       var
-        X, Count: Integer;
-        ByteArray: PByte;
+        d: double;
       begin
-        Result:=False;
-        ByteArray:=@value;
-        Count:=SizeOf(bestreal);
-
-        { Read raw bytes of floating-point value - must be all zeroes except
-          for the most significant (sign) bit }
-        Result:=(CompareByte(ByteArray^,MathNegZero.bytes,Count)=0);
+        d:=value;
+        Result:=QWord(TCompDoubleRec(d).bytes)=QWord(MathNegZero.bytes);
       end;
 {$ifend sizeof(bestreal)=sizeof(double)}
 
